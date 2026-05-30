@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { employeesApi } from '@/lib/db'
 import { ROLES_PERMISSIONS } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, Trash2, X, Shield, Eye, EyeOff } from 'lucide-react'
+import { Users, Plus, Search, Pencil, Trash2, X, Shield, Eye, EyeOff, LayoutGrid, List } from 'lucide-react'
 import type { Employee, UserRole } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -67,7 +67,8 @@ function EmpModal({ emp, onClose, onSave }: {
       is_active:   form.is_active,
     }
     // In a real app, hash the password server-side
-    if (form.password) (payload as any).password_hash = form.password
+   if (form.password) (payload as any).password = form.password
+else if (!emp) (payload as any).password = '1234'
     await onSave(payload)
     setSaving(false)
   }
@@ -172,6 +173,14 @@ export default function EmployeesPage() {
   const [roleFilter, setRole]   = useState('')
   const [showModal, setModal]   = useState(false)
   const [editEmp, setEditEmp]   = useState<Employee | null>(null)
+  // نقرأ الإعداد من tenant — نحدّثه في كل مرة يتغير tenant
+  const [viewMode, setViewMode] = useState<'grid'|'list'>('grid')
+
+  useEffect(() => {
+    const v = (tenant as any)?.display_settings?.employeesView
+    if (v) setViewMode(v)
+    else setViewMode('grid')
+  }, [tenant?.id, (tenant as any)?.display_settings?.employeesView])
 
   const canEdit = currentUser?.permissions?.includes('employees')
   const isAdmin = currentUser?.role === 'مدير عام'
@@ -246,6 +255,16 @@ export default function EmployeesPage() {
           <option value="">كل الأدوار</option>
           {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+          <button onClick={() => setViewMode('grid')}
+            className={`p-1.5 rounded-md transition-all ${viewMode==='grid'?'bg-white shadow-sm text-primary-600':'text-gray-400'}`}>
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button onClick={() => setViewMode('list')}
+            className={`p-1.5 rounded-md transition-all ${viewMode==='list'?'bg-white shadow-sm text-primary-600':'text-gray-400'}`}>
+            <List className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -256,7 +275,7 @@ export default function EmployeesPage() {
           <Users className="w-12 h-12 text-gray-200 mx-auto mb-3" />
           <p className="text-gray-400">لا يوجد موظفون</p>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(emp => (
             <div key={emp.id} className={`card p-5 hover:shadow-md transition-all ${!emp.is_active ? 'opacity-60' : ''}`}>
@@ -294,6 +313,64 @@ export default function EmployeesPage() {
               )}
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>الموظف</th>
+                <th>المسمى الوظيفي</th>
+                <th>الجوال</th>
+                <th>البريد</th>
+                <th>الصلاحيات</th>
+                <th>الحالة</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(emp => (
+                <tr key={emp.id} className={!emp.is_active ? 'opacity-60' : ''}>
+                  <td>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                        {emp.name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-800 text-sm">{emp.name}</div>
+                        <div className="text-xs text-gray-400 font-mono">{emp.username}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge ${ROLE_COLORS[emp.role] || 'badge-gray'} text-xs`}>{emp.role}</span>
+                  </td>
+                  <td className="text-gray-500 text-sm">{emp.phone || '—'}</td>
+                  <td className="text-gray-500 text-sm">{emp.email || '—'}</td>
+                  <td className="text-gray-500 text-sm">{emp.permissions.length} صلاحية</td>
+                  <td>
+                    <span className={`badge ${emp.is_active ? 'badge-green' : 'badge-gray'} text-xs`}>
+                      {emp.is_active ? 'نشط' : 'غير نشط'}
+                    </span>
+                  </td>
+                  <td>
+                    {canEdit && (
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => { setEditEmp(emp); setModal(true) }} className="btn btn-ghost btn-xs">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {isAdmin && emp.id !== currentUser?.id && (
+                          <button onClick={() => handleDelete(emp)} className="btn btn-ghost btn-xs text-red-400 hover:bg-red-50">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
