@@ -1,7 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-code src/app/globals.css/* ═══════════════════════════════════
+
+/* ═══════════════════════════════════
    وثيق — Global CSS (بدون Tailwind)
 ═══════════════════════════════════ */
 
@@ -320,8 +321,6 @@ tbody tr:hover td { background: #f0f5ff; }
 
 /* ── Responsive ── */
 @media (max-width: 1024px) {
-  .sidebar { display: none; }
-  .sidebar.open { display: flex; }
   .main-content { margin-right: 0; padding: 16px; }
 }
 
