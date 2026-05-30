@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
@@ -8,17 +9,28 @@ import {
   LayoutGrid, List, TrendingUp, Clock, AlertTriangle, CheckCircle2
 } from 'lucide-react'
 import type { Project } from '@/types'
-import ProjectModal from '@/components/projects/ProjectModal'
-import ProjectDetail from '@/components/projects/ProjectDetail'
 import toast from 'react-hot-toast'
+
+// تحميل المكونات الثقيلة عند الحاجة فقط
+const ProjectModal  = dynamic(() => import('@/components/projects/ProjectModal'),  { ssr: false })
+const ProjectDetail = dynamic(() => import('@/components/projects/ProjectDetail'), { ssr: false })
 
 export default function ProjectsPage() {
   const { tenant, activeBranch, projects, setProjects, currentUser } = useStore()
-  const [loading, setLoading]         = useState(true)
+  const [loading, setLoading]         = useState(projects.length === 0)
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatus]     = useState('')
   const [typeFilter, setType]         = useState('')
-  const [viewMode, setViewMode]       = useState<'grid' | 'list'>('grid')
+  // قراءة إعداد العرض من display_settings
+  const defaultView = (tenant as any)?.display_settings?.projectsView || 'grid'
+  const [viewMode, setViewMode]       = useState<'grid' | 'list'>(defaultView as 'grid' | 'list')
+
+  // تحديث viewMode عند تغيير الإعدادات
+  useEffect(() => {
+    const v = (tenant as any)?.display_settings?.projectsView
+    if (v) setViewMode(v)
+  }, [(tenant as any)?.display_settings?.projectsView])
+
   const [showModal, setShowModal]     = useState(false)
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [detailProject, setDetail]    = useState<Project | null>(null)
@@ -29,10 +41,20 @@ export default function ProjectsPage() {
 
   async function loadProjects() {
     if (!tenant || !activeBranch) return
-    setLoading(true)
+    // إذا في بيانات مسبقة نحدّث في الخلفية بدون spinner
+    if (projects.length === 0) setLoading(true)
     const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
     setProjects(data || [])
     setLoading(false)
+  }
+
+  async function handleSave(data: Partial<Project>) {
+    if (!tenant || !activeBranch) return
+    const { error } = await projectsApi.upsert({ ...data, tenant_id: tenant.id, branch_id: activeBranch.id })
+    if (error) { toast.error('حدث خطأ في الحفظ'); return }
+    await loadProjects()
+    setShowModal(false); setEditProject(null)
+    toast.success(editProject ? 'تم التعديل ✅' : 'تم إضافة المشروع ✅')
   }
 
   async function handleDelete(p: Project) {
@@ -46,24 +68,17 @@ export default function ProjectsPage() {
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
-    const matchSearch = !q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)
-    const matchStatus = !statusFilter || p.status === statusFilter
-    const matchType   = !typeFilter   || p.type   === typeFilter
-    return matchSearch && matchStatus && matchType
+    return (
+      (!q || p.name.toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q)) &&
+      (!statusFilter || p.status === statusFilter) &&
+      (!typeFilter   || p.type   === typeFilter)
+    )
   })
 
-  // Stats
-  const activeCount   = projects.filter(p => p.status !== 'مكتمل' && p.progress < 100).length
-  const doneCount     = projects.filter(p => p.progress >= 100).length
-  const lateCount     = projects.filter(p => {
-    if (p.progress >= 100 || !p.end_date) return false
-    return new Date(p.end_date) < now
-  }).length
-  const soon = projects.filter(p => {
-    if (!p.end_date || p.progress >= 100) return false
-    const d = daysUntil(p.end_date)
-    return d !== null && d >= 0 && d <= 14
-  }).length
+  const activeCount = projects.filter(p => p.status !== 'مكتمل' && p.progress < 100).length
+  const doneCount   = projects.filter(p => p.progress >= 100).length
+  const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now).length
+  const soonCount   = projects.filter(p => { if (!p.end_date || p.progress >= 100) return false; const d = daysUntil(p.end_date); return d !== null && d >= 0 && d <= 14 }).length
 
   function getStatusColor(p: Project) {
     if (p.progress >= 100) return 'badge-green'
@@ -76,13 +91,13 @@ export default function ProjectsPage() {
   function getCurrentStage(p: Project) {
     const stages = p.stages || []
     for (let i = PROJECT_STAGES.length - 1; i >= 0; i--) {
-      if (stages.find(s => s.id === PROJECT_STAGES[i].id && s.done)) {
+      if (stages.find(s => s.id === PROJECT_STAGES[i].id && s.done))
         return PROJECT_STAGES[Math.min(i + 1, PROJECT_STAGES.length - 1)]
-      }
     }
     return PROJECT_STAGES[0]
   }
 
+  // ── عرض تفاصيل مشروع ──
   if (detailProject) {
     return (
       <ProjectDetail
@@ -103,7 +118,10 @@ export default function ProjectsPage() {
             <FolderOpen className="w-5 h-5 text-primary-500" />
             المشاريع
           </h1>
-          <p className="text-gray-400 text-sm mt-0.5">{filtered.length} مشروع</p>
+          <p className="text-gray-400 text-sm mt-0.5 flex items-center gap-2">
+            {filtered.length} مشروع
+            {loading && <span className="w-3 h-3 border border-gray-300 border-t-gray-500 rounded-full animate-spin inline-block" />}
+          </p>
         </div>
         {canEdit && (
           <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
@@ -112,13 +130,13 @@ export default function ProjectsPage() {
         )}
       </div>
 
-      {/* Stats bar */}
+      {/* Stats — تظهر فوراً من الـ store */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'نشطة',       value: activeCount, icon: <TrendingUp className="w-4 h-4" />,     cls: 'text-blue-600',    bg: 'bg-blue-50',    border: '', onClick: () => { setStatus('قيد التنفيذ'); setType('') } },
-          { label: 'مكتملة',     value: doneCount,   icon: <CheckCircle2 className="w-4 h-4" />,   cls: 'text-emerald-600', bg: 'bg-emerald-50', border: '', onClick: () => {} },
-          { label: 'متأخرة',     value: lateCount,   icon: <AlertTriangle className="w-4 h-4" />,  cls: 'text-red-600',     bg: 'bg-red-50',     border: lateCount > 0 ? 'border-red-200' : '', onClick: () => {} },
-          { label: 'تسليم قريب', value: soon,        icon: <Clock className="w-4 h-4" />,          cls: 'text-amber-600',   bg: 'bg-amber-50',   border: soon > 0 ? 'border-amber-200' : '', onClick: () => {} },
+          { label: 'نشطة',       value: activeCount, icon: <TrendingUp className="w-4 h-4" />,    cls: 'text-blue-600',    bg: 'bg-blue-50',    border: '',                                    onClick: () => { setStatus('قيد التنفيذ'); setType('') } },
+          { label: 'مكتملة',     value: doneCount,   icon: <CheckCircle2 className="w-4 h-4" />,  cls: 'text-emerald-600', bg: 'bg-emerald-50', border: '',                                    onClick: () => {} },
+          { label: 'متأخرة',     value: lateCount,   icon: <AlertTriangle className="w-4 h-4" />, cls: 'text-red-600',     bg: 'bg-red-50',     border: lateCount  > 0 ? 'border-red-200'   : '', onClick: () => {} },
+          { label: 'تسليم قريب', value: soonCount,   icon: <Clock className="w-4 h-4" />,         cls: 'text-amber-600',   bg: 'bg-amber-50',   border: soonCount  > 0 ? 'border-amber-200' : '', onClick: () => {} },
         ].map(s => (
           <button key={s.label} onClick={s.onClick}
             className={`card p-4 flex items-center gap-3 hover:shadow-md transition-all text-right ${s.border}`}>
@@ -142,13 +160,13 @@ export default function ProjectsPage() {
         </div>
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select w-auto text-sm">
           <option value="">كل الحالات</option>
-          {['تحت التخطيط', 'قيد التنفيذ', 'متأخر', 'مكتمل', 'موقوف'].map(s => (
+          {['تحت التخطيط','قيد التنفيذ','متأخر','مكتمل','موقوف'].map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select w-auto text-sm">
           <option value="">كل الأنواع</option>
-          {['801', '802', '441', '442', '805', '405', 'O&M'].map(t => (
+          {['801','802','441','442','805','405','O&M'].map(t => (
             <option key={t} value={t}>{t}</option>
           ))}
         </select>
@@ -156,20 +174,19 @@ export default function ProjectsPage() {
           <button onClick={() => { setSearch(''); setStatus(''); setType('') }}
             className="btn btn-ghost btn-sm text-gray-400">مسح</button>
         )}
-        {/* View toggle */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg mr-auto">
           <button onClick={() => setViewMode('grid')}
-            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400'}`}>
             <LayoutGrid className="w-4 h-4" />
           </button>
           <button onClick={() => setViewMode('list')}
-            className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}>
+            className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-primary-600' : 'text-gray-400'}`}>
             <List className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Content */}
+      {/* المحتوى — يظهر فوراً حتى أثناء التحديث */}
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
@@ -185,10 +202,9 @@ export default function ProjectsPage() {
           )}
         </div>
       ) : viewMode === 'grid' ? (
-        // ── Grid View ──────────────────────────────────────────────
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(p => {
-            const days  = daysUntil(p.end_date)
+            const days   = daysUntil(p.end_date)
             const isLate = days !== null && days < 0 && p.progress < 100
             const stage  = getCurrentStage(p)
             return (
@@ -205,8 +221,6 @@ export default function ProjectsPage() {
                     {p.progress >= 100 ? 'مكتمل' : isLate ? 'متأخر' : p.status}
                   </span>
                 </div>
-
-                {/* Progress */}
                 <div className="mb-3">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-gray-500">{stage.icon} {stage.name}</span>
@@ -217,7 +231,6 @@ export default function ProjectsPage() {
                       style={{ width: `${p.progress}%` }} />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 mb-4">
                   <div>
                     <span className="text-gray-400">المهندس</span>
@@ -233,15 +246,12 @@ export default function ProjectsPage() {
                       <span className={`font-medium mr-1 ${isLate ? 'text-red-500' : days && days <= 7 ? 'text-amber-500' : 'text-gray-700'}`}>
                         {formatDate(p.end_date)}
                         {days !== null && p.progress < 100 && (
-                          <span className="mr-1">
-                            ({isLate ? `متأخر ${Math.abs(days)} يوم` : days === 0 ? 'اليوم' : `${days} يوم`})
-                          </span>
+                          <span className="mr-1">({isLate ? `متأخر ${Math.abs(days)} يوم` : days === 0 ? 'اليوم' : `${days} يوم`})</span>
                         )}
                       </span>
                     </div>
                   )}
                 </div>
-
                 <div className="flex gap-2 pt-3 border-t border-gray-50">
                   <button onClick={() => setDetail(p)} className="btn btn-ghost btn-sm flex-1 justify-center">
                     <Eye className="w-3.5 h-3.5" /> تفاصيل
@@ -260,19 +270,12 @@ export default function ProjectsPage() {
           })}
         </div>
       ) : (
-        // ── List View ──────────────────────────────────────────────
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th>المشروع</th>
-                <th>النوع</th>
-                <th>المهندس</th>
-                <th>الحالة</th>
-                <th>الإنجاز</th>
-                <th>التسليم</th>
-                <th>القيمة</th>
-                <th></th>
+                <th>المشروع</th><th>النوع</th><th>المهندس</th>
+                <th>الحالة</th><th>الإنجاز</th><th>التسليم</th><th>القيمة</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -287,11 +290,7 @@ export default function ProjectsPage() {
                     </td>
                     <td>{p.type ? <span className="badge badge-blue text-xs">{p.type}</span> : '—'}</td>
                     <td className="text-gray-600 text-sm">{p.engineer || '—'}</td>
-                    <td>
-                      <span className={`badge ${getStatusColor(p)} text-xs`}>
-                        {p.progress >= 100 ? 'مكتمل' : isLate ? 'متأخر' : p.status}
-                      </span>
-                    </td>
+                    <td><span className={`badge ${getStatusColor(p)} text-xs`}>{p.progress >= 100 ? 'مكتمل' : isLate ? 'متأخر' : p.status}</span></td>
                     <td>
                       <div className="flex items-center gap-2 min-w-[100px]">
                         <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -303,9 +302,7 @@ export default function ProjectsPage() {
                     </td>
                     <td className={`text-sm ${isLate ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
                       {formatDate(p.end_date)}
-                      {days !== null && p.progress < 100 && isLate && (
-                        <div className="text-xs text-red-400">متأخر {Math.abs(days)} يوم</div>
-                      )}
+                      {isLate && days !== null && <div className="text-xs text-red-400">متأخر {Math.abs(days)} يوم</div>}
                     </td>
                     <td className="text-sm text-gray-600">{p.value ? formatCurrency(p.value) : '—'}</td>
                     <td>
@@ -325,21 +322,11 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modals — تُحمَّل عند الحاجة فقط */}
       {showModal && (
-        <ProjectModal
-          project={editProject}
+        <ProjectModal project={editProject}
           onClose={() => { setShowModal(false); setEditProject(null) }}
-          onSave={async (data) => {
-            if (!tenant || !activeBranch) return
-            const payload = { ...data, tenant_id: tenant.id, branch_id: activeBranch.id }
-            const { error } = await projectsApi.upsert(payload)
-            if (error) { toast.error('حدث خطأ في الحفظ'); return }
-            await loadProjects()
-            setShowModal(false)
-            toast.success(editProject ? 'تم التعديل' : 'تم إضافة المشروع')
-          }}
-        />
+          onSave={handleSave} />
       )}
     </div>
   )
