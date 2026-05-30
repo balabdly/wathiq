@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-import { ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle } from 'lucide-react'
+import { ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle, Package, TrendingDown, TrendingUp, ArrowLeftRight } from 'lucide-react'
 import type { Project, ProjectStage } from '@/types'
+import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 interface Props {
@@ -16,7 +17,9 @@ interface Props {
 
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'info'|'stages'|'files'|'history'>('info')
+  const [activeTab, setActiveTab] = useState<'info'|'stages'|'files'|'history'|'inventory'>('info')
+  const [inventoryData, setInventoryData] = useState<any[]>([])
+  const [loadingInv, setLoadingInv] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const canEdit = currentUser?.permissions?.includes('projects_edit')
   const days = daysUntil(project.end_date)
@@ -35,8 +38,17 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   async function advanceStage(idx: number, attachName?: string, note?: string) {
     if (!tenant) return
     const stage = PROJECT_STAGES[idx]
-    if (stage.requiresAttach && !attachName) {
-      toast.error(`مرحلة "${stage.name}" تتطلب رفع مرفق`)
+
+    // التحقق: إذا المرحلة التالية تتطلب مرفق، يجب أن يكون موجوداً في المرحلة الحالية
+    const currentStage = PROJECT_STAGES[idx - 1]
+    const currentStageData = currentStage
+      ? (project.stages || []).find(s => s.id === currentStage.id)
+      : null
+    const hasAttachmentInCurrent = currentStageData?.attach ||
+      (currentStageData?.attachments && currentStageData.attachments.length > 0)
+
+    if (stage.requiresAttach && !hasAttachmentInCurrent) {
+      toast.error(`يجب رفع مرفق في مرحلة "${currentStage?.name}" قبل الانتقال إلى "${stage.name}"`)
       return
     }
     setAdvancing(true)
@@ -87,11 +99,33 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   }
 
   const TABS = [
-    { id: 'info',    label: 'المعلومات' },
-    { id: 'stages',  label: 'مراحل التنفيذ' },
-    { id: 'files',   label: 'المرفقات' },
-    { id: 'history', label: 'السجل' },
+    { id: 'info',      label: 'المعلومات' },
+    { id: 'stages',    label: 'مراحل التنفيذ' },
+    { id: 'inventory', label: '📦 المخزون' },
+    { id: 'files',     label: 'المرفقات' },
+    { id: 'history',   label: 'السجل' },
   ]
+
+  async function loadInventory() {
+    if (!tenant || loadingInv) return
+    setLoadingInv(true)
+    const { data } = await supabase
+      .from('stock_ledger')
+      .select('*')
+      .eq('project_name', project.name)
+      .order('created_at', { ascending: false })
+    const ledgerData = data || []
+    // تجميع المواد
+    const matMap: Record<string, { name: string; unit: string; totalIn: number; totalOut: number; loans: number }> = {}
+    ledgerData.forEach((l: any) => {
+      if (!matMap[l.mat_name]) matMap[l.mat_name] = { name: l.mat_name, unit: l.unit, totalIn: 0, totalOut: 0, loans: 0 }
+      if (l.type === 'توريد') matMap[l.mat_name].totalIn += l.qty
+      if (l.type === 'صرف' && !l.is_loan) matMap[l.mat_name].totalOut += l.qty
+      if (l.is_loan) matMap[l.mat_name].loans += l.qty
+    })
+    setInventoryData(Object.values(matMap))
+    setLoadingInv(false)
+  }
 
   return (
     <div className="space-y-5 fade-in">
@@ -131,7 +165,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
+          <button key={t.id} onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory() }}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === t.id ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}>
             {t.label}
           </button>
@@ -199,8 +233,8 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                         {isDone && stageData?.completedAt && (
                           <span className="text-xs text-emerald-600">✓ {stageData.completedAt}</span>
                         )}
-                        {/* زر إرفاق للمرحلة الحالية والسابقة */}
-                        {canEdit && (isCurr || isDone) && (
+                        {/* زر إرفاق للمرحلة الحالية والسابقة والتالية إذا تطلبت مرفق */}
+                        {canEdit && (isCurr || isDone || (isNext && stage.requiresAttach)) && (
                           <label className="btn btn-ghost btn-xs cursor-pointer">
                             <Upload className="w-3 h-3" /> إرفاق
                             <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
@@ -247,6 +281,127 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Inventory tab */}
+      {activeTab === 'inventory' && (
+        <div className="space-y-4">
+          {loadingInv ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : inventoryData.length === 0 ? (
+            <div className="card p-12 text-center">
+              <Package className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+              <p className="text-gray-400">لا توجد حركات مخزون لهذا المشروع</p>
+            </div>
+          ) : (
+            <>
+              {/* KPIs */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="card p-4 text-center border-emerald-100 bg-emerald-50/30">
+                  <div className="text-2xl font-bold text-emerald-600">
+                    {inventoryData.reduce((s, m) => s + m.totalIn, 0)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> إجمالي الوارد
+                  </div>
+                </div>
+                <div className="card p-4 text-center border-red-100 bg-red-50/30">
+                  <div className="text-2xl font-bold text-red-600">
+                    {inventoryData.reduce((s, m) => s + m.totalOut, 0)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
+                    <TrendingDown className="w-3 h-3" /> إجمالي المصروف
+                  </div>
+                </div>
+                <div className="card p-4 text-center border-blue-100 bg-blue-50/30">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {inventoryData.reduce((s, m) => s + (m.totalIn - m.totalOut), 0)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
+                    <Package className="w-3 h-3" /> المتبقي (العهدة)
+                  </div>
+                </div>
+              </div>
+
+              {/* تنبيه الاستعارات */}
+              {inventoryData.some(m => m.loans > 0) && (
+                <div className="card p-3 border-amber-200 bg-amber-50/50 flex items-center gap-2">
+                  <ArrowLeftRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <p className="text-sm text-amber-700">
+                    يوجد مواد مستعارة لهذا المشروع — راجع سجل الحركات في المخزون
+                  </p>
+                </div>
+              )}
+
+              {/* جدول العهدة */}
+              <div className="card overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100">
+                  <h3 className="font-semibold text-gray-700 text-sm">عهدة المشروع التفصيلية</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600">المادة</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-emerald-600">وارد</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-red-600">صادر</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-blue-600">المتبقي</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-amber-600">مستعار</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600">الوحدة</th>
+                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600">الحالة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {inventoryData.map((m, i) => {
+                        const remaining = m.totalIn - m.totalOut
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50">
+                            <td className="px-4 py-2.5 font-medium text-gray-800">{m.name}</td>
+                            <td className="px-4 py-2.5 text-center text-emerald-600 font-bold">{m.totalIn}</td>
+                            <td className="px-4 py-2.5 text-center text-red-600 font-bold">{m.totalOut}</td>
+                            <td className={`px-4 py-2.5 text-center font-bold ${remaining <= 0 ? 'text-gray-400' : 'text-blue-600'}`}>
+                              {remaining}
+                            </td>
+                            <td className="px-4 py-2.5 text-center text-amber-600">
+                              {m.loans > 0 ? <span className="badge badge-amber text-xs">🔄 {m.loans}</span> : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-center text-gray-400 text-xs">{m.unit}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              {remaining <= 0
+                                ? <span className="badge badge-gray text-xs">✓ صُرف كله</span>
+                                : <span className="badge badge-blue text-xs">📦 عهدة</span>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-primary-50 border-t-2 border-primary-100">
+                        <td className="px-4 py-2.5 font-bold text-primary-700">الإجمالي</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-emerald-600">
+                          {inventoryData.reduce((s, m) => s + m.totalIn, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-center font-bold text-red-600">
+                          {inventoryData.reduce((s, m) => s + m.totalOut, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-center font-bold text-blue-600">
+                          {inventoryData.reduce((s, m) => s + (m.totalIn - m.totalOut), 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-center font-bold text-amber-600">
+                          {inventoryData.reduce((s, m) => s + m.loans, 0) || '—'}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
