@@ -22,10 +22,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
 
+      {/* Desktop Sidebar */}
       <div className="wq-sidebar-desktop">
         <Sidebar />
       </div>
 
+      {/* Mobile: زر الفتح */}
       <button className="wq-menu-btn" onClick={() => setOpen(true)}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5">
           <line x1="3" y1="6" x2="21" y2="6"/>
@@ -34,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </svg>
       </button>
 
+      {/* Mobile: Overlay */}
       {open && (
         <div
           onClick={() => setOpen(false)}
@@ -45,9 +48,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
+      {/* Mobile: Drawer — من اليسار لتجنب مشكلة RTL */}
       {open && (
         <div style={{
-          position: 'fixed', top: 0, right: 0,
+          position: 'fixed', top: 0, left: 0,
           height: '100vh', width: '260px',
           zIndex: 99999,
           overflowY: 'auto',
@@ -56,6 +60,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
+      {/* المحتوى الرئيسي */}
       <main className="wq-main">
         {children}
       </main>
