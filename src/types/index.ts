@@ -120,6 +120,8 @@ export interface Warehouse {
   tenant_id: string
   branch_id: number
   name: string
+  type?: 'SEC' | 'خاص' | 'مختلط'  // نوع المستودع
+  stock_type?: 'SEC' | 'خاص' | 'مختلط'  // alias
   capacity?: string
   location?: string
   created_at: string
@@ -133,11 +135,14 @@ export interface Material {
   warehouse_id: number
   sku?: string
   catalog_no: string
+  sec_number?: string
   name: string
   unit: string
   qty: number
   reorder: number
+  source?: 'كهرباء' | 'خاص'
   notes?: string
+  location?: string      // الموقع الداخلي (رف A3، قسم الكابلات...)
   created_at: string
   updated_at: string
 }
@@ -171,8 +176,12 @@ export interface Purchase {
   code?: string
   vendor?: string
   items?: string
+  items_json?: string
+  notes?: string
   date?: string
   status: string
+  project_id?: number
+  project_name?: string
   created_at: string
 }
 
