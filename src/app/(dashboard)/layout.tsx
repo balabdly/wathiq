@@ -48,13 +48,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      {/* Mobile: Drawer — من اليسار لتجنب مشكلة RTL */}
+      {/* Mobile: Drawer */}
       {open && (
         <div style={{
-          position: 'fixed', top: 0, left: 0,
+          position: 'fixed', top: 0, right: 0,
           height: '100vh', width: '260px',
           zIndex: 99999,
           overflowY: 'auto',
+          background: 'linear-gradient(#1240a8, #1a56db)',
         }}>
           <Sidebar />
         </div>
@@ -111,6 +112,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             margin-right: 0 !important;
             width: 100% !important;
             padding: 68px 16px 24px !important;
+          }
+          .sidebar {
+            position: relative !important;
+            width: 100% !important;
+            min-height: 100vh;
           }
         }
       `}</style>
