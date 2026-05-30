@@ -15,8 +15,17 @@ const COLORS = ['#1a56db', '#0ea77b', '#c81e1e', '#e6820a']
 export default function DashboardPage() {
   const { currentUser, tenant, activeBranch, projects, visits, materials,
           setProjects, setVisits, setMaterials } = useStore()
+  const ds = (tenant as any)?.display_settings || {}
+  const show = {
+    stats:     ds.dashboardShowStats     !== false,
+    alerts:    ds.dashboardShowAlerts    !== false,
+    deadlines: ds.dashboardShowDeadlines !== false,
+    charts:    ds.dashboardShowCharts    !== false,
+    ncrList:   ds.dashboardShowNcrList   !== false,
+    lowMats:   ds.dashboardShowLowMats   !== false,
+  }
   const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(projects.length === 0 && visits.length === 0 && materials.length === 0)
 
   useEffect(() => {
     if (tenant && activeBranch) loadData()
@@ -24,7 +33,7 @@ export default function DashboardPage() {
 
   async function loadData() {
     if (!tenant || !activeBranch) return
-    setLoading(true)
+    if (projects.length === 0) setLoading(true)
     try {
       const [p, v, m] = await Promise.all([
         projectsApi.getAll(tenant.id, activeBranch.id),
@@ -50,7 +59,7 @@ export default function DashboardPage() {
         activeProjects:   proj.filter(pr => pr.status !== 'مكتمل').length,
         delayedProjects:  delayed.length,
         openNcr:          vis.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length,
-        lowMaterials:     mats.filter(m => m.qty <= m.reorder).length,
+        lowMaterials:     mats.filter(m => m.qty <= m.reorder && m.source !== 'كهرباء').length,
         totalVisits:      vis.length,
         expiredQhse:      0,
         soonExpiredQhse:  0,
@@ -78,7 +87,7 @@ export default function DashboardPage() {
     return diff >= 0 && diff <= 30
   }).sort((a, b) => new Date(a.end_date!).getTime() - new Date(b.end_date!).getTime())
   const openNcr = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report)
-  const lowMats = materials.filter(m => m.qty <= m.reorder).sort((a, b) => a.qty - b.qty)
+  const lowMats = materials.filter(m => m.qty <= m.reorder && m.source !== 'كهرباء').sort((a, b) => a.qty - b.qty)
 
   // بيانات المخططات
   const statusData = [
@@ -111,7 +120,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {show.stats && <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           label="المشاريع النشطة"
           value={stats?.activeProjects || 0}
@@ -148,11 +157,11 @@ export default function DashboardPage() {
           color="green"
           href="/visits"
         />
-      </div>
+      </div>}
 
       {/* Alerts + Deadlines */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AlertCard
+      {(show.alerts || show.deadlines) && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {show.alerts && <AlertCard
           title="⚠ تنبيهات عاجلة"
           color="red"
           items={[
@@ -170,8 +179,8 @@ export default function DashboardPage() {
             })),
           ]}
           emptyMsg="✅ لا توجد تنبيهات عاجلة"
-        />
-        <AlertCard
+        />}
+        {show.deadlines && <AlertCard
           title="📅 مواعيد التسليم"
           color="blue"
           items={upcoming.map(p => {
@@ -184,12 +193,12 @@ export default function DashboardPage() {
             }
           })}
           emptyMsg="لا توجد مشاريع خلال 30 يوماً"
-        />
-      </div>
+        />}
+      </div>}
 
       {/* NCR + Low Materials */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AlertCard
+      {(show.ncrList || show.lowMats) && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {show.ncrList && <AlertCard
           title="🔴 NCR معلقة"
           color="red"
           items={openNcr.map(v => ({
@@ -199,8 +208,8 @@ export default function DashboardPage() {
             href: '/visits'
           }))}
           emptyMsg="✅ لا توجد ملاحظات NCR معلقة"
-        />
-        <AlertCard
+        />}
+        {show.lowMats && <AlertCard
           title="⚠ مواد تحت حد الأمان"
           color="amber"
           items={lowMats.slice(0,8).map(m => ({
@@ -210,11 +219,11 @@ export default function DashboardPage() {
             href: '/inventory'
           }))}
           emptyMsg="✅ جميع المواد فوق حد الأمان"
-        />
-      </div>
+        />}
+      </div>}
 
       {/* Charts */}
-      {projects.length > 0 && (
+      {show.charts && projects.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="card p-5">
             <h3 className="font-semibold text-gray-700 mb-4 text-sm">توزيع حالة المشاريع</h3>
