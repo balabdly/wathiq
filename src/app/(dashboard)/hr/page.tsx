@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
@@ -399,10 +398,9 @@ function PayrollModal({ payroll, hrEmployees, onClose, onSave }: {
 }
 
 export default function HRPage() {
-  const { tenant, activeBranch, employees, currentUser } = useStore()
- const { activeHRTab, setActiveHRTab } = useStore()
-const activeTab = (activeHRTab as 'employees'|'attendance'|'leaves'|'payroll'|'documents')
-const setActiveTab = setActiveHRTab
+  const { tenant, activeBranch, employees, currentUser, activeHRTab, setActiveHRTab } = useStore()
+  const activeTab = (activeHRTab as 'employees'|'attendance'|'leaves'|'payroll'|'documents')
+  const setActiveTab = setActiveHRTab
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [attendance, setAttendance] = useState<Attendance[]>([])
@@ -581,9 +579,7 @@ const setActiveTab = setActiveHRTab
 
       {activeTab === 'attendance' && (
         <div className="space-y-4">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <h3 style={{ fontWeight: 700, color: 'var(--text)' }}>سجل الحضور والغياب</h3>
-          </div>
+          <h3 style={{ fontWeight: 700, color: 'var(--text)' }}>سجل الحضور والغياب</h3>
           {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
           : attendance.length === 0 ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}><Clock style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} /><p style={{ color: 'var(--text3)' }}>لا توجد سجلات حضور بعد</p></div>
           : <div className="table-wrap"><table><thead><tr><th>الموظف</th><th>التاريخ</th><th>الحالة</th><th>ساعات العمل</th><th>الإضافي</th></tr></thead>
@@ -657,7 +653,7 @@ const setActiveTab = setActiveHRTab
                 <td style={{ fontWeight: 600 }}>{d.name}</td>
                 <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{d.doc_number || '—'}</td>
                 <td>{formatDate(d.expiry_date)}</td>
-                <td>{days !== null ? <span className={`badge ${isExpired ? 'badge-red' : isSoon ? 'badge-amber' : 'badge-green'}`}>{isExpired ? `منتهي` : isSoon ? `${days} يوم` : `✓`}</span> : '—'}</td>
+                <td>{days !== null ? <span className={`badge ${isExpired ? 'badge-red' : isSoon ? 'badge-amber' : 'badge-green'}`}>{isExpired ? 'منتهي' : isSoon ? `${days} يوم` : '✓'}</span> : '—'}</td>
               </tr>
             })}</tbody></table></div>}
         </div>
