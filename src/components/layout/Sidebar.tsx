@@ -17,18 +17,18 @@ const NAV_ITEMS = [
 ]
 
 const HR_ITEMS = [
-  { tab: 'employees',  label: 'ملفات الموظفين',  icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
-  { tab: 'attendance', label: 'الحضور والغياب',  icon: 'M12 22V12M12 12V2M12 12H2M12 12h10' },
-  { tab: 'leaves',     label: 'الإجازات',         icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-  { tab: 'payroll',    label: 'الرواتب',          icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { tab: 'documents',  label: 'الوثائق',          icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  { tab: 'jobs',       label: 'عروض الوظائف',    icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+  { href: '/hr',            label: 'ملفات الموظفين',  icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+  { href: '/hr/attendance', label: 'الحضور والغياب',  icon: 'M12 22V12M12 12V2M12 12H2M12 12h10' },
+  { href: '/hr/leaves',     label: 'الإجازات',         icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+  { href: '/hr/payroll',    label: 'الرواتب',          icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { href: '/hr/documents',  label: 'الوثائق',          icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { href: '/hr/jobs',       label: 'عروض الوظائف',    icon: 'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { currentUser, tenant, activeBranch, branches, setActiveBranch, reset, setActiveHRTab, activeHRTab } = useStore()
+  const { currentUser, tenant, activeBranch, branches, setActiveBranch, reset } = useStore()
   const perms = currentUser?.permissions || []
   const [hrOpen, setHrOpen] = useState(pathname.startsWith('/hr'))
 
@@ -42,15 +42,6 @@ export default function Sidebar() {
 
   const showHR = perms.includes('employees')
   const isHRActive = pathname.startsWith('/hr')
-
-  function handleHRItemClick(tab: string) {
-    setActiveHRTab(tab)
-    if (tab === 'jobs') {
-      router.push('/hr/jobs')
-    } else {
-      router.push('/hr')
-    }
-  }
 
   return (
     <div className="sidebar">
@@ -70,6 +61,7 @@ export default function Sidebar() {
             <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>مقاول كهرباء معتمد</div>
           </div>
         </div>
+
         {branches.length > 1 ? (
           <select value={activeBranch?.id || ''} onChange={e => {
             const b = branches.find(b => b.id === Number(e.target.value))
@@ -125,17 +117,16 @@ export default function Sidebar() {
             {hrOpen && (
               <div style={{ marginTop: '2px', marginRight: '8px', borderRight: '2px solid rgba(255,255,255,0.15)', paddingRight: '8px' }}>
                 {HR_ITEMS.map(item => {
-                  const isActive = isHRActive && activeHRTab === item.tab
+                  const active = pathname === item.href
                   return (
-                    <button key={item.tab}
-                      onClick={() => handleHRItemClick(item.tab)}
-                      className={`sidebar-item ${isActive ? 'active' : ''}`}
-                      style={{ width: '100%', fontSize: '0.825rem', padding: '8px 10px' }}>
+                    <Link key={item.href} href={item.href}
+                      className={`sidebar-item ${active ? 'active' : ''}`}
+                      style={{ fontSize: '0.825rem', padding: '8px 10px' }}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" width="15" height="15">
                         <path d={item.icon}/>
                       </svg>
                       <span>{item.label}</span>
-                    </button>
+                    </Link>
                   )
                 })}
               </div>
