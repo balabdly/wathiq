@@ -1,3 +1,4 @@
+import { useSearchParams } from 'next/navigation'
 'use client'
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
