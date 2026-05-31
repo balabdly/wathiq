@@ -400,11 +400,9 @@ function PayrollModal({ payroll, hrEmployees, onClose, onSave }: {
 
 export default function HRPage() {
   const { tenant, activeBranch, employees, currentUser } = useStore()
-  const searchParams = useSearchParams()
-  const tabParam = searchParams.get('tab')
-  const [activeTab, setActiveTab] = useState<'employees'|'attendance'|'leaves'|'payroll'|'documents'>(
-    (tabParam as any) || 'employees'
-  )
+ const { activeHRTab, setActiveHRTab } = useStore()
+const activeTab = (activeHRTab as 'employees'|'attendance'|'leaves'|'payroll'|'documents')
+const setActiveTab = setActiveHRTab
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [attendance, setAttendance] = useState<Attendance[]>([])
