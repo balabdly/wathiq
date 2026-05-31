@@ -98,6 +98,7 @@ type Payroll = {
   working_days: number
   present_days: number
   absent_days: number
+  overtime_hours: number
   status: string
   employee?: { name: string; role: string }
 }
