@@ -338,3 +338,21 @@ tbody tr:hover td { background: #f0f5ff; }
 .gap-3 { gap: 12px !important; }
 .gap-4 { gap: 16px !important; }
 .col-span-2 { grid-column: span 2 !important; }
+/* ── Tabs fix ── */
+.flex.gap-1.bg-gray-100 {
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 12px;
+  display: flex;
+  gap: 4px;
+}
+.flex.gap-1.bg-gray-100 button {
+  padding: 8px 20px !important;
+  font-size: 0.875rem !important;
+  border-radius: 8px;
+  font-weight: 500;
+}
+.flex.gap-1.bg-gray-100 button.bg-white {
+  background: white !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
