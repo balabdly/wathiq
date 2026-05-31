@@ -37,6 +37,8 @@ interface AppState {
   setLoading: (v: boolean) => void
   isSidebarOpen: boolean
   setSidebarOpen: (v: boolean) => void
+  activeHRTab: string
+  setActiveHRTab: (tab: string) => void
 
   // ── Reset ──
   reset: () => void
@@ -78,6 +80,8 @@ export const useStore = create<AppState>((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
   isSidebarOpen: true,
   setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
+  activeHRTab: 'employees',
+  setActiveHRTab: (activeHRTab) => set({ activeHRTab }),
 
   // Reset
   reset: () => set({
