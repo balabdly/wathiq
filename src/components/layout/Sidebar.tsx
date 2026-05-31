@@ -30,13 +30,7 @@ export default function Sidebar() {
   })
 
   return (
-    <div className="sidebar" style={{
-      position: 'relative',
-      width: '100%',
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
+    <div className="sidebar">
       {/* Header */}
       <div style={{ padding: '20px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
