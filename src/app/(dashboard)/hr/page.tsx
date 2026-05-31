@@ -276,21 +276,21 @@ function HREmployeeModal({ emp, managers, onClose, onSave }: {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">الراتب الأساسي <span className="text-red-500">*</span></label>
-                    <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} className="input" min="0" required />
+                    <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} className="input" min="0" required onKeyDown={e => e.key === 'Enter' && e.preventDefault()} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل السكن <span className="text-red-500">*</span></label>
-                    <input type="number" value={form.housing_allow} onChange={e => set('housing_allow', e.target.value)} className="input" min="0" required />
+                    <input type="number" value={form.housing_allow} onChange={e => set('housing_allow', e.target.value)} className="input" min="0" required onKeyDown={e => e.key === 'Enter' && e.preventDefault()} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل النقل</label>
-                    <input type="number" value={form.transport_allow} onChange={e => set('transport_allow', e.target.value)} className="input" min="0" />
+                    <input type="number" value={form.transport_allow} onChange={e => set('transport_allow', e.target.value)} className="input" min="0" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">بدلات أخرى</label>
-                    <input type="number" value={form.other_allow} onChange={e => set('other_allow', e.target.value)} className="input" min="0" />
+                    <input type="number" value={form.other_allow} onChange={e => set('other_allow', e.target.value)} className="input" min="0" onKeyDown={e => e.key === 'Enter' && e.preventDefault()} />
                   </div>
                 </div>
 
