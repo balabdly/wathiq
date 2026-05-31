@@ -623,7 +623,13 @@ function PayrollModal({ payroll, hrEmployees, onClose, onSave }: {
 // ══════════════════════════════════════
 export default function HRPage() {
   const { tenant, activeBranch, employees, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'employees'|'attendance'|'leaves'|'payroll'|'documents'>('employees')
+import { useSearchParams } from 'next/navigation'
+// داخل الـ component:
+const searchParams = useSearchParams()
+const tabParam = searchParams.get('tab')
+const [activeTab, setActiveTab] = useState<'employees'|'attendance'|'leaves'|'payroll'|'documents'>(
+  (tabParam as any) || 'employees'
+)
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [leaves, setLeaves] = useState<Leave[]>([])
   const [attendance, setAttendance] = useState<Attendance[]>([])
