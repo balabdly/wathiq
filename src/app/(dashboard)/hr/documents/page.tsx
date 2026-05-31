@@ -168,7 +168,7 @@ export default function DocumentsPage() {
     return days > 0 && days <= 30
   }).length
 
-  const docTypes = [...new Set(docs.map(d => d.doc_type))]
+  const docTypes = Array.from(new Set(docs.map(d => d.doc_type)))
 
   return (
     <div className="space-y-5 fade-in">
