@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Briefcase, Building2, Trash2 } from 'lucide-react'
+import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Briefcase, Building2, Trash2, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type HREmployee = {
@@ -27,6 +27,62 @@ type Department = {
 type JobTitle = {
   id: number; tenant_id: string; name: string; department_id?: number
   department?: { name: string }
+}
+
+type Termination = {
+  id: number; tenant_id: string; employee_id: number; hr_employee_id: number
+  termination_type: string; termination_date: string
+  last_working_day: string; years_of_service: number
+  gratuity_amount: number; notes?: string; status: string
+  employee?: { name: string; role: string }
+}
+
+// ── حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي ──
+function calcGratuity(hireDateStr: string, lastDayStr: string, basicSalary: number): {
+  years: number; months: number; amount: number; breakdown: string
+} {
+  if (!hireDateStr || !lastDayStr) return { years: 0, months: 0, amount: 0, breakdown: '' }
+  const hire = new Date(hireDateStr)
+  const last = new Date(lastDayStr)
+  const diffMs = last.getTime() - hire.getTime()
+  const totalMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44))
+  const years = Math.floor(totalMonths / 12)
+  const months = totalMonths % 12
+  const dailySalary = basicSalary / 30
+
+  let amount = 0
+  const parts: string[] = []
+
+  if (years <= 0 && months < 24) {
+    // أقل من سنتين — لا مكافأة
+    return { years, months, amount: 0, breakdown: 'أقل من سنتين — لا تستحق مكافأة' }
+  }
+
+  // أول 5 سنوات: نصف شهر لكل سنة
+  const firstFive = Math.min(years, 5)
+  if (firstFive > 0) {
+    const a = Math.round(dailySalary * 15 * firstFive)
+    amount += a
+    parts.push(`${firstFive} سنة × نصف شهر = ${a.toLocaleString()} ر.س`)
+  }
+
+  // بعد 5 سنوات: شهر كامل لكل سنة
+  if (years > 5) {
+    const extra = years - 5
+    const a = Math.round(dailySalary * 30 * extra)
+    amount += a
+    parts.push(`${extra} سنة × شهر كامل = ${a.toLocaleString()} ر.س`)
+  }
+
+  // الأشهر المتبقية (نسبة)
+  if (months > 0 && years >= 2) {
+    const monthRate = years >= 5 ? 30 : 15
+    const a = Math.round(dailySalary * monthRate * months / 12)
+    amount += a
+    parts.push(`${months} شهر إضافي = ${a.toLocaleString()} ر.س`)
+  }
+
+  return { years, months, amount, breakdown: parts.join(' + ') }
 }
 
 function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
@@ -756,11 +812,316 @@ function JobTitlesTab({ tenantId }: { tenantId: string }) {
 }
 
 // ══════════════════════════════════════
+// تاب إنهاء الخدمة
+// ══════════════════════════════════════
+function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmployees: HREmployee[] }) {
+  const [terminations, setTerminations] = useState<Termination[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
+
+  const [form, setForm] = useState({
+    hr_employee_id: '',
+    termination_type: 'استقالة',
+    termination_date: '',
+    last_working_day: '',
+    notes: '',
+    status: 'نهائي',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const selectedHR = hrEmployees.find(e => e.id === Number(form.hr_employee_id))
+  const gratuity = selectedHR && form.last_working_day
+    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, selectedHR.basic_salary)
+    : null
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('hr_terminations')
+      .select('*, employee:employees!hr_terminations_employee_id_fkey(name, role)')
+      .eq('tenant_id', tenantId)
+      .order('termination_date', { ascending: false })
+    setTerminations(data || [])
+    setLoading(false)
+  }
+
+  function resetForm() {
+    setForm({ hr_employee_id: '', termination_type: 'استقالة', termination_date: '', last_working_day: '', notes: '', status: 'نهائي' })
+    setEditId(null)
+    setShowForm(false)
+  }
+
+  async function handleSave() {
+    if (!form.hr_employee_id) { toast.error('اختر الموظف'); return }
+    if (!form.termination_date) { toast.error('أدخل تاريخ الإنهاء'); return }
+    if (!form.last_working_day) { toast.error('أدخل آخر يوم عمل'); return }
+    if (!selectedHR) return
+
+    setSaving(true)
+    const payload = {
+      tenant_id: tenantId,
+      employee_id: selectedHR.employee_id,
+      hr_employee_id: selectedHR.id,
+      termination_type: form.termination_type,
+      termination_date: form.termination_date,
+      last_working_day: form.last_working_day,
+      years_of_service: gratuity ? gratuity.years + (gratuity.months / 12) : 0,
+      gratuity_amount: gratuity?.amount || 0,
+      notes: form.notes || null,
+      status: form.status,
+    }
+
+    if (editId) {
+      await supabase.from('hr_terminations').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('hr_terminations').insert(payload)
+      // تعطيل الموظف تلقائياً
+      await supabase.from('hr_employees').update({ is_active: false }).eq('id', selectedHR.id)
+      await supabase.from('employees').update({ is_active: false }).eq('id', selectedHR.employee_id)
+    }
+
+    await loadData()
+    resetForm()
+    setSaving(false)
+    toast.success('تم حفظ إنهاء الخدمة ✅')
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('حذف هذا السجل؟')) return
+    await supabase.from('hr_terminations').delete().eq('id', id)
+    setTerminations(t => t.filter(x => x.id !== id))
+    toast.success('تم الحذف')
+  }
+
+  const TYPES = [
+    { value: 'استقالة',       icon: '🚪', color: '#e6820a' },
+    { value: 'إنهاء عقد',     icon: '📋', color: '#c81e1e' },
+    { value: 'انتهاء عقد',    icon: '📅', color: '#1a56db' },
+    { value: 'إحالة للتقاعد', icon: '🎖️', color: '#0ea77b' },
+    { value: 'وفاة',          icon: '🖤', color: '#374151' },
+    { value: 'فصل',           icon: '⚠️', color: '#c81e1e' },
+  ]
+
+  const TYPE_COLOR: Record<string, string> = {
+    'استقالة': 'badge-amber', 'إنهاء عقد': 'badge-red',
+    'انتهاء عقد': 'badge-blue', 'إحالة للتقاعد': 'badge-green',
+    'وفاة': 'badge-gray', 'فصل': 'badge-red',
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* زر إضافة */}
+      {!showForm && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowForm(true)} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> تسجيل إنهاء خدمة
+          </button>
+        </div>
+      )}
+
+      {/* ── نموذج الإضافة ── */}
+      {showForm && (
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ fontWeight: 700, marginBottom: '16px', color: 'var(--text)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <LogOut style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
+            {editId ? 'تعديل سجل إنهاء الخدمة' : 'تسجيل إنهاء خدمة جديد'}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+
+            {/* الموظف */}
+            <div style={{ gridColumn: '1/-1' }}>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <select value={form.hr_employee_id} onChange={e => set('hr_employee_id', e.target.value)} className="select">
+                <option value="">— اختر الموظف —</option>
+                {hrEmployees.filter(e => e.is_active).map(e => (
+                  <option key={e.id} value={e.id}>{e.employee?.name} — {e.job_title || e.employee?.role}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* نوع الإنهاء */}
+            <div style={{ gridColumn: '1/-1' }}>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإنهاء <span className="text-red-500">*</span></label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {TYPES.map(t => (
+                  <button key={t.value} type="button" onClick={() => set('termination_type', t.value)}
+                    style={{
+                      padding: '7px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer',
+                      fontSize: '0.85rem', fontWeight: 600,
+                      borderColor: form.termination_type === t.value ? t.color : 'var(--border)',
+                      background: form.termination_type === t.value ? t.color + '18' : 'white',
+                      color: form.termination_type === t.value ? t.color : 'var(--text3)',
+                    }}>
+                    {t.icon} {t.value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* التواريخ */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإنهاء الرسمي <span className="text-red-500">*</span></label>
+              <input type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">آخر يوم عمل فعلي <span className="text-red-500">*</span></label>
+              <input type="date" value={form.last_working_day} onChange={e => set('last_working_day', e.target.value)} className="input" />
+            </div>
+
+            {/* مكافأة نهاية الخدمة — تلقائية */}
+            {gratuity && (
+              <div style={{ gridColumn: '1/-1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <div style={{ padding: '10px 14px', background: '#0ea77b', color: 'white', fontWeight: 700, fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>🧮 مكافأة نهاية الخدمة (تلقائي)</span>
+                  <span style={{ opacity: 0.9, fontSize: '0.8rem' }}>
+                    {gratuity.years} سنة {gratuity.months > 0 ? `و ${gratuity.months} شهر` : ''}
+                  </span>
+                </div>
+                <div style={{ padding: '12px 14px', background: '#f0fdf4' }}>
+                  <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: '8px' }}>{gratuity.breakdown}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #bbf7d0', paddingTop: '8px' }}>
+                    <span style={{ fontWeight: 700 }}>إجمالي المكافأة</span>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0ea77b' }}>{gratuity.amount.toLocaleString()} ر.س</span>
+                  </div>
+                  {gratuity.amount === 0 && (
+                    <div style={{ fontSize: '0.78rem', color: '#c81e1e', marginTop: '6px' }}>⚠️ {gratuity.breakdown}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* بيانات الموظف المختار */}
+            {selectedHR && (
+              <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                  <div><span style={{ color: 'var(--text3)' }}>الراتب الأساسي: </span><strong>{selectedHR.basic_salary.toLocaleString()} ر.س</strong></div>
+                  <div><span style={{ color: 'var(--text3)' }}>تاريخ المباشرة: </span><strong>{selectedHR.hire_date || '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text3)' }}>القسم: </span><strong>{selectedHR.department || '—'}</strong></div>
+                  <div><span style={{ color: 'var(--text3)' }}>الجنسية: </span><strong>{selectedHR.nationality}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {/* ملاحظات */}
+            <div style={{ gridColumn: '1/-1' }}>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات / سبب الإنهاء</label>
+              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                className="input" style={{ minHeight: '70px', resize: 'none' }}
+                placeholder="مثال: قدّم استقالته لأسباب شخصية..." />
+            </div>
+
+            {/* الحالة */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                <option value="مؤقت">مؤقت (قيد المعالجة)</option>
+                <option value="نهائي">نهائي</option>
+              </select>
+            </div>
+          </div>
+
+          {/* أزرار الحفظ */}
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+            <button type="button" onClick={resetForm} className="btn btn-ghost">إلغاء</button>
+            <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary"
+              style={{ background: '#c81e1e' }}>
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <LogOut style={{ width: '15px', height: '15px' }} />}
+              تأكيد إنهاء الخدمة
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── جدول السجلات ── */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : terminations.length === 0 ? (
+        <div className="card" style={{ padding: '50px', textAlign: 'center' }}>
+          <LogOut style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد سجلات إنهاء خدمة</p>
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                  {['الموظف', 'نوع الإنهاء', 'تاريخ الإنهاء', 'آخر يوم عمل', 'سنوات الخدمة', 'مكافأة نهاية الخدمة', 'الحالة', ''].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {terminations.map(t => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ fontWeight: 700 }}>{t.employee?.name || `#${t.employee_id}`}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{t.employee?.role}</div>
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span className={`badge ${TYPE_COLOR[t.termination_type] || 'badge-gray'}`}>
+                        {TYPES.find(x => x.value === t.termination_type)?.icon} {t.termination_type}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{t.termination_date}</td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{t.last_working_day}</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 600 }}>
+                      {Math.floor(t.years_of_service)} سنة
+                    </td>
+                    <td style={{ padding: '12px 14px', fontWeight: 700, color: t.gratuity_amount > 0 ? '#0ea77b' : 'var(--text3)' }}>
+                      {t.gratuity_amount > 0 ? `${t.gratuity_amount.toLocaleString()} ر.س` : 'لا تستحق'}
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span className={`badge ${t.status === 'نهائي' ? 'badge-red' : 'badge-amber'}`}>{t.status}</span>
+                    </td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => {
+                          setForm({
+                            hr_employee_id: String(t.hr_employee_id),
+                            termination_type: t.termination_type,
+                            termination_date: t.termination_date,
+                            last_working_day: t.last_working_day,
+                            notes: t.notes || '',
+                            status: t.status,
+                          })
+                          setEditId(t.id)
+                          setShowForm(true)
+                        }} className="btn btn-ghost btn-xs">
+                          <Pencil style={{ width: '13px', height: '13px' }} />
+                        </button>
+                        <button onClick={() => handleDelete(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                          <Trash2 style={{ width: '13px', height: '13px' }} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function HRPage() {
   const { tenant, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'employees' | 'jobtitles' | 'departments'>('employees')
+  const [activeTab, setActiveTab] = useState<'employees' | 'jobtitles' | 'departments' | 'terminations'>('employees')
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [managers, setManagers] = useState<any[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -903,9 +1264,10 @@ export default function HRPage() {
   const expats = hrEmployees.filter(e => e.nationality !== 'سعودي').length
 
   const TABS = [
-    { id: 'employees',   label: '👥 ملفات الموظفين',   color: '#1a56db' },
-    { id: 'departments', label: '🏢 الأقسام',           color: '#e6820a' },
-    { id: 'jobtitles',  label: '💼 المسميات الوظيفية', color: '#0ea77b' },
+    { id: 'employees',    label: '👥 ملفات الموظفين',   color: '#1a56db' },
+    { id: 'departments',  label: '🏢 الأقسام',           color: '#e6820a' },
+    { id: 'jobtitles',   label: '💼 المسميات الوظيفية', color: '#0ea77b' },
+    { id: 'terminations', label: '🚪 إنهاء الخدمة',      color: '#c81e1e' },
   ]
 
   return (
@@ -1146,6 +1508,11 @@ export default function HRPage() {
       {/* ══ تاب المسميات ══ */}
       {activeTab === 'jobtitles' && tenant && (
         <JobTitlesTab tenantId={tenant.id} />
+      )}
+
+      {/* ══ تاب إنهاء الخدمة ══ */}
+      {activeTab === 'terminations' && tenant && (
+        <TerminationTab tenantId={tenant.id} hrEmployees={hrEmployees} />
       )}
 
       {/* Modal */}
