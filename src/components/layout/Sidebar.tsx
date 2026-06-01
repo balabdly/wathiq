@@ -4,9 +4,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { useState } from 'react'
 
-// ════════════════════════════════════════
-// أيقونات
-// ════════════════════════════════════════
 const IC = {
   dashboard:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   projects:    'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
@@ -18,7 +15,7 @@ const IC = {
   environment: 'M12 2a10 10 0 100 20A10 10 0 0012 2zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z',
   hr:          'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M12 7a4 4 0 110 8 4 4 0 010-8z',
   attendance:  'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
-  leaves:      'M12 2a10 10 0 100 20A10 10 0 0012 2zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
+  leaves:      'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
   payroll:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   documents:   'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   jobs:        'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
@@ -26,9 +23,28 @@ const IC = {
   reports:     'M18 20V10M12 20V4M6 20v-6',
   settings:    'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   employees:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
-  branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   chevron:     'M6 9l6 6 6-6',
+  branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
+}
+
+// ── ألوان الثيم ──
+const C = {
+  // الخلفيات
+  sidebarBg:    '#0f2544',   // أزرق غامق جداً
+  groupBg:      '#162d52',   // أزرق أغمق قليلاً للقسم
+  subBg:        '#1a3660',   // خلفية العناصر الفرعية (فاتح نسبياً)
+  activeBg:     '#1e4080',   // الخلفية عند التفعيل
+  hoverBg:      '#1a3a6b',   // hover
+  // النصوص
+  textPrimary:  '#e8f0fe',   // نص أساسي أبيض مزرق
+  textSecondary:'#7ea8d8',   // نص ثانوي أزرق فاتح
+  textMuted:    '#4a7ab5',   // نص خافت
+  // الاكسنت
+  accent:       '#4d9fff',   // أزرق فاتح مضيء للعناصر النشطة
+  accentLight:  '#93c5fd',   // أزرق فاتح جداً
+  // الفواصل
+  border:       '#1e3a6a',
 }
 
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
@@ -41,106 +57,89 @@ function Icon({ d, size = 16 }: { d: string; size?: number }) {
   )
 }
 
-// ════════════════════════════════════════
-// مكوّن العنصر الفرعي
-// ════════════════════════════════════════
-function SubLink({ href, label, icon, active, accent }: {
-  href: string; label: string; icon: string; active: boolean; accent: string
+// ── عنصر فرعي ──
+function SubLink({ href, label, icon, active }: {
+  href: string; label: string; icon: string; active: boolean
 }) {
   return (
-    <Link href={href} style={{ textDecoration: 'none' }}>
+    <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '9px',
-        padding: '8px 10px 8px 12px',
-        borderRadius: '8px', marginBottom: '1px', cursor: 'pointer',
-        background: active ? `${accent}28` : 'transparent',
-        borderRight: active ? `3px solid ${accent}` : '3px solid transparent',
-        color: active ? 'white' : 'rgba(255,255,255,0.6)',
-        fontSize: '0.82rem', fontWeight: active ? 700 : 400,
-        transition: 'all 0.15s',
+        padding: '8px 12px 8px 10px', borderRadius: '7px', marginBottom: '2px',
+        background: active ? C.activeBg : 'transparent',
+        borderRight: active ? `3px solid ${C.accent}` : '3px solid transparent',
+        color: active ? C.textPrimary : C.textSecondary,
+        fontSize: '0.83rem', fontWeight: active ? 600 : 400,
+        cursor: 'pointer', transition: 'all 0.12s',
       }}
-        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.color = 'white' }}
-        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)' } }}
+        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg; el.style.color = C.textPrimary } }}
+        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = C.textSecondary } }}
       >
-        <Icon d={icon} size={14} />
+        <span style={{ color: active ? C.accent : C.textMuted, display: 'flex' }}>
+          <Icon d={icon} size={14} />
+        </span>
         <span>{label}</span>
+        {active && (
+          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: C.accent, marginRight: 'auto' }} />
+        )}
       </div>
     </Link>
   )
 }
 
-// ════════════════════════════════════════
-// مكوّن القسم الرئيسي
-// ════════════════════════════════════════
-function NavSection({ label, sublabel, icon, accent, isActive, isOpen, onToggle, children }: {
-  label: string; sublabel: string; icon: string; accent: string
-  isActive: boolean; isOpen: boolean; onToggle: () => void; children: React.ReactNode
+// ── قسم رئيسي قابل للطي ──
+function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
+  label: string; icon: string
+  isActive: boolean; isOpen: boolean
+  onToggle: () => void; children: React.ReactNode
 }) {
   return (
-    <div style={{ marginBottom: '4px' }}>
+    <div style={{ marginBottom: '3px' }}>
       {/* زر القسم */}
       <button onClick={onToggle} style={{
-        width: '100%', display: 'flex', alignItems: 'center', gap: '0',
-        padding: '0', border: 'none', cursor: 'pointer', borderRadius: '10px',
-        background: 'transparent', overflow: 'hidden',
-        transition: 'all 0.15s',
+        width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '10px 12px', border: 'none', borderRadius: '9px', cursor: 'pointer',
+        background: isOpen ? C.groupBg : 'transparent',
+        transition: 'background 0.15s',
+        borderBottom: isOpen ? `1px solid ${C.border}` : '1px solid transparent',
       }}>
-        {/* شريط اللون الجانبي */}
+        {/* أيقونة */}
         <div style={{
-          width: '4px', alignSelf: 'stretch', borderRadius: '4px 0 0 4px',
-          background: isActive || isOpen ? accent : 'transparent',
-          transition: 'background 0.2s', flexShrink: 0,
-        }} />
-
-        {/* محتوى الزر */}
-        <div style={{
-          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 12px 10px 10px',
-          background: isActive ? `${accent}22` : isOpen ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-          borderRadius: '0 10px 10px 0',
-          transition: 'background 0.15s',
+          width: '30px', height: '30px', borderRadius: '7px', flexShrink: 0,
+          background: isOpen || isActive ? C.activeBg : 'rgba(255,255,255,0.05)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: isOpen || isActive ? C.accent : C.textMuted,
+          transition: 'all 0.15s',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* أيقونة ملوّنة */}
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
-              background: isActive || isOpen ? `${accent}33` : 'rgba(255,255,255,0.08)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: isActive || isOpen ? accent : 'rgba(255,255,255,0.5)',
-              transition: 'all 0.2s',
-            }}>
-              <Icon d={icon} size={16} />
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{
-                fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em',
-                color: isActive || isOpen ? accent : 'rgba(255,255,255,0.35)',
-                lineHeight: 1, marginBottom: '2px',
-              }}>
-                {sublabel}
-              </div>
-              <div style={{
-                fontSize: '0.85rem', fontWeight: 600,
-                color: isActive ? 'white' : isOpen ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)',
-              }}>
-                {label}
-              </div>
-            </div>
-          </div>
-          {/* سهم */}
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"
-            style={{ color: isOpen ? accent : 'rgba(255,255,255,0.3)', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'all 0.2s', flexShrink: 0 }}>
-            <path d={IC.chevron} />
-          </svg>
+          <Icon d={icon} size={15} />
         </div>
+
+        {/* النص */}
+        <span style={{
+          flex: 1, textAlign: 'right', fontSize: '0.875rem', fontWeight: 600,
+          color: isOpen || isActive ? C.textPrimary : C.textSecondary,
+        }}>
+          {label}
+        </span>
+
+        {/* سهم */}
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"
+          style={{
+            color: isOpen ? C.accentLight : C.textMuted,
+            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
+            transition: 'transform 0.2s, color 0.2s', flexShrink: 0,
+          }}>
+          <path d={IC.chevron} />
+        </svg>
       </button>
 
       {/* العناصر الفرعية */}
       {isOpen && (
         <div style={{
-          marginTop: '2px', paddingRight: '16px', paddingLeft: '4px',
-          borderRight: `2px solid ${accent}44`,
-          marginRight: '4px',
+          background: C.subBg, borderRadius: '0 0 9px 9px',
+          padding: '6px 8px 8px 8px',
+          borderTop: 'none',
+          marginBottom: '2px',
         }}>
           {children}
         </div>
@@ -149,30 +148,29 @@ function NavSection({ label, sublabel, icon, accent, isActive, isOpen, onToggle,
   )
 }
 
-// ════════════════════════════════════════
-// عنصر مستقل (بدون dropdown)
-// ════════════════════════════════════════
+// ── عنصر مستقل ──
 function StandaloneLink({ href, label, icon, active }: {
   href: string; label: string; icon: string; active: boolean
 }) {
   return (
-    <Link href={href} style={{ textDecoration: 'none' }}>
+    <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '9px 12px 9px 12px', borderRadius: '10px', marginBottom: '2px',
-        background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.04)',
-        color: active ? 'white' : 'rgba(255,255,255,0.65)',
-        fontSize: '0.85rem', fontWeight: active ? 700 : 400,
-        cursor: 'pointer', transition: 'all 0.15s',
-        borderRight: active ? '3px solid rgba(255,255,255,0.8)' : '3px solid transparent',
+        padding: '10px 12px', borderRadius: '9px', marginBottom: '3px',
+        background: active ? C.activeBg : 'transparent',
+        color: active ? C.textPrimary : C.textSecondary,
+        fontSize: '0.875rem', fontWeight: active ? 600 : 400,
+        cursor: 'pointer', transition: 'all 0.12s',
+        borderRight: active ? `3px solid ${C.accent}` : '3px solid transparent',
       }}
-        onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.09)'; (e.currentTarget as HTMLElement).style.color = 'white' } }}
-        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)' } }}
+        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg; el.style.color = C.textPrimary } }}
+        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = C.textSecondary } }}
       >
         <div style={{
           width: '30px', height: '30px', borderRadius: '7px', flexShrink: 0,
-          background: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)',
+          background: active ? C.activeBg : 'rgba(255,255,255,0.05)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: active ? C.accent : C.textMuted,
         }}>
           <Icon d={icon} size={15} />
         </div>
@@ -182,36 +180,31 @@ function StandaloneLink({ href, label, icon, active }: {
   )
 }
 
-// ════════════════════════════════════════
-// فاصل خفيف
-// ════════════════════════════════════════
 function Divider() {
-  return <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
+  return <div style={{ height: '1px', background: C.border, margin: '6px 0' }} />
 }
 
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
 export default function Sidebar() {
-  const pathname = usePathname()
-  const router = useRouter()
+  const pathname  = usePathname()
+  const router    = useRouter()
   const { currentUser, tenant, activeBranch, branches, setActiveBranch, reset } = useStore()
   const perms: string[] = currentUser?.permissions || []
-  const tenantModules = (tenant as any)?.modules || {}
-  const isAdmin = currentUser?.role === 'مدير عام'
+  const tenantModules   = (tenant as any)?.modules || {}
+  const isAdmin         = currentUser?.role === 'مدير عام'
 
-  // ── صلاحيات ──
-  const hasProjects  = perms.includes('projects_view')  && tenantModules.projects  !== false
+  const hasProjects  = perms.includes('projects_view')              && tenantModules.projects  !== false
   const hasVisits    = perms.some((p: string) => p.startsWith('visits')) && tenantModules.visits !== false
-  const hasInventory = perms.includes('inventory')      && tenantModules.inventory !== false
-  const hasQHSE      = perms.includes('qhse')           && tenantModules.qhse      !== false
-  const hasPurchases = perms.includes('purchases')      && tenantModules.purchases !== false
+  const hasInventory = perms.includes('inventory')                  && tenantModules.inventory !== false
+  const hasQHSE      = perms.includes('qhse')                      && tenantModules.qhse      !== false
+  const hasPurchases = perms.includes('purchases')                  && tenantModules.purchases !== false
   const hasReports   = perms.includes('reports')
   const hasHR        = perms.includes('employees')
   const hasDashboard = perms.includes('dashboard')
 
-  // ── حالة الأقسام — تفتح تلقائياً بناءً على الصفحة الحالية ──
-  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory'].some(p => pathname.startsWith(p))
+  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings') || pathname.startsWith('/employees')
@@ -221,32 +214,26 @@ export default function Sidebar() {
   const [hrOpen,       setHrOpen]       = useState(inHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
 
-  // ── ألوان ──
-  const BLUE   = '#60a5fa'
-  const YELLOW = '#fbbf24'
-  const GREEN  = '#4ade80'
-  const PURPLE = '#c084fc'
-
   return (
-    <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="sidebar" style={{
+      background: C.sidebarBg, display: 'flex', flexDirection: 'column', height: '100%',
+    }}>
 
       {/* ════ Header ════ */}
-      <div style={{ padding: '18px 14px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
-        {/* الشعار والاسم */}
+      <div style={{ padding: '16px 14px 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {/* الشعار */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
           <div style={{
-            width: '40px', height: '40px', borderRadius: '10px',
-            background: 'rgba(255,255,255,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            border: '1px solid rgba(255,255,255,0.15)',
+            width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0,
+            background: C.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <Icon d={IC.shield} size={20} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ color: C.textPrimary, fontWeight: 700, fontSize: '0.875rem', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {tenant?.name || 'وثيق ERP'}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '1px' }}>مقاول كهرباء معتمد</div>
+            <div style={{ color: C.textMuted, fontSize: '0.7rem', marginTop: '1px' }}>مقاول كهرباء معتمد</div>
           </div>
         </div>
 
@@ -256,16 +243,16 @@ export default function Sidebar() {
             value={activeBranch?.id || ''}
             onChange={e => { const b = branches.find(b => b.id === Number(e.target.value)); if (b) setActiveBranch(b) }}
             style={{
-              width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
-              color: 'white', borderRadius: '8px', padding: '7px 10px', fontSize: '0.8rem', cursor: 'pointer',
+              width: '100%', background: C.groupBg, border: `1px solid ${C.border}`,
+              color: C.textPrimary, borderRadius: '8px', padding: '7px 10px', fontSize: '0.8rem', cursor: 'pointer',
             }}>
-            {branches.map(b => <option key={b.id} value={b.id} style={{ color: '#1a1a1a', background: 'white' }}>{b.name}</option>)}
+            {branches.map(b => <option key={b.id} value={b.id} style={{ background: '#1a2744', color: C.textPrimary }}>{b.name}</option>)}
           </select>
         ) : (
           <div style={{
-            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
+            background: C.groupBg, border: `1px solid ${C.border}`,
             borderRadius: '8px', padding: '7px 10px',
-            color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem',
+            color: C.textSecondary, fontSize: '0.8rem',
             display: 'flex', alignItems: 'center', gap: '7px',
           }}>
             <Icon d={IC.branch} size={13} />
@@ -277,125 +264,102 @@ export default function Sidebar() {
       </div>
 
       {/* ════ Nav ════ */}
-      <nav style={{ flex: 1, padding: '10px 10px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0' }}>
+      <nav style={{ flex: 1, padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
-        {/* ── إدارة المشاريع ── */}
+        {/* إدارة المشاريع */}
         {(hasDashboard || hasProjects || hasVisits || hasInventory) && (
-          <NavSection
-            label="إدارة المشاريع" sublabel="PROJECTS"
-            icon={IC.projects} accent={BLUE}
-            isActive={inProjects} isOpen={projectsOpen}
-            onToggle={() => setProjectsOpen(o => !o)}
-          >
-            {hasDashboard && <SubLink href="/dashboard"  label="لوحة التحكم"   icon={IC.dashboard}  active={pathname === '/dashboard'}            accent={BLUE} />}
-            {hasProjects   && <SubLink href="/projects"  label="المشاريع"       icon={IC.projects}   active={pathname.startsWith('/projects')}     accent={BLUE} />}
-            {hasVisits     && <SubLink href="/visits"    label="الزيارات الفنية" icon={IC.visits}    active={pathname.startsWith('/visits')}       accent={BLUE} />}
-            {hasInventory  && <SubLink href="/inventory" label="المخزون"        icon={IC.inventory}  active={pathname.startsWith('/inventory')}    accent={BLUE} />}
+          <NavSection label="إدارة المشاريع" icon={IC.projects}
+            isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
+            {hasDashboard  && <SubLink href="/dashboard"  label="لوحة التحكم"    icon={IC.dashboard}  active={pathname === '/dashboard'} />}
+            {hasProjects   && <SubLink href="/projects"   label="المشاريع"        icon={IC.projects}   active={pathname.startsWith('/projects')} />}
+            {hasVisits     && <SubLink href="/visits"     label="الزيارات الفنية" icon={IC.visits}     active={pathname.startsWith('/visits')} />}
+            {hasInventory  && <SubLink href="/inventory"  label="المخزون"         icon={IC.inventory}  active={pathname.startsWith('/inventory')} />}
           </NavSection>
         )}
 
-        {/* ── إدارة السلامة والجودة ── */}
+        {/* السلامة والجودة */}
         {hasQHSE && (
-          <NavSection
-            label="السلامة والجودة" sublabel="QHSE"
-            icon={IC.shield} accent={YELLOW}
-            isActive={inQHSE} isOpen={qhseOpen}
-            onToggle={() => setQhseOpen(o => !o)}
-          >
-            <SubLink href="/qhse"             label="لوحة التحكم"       icon={IC.dashboard}    active={pathname === '/qhse'}                  accent={YELLOW} />
-            <SubLink href="/qhse/safety"      label="السلامة (HSE)"     icon={IC.safety}       active={pathname.startsWith('/qhse/safety')}   accent={YELLOW} />
-            <SubLink href="/qhse/quality"     label="الجودة (QC)"       icon={IC.quality}      active={pathname.startsWith('/qhse/quality')}  accent={YELLOW} />
-            <SubLink href="/qhse/environment" label="البيئة (ENV)"      icon={IC.environment}  active={pathname.startsWith('/qhse/environment')} accent={YELLOW} />
+          <NavSection label="السلامة والجودة" icon={IC.shield}
+            isActive={inQHSE} isOpen={qhseOpen} onToggle={() => setQhseOpen(o => !o)}>
+            <SubLink href="/qhse"             label="لوحة التحكم"   icon={IC.dashboard}   active={pathname === '/qhse'} />
+            <SubLink href="/qhse/safety"      label="السلامة (HSE)" icon={IC.safety}      active={pathname.startsWith('/qhse/safety')} />
+            <SubLink href="/qhse/quality"     label="الجودة (QC)"   icon={IC.quality}     active={pathname.startsWith('/qhse/quality')} />
+            <SubLink href="/qhse/environment" label="البيئة (ENV)"  icon={IC.environment} active={pathname.startsWith('/qhse/environment')} />
           </NavSection>
         )}
 
-        {/* ── الموارد البشرية ── */}
+        {/* الموارد البشرية */}
         {hasHR && (
-          <NavSection
-            label="الموارد البشرية" sublabel="HR"
-            icon={IC.hr} accent={GREEN}
-            isActive={inHR} isOpen={hrOpen}
-            onToggle={() => setHrOpen(o => !o)}
-          >
-            <SubLink href="/hr/dashboard" label="لوحة التحكم"         icon={IC.dashboard}  active={pathname === '/hr/dashboard'}           accent={GREEN} />
-            <SubLink href="/hr"           label="ملفات الموظفين"       icon={IC.employees}  active={pathname === '/hr'}                     accent={GREEN} />
-            <SubLink href="/hr/attendance" label="الحضور والغياب"     icon={IC.attendance} active={pathname.startsWith('/hr/attendance')}  accent={GREEN} />
-            <SubLink href="/hr/leaves"    label="الإجازات"             icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')}      accent={GREEN} />
-            <SubLink href="/hr/payroll"   label="الرواتب والتعويضات"   icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')}     accent={GREEN} />
-            <SubLink href="/hr/documents" label="الوثائق"              icon={IC.documents}  active={pathname.startsWith('/hr/documents')}   accent={GREEN} />
-            <SubLink href="/hr/jobs"      label="عروض الوظائف"         icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')}        accent={GREEN} />
+          <NavSection label="الموارد البشرية" icon={IC.hr}
+            isActive={inHR} isOpen={hrOpen} onToggle={() => setHrOpen(o => !o)}>
+            <SubLink href="/hr/dashboard"  label="لوحة التحكم"         icon={IC.dashboard}  active={pathname === '/hr/dashboard'} />
+            <SubLink href="/hr"            label="ملفات الموظفين"       icon={IC.employees}  active={pathname === '/hr'} />
+            <SubLink href="/hr/attendance" label="الحضور والغياب"       icon={IC.attendance} active={pathname.startsWith('/hr/attendance')} />
+            <SubLink href="/hr/leaves"     label="الإجازات"             icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')} />
+            <SubLink href="/hr/payroll"    label="الرواتب والتعويضات"   icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
+            <SubLink href="/hr/documents"  label="الوثائق"              icon={IC.documents}  active={pathname.startsWith('/hr/documents')} />
+            <SubLink href="/hr/jobs"       label="عروض الوظائف"         icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')} />
           </NavSection>
         )}
 
         <Divider />
 
-        {/* ── مستقلة ── */}
         {hasPurchases && <StandaloneLink href="/purchases" label="المشتريات" icon={IC.purchases} active={pathname.startsWith('/purchases')} />}
-        {hasReports   && <StandaloneLink href="/reports"   label="التقارير"  icon={IC.reports}   active={pathname.startsWith('/reports')}   />}
+        {hasReports   && <StandaloneLink href="/reports"   label="التقارير"  icon={IC.reports}   active={pathname.startsWith('/reports')} />}
 
-        {/* ── الإعدادات ── */}
         {isAdmin && (
           <>
             <Divider />
-            <NavSection
-              label="الإعدادات" sublabel="SETTINGS"
-              icon={IC.settings} accent={PURPLE}
-              isActive={inSettings} isOpen={settingsOpen}
-              onToggle={() => setSettingsOpen(o => !o)}
-            >
-              <SubLink href="/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/employees')} accent={PURPLE} />
-              <SubLink href="/settings"  label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'}           accent={PURPLE} />
+            <NavSection label="الإعدادات" icon={IC.settings}
+              isActive={inSettings} isOpen={settingsOpen} onToggle={() => setSettingsOpen(o => !o)}>
+              <SubLink href="/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/employees')} />
+              <SubLink href="/settings"  label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'} />
             </NavSection>
           </>
         )}
-
       </nav>
 
       {/* ════ Footer ════ */}
-      <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
-        {/* بيانات المستخدم */}
+      <div style={{ padding: '12px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {/* بطاقة المستخدم */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '10px', borderRadius: '10px',
-          background: 'rgba(255,255,255,0.07)', marginBottom: '8px',
-          border: '1px solid rgba(255,255,255,0.08)',
+          padding: '10px 12px', borderRadius: '9px',
+          background: C.groupBg, border: `1px solid ${C.border}`, marginBottom: '8px',
         }}>
           <div style={{
-            width: '34px', height: '34px', borderRadius: '9px', flexShrink: 0,
-            background: 'rgba(255,255,255,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0,
+            background: C.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, color: 'white', fontSize: '0.9rem',
           }}>
             {currentUser?.name?.charAt(0) || '؟'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: 'white', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ color: C.textPrimary, fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {currentUser?.name}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '1px' }}>
+            <div style={{ color: C.textMuted, fontSize: '0.7rem', marginTop: '1px' }}>
               {currentUser?.role}
             </div>
           </div>
         </div>
 
-        {/* زر تسجيل الخروج */}
-        <button
-          onClick={() => { reset(); router.push('/login') }}
-          style={{
-            width: '100%', background: 'rgba(255,255,255,0.07)',
-            color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '0.8rem',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.15)'; (e.currentTarget as HTMLElement).style.color = '#fca5a5'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.3)' }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}
+        {/* تسجيل الخروج */}
+        <button onClick={() => { reset(); router.push('/login') }} style={{
+          width: '100%', background: 'transparent', color: C.textSecondary,
+          border: `1px solid ${C.border}`, borderRadius: '8px', padding: '8px 12px',
+          cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+          transition: 'all 0.15s',
+        }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(239,68,68,0.12)'; el.style.color = '#fca5a5'; el.style.borderColor = 'rgba(239,68,68,0.3)' }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = C.textSecondary; el.style.borderColor = C.border }}
         >
           <Icon d={IC.logout} size={15} />
           تسجيل الخروج
         </button>
 
-        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '0.65rem', marginTop: '8px' }}>
+        <div style={{ textAlign: 'center', color: C.textMuted, fontSize: '0.65rem', marginTop: '8px' }}>
           وثيق v1.0
         </div>
       </div>
