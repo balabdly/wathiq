@@ -1016,66 +1016,149 @@ export default function PayrollPage() {
               <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد كشوف رواتب لهذا الشهر</p>
               {isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
             </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الراتب الأساسي</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>البدلات</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إضافي + مكافآت</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الإجمالي</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>تأمينات</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>خصومات أخرى</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap', background: '#ecfdf5' }}>صافي الراتب</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحضور</th>
-                      <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحالة</th>
-                      {isAdmin && <th style={{ padding: '11px 14px' }}></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPayrolls.map(p => {
-                      const allowances = p.housing_allow + p.transport_allow + p.other_allow
-                      const extras = p.overtime_pay + p.bonuses
-                      const otherDeduct = p.absence_deduct + p.other_deduct
-                      return (
-                        <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                          <td style={{ padding: '12px 14px' }}><div style={{ fontWeight: 700 }}>{p.employee?.name || `#${p.employee_id}`}</div><div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{p.employee?.role}</div></td>
-                          <td style={{ padding: '12px 14px', fontWeight: 600 }}>{p.basic_salary.toLocaleString()} ر.س</td>
-                          <td style={{ padding: '12px 14px', color: 'var(--text2)' }}>{allowances.toLocaleString()} ر.س<div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{[p.housing_allow&&`سكن ${p.housing_allow.toLocaleString()}`,p.transport_allow&&`نقل ${p.transport_allow.toLocaleString()}`].filter(Boolean).join(' · ')}</div></td>
-                          <td style={{ padding: '12px 14px', color: extras>0?'#0ea77b':'var(--text3)' }}>{extras>0?`+${extras.toLocaleString()} ر.س`:'—'}</td>
-                          <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 700 }}>{p.gross_salary.toLocaleString()} ر.س</td>
-                          <td style={{ padding: '12px 14px', color: '#c81e1e' }}>{p.gosi_deduction>0?`-${p.gosi_deduction.toLocaleString()} ر.س`:'—'}</td>
-                          <td style={{ padding: '12px 14px', color: otherDeduct>0?'#c81e1e':'var(--text3)' }}>{otherDeduct>0?`-${otherDeduct.toLocaleString()} ر.س`:'—'}</td>
-                          <td style={{ padding: '12px 14px', color: '#0ea77b', fontWeight: 700, fontSize: '1rem', background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
-                          <td style={{ padding: '12px 14px', textAlign: 'center', fontSize: '0.82rem' }}>{p.present_days}/26</td>
-                          <td style={{ padding: '12px 14px', textAlign: 'center' }}><span className={`badge ${STATUS_COLOR[p.status]||'badge-gray'}`}>{p.status}</span></td>
-                          {isAdmin && <td style={{ padding: '12px 14px', textAlign: 'center' }}><button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /> تعديل</button></td>}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
-                      <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>الإجمالي ({filteredPayrolls.length} موظف)</td>
-                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.basic_salary,0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.housing_allow+p.transport_allow+p.other_allow,0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.overtime_pay+p.bonuses,0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--primary)' }}>{vGross.toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.gosi_deduction,0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.absence_deduct+p.other_deduct,0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '10px 14px', color: '#0ea77b', fontSize: '1rem', background: '#ecfdf5' }}>{vNet.toLocaleString()} ر.س</td>
-                      <td colSpan={isAdmin ? 3 : 2}></td>
-                    </tr>
-                  </tfoot>
-                </table>
+          ) : (() => {
+            // تجميع كل المسيرات حسب الشهر/السنة
+            const groups: Record<string, Payroll[]> = {}
+            payrolls.forEach(p => {
+              const key = `${p.year}-${p.month}`
+              if (!groups[key]) groups[key] = []
+              groups[key].push(p)
+            })
+            const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+            return (
+              <div className="space-y-3">
+                {sortedKeys.map(key => {
+                  const [yr, mo] = key.split('-').map(Number)
+                  const group = groups[key]
+                  const gGross = group.reduce((s, p) => s + p.gross_salary, 0)
+                  const gDeduct = group.reduce((s, p) => s + p.gosi_deduction + p.absence_deduct + p.other_deduct, 0)
+                  const gNet = group.reduce((s, p) => s + p.net_salary, 0)
+                  const isOpen = expandedPayrollKey === key
+                  const allPaid = group.every(p => p.status === 'مدفوع')
+                  const allApproved = group.every(p => p.status === 'معتمد' || p.status === 'مدفوع')
+
+                  return (
+                    <div key={key} className="card" style={{ overflow: 'hidden' }}>
+                      {/* سطر ملخص المسير */}
+                      <div
+                        onClick={() => setExpandedPayrollKey(isOpen ? null : key)}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', background: isOpen ? 'var(--primary-light)' : 'white', flexWrap: 'wrap', gap: '10px', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: allPaid ? '#ecfdf5' : allApproved ? '#eff6ff' : '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0 }}>
+                            {allPaid ? '✅' : allApproved ? '📋' : '⏳'}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>
+                              مسير {ARABIC_MONTHS[mo - 1]} {yr}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '2px' }}>
+                              {group.length} موظف · {allPaid ? '✅ مدفوع' : allApproved ? '📋 معتمد' : '⏳ مسودة'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الإجمالي</div>
+                            <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.9rem' }}>{gGross.toLocaleString()} ر.س</div>
+                          </div>
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الخصومات</div>
+                            <div style={{ fontWeight: 700, color: '#c81e1e', fontSize: '0.9rem' }}>{gDeduct.toLocaleString()} ر.س</div>
+                          </div>
+                          <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '4px 14px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الصافي</div>
+                            <div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1rem' }}>{gNet.toLocaleString()} ر.س</div>
+                          </div>
+
+                          {/* أزرار */}
+                          <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => exportCSV(group, mo, yr)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)', fontWeight: 600 }}>
+                              <Download style={{ width: '13px', height: '13px' }} /> CSV
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => { setFilterMonth(mo); setFilterYear(yr); enterCreateMode() }}
+                                className="btn btn-ghost btn-xs">
+                                <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                              </button>
+                            )}
+                          </div>
+
+                          <div style={{ color: 'var(--text3)' }}>
+                            {isOpen ? <ChevronUp style={{ width: '18px', height: '18px' }} /> : <ChevronDown style={{ width: '18px', height: '18px' }} />}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* تفاصيل المسير عند الفتح */}
+                      {isOpen && (
+                        <div style={{ borderTop: '2px solid var(--primary)', overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>الموظف</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>الأساسي</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>البدلات</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>إضافي+مكافآت</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>الإجمالي</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>تأمينات</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>خصومات</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap', background: '#ecfdf5' }}>الصافي</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>حضور</th>
+                                <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>الحالة</th>
+                                {isAdmin && <th></th>}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {group.map(p => {
+                                const allowances = p.housing_allow + p.transport_allow + p.other_allow
+                                const extras = p.overtime_pay + p.bonuses
+                                const otherDeduct = p.absence_deduct + p.other_deduct
+                                return (
+                                  <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                    <td style={{ padding: '11px 14px' }}><div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{p.employee?.name || `#${p.employee_id}`}</div><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{p.employee?.role}</div></td>
+                                    <td style={{ padding: '11px 14px', fontWeight: 600, fontSize: '0.875rem' }}>{p.basic_salary.toLocaleString()} ر.س</td>
+                                    <td style={{ padding: '11px 14px', fontSize: '0.875rem' }}>{allowances.toLocaleString()} ر.س</td>
+                                    <td style={{ padding: '11px 14px', color: extras > 0 ? '#0ea77b' : 'var(--text3)', fontSize: '0.875rem' }}>{extras > 0 ? `+${extras.toLocaleString()} ر.س` : '—'}</td>
+                                    <td style={{ padding: '11px 14px', color: 'var(--primary)', fontWeight: 700, fontSize: '0.875rem' }}>{p.gross_salary.toLocaleString()} ر.س</td>
+                                    <td style={{ padding: '11px 14px', color: '#c81e1e', fontSize: '0.875rem' }}>{p.gosi_deduction > 0 ? `-${p.gosi_deduction.toLocaleString()} ر.س` : '—'}</td>
+                                    <td style={{ padding: '11px 14px', color: otherDeduct > 0 ? '#c81e1e' : 'var(--text3)', fontSize: '0.875rem' }}>{otherDeduct > 0 ? `-${otherDeduct.toLocaleString()} ر.س` : '—'}</td>
+                                    <td style={{ padding: '11px 14px', color: '#0ea77b', fontWeight: 700, background: '#f0fdf4', fontSize: '0.9rem' }}>{p.net_salary.toLocaleString()} ر.س</td>
+                                    <td style={{ padding: '11px 14px', textAlign: 'center', fontSize: '0.82rem' }}>{p.present_days}/26</td>
+                                    <td style={{ padding: '11px 14px', textAlign: 'center' }}><span className={`badge ${STATUS_COLOR[p.status] || 'badge-gray'}`}>{p.status}</span></td>
+                                    {isAdmin && <td style={{ padding: '11px 14px', textAlign: 'center' }}><button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /> تعديل</button></td>}
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                                <td style={{ padding: '10px 14px' }}>الإجمالي ({group.length})</td>
+                                <td style={{ padding: '10px 14px' }}>{group.reduce((s,p)=>s+p.basic_salary,0).toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px' }}>{group.reduce((s,p)=>s+p.housing_allow+p.transport_allow+p.other_allow,0).toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px' }}>{group.reduce((s,p)=>s+p.overtime_pay+p.bonuses,0).toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px', color: 'var(--primary)' }}>{gGross.toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{group.reduce((s,p)=>s+p.gosi_deduction,0).toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{group.reduce((s,p)=>s+p.absence_deduct+p.other_deduct,0).toLocaleString()} ر.س</td>
+                                <td style={{ padding: '10px 14px', color: '#0ea77b', background: '#ecfdf5' }}>{gNet.toLocaleString()} ر.س</td>
+                                <td colSpan={isAdmin ? 3 : 2}></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            </div>
-          )}
+            )
+          })()}
         </>
       )}
 
