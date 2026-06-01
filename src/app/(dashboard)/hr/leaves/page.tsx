@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, AlertTriangle, Info } from 'lucide-react'
+import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, XCircle, AlertTriangle, Info } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ── أنواع الإجازات حسب نظام العمل السعودي ──
@@ -325,6 +325,20 @@ export default function LeavesPage() {
     toast.success('تم الحذف')
   }
 
+  // ── قبول الإجازة ──
+  async function handleApprove(id: number) {
+    await supabase.from('hr_leaves').update({ status: 'موافق' }).eq('id', id)
+    setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'موافق' } : x))
+    toast.success('✅ تم قبول الإجازة')
+  }
+
+  // ── رفض الإجازة ──
+  async function handleReject(id: number) {
+    await supabase.from('hr_leaves').update({ status: 'مرفوض' }).eq('id', id)
+    setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'مرفوض' } : x))
+    toast.error('❌ تم رفض الإجازة')
+  }
+
   // حساب الأيام المرضية لكل موظف في السنة الحالية
   const currentYear = new Date().getFullYear()
   const sickDaysMap: Record<number, number> = {}
@@ -541,13 +555,42 @@ export default function LeavesPage() {
                         </td>
                         <td style={{ fontSize: '0.8rem', color: 'var(--text3)', maxWidth: '120px' }} className="truncate">{l.reason || '—'}</td>
                         <td>
-                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                            <button type="button" onClick={() => { setEditLeave(l); setShowModal(true) }} className="btn btn-ghost btn-xs">
-                              <Pencil style={{ width: '14px', height: '14px' }} />
+                          <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                            {/* أزرار القبول والرفض — للمدير فقط وعلى الطلبات المعلقة */}
+                            {isAdmin && l.status === 'بانتظار الموافقة' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApprove(l.id)}
+                                  title="قبول الإجازة"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  <CheckCircle2 style={{ width: '14px', height: '14px' }} /> قبول
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReject(l.id)}
+                                  title="رفض الإجازة"
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#fef2f2', color: '#c81e1e', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  <XCircle style={{ width: '14px', height: '14px' }} /> رفض
+                                </button>
+                              </>
+                            )}
+                            {/* زر إعادة للمعلق — على الموافق أو المرفوض */}
+                            {isAdmin && l.status !== 'بانتظار الموافقة' && (
+                              <button
+                                type="button"
+                                onClick={() => { supabase.from('hr_leaves').update({ status: 'بانتظار الموافقة' }).eq('id', l.id).then(() => { setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, status: 'بانتظار الموافقة' } : x)); toast.success('أُعيد الطلب للمراجعة') }) }}
+                                title="إعادة للمراجعة"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#fffbeb', color: '#e6820a', fontSize: '0.72rem', fontWeight: 600 }}>
+                                ↩ إعادة
+                              </button>
+                            )}
+                            <button type="button" onClick={() => { setEditLeave(l); setShowModal(true) }} className="btn btn-ghost btn-xs" title="تعديل">
+                              <Pencil style={{ width: '13px', height: '13px' }} />
                             </button>
                             {isAdmin && (
-                              <button type="button" onClick={() => handleDelete(l.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                                <Trash2 style={{ width: '14px', height: '14px' }} />
+                              <button type="button" onClick={() => handleDelete(l.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }} title="حذف">
+                                <Trash2 style={{ width: '13px', height: '13px' }} />
                               </button>
                             )}
                           </div>
