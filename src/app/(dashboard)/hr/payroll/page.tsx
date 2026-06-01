@@ -176,6 +176,7 @@ function CreatePayrollModal({ hrEmployees, month, year, existingPayrolls, onClos
   const [selMonth, setSelMonth] = useState(month)
   const [selYear, setSelYear] = useState(year)
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
 
   // بناء صفوف المسير من hr_employees
   const [rows, setRows] = useState<PayrollRow[]>(() =>
@@ -225,17 +226,41 @@ function CreatePayrollModal({ hrEmployees, month, year, existingPayrolls, onClos
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '95vw', width: '1100px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
+    <div
+      className="modal-overlay"
+      onClick={e => e.target === e.currentTarget && onClose()}
+      style={fullscreen ? { alignItems: 'stretch', padding: 0 } : {}}
+    >
+      <div
+        className="modal-box"
+        onClick={e => e.stopPropagation()}
+        style={fullscreen
+          ? { maxWidth: '100vw', width: '100vw', height: '100vh', borderRadius: 0, display: 'flex', flexDirection: 'column' }
+          : { maxWidth: '95vw', width: '1100px' }
+        }
+      >
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <h3 className="font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Users style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             إنشاء مسير رواتب — {rows.length} موظف
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              type="button"
+              onClick={() => setFullscreen(f => !f)}
+              title={fullscreen ? 'تصغير النافذة' : 'تكبير النافذة'}
+              style={{ padding: '6px', borderRadius: '8px', border: 'none', background: 'var(--bg2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              {fullscreen
+                ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              }
+            </button>
+            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          </div>
         </div>
 
-        <div className="modal-body" style={{ padding: '16px 20px', maxHeight: '70vh', overflowY: 'auto' }}>
+        <div className="modal-body" style={{ padding: '16px 20px', maxHeight: fullscreen ? 'calc(100vh - 130px)' : '70vh', overflowY: 'auto', flex: 1 }}>
           {/* الشهر والسنة */}
           <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'center' }}>
             <div>
