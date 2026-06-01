@@ -4,8 +4,10 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { useState } from 'react'
 
-// ── أيقونات SVG paths ──
-const ICONS = {
+// ════════════════════════════════════════
+// أيقونات
+// ════════════════════════════════════════
+const IC = {
   dashboard:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   projects:    'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
   visits:      'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
@@ -15,8 +17,8 @@ const ICONS = {
   quality:     'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   environment: 'M12 2a10 10 0 100 20A10 10 0 0012 2zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z',
   hr:          'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M12 7a4 4 0 110 8 4 4 0 010-8z',
-  attendance:  'M12 22V12M12 12V2M12 12H2M12 12h10',
-  leaves:      'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  attendance:  'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  leaves:      'M12 2a10 10 0 100 20A10 10 0 0012 2zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
   payroll:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   documents:   'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   jobs:        'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
@@ -24,47 +26,121 @@ const ICONS = {
   reports:     'M18 20V10M12 20V4M6 20v-6',
   settings:    'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   employees:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
+  branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
+  logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   chevron:     'M6 9l6 6 6-6',
 }
 
-function SvgIcon({ path, size = 18 }: { path: string; size?: number }) {
+function Icon({ d, size = 16 }: { d: string; size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-      <path d={path} />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ flexShrink: 0 }}>
+      <path d={d} />
     </svg>
   )
 }
 
-// ── مكوّن القسم القابل للطي ──
-function NavGroup({ label, icon, isActive, isOpen, onToggle, children, accentColor = 'rgba(255,255,255,0.2)' }: {
-  label: string; icon: string; isActive: boolean; isOpen: boolean
-  onToggle: () => void; children: React.ReactNode; accentColor?: string
+// ════════════════════════════════════════
+// مكوّن العنصر الفرعي
+// ════════════════════════════════════════
+function SubLink({ href, label, icon, active, accent }: {
+  href: string; label: string; icon: string; active: boolean; accent: string
 }) {
   return (
-    <div style={{ marginBottom: '2px' }}>
-      <button
-        onClick={onToggle}
-        className={`sidebar-item ${isActive ? 'active' : ''}`}
-        style={{
-          width: '100%', justifyContent: 'space-between',
-          background: isActive ? 'rgba(255,255,255,0.2)' : isOpen ? 'rgba(255,255,255,0.12)' : 'transparent',
+    <Link href={href} style={{ textDecoration: 'none' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '9px',
+        padding: '8px 10px 8px 12px',
+        borderRadius: '8px', marginBottom: '1px', cursor: 'pointer',
+        background: active ? `${accent}28` : 'transparent',
+        borderRight: active ? `3px solid ${accent}` : '3px solid transparent',
+        color: active ? 'white' : 'rgba(255,255,255,0.6)',
+        fontSize: '0.82rem', fontWeight: active ? 700 : 400,
+        transition: 'all 0.15s',
+      }}
+        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.color = 'white' }}
+        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.6)' } }}
+      >
+        <Icon d={icon} size={14} />
+        <span>{label}</span>
+      </div>
+    </Link>
+  )
+}
+
+// ════════════════════════════════════════
+// مكوّن القسم الرئيسي
+// ════════════════════════════════════════
+function NavSection({ label, sublabel, icon, accent, isActive, isOpen, onToggle, children }: {
+  label: string; sublabel: string; icon: string; accent: string
+  isActive: boolean; isOpen: boolean; onToggle: () => void; children: React.ReactNode
+}) {
+  return (
+    <div style={{ marginBottom: '4px' }}>
+      {/* زر القسم */}
+      <button onClick={onToggle} style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: '0',
+        padding: '0', border: 'none', cursor: 'pointer', borderRadius: '10px',
+        background: 'transparent', overflow: 'hidden',
+        transition: 'all 0.15s',
+      }}>
+        {/* شريط اللون الجانبي */}
+        <div style={{
+          width: '4px', alignSelf: 'stretch', borderRadius: '4px 0 0 4px',
+          background: isActive || isOpen ? accent : 'transparent',
+          transition: 'background 0.2s', flexShrink: 0,
+        }} />
+
+        {/* محتوى الزر */}
+        <div style={{
+          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 12px 10px 10px',
+          background: isActive ? `${accent}22` : isOpen ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+          borderRadius: '0 10px 10px 0',
+          transition: 'background 0.15s',
         }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <SvgIcon path={icon} />
-          <span style={{ fontWeight: 600 }}>{label}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* أيقونة ملوّنة */}
+            <div style={{
+              width: '32px', height: '32px', borderRadius: '8px', flexShrink: 0,
+              background: isActive || isOpen ? `${accent}33` : 'rgba(255,255,255,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: isActive || isOpen ? accent : 'rgba(255,255,255,0.5)',
+              transition: 'all 0.2s',
+            }}>
+              <Icon d={icon} size={16} />
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{
+                fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em',
+                color: isActive || isOpen ? accent : 'rgba(255,255,255,0.35)',
+                lineHeight: 1, marginBottom: '2px',
+              }}>
+                {sublabel}
+              </div>
+              <div style={{
+                fontSize: '0.85rem', fontWeight: 600,
+                color: isActive ? 'white' : isOpen ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)',
+              }}>
+                {label}
+              </div>
+            </div>
+          </div>
+          {/* سهم */}
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"
+            style={{ color: isOpen ? accent : 'rgba(255,255,255,0.3)', transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'all 0.2s', flexShrink: 0 }}>
+            <path d={IC.chevron} />
+          </svg>
         </div>
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5"
-          style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s', flexShrink: 0 }}>
-          <path d={ICONS.chevron} />
-        </svg>
       </button>
 
+      {/* العناصر الفرعية */}
       {isOpen && (
         <div style={{
-          marginTop: '2px', marginRight: '10px',
-          borderRight: `2px solid ${accentColor}`,
-          paddingRight: '8px',
-          display: 'flex', flexDirection: 'column', gap: '1px',
+          marginTop: '2px', paddingRight: '16px', paddingLeft: '4px',
+          borderRight: `2px solid ${accent}44`,
+          marginRight: '4px',
         }}>
           {children}
         </div>
@@ -73,215 +149,255 @@ function NavGroup({ label, icon, isActive, isOpen, onToggle, children, accentCol
   )
 }
 
-// ── عنصر فرعي ──
-function SubItem({ href, label, icon, active }: { href: string; label: string; icon: string; active: boolean }) {
+// ════════════════════════════════════════
+// عنصر مستقل (بدون dropdown)
+// ════════════════════════════════════════
+function StandaloneLink({ href, label, icon, active }: {
+  href: string; label: string; icon: string; active: boolean
+}) {
   return (
-    <Link href={href}
-      className={`sidebar-item ${active ? 'active' : ''}`}
-      style={{
-        fontSize: '0.825rem', padding: '7px 10px',
-        background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.05)',
-        borderRadius: '7px',
-      }}>
-      <SvgIcon path={icon} size={15} />
-      <span>{label}</span>
+    <Link href={href} style={{ textDecoration: 'none' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '9px 12px 9px 12px', borderRadius: '10px', marginBottom: '2px',
+        background: active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.04)',
+        color: active ? 'white' : 'rgba(255,255,255,0.65)',
+        fontSize: '0.85rem', fontWeight: active ? 700 : 400,
+        cursor: 'pointer', transition: 'all 0.15s',
+        borderRight: active ? '3px solid rgba(255,255,255,0.8)' : '3px solid transparent',
+      }}
+        onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.09)'; (e.currentTarget as HTMLElement).style.color = 'white' } }}
+        onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)' } }}
+      >
+        <div style={{
+          width: '30px', height: '30px', borderRadius: '7px', flexShrink: 0,
+          background: active ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon d={icon} size={15} />
+        </div>
+        <span>{label}</span>
+      </div>
     </Link>
   )
 }
 
-// ── عنصر قسم (label فاصل) ──
-function SectionLabel({ label }: { label: string }) {
-  return (
-    <div style={{
-      fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.08em',
-      color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase',
-      padding: '10px 10px 4px', marginTop: '4px',
-    }}>
-      {label}
-    </div>
-  )
+// ════════════════════════════════════════
+// فاصل خفيف
+// ════════════════════════════════════════
+function Divider() {
+  return <div style={{ height: '1px', background: 'rgba(255,255,255,0.08)', margin: '8px 0' }} />
 }
 
+// ════════════════════════════════════════
+// الصفحة الرئيسية
+// ════════════════════════════════════════
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { currentUser, tenant, activeBranch, branches, setActiveBranch, reset } = useStore()
-  const perms = currentUser?.permissions || []
-
-  const [projectsOpen, setProjectsOpen] = useState(
-    pathname === '/dashboard' || pathname.startsWith('/projects') || pathname.startsWith('/visits') || pathname.startsWith('/inventory')
-  )
-  const [qhseOpen, setQhseOpen] = useState(pathname.startsWith('/qhse'))
-  const [hrOpen, setHrOpen] = useState(pathname.startsWith('/hr'))
-  const [settingsOpen, setSettingsOpen] = useState(pathname.startsWith('/settings') || pathname.startsWith('/employees'))
-
+  const perms: string[] = currentUser?.permissions || []
   const tenantModules = (tenant as any)?.modules || {}
   const isAdmin = currentUser?.role === 'مدير عام'
 
-  const hasProjects  = perms.includes('projects_view') && tenantModules.projects !== false
+  // ── صلاحيات ──
+  const hasProjects  = perms.includes('projects_view')  && tenantModules.projects  !== false
   const hasVisits    = perms.some((p: string) => p.startsWith('visits')) && tenantModules.visits !== false
-  const hasInventory = perms.includes('inventory') && tenantModules.inventory !== false
-  const hasQHSE      = perms.includes('qhse') && tenantModules.qhse !== false
-  const hasPurchases = perms.includes('purchases') && tenantModules.purchases !== false
+  const hasInventory = perms.includes('inventory')      && tenantModules.inventory !== false
+  const hasQHSE      = perms.includes('qhse')           && tenantModules.qhse      !== false
+  const hasPurchases = perms.includes('purchases')      && tenantModules.purchases !== false
   const hasReports   = perms.includes('reports')
   const hasHR        = perms.includes('employees')
   const hasDashboard = perms.includes('dashboard')
 
-  const isProjectsActive = ['/dashboard', '/projects', '/visits', '/inventory'].some(p =>
-    pathname === p || pathname.startsWith(p + '/'))
-  const isQHSEActive = pathname.startsWith('/qhse')
-  const isHRActive   = pathname.startsWith('/hr')
-  const isSettingsActive = pathname.startsWith('/settings') || pathname.startsWith('/employees')
+  // ── حالة الأقسام — تفتح تلقائياً بناءً على الصفحة الحالية ──
+  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory'].some(p => pathname.startsWith(p))
+  const inQHSE     = pathname.startsWith('/qhse')
+  const inHR       = pathname.startsWith('/hr')
+  const inSettings = pathname.startsWith('/settings') || pathname.startsWith('/employees')
+
+  const [projectsOpen, setProjectsOpen] = useState(inProjects)
+  const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
+  const [hrOpen,       setHrOpen]       = useState(inHR)
+  const [settingsOpen, setSettingsOpen] = useState(inSettings)
+
+  // ── ألوان ──
+  const BLUE   = '#60a5fa'
+  const YELLOW = '#fbbf24'
+  const GREEN  = '#4ade80'
+  const PURPLE = '#c084fc'
 
   return (
-    <div className="sidebar">
-      {/* ── Header ── */}
-      <div style={{ padding: '20px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+    <div className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* ════ Header ════ */}
+      <div style={{ padding: '18px 14px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+        {/* الشعار والاسم */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <div style={{ width: '38px', height: '38px', background: 'rgba(255,255,255,0.15)', borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <SvgIcon path={ICONS.shield} size={20} />
+          <div style={{
+            width: '40px', height: '40px', borderRadius: '10px',
+            background: 'rgba(255,255,255,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            border: '1px solid rgba(255,255,255,0.15)',
+          }}>
+            <Icon d={IC.shield} size={20} />
           </div>
-          <div>
-            <div style={{ color: 'white', fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.2 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: 'white', fontWeight: 700, fontSize: '0.875rem', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {tenant?.name || 'وثيق ERP'}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>مقاول كهرباء معتمد</div>
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '1px' }}>مقاول كهرباء معتمد</div>
           </div>
         </div>
 
+        {/* الفرع */}
         {branches.length > 1 ? (
-          <select value={activeBranch?.id || ''} onChange={e => {
-            const b = branches.find(b => b.id === Number(e.target.value))
-            if (b) setActiveBranch(b)
-          }} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-            color: 'white', borderRadius: '8px', padding: '6px 10px', fontSize: '0.8rem', width: '100%' }}>
+          <select
+            value={activeBranch?.id || ''}
+            onChange={e => { const b = branches.find(b => b.id === Number(e.target.value)); if (b) setActiveBranch(b) }}
+            style={{
+              width: '100%', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)',
+              color: 'white', borderRadius: '8px', padding: '7px 10px', fontSize: '0.8rem', cursor: 'pointer',
+            }}>
             {branches.map(b => <option key={b.id} value={b.id} style={{ color: '#1a1a1a', background: 'white' }}>{b.name}</option>)}
           </select>
         ) : (
-          <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 10px',
-            color: 'white', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <SvgIcon path="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" size={14} />
-            {activeBranch?.name || 'الفرع الرئيسي'}
+          <div style={{
+            background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px', padding: '7px 10px',
+            color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem',
+            display: 'flex', alignItems: 'center', gap: '7px',
+          }}>
+            <Icon d={IC.branch} size={13} />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {activeBranch?.name || 'الفرع الرئيسي'}
+            </span>
           </div>
         )}
       </div>
 
-      {/* ── Nav ── */}
-      <nav style={{ flex: 1, padding: '10px 12px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+      {/* ════ Nav ════ */}
+      <nav style={{ flex: 1, padding: '10px 10px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0' }}>
 
-        {/* ════ إدارة المشاريع ════ */}
+        {/* ── إدارة المشاريع ── */}
         {(hasDashboard || hasProjects || hasVisits || hasInventory) && (
-          <NavGroup
-            label="إدارة المشاريع"
-            icon={ICONS.projects}
-            isActive={isProjectsActive}
-            isOpen={projectsOpen}
+          <NavSection
+            label="إدارة المشاريع" sublabel="PROJECTS"
+            icon={IC.projects} accent={BLUE}
+            isActive={inProjects} isOpen={projectsOpen}
             onToggle={() => setProjectsOpen(o => !o)}
-            accentColor="rgba(99,179,237,0.5)"
           >
-            {hasDashboard && (
-              <SubItem href="/dashboard" label="لوحة التحكم" icon={ICONS.dashboard} active={pathname === '/dashboard'} />
-            )}
-            {hasProjects && (
-              <SubItem href="/projects" label="المشاريع" icon={ICONS.projects} active={pathname.startsWith('/projects')} />
-            )}
-            {hasVisits && (
-              <SubItem href="/visits" label="الزيارات الفنية" icon={ICONS.visits} active={pathname.startsWith('/visits')} />
-            )}
-            {hasInventory && (
-              <SubItem href="/inventory" label="المخزون" icon={ICONS.inventory} active={pathname.startsWith('/inventory')} />
-            )}
-          </NavGroup>
+            {hasDashboard && <SubLink href="/dashboard"  label="لوحة التحكم"   icon={IC.dashboard}  active={pathname === '/dashboard'}            accent={BLUE} />}
+            {hasProjects   && <SubLink href="/projects"  label="المشاريع"       icon={IC.projects}   active={pathname.startsWith('/projects')}     accent={BLUE} />}
+            {hasVisits     && <SubLink href="/visits"    label="الزيارات الفنية" icon={IC.visits}    active={pathname.startsWith('/visits')}       accent={BLUE} />}
+            {hasInventory  && <SubLink href="/inventory" label="المخزون"        icon={IC.inventory}  active={pathname.startsWith('/inventory')}    accent={BLUE} />}
+          </NavSection>
         )}
 
-        {/* ════ إدارة السلامة والجودة ════ */}
+        {/* ── إدارة السلامة والجودة ── */}
         {hasQHSE && (
-          <NavGroup
-            label="السلامة والجودة"
-            icon={ICONS.shield}
-            isActive={isQHSEActive}
-            isOpen={qhseOpen}
+          <NavSection
+            label="السلامة والجودة" sublabel="QHSE"
+            icon={IC.shield} accent={YELLOW}
+            isActive={inQHSE} isOpen={qhseOpen}
             onToggle={() => setQhseOpen(o => !o)}
-            accentColor="rgba(252,211,77,0.5)"
           >
-            <SubItem href="/qhse" label="لوحة التحكم" icon={ICONS.dashboard} active={pathname === '/qhse'} />
-            <SubItem href="/qhse/safety" label="السلامة (HSE)" icon={ICONS.safety} active={pathname.startsWith('/qhse/safety')} />
-            <SubItem href="/qhse/quality" label="الجودة (QC)" icon={ICONS.quality} active={pathname.startsWith('/qhse/quality')} />
-            <SubItem href="/qhse/environment" label="البيئة (ENV)" icon={ICONS.environment} active={pathname.startsWith('/qhse/environment')} />
-          </NavGroup>
+            <SubLink href="/qhse"             label="لوحة التحكم"       icon={IC.dashboard}    active={pathname === '/qhse'}                  accent={YELLOW} />
+            <SubLink href="/qhse/safety"      label="السلامة (HSE)"     icon={IC.safety}       active={pathname.startsWith('/qhse/safety')}   accent={YELLOW} />
+            <SubLink href="/qhse/quality"     label="الجودة (QC)"       icon={IC.quality}      active={pathname.startsWith('/qhse/quality')}  accent={YELLOW} />
+            <SubLink href="/qhse/environment" label="البيئة (ENV)"      icon={IC.environment}  active={pathname.startsWith('/qhse/environment')} accent={YELLOW} />
+          </NavSection>
         )}
 
-        {/* ════ الموارد البشرية ════ */}
+        {/* ── الموارد البشرية ── */}
         {hasHR && (
-          <NavGroup
-            label="الموارد البشرية"
-            icon={ICONS.hr}
-            isActive={isHRActive}
-            isOpen={hrOpen}
+          <NavSection
+            label="الموارد البشرية" sublabel="HR"
+            icon={IC.hr} accent={GREEN}
+            isActive={inHR} isOpen={hrOpen}
             onToggle={() => setHrOpen(o => !o)}
-            accentColor="rgba(134,239,172,0.5)"
           >
-            <SubItem href="/hr/dashboard" label="لوحة التحكم" icon={ICONS.dashboard} active={pathname === '/hr/dashboard'} />
-            <SubItem href="/hr" label="ملفات الموظفين" icon={ICONS.employees} active={pathname === '/hr'} />
-            <SubItem href="/hr/attendance" label="الحضور والغياب" icon={ICONS.attendance} active={pathname.startsWith('/hr/attendance')} />
-            <SubItem href="/hr/leaves" label="الإجازات" icon={ICONS.leaves} active={pathname.startsWith('/hr/leaves')} />
-            <SubItem href="/hr/payroll" label="الرواتب والتعويضات" icon={ICONS.payroll} active={pathname.startsWith('/hr/payroll')} />
-            <SubItem href="/hr/documents" label="الوثائق" icon={ICONS.documents} active={pathname.startsWith('/hr/documents')} />
-            <SubItem href="/hr/jobs" label="عروض الوظائف" icon={ICONS.jobs} active={pathname.startsWith('/hr/jobs')} />
-          </NavGroup>
+            <SubLink href="/hr/dashboard" label="لوحة التحكم"         icon={IC.dashboard}  active={pathname === '/hr/dashboard'}           accent={GREEN} />
+            <SubLink href="/hr"           label="ملفات الموظفين"       icon={IC.employees}  active={pathname === '/hr'}                     accent={GREEN} />
+            <SubLink href="/hr/attendance" label="الحضور والغياب"     icon={IC.attendance} active={pathname.startsWith('/hr/attendance')}  accent={GREEN} />
+            <SubLink href="/hr/leaves"    label="الإجازات"             icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')}      accent={GREEN} />
+            <SubLink href="/hr/payroll"   label="الرواتب والتعويضات"   icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')}     accent={GREEN} />
+            <SubLink href="/hr/documents" label="الوثائق"              icon={IC.documents}  active={pathname.startsWith('/hr/documents')}   accent={GREEN} />
+            <SubLink href="/hr/jobs"      label="عروض الوظائف"         icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')}        accent={GREEN} />
+          </NavSection>
         )}
 
-        {/* ════ منفردة ════ */}
-        {(hasPurchases || hasReports) && (
-          <>
-            <SectionLabel label="أخرى" />
-            {hasPurchases && (
-              <Link href="/purchases" className={`sidebar-item ${pathname.startsWith('/purchases') ? 'active' : ''}`}>
-                <SvgIcon path={ICONS.purchases} />
-                <span>المشتريات</span>
-              </Link>
-            )}
-            {hasReports && (
-              <Link href="/reports" className={`sidebar-item ${pathname.startsWith('/reports') ? 'active' : ''}`}>
-                <SvgIcon path={ICONS.reports} />
-                <span>التقارير</span>
-              </Link>
-            )}
-          </>
-        )}
+        <Divider />
 
-        {/* ════ الإعدادات ════ */}
+        {/* ── مستقلة ── */}
+        {hasPurchases && <StandaloneLink href="/purchases" label="المشتريات" icon={IC.purchases} active={pathname.startsWith('/purchases')} />}
+        {hasReports   && <StandaloneLink href="/reports"   label="التقارير"  icon={IC.reports}   active={pathname.startsWith('/reports')}   />}
+
+        {/* ── الإعدادات ── */}
         {isAdmin && (
-          <NavGroup
-            label="الإعدادات"
-            icon={ICONS.settings}
-            isActive={isSettingsActive}
-            isOpen={settingsOpen}
-            onToggle={() => setSettingsOpen(o => !o)}
-            accentColor="rgba(196,181,253,0.5)"
-          >
-            <SubItem href="/employees" label="المستخدمون والصلاحيات" icon={ICONS.employees} active={pathname.startsWith('/employees')} />
-            <SubItem href="/settings" label="إعدادات النظام" icon={ICONS.settings} active={pathname === '/settings'} />
-          </NavGroup>
+          <>
+            <Divider />
+            <NavSection
+              label="الإعدادات" sublabel="SETTINGS"
+              icon={IC.settings} accent={PURPLE}
+              isActive={inSettings} isOpen={settingsOpen}
+              onToggle={() => setSettingsOpen(o => !o)}
+            >
+              <SubLink href="/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/employees')} accent={PURPLE} />
+              <SubLink href="/settings"  label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'}           accent={PURPLE} />
+            </NavSection>
+          </>
         )}
 
       </nav>
 
-      {/* ── Footer ── */}
-      <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-        <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <div style={{ color: 'white', fontSize: '0.875rem', fontWeight: 600 }}>{currentUser?.name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>{currentUser?.role}</div>
+      {/* ════ Footer ════ */}
+      <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
+        {/* بيانات المستخدم */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '10px', borderRadius: '10px',
+          background: 'rgba(255,255,255,0.07)', marginBottom: '8px',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <div style={{
+            width: '34px', height: '34px', borderRadius: '9px', flexShrink: 0,
+            background: 'rgba(255,255,255,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 700, color: 'white', fontSize: '0.9rem',
+          }}>
+            {currentUser?.name?.charAt(0) || '؟'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: 'white', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {currentUser?.name}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.7rem', marginTop: '1px' }}>
+              {currentUser?.role}
+            </div>
+          </div>
         </div>
-        <button onClick={() => { reset(); router.push('/login') }}
-          style={{ width: '100%', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)',
-            border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', padding: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer' }}>
-          <SvgIcon path="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" size={16} />
+
+        {/* زر تسجيل الخروج */}
+        <button
+          onClick={() => { reset(); router.push('/login') }}
+          style={{
+            width: '100%', background: 'rgba(255,255,255,0.07)',
+            color: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px', padding: '8px 12px', cursor: 'pointer', fontSize: '0.8rem',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.15)'; (e.currentTarget as HTMLElement).style.color = '#fca5a5'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(239,68,68,0.3)' }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.65)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}
+        >
+          <Icon d={IC.logout} size={15} />
           تسجيل الخروج
         </button>
-        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem', marginTop: '8px' }}>وثيق v1.0</div>
+
+        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: '0.65rem', marginTop: '8px' }}>
+          وثيق v1.0
+        </div>
       </div>
     </div>
   )
