@@ -688,7 +688,7 @@ export default function HRPage() {
     ])
     setHREmployees(hrRes.data || [])
     setManagers(mgRes.data || [])
-    setDepartments(deptRes.data || [])
+    setDepartments((deptRes.data || []) as Department[])
     setLoading(false)
   }
 
@@ -761,8 +761,8 @@ export default function HRPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
-       {TABS.map(t => (
-  <button key={t.id} type="button" onClick={() => setActiveTab(t.id as any)}
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
             style={{ padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? t.color : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
