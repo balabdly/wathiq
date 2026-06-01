@@ -1065,32 +1065,37 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
             {/* نوع الإنهاء */}
             <div style={{ gridColumn: '1/-1' }}>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإنهاء <span className="text-red-500">*</span></label>
-              {/* مجموعات الأنواع */}
-              {[
-                { group: 'كاملة',     label: '✅ مكافأة كاملة',   bg: '#ecfdf5', border: '#6ee7b7' },
-                { group: 'مخفّضة',   label: '⚠️ مكافأة مخفّضة', bg: '#fffbeb', border: '#fcd34d' },
-                { group: 'لا مكافأة', label: '❌ لا مكافأة',       bg: '#fef2f2', border: '#fca5a5' },
-              ].map(grp => (
-                <div key={grp.group} style={{ marginBottom: '8px' }}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px', padding: '3px 8px', background: grp.bg, border: `1px solid ${grp.border}`, borderRadius: '6px', display: 'inline-block' }}>
-                    {grp.label}
+              <select value={form.termination_type} onChange={e => set('termination_type', e.target.value)} className="select">
+                <optgroup label="✅ مكافأة كاملة">
+                  <option value="إنهاء عقد من صاحب العمل">📋 إنهاء عقد من صاحب العمل</option>
+                  <option value="انتهاء عقد">📅 انتهاء مدة العقد</option>
+                  <option value="إنهاء باتفاق الطرفين">🤝 إنهاء باتفاق الطرفين</option>
+                  <option value="إحالة للتقاعد">🎖️ إحالة للتقاعد</option>
+                  <option value="وفاة">🖤 وفاة</option>
+                  <option value="عجز كلي">🏥 عجز كلي عن العمل</option>
+                  <option value="إغلاق المنشأة">🏢 إغلاق المنشأة</option>
+                  <option value="تغيير جوهري في العقد">📝 رفض تغيير جوهري في العقد</option>
+                </optgroup>
+                <optgroup label="⚠️ مكافأة مخفّضة">
+                  <option value="استقالة">🚪 استقالة</option>
+                </optgroup>
+                <optgroup label="❌ لا مكافأة">
+                  <option value="فصل تأديبي">⛔ فصل تأديبي</option>
+                  <option value="فصل">⚠️ فصل</option>
+                </optgroup>
+              </select>
+              {/* مؤشر نوع المكافأة */}
+              {form.termination_type && (() => {
+                const t = TYPES.find(x => x.value === form.termination_type)
+                const grpLabel = t?.group === 'كاملة' ? { text: '✅ يستحق مكافأة كاملة', bg: '#ecfdf5', color: '#065f46' }
+                  : t?.group === 'مخفّضة' ? { text: '⚠️ يستحق مكافأة مخفّضة حسب سنوات الخدمة', bg: '#fffbeb', color: '#92400e' }
+                  : { text: '❌ لا يستحق مكافأة نهاية خدمة', bg: '#fef2f2', color: '#991b1b' }
+                return (
+                  <div style={{ marginTop: '6px', padding: '5px 10px', background: grpLabel.bg, borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, color: grpLabel.color }}>
+                    {grpLabel.text}
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {TYPES.filter(t => t.group === grp.group).map(t => (
-                      <button key={t.value} type="button" onClick={() => set('termination_type', t.value)}
-                        style={{
-                          padding: '6px 12px', borderRadius: '8px', border: '2px solid', cursor: 'pointer',
-                          fontSize: '0.82rem', fontWeight: 600,
-                          borderColor: form.termination_type === t.value ? t.color : 'var(--border)',
-                          background: form.termination_type === t.value ? t.color + '18' : 'white',
-                          color: form.termination_type === t.value ? t.color : 'var(--text3)',
-                        }}>
-                        {t.icon} {t.value}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                )
+              })()}
             </div>
 
             {/* التواريخ */}
