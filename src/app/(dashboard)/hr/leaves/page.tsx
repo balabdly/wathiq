@@ -304,7 +304,7 @@ export default function LeavesPage() {
       supabase.from('hr_employees').select('id, employee_id, hire_date, nationality, iqama_number, employee:employees(name, role)').eq('tenant_id', tenant.id).order('id'),
       supabase.from('hr_leaves').select('*, employee:employees(name)').eq('tenant_id', tenant.id).order('start_date', { ascending: false }),
     ])
-    setHREmployees((empRes.data || []) as HREmployee[])
+    setHREmployees((empRes.data || []) as any[])
     setLeaves(leavesRes.data || [])
     setLoading(false)
   }
