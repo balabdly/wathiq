@@ -7,32 +7,26 @@ import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Briefcase, Buildin
 import toast from 'react-hot-toast'
 
 type HREmployee = {
-  id: number
-  tenant_id: string
-  employee_id: number
-  national_id?: string
-  nationality: string
-  birth_date?: string
-  gender: string
-  marital_status: string
-  hire_date?: string
-  contract_type: string
-  job_title?: string
-  department?: string
-  basic_salary: number
-  housing_allow: number
-  transport_allow: number
-  other_allow: number
-  gosi_enrolled: boolean
-  gosi_pct: number
-  iqama_number?: string
-  iqama_expiry?: string
-  bank_name?: string
-  iban?: string
-  notes?: string
-  is_active: boolean
-  direct_manager?: number
+  id: number; tenant_id: string; employee_id: number
+  national_id?: string; nationality: string; birth_date?: string
+  gender: string; marital_status: string; hire_date?: string
+  contract_type: string; job_title?: string; department?: string
+  basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
+  gosi_enrolled: boolean; gosi_pct: number
+  iqama_number?: string; iqama_expiry?: string
+  bank_name?: string; iban?: string; notes?: string
+  is_active: boolean; direct_manager?: number
   employee?: { name: string; role: string }
+}
+
+type Department = {
+  id: number; tenant_id: string; name: string; manager_id?: number
+  manager?: { name: string; role: string }
+}
+
+type JobTitle = {
+  id: number; tenant_id: string; name: string; department_id?: number
+  department?: { name: string }
 }
 
 function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
@@ -56,8 +50,7 @@ function calcGOSI(nationality: string, basicSalary: number, housingAllow: number
     }
   } else {
     return {
-      employeeDeduction: 0,
-      employerContribution: Math.round(base * 0.02),
+      employeeDeduction: 0, employerContribution: Math.round(base * 0.02),
       employeePct: 0, employerPct: 2,
       breakdown: {
         employee: [],
@@ -70,16 +63,17 @@ function calcGOSI(nationality: string, basicSalary: number, housingAllow: number
 // ══════════════════════════════════════
 // نافذة إضافة / تعديل موظف
 // ══════════════════════════════════════
-function HREmployeeModal({ emp, managers, jobTitles, departments, onClose, onSave }: {
+function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   emp: HREmployee | null
+  departments: Department[]
   managers: any[]
-  jobTitles: string[]
-  departments: string[]
   onClose: () => void
   onSave: (d: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<'personal'|'salary'|'bank'>('personal')
+  const [jobTitlesForDept, setJobTitlesForDept] = useState<JobTitle[]>([])
+
   const [form, setForm] = useState({
     emp_name:         emp?.employee?.name   || '',
     national_id:      emp?.national_id      || '',
@@ -90,9 +84,9 @@ function HREmployeeModal({ emp, managers, jobTitles, departments, onClose, onSav
     marital_status:   emp?.marital_status   || 'أعزب',
     hire_date:        emp?.hire_date        || '',
     contract_type:    emp?.contract_type    || 'دوام كامل',
-    job_title:        emp?.job_title        || '',
     department:       emp?.department       || '',
-    direct_manager:   emp?.direct_manager   || '',
+    job_title:        emp?.job_title        || '',
+    direct_manager:   emp?.direct_manager   ? String(emp.direct_manager) : '',
     basic_salary:     emp?.basic_salary     ?? 0,
     housing_allow:    emp?.housing_allow    ?? 0,
     transport_allow:  emp?.transport_allow  ?? 0,
@@ -114,11 +108,35 @@ function HREmployeeModal({ emp, managers, jobTitles, departments, onClose, onSav
   const grossSalary = Number(form.basic_salary) + totalAllowances
   const netSalary = grossSalary - (form.gosi_enrolled ? gosi.employeeDeduction : 0)
 
+  // عند تغيير القسم — جلب مسمياته وتعيين المدير تلقائياً
+  async function handleDeptChange(deptName: string) {
+    set('department', deptName)
+    set('job_title', '')
+
+    const dept = departments.find(d => d.name === deptName)
+    if (dept) {
+      // تعيين مدير القسم تلقائياً
+      if (dept.manager_id) set('direct_manager', String(dept.manager_id))
+
+      // جلب المسميات المرتبطة بهذا القسم
+      const { data } = await supabase.from('hr_job_titles')
+        .select('*').eq('department_id', dept.id).order('name')
+      setJobTitlesForDept(data || [])
+    } else {
+      setJobTitlesForDept([])
+    }
+  }
+
+  // عند فتح النافذة إذا كان هناك قسم محدد مسبقاً
+  useEffect(() => {
+    if (form.department) handleDeptChange(form.department)
+  }, [])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.emp_name.trim()) { toast.error('أدخل اسم الموظف'); return }
-    if (!form.job_title) { toast.error('اختر المسمى الوظيفي'); return }
     if (!form.department) { toast.error('اختر القسم'); return }
+    if (!form.job_title) { toast.error('اختر المسمى الوظيفي'); return }
     if (!form.hire_date) { toast.error('أدخل تاريخ التعيين'); return }
     if (!form.national_id.trim()) { toast.error('أدخل رقم الهوية / الإقامة'); return }
     if (!form.birth_date) { toast.error('أدخل تاريخ الميلاد'); return }
@@ -177,37 +195,45 @@ function HREmployeeModal({ emp, managers, jobTitles, departments, onClose, onSav
             {/* ── البيانات الشخصية ── */}
             {tab === 'personal' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الموظف <span className="text-red-500">*</span></label>
-                    <input value={form.emp_name} onChange={e => set('emp_name', e.target.value)} className="input" placeholder="الاسم الكامل" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
-                    <select value={form.job_title} onChange={e => set('job_title', e.target.value)} className="select">
-                      <option value="">— اختر المسمى —</option>
-                      {jobTitles.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الموظف <span className="text-red-500">*</span></label>
+                  <input value={form.emp_name} onChange={e => set('emp_name', e.target.value)} className="input" placeholder="الاسم الكامل" onKeyDown={noEnter} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
-                    <select value={form.department} onChange={e => set('department', e.target.value)} className="select">
-                      <option value="">— اختر القسم —</option>
-                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">المدير المباشر</label>
-                    <select value={form.direct_manager} onChange={e => set('direct_manager', e.target.value)} className="select">
-                      <option value="">— بدون مدير مباشر —</option>
-                      {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
-                    </select>
-                  </div>
+                {/* القسم أولاً */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
+                  <select value={form.department} onChange={e => handleDeptChange(e.target.value)} className="select">
+                    <option value="">— اختر القسم —</option>
+                    {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
                 </div>
 
+                {/* المسمى الوظيفي — يظهر بعد اختيار القسم */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
+                  <select value={form.job_title} onChange={e => set('job_title', e.target.value)} className="select" disabled={!form.department}>
+                    <option value="">{form.department ? '— اختر المسمى —' : '— اختر القسم أولاً —'}</option>
+                    {jobTitlesForDept.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                  </select>
+                  {form.department && jobTitlesForDept.length === 0 && (
+                    <p style={{ fontSize: '0.75rem', color: '#e6820a', marginTop: '4px' }}>⚠️ لا توجد مسميات لهذا القسم — أضف من تاب المسميات الوظيفية</p>
+                  )}
+                </div>
+
+                {/* المدير المباشر — يُملأ تلقائياً من مدير القسم */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    المدير المباشر
+                    {form.direct_manager && <span style={{ fontSize: '0.72rem', color: '#0ea77b', marginRight: '6px' }}>✓ مُعيَّن تلقائياً من مدير القسم</span>}
+                  </label>
+                  <select value={form.direct_manager} onChange={e => set('direct_manager', e.target.value)} className="select">
+                    <option value="">— بدون مدير مباشر —</option>
+                    {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
+                  </select>
+                </div>
+
+                {/* الجنسية */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنسية <span className="text-red-500">*</span></label>
                   <div style={{ display: 'flex', gap: '10px' }}>
@@ -394,121 +420,75 @@ function HREmployeeModal({ emp, managers, jobTitles, departments, onClose, onSav
 }
 
 // ══════════════════════════════════════
-// تاب المسميات الوظيفية
-// ══════════════════════════════════════
-function JobTitlesTab({ tenantId }: { tenantId: string }) {
-  const [titles, setTitles] = useState<{id:number, name:string}[]>([])
-  const [newTitle, setNewTitle] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => { load() }, [])
-
-  async function load() {
-    setLoading(true)
-    const { data } = await supabase.from('hr_job_titles').select('*').eq('tenant_id', tenantId).order('name')
-    setTitles(data || [])
-    setLoading(false)
-  }
-
-  async function add() {
-    if (!newTitle.trim()) return
-    const { error } = await supabase.from('hr_job_titles').insert({ tenant_id: tenantId, name: newTitle.trim() })
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    setNewTitle('')
-    await load()
-    toast.success('تمت الإضافة ✅')
-  }
-
-  async function remove(id: number) {
-    if (!confirm('حذف هذا المسمى؟')) return
-    await supabase.from('hr_job_titles').delete().eq('id', id)
-    setTitles(t => t.filter(x => x.id !== id))
-    toast.success('تم الحذف')
-  }
-
-  return (
-    <div className="space-y-4">
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <input value={newTitle} onChange={e => setNewTitle(e.target.value)}
-          className="input" placeholder="اسم المسمى الوظيفي..." style={{ flex: 1 }}
-          onKeyDown={e => e.key === 'Enter' && add()} />
-        <button onClick={add} className="btn btn-primary">
-          <Plus style={{ width: '16px', height: '16px' }} /> إضافة
-        </button>
-      </div>
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-        </div>
-      ) : titles.length === 0 ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <Briefcase style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
-          <p style={{ color: 'var(--text3)' }}>لا توجد مسميات وظيفية بعد</p>
-        </div>
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {titles.map((t, i) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: i < titles.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Briefcase style={{ width: '14px', height: '14px' }} />
-                </div>
-                <span style={{ fontWeight: 600 }}>{t.name}</span>
-              </div>
-              <button onClick={() => remove(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                <Trash2 style={{ width: '14px', height: '14px' }} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
 // تاب الأقسام
 // ══════════════════════════════════════
-function DepartmentsTab({ tenantId }: { tenantId: string }) {
-  const [depts, setDepts] = useState<{id:number, name:string}[]>([])
-  const [newDept, setNewDept] = useState('')
+function DepartmentsTab({ tenantId, managers }: { tenantId: string; managers: any[] }) {
+  const [depts, setDepts] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', manager_id: '' })
+  const [editId, setEditId] = useState<number | null>(null)
+  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
 
   useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('hr_departments').select('*').eq('tenant_id', tenantId).order('name')
+    const { data } = await supabase.from('hr_departments')
+      .select('*, manager:employees(name, role)')
+      .eq('tenant_id', tenantId).order('name')
     setDepts(data || [])
     setLoading(false)
   }
 
-  async function add() {
-    if (!newDept.trim()) return
-    const { error } = await supabase.from('hr_departments').insert({ tenant_id: tenantId, name: newDept.trim() })
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    setNewDept('')
-    await load()
-    toast.success('تمت الإضافة ✅')
+  async function save() {
+    if (!form.name.trim()) { toast.error('أدخل اسم القسم'); return }
+    if (!form.manager_id) { toast.error('اختر مدير القسم'); return }
+    const payload = { tenant_id: tenantId, name: form.name.trim(), manager_id: Number(form.manager_id) }
+    if (editId) {
+      await supabase.from('hr_departments').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('hr_departments').insert(payload)
+    }
+    setForm({ name: '', manager_id: '' }); setEditId(null)
+    await load(); toast.success('تم الحفظ ✅')
   }
 
   async function remove(id: number) {
-    if (!confirm('حذف هذا القسم؟')) return
+    if (!confirm('حذف هذا القسم؟ سيتأثر الموظفون المرتبطون به')) return
     await supabase.from('hr_departments').delete().eq('id', id)
-    setDepts(d => d.filter(x => x.id !== id))
-    toast.success('تم الحذف')
+    setDepts(d => d.filter(x => x.id !== id)); toast.success('تم الحذف')
   }
 
   return (
     <div className="space-y-4">
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <input value={newDept} onChange={e => setNewDept(e.target.value)}
-          className="input" placeholder="اسم القسم..." style={{ flex: 1 }}
-          onKeyDown={e => e.key === 'Enter' && add()} />
-        <button onClick={add} className="btn btn-primary">
-          <Plus style={{ width: '16px', height: '16px' }} /> إضافة
-        </button>
+      {/* نموذج الإضافة */}
+      <div className="card" style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
+          {editId ? '✏️ تعديل القسم' : '➕ إضافة قسم جديد'}
+        </div>
+        <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم القسم <span className="text-red-500">*</span></label>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              className="input" placeholder="مثال: قسم المشاريع" onKeyDown={noEnter} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير القسم <span className="text-red-500">*</span></label>
+            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select">
+              <option value="">— اختر المدير —</option>
+              {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={save} className="btn btn-primary btn-sm">
+            <Save style={{ width: '14px', height: '14px' }} /> {editId ? 'حفظ التعديل' : 'إضافة القسم'}
+          </button>
+          {editId && <button onClick={() => { setForm({ name: '', manager_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">إلغاء</button>}
+        </div>
       </div>
+
+      {/* قائمة الأقسام */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
           <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
@@ -521,16 +501,157 @@ function DepartmentsTab({ tenantId }: { tenantId: string }) {
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
           {depts.map((d, i) => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: i < depts.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', color: '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Building2 style={{ width: '14px', height: '14px' }} />
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: i < depts.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 style={{ width: '16px', height: '16px' }} />
                 </div>
-                <span style={{ fontWeight: 600 }}>{d.name}</span>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{d.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
+                    {d.manager ? `👤 ${d.manager.name} — ${d.manager.role}` : <span style={{ color: '#c81e1e' }}>⚠️ لا يوجد مدير</span>}
+                  </div>
+                </div>
               </div>
-              <button onClick={() => remove(d.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                <Trash2 style={{ width: '14px', height: '14px' }} />
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '' }); setEditId(d.id) }}
+                  className="btn btn-ghost btn-xs"><Pencil style={{ width: '14px', height: '14px' }} /></button>
+                <button onClick={() => remove(d.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                  <Trash2 style={{ width: '14px', height: '14px' }} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// تاب المسميات الوظيفية
+// ══════════════════════════════════════
+function JobTitlesTab({ tenantId }: { tenantId: string }) {
+  const [titles, setTitles] = useState<JobTitle[]>([])
+  const [depts, setDepts] = useState<Department[]>([])
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', department_id: '' })
+  const [editId, setEditId] = useState<number | null>(null)
+  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const [tRes, dRes] = await Promise.all([
+      supabase.from('hr_job_titles').select('*, department:hr_departments(name)').eq('tenant_id', tenantId).order('name'),
+      supabase.from('hr_departments').select('id, name').eq('tenant_id', tenantId).order('name'),
+    ])
+    setTitles(tRes.data || [])
+    setDepts(dRes.data || [])
+    setLoading(false)
+  }
+
+  async function save() {
+    if (!form.name.trim()) { toast.error('أدخل اسم المسمى الوظيفي'); return }
+    if (!form.department_id) { toast.error('اختر القسم'); return }
+    const payload = { tenant_id: tenantId, name: form.name.trim(), department_id: Number(form.department_id) }
+    if (editId) {
+      await supabase.from('hr_job_titles').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('hr_job_titles').insert(payload)
+    }
+    setForm({ name: '', department_id: '' }); setEditId(null)
+    await load(); toast.success('تم الحفظ ✅')
+  }
+
+  async function remove(id: number) {
+    if (!confirm('حذف هذا المسمى؟')) return
+    await supabase.from('hr_job_titles').delete().eq('id', id)
+    setTitles(t => t.filter(x => x.id !== id)); toast.success('تم الحذف')
+  }
+
+  // تجميع المسميات حسب القسم
+  const grouped = depts.map(d => ({
+    dept: d,
+    titles: titles.filter(t => t.department_id === d.id)
+  })).filter(g => g.titles.length > 0)
+
+  const ungrouped = titles.filter(t => !t.department_id)
+
+  return (
+    <div className="space-y-4">
+      {/* نموذج الإضافة */}
+      <div className="card" style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
+          {editId ? '✏️ تعديل المسمى' : '➕ إضافة مسمى وظيفي'}
+        </div>
+        {depts.length === 0 ? (
+          <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.875rem', color: '#e6820a' }}>
+            ⚠️ يجب إضافة أقسام أولاً من تاب الأقسام
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
+                <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))} className="select">
+                  <option value="">— اختر القسم —</option>
+                  {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المسمى الوظيفي <span className="text-red-500">*</span></label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="input" placeholder="مثال: مهندس كهرباء" onKeyDown={noEnter} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={save} className="btn btn-primary btn-sm">
+                <Save style={{ width: '14px', height: '14px' }} /> {editId ? 'حفظ التعديل' : 'إضافة المسمى'}
               </button>
+              {editId && <button onClick={() => { setForm({ name: '', department_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">إلغاء</button>}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* قائمة المسميات مجمعة حسب القسم */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : titles.length === 0 ? (
+        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
+          <Briefcase style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد مسميات وظيفية بعد</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {grouped.map(g => (
+            <div key={g.dept.id} className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Building2 style={{ width: '14px', height: '14px', color: '#e6820a' }} />
+                <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{g.dept.name}</span>
+                <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>{g.titles.length} مسمى</span>
+              </div>
+              {g.titles.map((t, i) => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < g.titles.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Briefcase style={{ width: '12px', height: '12px' }} />
+                    </div>
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '' }); setEditId(t.id) }}
+                      className="btn btn-ghost btn-xs"><Pencil style={{ width: '14px', height: '14px' }} /></button>
+                    <button onClick={() => remove(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                      <Trash2 style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -547,8 +668,7 @@ export default function HRPage() {
   const [activeTab, setActiveTab] = useState<'employees'|'jobtitles'|'departments'>('employees')
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [managers, setManagers] = useState<any[]>([])
-  const [jobTitles, setJobTitles] = useState<string[]>([])
-  const [departments, setDepartments] = useState<string[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -561,16 +681,14 @@ export default function HRPage() {
   async function load() {
     if (!tenant) return
     setLoading(true)
-    const [hrRes, mgRes, jtRes, deptRes] = await Promise.all([
+    const [hrRes, mgRes, deptRes] = await Promise.all([
       supabase.from('hr_employees').select('*, employee:employees(name, role)').eq('tenant_id', tenant.id).order('id'),
       supabase.from('employees').select('id, name, role').eq('tenant_id', tenant.id).eq('is_active', true).in('role', ['مدير عام', 'مدير مشروع']),
-      supabase.from('hr_job_titles').select('name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('hr_departments').select('name').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('hr_departments').select('*, manager:employees(name, role)').eq('tenant_id', tenant.id).order('name'),
     ])
     setHREmployees(hrRes.data || [])
     setManagers(mgRes.data || [])
-    setJobTitles((jtRes.data || []).map((x: any) => x.name))
-    setDepartments((deptRes.data || []).map((x: any) => x.name))
+    setDepartments(deptRes.data || [])
     setLoading(false)
   }
 
@@ -595,30 +713,18 @@ export default function HRPage() {
       }
 
       const hrPayload = {
-        tenant_id: tenant.id,
-        employee_id: employeeId,
-        national_id: data.national_id,
-        nationality: data.nationality,
-        birth_date: data.birth_date,
-        gender: data.gender,
-        marital_status: data.marital_status,
-        hire_date: data.hire_date,
-        contract_type: data.contract_type,
-        job_title: data.job_title,
-        department: data.department,
-        direct_manager: data.direct_manager,
-        basic_salary: data.basic_salary,
-        housing_allow: data.housing_allow,
-        transport_allow: data.transport_allow,
-        other_allow: data.other_allow,
-        gosi_enrolled: data.gosi_enrolled,
-        gosi_pct: data.gosi_pct,
-        bank_name: data.bank_name,
-        iban: data.iban,
-        iqama_number: data.iqama_number,
-        iqama_expiry: data.iqama_expiry,
-        notes: data.notes,
-        is_active: true,
+        tenant_id: tenant.id, employee_id: employeeId,
+        national_id: data.national_id, nationality: data.nationality,
+        birth_date: data.birth_date, gender: data.gender,
+        marital_status: data.marital_status, hire_date: data.hire_date,
+        contract_type: data.contract_type, job_title: data.job_title,
+        department: data.department, direct_manager: data.direct_manager,
+        basic_salary: data.basic_salary, housing_allow: data.housing_allow,
+        transport_allow: data.transport_allow, other_allow: data.other_allow,
+        gosi_enrolled: data.gosi_enrolled, gosi_pct: data.gosi_pct,
+        bank_name: data.bank_name, iban: data.iban,
+        iqama_number: data.iqama_number, iqama_expiry: data.iqama_expiry,
+        notes: data.notes, is_active: true,
       }
 
       if (data.id) await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
@@ -639,9 +745,9 @@ export default function HRPage() {
   const expats = hrEmployees.filter(e => e.nationality !== 'سعودي').length
 
   const TABS = [
-    { id: 'employees',   label: '👥 ملفات الموظفين',      color: '#1a56db' },
-    { id: 'jobtitles',   label: '💼 المسميات الوظيفية',    color: '#0ea77b' },
-    { id: 'departments', label: '🏢 الأقسام',              color: '#e6820a' },
+    { id: 'employees',   label: '👥 ملفات الموظفين',    color: '#1a56db' },
+    { id: 'departments', label: '🏢 الأقسام',            color: '#e6820a' },
+    { id: 'jobtitles',  label: '💼 المسميات الوظيفية',  color: '#0ea77b' },
   ]
 
   return (
@@ -792,14 +898,14 @@ export default function HRPage() {
         </>
       )}
 
+      {/* ══ تاب الأقسام ══ */}
+      {activeTab === 'departments' && tenant && <DepartmentsTab tenantId={tenant.id} managers={managers} />}
+
       {/* ══ تاب المسميات ══ */}
       {activeTab === 'jobtitles' && tenant && <JobTitlesTab tenantId={tenant.id} />}
 
-      {/* ══ تاب الأقسام ══ */}
-      {activeTab === 'departments' && tenant && <DepartmentsTab tenantId={tenant.id} />}
-
       {showModal && (
-        <HREmployeeModal emp={editEmp} managers={managers} jobTitles={jobTitles} departments={departments}
+        <HREmployeeModal emp={editEmp} departments={departments} managers={managers}
           onClose={() => { setShowModal(false); setEditEmp(null) }}
           onSave={handleSave} />
       )}
