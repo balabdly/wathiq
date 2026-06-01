@@ -988,127 +988,151 @@ export default function HRPage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map(emp => {
-                const totalSal = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
-                const iqamaDays = emp.iqama_expiry
-                  ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000)
-                  : null
-                const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow)
-                const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
-                const isSaudi = emp.nationality === 'سعودي'
-                const manager = managers.find(m => m.id === emp.direct_manager)
-                const empName = emp.employee?.name || '—'
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>#</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>القسم / المسمى</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الجنسية</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>تاريخ التعيين</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الراتب الأساسي</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>صافي الراتب</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>GOSI</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الحالة</th>
+                      {isAdmin && <th style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إجراء</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((emp, idx) => {
+                      const totalSal = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
+                      const iqamaDays = emp.iqama_expiry
+                        ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000)
+                        : null
+                      const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow)
+                      const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
+                      const isSaudi = emp.nationality === 'سعودي'
+                      const empName = emp.employee?.name || '—'
+                      const iqamaWarning = iqamaDays !== null && iqamaDays <= 60
 
-                return (
-                  <div key={emp.id} className="card" style={{ padding: '20px' }}>
-                    {/* رأس البطاقة */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{
-                          width: '46px', height: '46px', borderRadius: '14px',
-                          background: isSaudi ? '#eff6ff' : '#fffbeb',
-                          color: isSaudi ? '#1a56db' : '#e6820a',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontWeight: 700, fontSize: '1.2rem', flexShrink: 0,
-                        }}>
-                          {empName.charAt(0)}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.95rem' }}>{empName}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>{emp.job_title || '—'}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                        <span className={`badge ${emp.is_active ? 'badge-green' : 'badge-gray'} text-xs`}>
-                          {emp.is_active ? 'نشط' : 'غير نشط'}
-                        </span>
-                        <span className={`badge text-xs ${isSaudi ? 'badge-blue' : 'badge-amber'}`}>
-                          {isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality}`}
-                        </span>
-                      </div>
-                    </div>
+                      return (
+                        <tr key={emp.id}
+                          style={{ borderBottom: '1px solid var(--bg2)', transition: 'background 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
 
-                    {/* تفاصيل */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px', fontSize: '0.8rem' }}>
-                      {emp.department && (
-                        <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                          <span style={{ color: 'var(--text3)' }}>القسم: </span>
-                          <span style={{ fontWeight: 600 }}>{emp.department}</span>
-                        </div>
-                      )}
-                      {manager && (
-                        <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                          <span style={{ color: 'var(--text3)' }}>المدير: </span>
-                          <span style={{ fontWeight: 600 }}>{manager.name}</span>
-                        </div>
-                      )}
-                      <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                        <div style={{ color: 'var(--text3)', fontSize: '0.7rem' }}>العقد</div>
-                        <div style={{ fontWeight: 600 }}>{emp.contract_type}</div>
-                      </div>
-                      {emp.hire_date && (
-                        <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                          <div style={{ color: 'var(--text3)', fontSize: '0.7rem' }}>التعيين</div>
-                          <div style={{ fontWeight: 600 }}>{formatDate(emp.hire_date)}</div>
-                        </div>
-                      )}
-                    </div>
+                          {/* # */}
+                          <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.8rem' }}>{idx + 1}</td>
 
-                    {/* ملخص الراتب */}
-                    <div style={{ background: 'var(--primary-light)', borderRadius: '10px', padding: '10px 14px', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>الإجمالي</span>
-                        <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{totalSal.toLocaleString()} ر.س</span>
-                      </div>
-                      {emp.gosi_enrolled && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>خصم GOSI ({gosi.employeePct}%)</span>
-                          <span style={{ fontWeight: 600, color: '#c81e1e' }}>- {gosi.employeeDeduction.toLocaleString()} ر.س</span>
-                        </div>
-                      )}
-                      <div style={{ borderTop: '1px solid rgba(26,86,219,0.15)', paddingTop: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>الصافي</span>
-                        <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1rem' }}>{netSal.toLocaleString()} ر.س</span>
-                      </div>
-                    </div>
+                          {/* الموظف */}
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{
+                                width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
+                                background: isSaudi ? '#eff6ff' : '#fffbeb',
+                                color: isSaudi ? '#1a56db' : '#e6820a',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontWeight: 700, fontSize: '1rem',
+                              }}>
+                                {empName.charAt(0)}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: 'var(--text)' }}>{empName}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.contract_type}</div>
+                              </div>
+                            </div>
+                          </td>
 
-                    {/* شارات */}
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      {emp.gosi_enrolled && <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>✓ GOSI</span>}
-                      {emp.bank_name && <span className="badge badge-blue" style={{ fontSize: '0.7rem' }}>🏦 {emp.bank_name}</span>}
-                    </div>
+                          {/* القسم / المسمى */}
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.8rem' }}>{emp.department || '—'}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.job_title || '—'}</div>
+                          </td>
 
-                    {/* تنبيه الإقامة */}
-                    {iqamaDays !== null && iqamaDays <= 60 && (
-                      <div style={{
-                        background: iqamaDays <= 0 ? '#fef2f2' : '#fffbeb',
-                        borderRadius: '8px', padding: '7px 10px', marginBottom: '10px',
-                        fontSize: '0.75rem',
-                        color: iqamaDays <= 0 ? '#c81e1e' : '#e6820a',
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                      }}>
-                        <AlertTriangle style={{ width: '13px', height: '13px', flexShrink: 0 }} />
-                        {iqamaDays <= 0
-                          ? `إقامة منتهية منذ ${Math.abs(iqamaDays)} يوم!`
-                          : `إقامة تنتهي خلال ${iqamaDays} يوم`}
-                      </div>
-                    )}
+                          {/* الجنسية */}
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <span className={`badge text-xs ${isSaudi ? 'badge-blue' : 'badge-amber'}`}>
+                              {isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality}`}
+                            </span>
+                            {iqamaWarning && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.7rem', color: iqamaDays! <= 0 ? '#c81e1e' : '#e6820a' }}>
+                                <AlertTriangle style={{ width: '11px', height: '11px' }} />
+                                {iqamaDays! <= 0 ? `منتهية ${Math.abs(iqamaDays!)} يوم` : `تنتهي ${iqamaDays} يوم`}
+                              </div>
+                            )}
+                          </td>
 
-                    {/* زر التعديل */}
-                    {isAdmin && (
-                      <div style={{ paddingTop: '10px', borderTop: '1px solid var(--bg2)' }}>
-                        <button
-                          onClick={() => { setEditEmp(emp); setShowModal(true) }}
-                          className="btn btn-ghost btn-sm"
-                          style={{ width: '100%', justifyContent: 'center' }}>
-                          <Pencil style={{ width: '14px', height: '14px' }} /> تعديل البيانات
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                          {/* تاريخ التعيين */}
+                          <td style={{ padding: '12px 14px', color: 'var(--text)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                            {emp.hire_date ? formatDate(emp.hire_date) : '—'}
+                          </td>
+
+                          {/* الراتب الأساسي */}
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{emp.basic_salary.toLocaleString()} ر.س</div>
+                            {totalSal !== emp.basic_salary && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>إجمالي: {totalSal.toLocaleString()}</div>
+                            )}
+                          </td>
+
+                          {/* صافي الراتب */}
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '0.9rem' }}>
+                              {netSal.toLocaleString()} ر.س
+                            </span>
+                          </td>
+
+                          {/* GOSI */}
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            {emp.gosi_enrolled ? (
+                              <div>
+                                <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>✓ مسجل</span>
+                                <div style={{ fontSize: '0.7rem', color: '#c81e1e', marginTop: '3px' }}>
+                                  -{gosi.employeeDeduction.toLocaleString()} ر.س
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>غير مسجل</span>
+                            )}
+                          </td>
+
+                          {/* الحالة */}
+                          <td style={{ padding: '12px 14px' }}>
+                            <span className={`badge ${emp.is_active ? 'badge-green' : 'badge-gray'} text-xs`}>
+                              {emp.is_active ? 'نشط' : 'غير نشط'}
+                            </span>
+                          </td>
+
+                          {/* إجراء */}
+                          {isAdmin && (
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <button
+                                onClick={() => { setEditEmp(emp); setShowModal(true) }}
+                                className="btn btn-ghost btn-xs"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* Footer */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', fontSize: '0.78rem', color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>إجمالي الموظفين: <strong>{filtered.length}</strong></span>
+                <span>إجمالي الرواتب الصافية: <strong style={{ color: '#0ea77b' }}>
+                  {filtered.reduce((s, e) => {
+                    const tot = e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow
+                    const g = calcGOSI(e.nationality, e.basic_salary, e.housing_allow)
+                    return s + tot - (e.gosi_enrolled ? g.employeeDeduction : 0)
+                  }, 0).toLocaleString()} ر.س
+                </strong></span>
+              </div>
             </div>
           )}
         </>
