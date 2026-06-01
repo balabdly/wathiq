@@ -422,7 +422,7 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
 // ══════════════════════════════════════
 // تاب الأقسام
 // ══════════════════════════════════════
-function DepartmentsTab({ tenantId, managers }: { tenantId: string; managers: any[] }) {
+function DepartmentsTab({ tenantId, managers, onUpdate }: { tenantId: string; managers: any[]; onUpdate?: () => void }) {
   const [depts, setDepts] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ name: '', manager_id: '' })
@@ -450,13 +450,13 @@ function DepartmentsTab({ tenantId, managers }: { tenantId: string; managers: an
       await supabase.from('hr_departments').insert(payload)
     }
     setForm({ name: '', manager_id: '' }); setEditId(null)
-    await load(); toast.success('تم الحفظ ✅')
+    await load(); onUpdate?.(); toast.success('تم الحفظ ✅')
   }
 
   async function remove(id: number) {
     if (!confirm('حذف هذا القسم؟ سيتأثر الموظفون المرتبطون به')) return
     await supabase.from('hr_departments').delete().eq('id', id)
-    setDepts(d => d.filter(x => x.id !== id)); toast.success('تم الحذف')
+    setDepts(d => d.filter(x => x.id !== id)); onUpdate?.(); toast.success('تم الحذف')
   }
 
   return (
@@ -899,7 +899,7 @@ export default function HRPage() {
       )}
 
       {/* ══ تاب الأقسام ══ */}
-      {activeTab === 'departments' && tenant && <DepartmentsTab tenantId={tenant.id} managers={managers} />}
+      {activeTab === 'departments' && tenant && <DepartmentsTab tenantId={tenant.id} managers={managers} onUpdate={load} />}
 
       {/* ══ تاب المسميات ══ */}
       {activeTab === 'jobtitles' && tenant && <JobTitlesTab tenantId={tenant.id} />}
