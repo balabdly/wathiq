@@ -2,13 +2,16 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square } from 'lucide-react'
+import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// ══════════════════════════════════════
+// Types
+// ══════════════════════════════════════
 type HREmployee = {
   id: number; employee_id: number; basic_salary: number; housing_allow: number
   transport_allow: number; other_allow: number; gosi_enrolled: boolean; gosi_pct: number
-  nationality: string
+  nationality: string; hire_date?: string; department?: string; job_title?: string
   employee?: { name: string; role: string }
 }
 
@@ -17,30 +20,50 @@ type Payroll = {
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; absence_deduct: number
   other_deduct: number; gross_salary: number; net_salary: number
-  present_days: number; absent_days: number; overtime_hours: number
-  notes?: string; status: string
+  present_days: number; absent_days: number; notes?: string; status: string
   employee?: { name: string; role: string }
 }
 
 type PayrollRow = {
-  employee_id: number
-  name: string
-  role: string
-  included: boolean        // ← مربع الاختيار
-  basic_salary: number
-  housing_allow: number
-  transport_allow: number
-  other_allow: number
-  overtime_pay: number
-  bonuses: number
-  gosi_deduction: number
-  absence_deduct: number
-  other_deduct: number
-  present_days: number
-  notes: string
-  gross: number
-  net: number
-  existingId?: number
+  employee_id: number; name: string; role: string; included: boolean
+  basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
+  overtime_pay: number; bonuses: number; gosi_deduction: number; absence_deduct: number
+  other_deduct: number; present_days: number; notes: string
+  gross: number; net: number; existingId?: number
+}
+
+type Termination = {
+  id: number; employee_id: number; hr_employee_id: number
+  termination_type: string; termination_date: string; last_working_day: string
+  years_of_service: number; gratuity_amount: number; notes?: string
+  employee?: { name: string; role: string }
+}
+
+type Settlement = {
+  id: number; tenant_id: string; employee_id: number; termination_id: number
+  termination_date: string; last_working_day: string; termination_type: string
+  // مكافأة نهاية الخدمة
+  gratuity_amount: number
+  // راتب أيام الشهر
+  month_salary_days: number; month_salary_amount: number
+  // تعويض الإجازات
+  leave_balance_days: number; leave_compensation: number
+  // مستحقات أخرى
+  other_entitlements: number; other_entitlements_note: string
+  // خصومات
+  advances_deduct: number; other_deduct: number; other_deduct_note: string
+  // الإجمالي
+  total_entitlements: number; total_deductions: number; net_settlement: number
+  status: string; notes?: string
+  employee?: { name: string; role: string }
+}
+
+type LeaveCompensation = {
+  id: number; tenant_id: string; employee_id: number
+  compensation_date: string; leave_days: number
+  daily_salary: number; total_amount: number
+  reason: string; status: string; notes?: string
+  employee?: { name: string; role: string }
 }
 
 const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
@@ -52,8 +75,13 @@ function calcRow(r: PayrollRow): PayrollRow {
   return { ...r, gross, net }
 }
 
+// ── مساعد: راتب يومي ──
+function dailySalary(emp: HREmployee) {
+  return (emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow) / 30
+}
+
 // ══════════════════════════════════════
-// نافذة تعديل كشف راتب موجود
+// نافذة تعديل كشف راتب
 // ══════════════════════════════════════
 function EditPayrollModal({ payroll, onClose, onSave }: {
   payroll: Payroll; onClose: () => void; onSave: (d: any) => Promise<void>
@@ -76,7 +104,6 @@ function EditPayrollModal({ payroll, onClose, onSave }: {
     await onSave({ id: payroll.id, ...form, gross_salary: gross, net_salary: net })
     setSaving(false)
   }
-
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
@@ -104,7 +131,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', textAlign: 'center' }}>
               <div style={{ background: 'var(--primary-light)', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الإجمالي</div><div style={{ fontWeight: 700, color: 'var(--primary)' }}>{gross.toLocaleString()}</div></div>
-              <div style={{ background: '#fff5f5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الخصومات</div><div style={{ fontWeight: 700, color: '#c81e1e' }}>{(form.gosi_deduction + form.absence_deduct + form.other_deduct).toLocaleString()}</div></div>
+              <div style={{ background: '#fff5f5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الخصومات</div><div style={{ fontWeight: 700, color: '#c81e1e' }}>{(form.gosi_deduction+form.absence_deduct+form.other_deduct).toLocaleString()}</div></div>
               <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الصافي</div><div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1rem' }}>{net.toLocaleString()}</div></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -131,10 +158,558 @@ function EditPayrollModal({ payroll, onClose, onSave }: {
 }
 
 // ══════════════════════════════════════
+// نافذة تعديل تسوية نهاية الخدمة
+// ══════════════════════════════════════
+function EditSettlementModal({ settlement, onClose, onSave }: {
+  settlement: Settlement; onClose: () => void; onSave: (d: any) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    gratuity_amount:         settlement.gratuity_amount,
+    month_salary_days:       settlement.month_salary_days,
+    month_salary_amount:     settlement.month_salary_amount,
+    leave_balance_days:      settlement.leave_balance_days,
+    leave_compensation:      settlement.leave_compensation,
+    other_entitlements:      settlement.other_entitlements,
+    other_entitlements_note: settlement.other_entitlements_note || '',
+    advances_deduct:         settlement.advances_deduct,
+    other_deduct:            settlement.other_deduct,
+    other_deduct_note:       settlement.other_deduct_note || '',
+    status:                  settlement.status,
+    notes:                   settlement.notes || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const totalEnt = form.gratuity_amount + form.month_salary_amount + form.leave_compensation + form.other_entitlements
+  const totalDed = form.advances_deduct + form.other_deduct
+  const net = totalEnt - totalDed
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true)
+    await onSave({ id: settlement.id, ...form, total_entitlements: totalEnt, total_deductions: totalDed, net_settlement: net })
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">تعديل تسوية — {settlement.employee?.name}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            {/* المستحقات */}
+            <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '14px' }}>
+              <div style={{ fontWeight: 700, color: '#0ea77b', marginBottom: '12px', fontSize: '0.875rem' }}>✅ المستحقات</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">مكافأة نهاية الخدمة</label>
+                  <input type="number" value={form.gratuity_amount} onChange={e => set('gratuity_amount', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">أيام الشهر المعمولة</label>
+                  <input type="number" value={form.month_salary_days} onChange={e => set('month_salary_days', Number(e.target.value))} className="input" min="0" max="31" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">راتب أيام الشهر (ر.س)</label>
+                  <input type="number" value={form.month_salary_amount} onChange={e => set('month_salary_amount', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">رصيد الإجازات (يوم)</label>
+                  <input type="number" value={form.leave_balance_days} onChange={e => set('leave_balance_days', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">تعويض الإجازات (ر.س)</label>
+                  <input type="number" value={form.leave_compensation} onChange={e => set('leave_compensation', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">مستحقات أخرى (ر.س)</label>
+                  <input type="number" value={form.other_entitlements} onChange={e => set('other_entitlements', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="block text-xs text-gray-500 mb-1">بيان المستحقات الأخرى</label>
+                  <input value={form.other_entitlements_note} onChange={e => set('other_entitlements_note', e.target.value)} className="input" placeholder="مثال: بدل انتقال، مكافأة..." />
+                </div>
+              </div>
+            </div>
+
+            {/* الخصومات */}
+            <div style={{ background: '#fff5f5', borderRadius: '12px', padding: '14px' }}>
+              <div style={{ fontWeight: 700, color: '#c81e1e', marginBottom: '12px', fontSize: '0.875rem' }}>❌ الخصومات</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">السلف والقروض (ر.س)</label>
+                  <input type="number" value={form.advances_deduct} onChange={e => set('advances_deduct', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">خصومات أخرى (ر.س)</label>
+                  <input type="number" value={form.other_deduct} onChange={e => set('other_deduct', Number(e.target.value))} className="input" min="0" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="block text-xs text-gray-500 mb-1">بيان الخصومات الأخرى</label>
+                  <input value={form.other_deduct_note} onChange={e => set('other_deduct_note', e.target.value)} className="input" placeholder="مثال: تلف معدات، غرامات..." />
+                </div>
+              </div>
+            </div>
+
+            {/* الإجمالي */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', textAlign: 'center' }}>
+              <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '10px' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>إجمالي المستحقات</div>
+                <div style={{ fontWeight: 700, color: '#0ea77b' }}>{totalEnt.toLocaleString()} ر.س</div>
+              </div>
+              <div style={{ background: '#fff5f5', borderRadius: '10px', padding: '10px' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>إجمالي الخصومات</div>
+                <div style={{ fontWeight: 700, color: '#c81e1e' }}>{totalDed.toLocaleString()} ر.س</div>
+              </div>
+              <div style={{ background: 'var(--primary-light)', borderRadius: '10px', padding: '10px' }}>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>صافي التسوية</div>
+                <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1rem' }}>{net.toLocaleString()} ر.س</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                  {['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+              حفظ التسوية
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// تاب تسوية نهاية الخدمة
+// ══════════════════════════════════════
+function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HREmployee[] }) {
+  const [settlements, setSettlements] = useState<Settlement[]>([])
+  const [terminations, setTerminations] = useState<Termination[]>([])
+  const [loading, setLoading] = useState(false)
+  const [editSettlement, setEditSettlement] = useState<Settlement | null>(null)
+
+  useEffect(() => { loadData() }, [tenant?.id])
+
+  async function loadData() {
+    if (!tenant) return
+    setLoading(true)
+    const [sRes, tRes] = await Promise.all([
+      supabase.from('hr_settlements')
+        .select('*, employee:employees!hr_settlements_employee_id_fkey(name, role)')
+        .eq('tenant_id', tenant.id)
+        .order('termination_date', { ascending: false }),
+      supabase.from('hr_terminations')
+        .select('*, employee:employees!hr_terminations_employee_id_fkey(name, role)')
+        .eq('tenant_id', tenant.id)
+        .order('termination_date', { ascending: false }),
+    ])
+    setSettlements(sRes.data || [])
+    setTerminations(tRes.data || [])
+    setLoading(false)
+  }
+
+  // إنشاء تسوية تلقائية من سجل إنهاء خدمة
+  async function createFromTermination(term: Termination) {
+    const emp = hrEmployees.find(e => e.employee_id === term.employee_id)
+    if (!emp) { toast.error('لم يتم العثور على بيانات الموظف'); return }
+
+    // حساب راتب أيام الشهر
+    const lastDay = new Date(term.last_working_day)
+    const workedDays = lastDay.getDate()
+    const daily = dailySalary(emp)
+    const monthSalaryAmt = Math.round(daily * workedDays)
+
+    // تعويض الإجازات — جلب الرصيد من hr_leaves
+    const { data: leaveData } = await supabase
+      .from('hr_leaves')
+      .select('days, status, leave_type')
+      .eq('employee_id', term.employee_id)
+      .eq('tenant_id', tenant.id)
+      .eq('status', 'معتمد')
+
+    // رصيد الإجازة السنوية المتبقي (21 يوم في السنة - المأخوذ)
+    const yearsService = term.years_of_service
+    const totalEntitled = Math.floor(yearsService * 21)
+    const takenDays = (leaveData || [])
+      .filter(l => l.leave_type === 'سنوية')
+      .reduce((s, l) => s + (l.days || 0), 0)
+    const leaveBalance = Math.max(0, totalEntitled - takenDays)
+    const leaveCompensation = Math.round(daily * leaveBalance)
+
+    const totalEnt = term.gratuity_amount + monthSalaryAmt + leaveCompensation
+    const payload = {
+      tenant_id: tenant.id,
+      employee_id: term.employee_id,
+      termination_id: term.id,
+      termination_date: term.termination_date,
+      last_working_day: term.last_working_day,
+      termination_type: term.termination_type,
+      gratuity_amount: term.gratuity_amount,
+      month_salary_days: workedDays,
+      month_salary_amount: monthSalaryAmt,
+      leave_balance_days: leaveBalance,
+      leave_compensation: leaveCompensation,
+      other_entitlements: 0,
+      other_entitlements_note: '',
+      advances_deduct: 0,
+      other_deduct: 0,
+      other_deduct_note: '',
+      total_entitlements: totalEnt,
+      total_deductions: 0,
+      net_settlement: totalEnt,
+      status: 'مسودة',
+      notes: '',
+    }
+    const { error } = await supabase.from('hr_settlements').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    await loadData()
+    toast.success('✅ تم إنشاء التسوية تلقائياً — راجعها وعدّل إذا لزم')
+  }
+
+  async function handleEditSave(data: any) {
+    await supabase.from('hr_settlements').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id)
+    await loadData(); setEditSettlement(null); toast.success('تم التعديل ✅')
+  }
+
+  // إنهاءات لم تُنشأ لها تسوية بعد
+  const pendingTerminations = terminations.filter(t => !settlements.find(s => s.termination_id === t.id))
+
+  return (
+    <div className="space-y-5">
+
+      {/* إنهاءات بانتظار التسوية */}
+      {pendingTerminations.length > 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px', padding: '16px' }}>
+          <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '12px', fontSize: '0.875rem' }}>
+            ⏳ إنهاءات خدمة بانتظار التسوية ({pendingTerminations.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {pendingTerminations.map(t => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'white', borderRadius: '8px', padding: '10px 14px', border: '1px solid #fde68a' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{t.employee?.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#92400e' }}>{t.termination_type} — {t.last_working_day}</div>
+                </div>
+                <button onClick={() => createFromTermination(t)} className="btn btn-primary btn-sm"
+                  style={{ background: '#e6820a', fontSize: '0.8rem' }}>
+                  ⚡ إنشاء تسوية تلقائية
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* جدول التسويات */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : settlements.length === 0 ? (
+        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+          <FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد تسويات بعد</p>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text3)', marginTop: '6px' }}>سجّل إنهاء خدمة من صفحة HR ثم أنشئ التسوية من هنا</p>
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                  {['الموظف','نوع الإنهاء','آخر يوم','مكافأة نهاية خدمة','راتب الشهر','تعويض إجازات','مستحقات أخرى','الخصومات','صافي التسوية','الحالة',''].map(h => (
+                    <th key={h} style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {settlements.map(s => (
+                  <tr key={s.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding: '12px 12px' }}>
+                      <div style={{ fontWeight: 700 }}>{s.employee?.name || `#${s.employee_id}`}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{s.employee?.role}</div>
+                    </td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem' }}>{s.termination_type}</td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{s.last_working_day}</td>
+                    <td style={{ padding: '12px 12px', color: '#0ea77b', fontWeight: 600 }}>{s.gratuity_amount.toLocaleString()} ر.س</td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem' }}>
+                      {s.month_salary_amount.toLocaleString()} ر.س
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{s.month_salary_days} يوم</div>
+                    </td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem' }}>
+                      {s.leave_compensation.toLocaleString()} ر.س
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{s.leave_balance_days} يوم</div>
+                    </td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem', color: s.other_entitlements > 0 ? '#0ea77b' : 'var(--text3)' }}>
+                      {s.other_entitlements > 0 ? `${s.other_entitlements.toLocaleString()} ر.س` : '—'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontSize: '0.82rem', color: s.total_deductions > 0 ? '#c81e1e' : 'var(--text3)' }}>
+                      {s.total_deductions > 0 ? `-${s.total_deductions.toLocaleString()} ر.س` : '—'}
+                    </td>
+                    <td style={{ padding: '12px 12px', fontWeight: 700, color: 'var(--primary)', fontSize: '1rem', background: 'var(--primary-light)', whiteSpace: 'nowrap' }}>
+                      {s.net_settlement.toLocaleString()} ر.س
+                    </td>
+                    <td style={{ padding: '12px 12px' }}>
+                      <span className={`badge ${STATUS_COLOR[s.status] || 'badge-gray'}`}>{s.status}</span>
+                    </td>
+                    <td style={{ padding: '12px 12px' }}>
+                      <button onClick={() => setEditSettlement(s)} className="btn btn-ghost btn-xs">
+                        <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                  <td style={{ padding: '10px 12px' }} colSpan={3}>الإجمالي ({settlements.length})</td>
+                  <td style={{ padding: '10px 12px', color: '#0ea77b' }}>{settlements.reduce((s,x)=>s+x.gratuity_amount,0).toLocaleString()} ر.س</td>
+                  <td style={{ padding: '10px 12px' }}>{settlements.reduce((s,x)=>s+x.month_salary_amount,0).toLocaleString()} ر.س</td>
+                  <td style={{ padding: '10px 12px' }}>{settlements.reduce((s,x)=>s+x.leave_compensation,0).toLocaleString()} ر.س</td>
+                  <td style={{ padding: '10px 12px' }}>{settlements.reduce((s,x)=>s+x.other_entitlements,0).toLocaleString()} ر.س</td>
+                  <td style={{ padding: '10px 12px', color: '#c81e1e' }}>{settlements.reduce((s,x)=>s+x.total_deductions,0).toLocaleString()} ر.س</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--primary)', background: 'var(--primary-light)' }}>{settlements.reduce((s,x)=>s+x.net_settlement,0).toLocaleString()} ر.س</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {editSettlement && (
+        <EditSettlementModal settlement={editSettlement} onClose={() => setEditSettlement(null)} onSave={handleEditSave} />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// تاب تعويض الإجازات
+// ══════════════════════════════════════
+function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HREmployee[] }) {
+  const [records, setRecords] = useState<LeaveCompensation[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({
+    employee_id: '', compensation_date: new Date().toISOString().split('T')[0],
+    leave_days: '', reason: 'صرف رصيد نقدي', notes: '', status: 'مسودة',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const selectedEmp = hrEmployees.find(e => e.employee_id === Number(form.employee_id))
+  const daily = selectedEmp ? dailySalary(selectedEmp) : 0
+  const totalAmt = Math.round(daily * Number(form.leave_days || 0))
+
+  useEffect(() => { loadData() }, [tenant?.id])
+
+  async function loadData() {
+    if (!tenant) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('hr_leave_compensations')
+      .select('*, employee:employees!hr_leave_compensations_employee_id_fkey(name, role)')
+      .eq('tenant_id', tenant.id)
+      .order('compensation_date', { ascending: false })
+    setRecords(data || [])
+    setLoading(false)
+  }
+
+  async function handleSave() {
+    if (!form.employee_id) { toast.error('اختر الموظف'); return }
+    if (!form.leave_days || Number(form.leave_days) <= 0) { toast.error('أدخل عدد الأيام'); return }
+    if (!form.compensation_date) { toast.error('أدخل التاريخ'); return }
+    setSaving(true)
+    const { error } = await supabase.from('hr_leave_compensations').insert({
+      tenant_id: tenant.id,
+      employee_id: Number(form.employee_id),
+      compensation_date: form.compensation_date,
+      leave_days: Number(form.leave_days),
+      daily_salary: Math.round(daily),
+      total_amount: totalAmt,
+      reason: form.reason,
+      status: form.status,
+      notes: form.notes || null,
+    })
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    await loadData()
+    setForm({ employee_id: '', compensation_date: new Date().toISOString().split('T')[0], leave_days: '', reason: 'صرف رصيد نقدي', notes: '', status: 'مسودة' })
+    setShowForm(false)
+    setSaving(false)
+    toast.success('✅ تم حفظ تعويض الإجازة')
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* زر إضافة */}
+      {!showForm && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowForm(true)} className="btn btn-primary">
+            <Palmtree style={{ width: '16px', height: '16px' }} /> إضافة تعويض إجازة
+          </button>
+        </div>
+      )}
+
+      {/* نموذج الإضافة */}
+      {showForm && (
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ fontWeight: 700, marginBottom: '16px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Palmtree style={{ width: '18px', height: '18px', color: '#0ea77b' }} />
+            تعويض رصيد إجازة نقداً
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div style={{ gridColumn: '1/-1' }}>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select">
+                <option value="">— اختر الموظف —</option>
+                {hrEmployees.map(e => (
+                  <option key={e.employee_id} value={e.employee_id}>{e.employee?.name} — {e.job_title || e.employee?.role}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الصرف <span className="text-red-500">*</span></label>
+              <input type="date" value={form.compensation_date} onChange={e => set('compensation_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">عدد الأيام <span className="text-red-500">*</span></label>
+              <input type="number" min="1" value={form.leave_days} onChange={e => set('leave_days', e.target.value)} className="input" placeholder="مثال: 10" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">السبب</label>
+              <select value={form.reason} onChange={e => set('reason', e.target.value)} className="select">
+                <option value="صرف رصيد نقدي">صرف رصيد نقدي</option>
+                <option value="تعويض إجازة لم تُستخدم">تعويض إجازة لم تُستخدم</option>
+                <option value="تعويض عند نهاية الخدمة">تعويض عند نهاية الخدمة</option>
+                <option value="أخرى">أخرى</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
+            </div>
+
+            {/* معاينة الحساب */}
+            {selectedEmp && Number(form.leave_days) > 0 && (
+              <div style={{ gridColumn: '1/-1', background: '#ecfdf5', borderRadius: '12px', padding: '14px' }}>
+                <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '10px', fontSize: '0.875rem' }}>🧮 حساب التعويض</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>الراتب اليومي</div>
+                    <div style={{ fontWeight: 700, color: '#374151' }}>{Math.round(daily).toLocaleString()} ر.س</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>× عدد الأيام</div>
+                    <div style={{ fontWeight: 700, color: '#374151' }}>{form.leave_days} يوم</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>= إجمالي التعويض</div>
+                    <div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1.1rem' }}>{totalAmt.toLocaleString()} ر.س</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+            <button type="button" onClick={() => setShowForm(false)} className="btn btn-ghost">إلغاء</button>
+            <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+              حفظ التعويض
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* جدول السجلات */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : records.length === 0 ? (
+        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+          <Palmtree style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد تعويضات إجازات بعد</p>
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                  {['الموظف','تاريخ الصرف','عدد الأيام','الراتب اليومي','إجمالي التعويض','السبب','الحالة'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {records.map(r => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ fontWeight: 700 }}>{r.employee?.name || `#${r.employee_id}`}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{r.employee?.role}</div>
+                    </td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{r.compensation_date}</td>
+                    <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 600 }}>{r.leave_days} يوم</td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{r.daily_salary.toLocaleString()} ر.س</td>
+                    <td style={{ padding: '12px 14px', fontWeight: 700, color: '#0ea77b', fontSize: '0.95rem' }}>{r.total_amount.toLocaleString()} ر.س</td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{r.reason}</td>
+                    <td style={{ padding: '12px 14px' }}><span className={`badge ${STATUS_COLOR[r.status] || 'badge-gray'}`}>{r.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
+                  <td style={{ padding: '10px 14px', fontSize: '0.82rem' }} colSpan={2}>الإجمالي ({records.length})</td>
+                  <td style={{ padding: '10px 14px', textAlign: 'center' }}>{records.reduce((s,r)=>s+r.leave_days,0)} يوم</td>
+                  <td></td>
+                  <td style={{ padding: '10px 14px', color: '#0ea77b' }}>{records.reduce((s,r)=>s+r.total_amount,0).toLocaleString()} ر.س</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function PayrollPage() {
   const { tenant, activeBranch, currentUser } = useStore()
+  const [activeTab, setActiveTab] = useState<'payroll' | 'settlements' | 'leave_comp'>('payroll')
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [loading, setLoading] = useState(false)
@@ -142,7 +717,7 @@ export default function PayrollPage() {
   const [editPayroll, setEditPayroll] = useState<Payroll | null>(null)
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
   const [filterYear, setFilterYear] = useState(new Date().getFullYear())
-  const [mode, setMode] = useState<'view' | 'create'>('view')  // ← وضع العرض أو الإنشاء
+  const [mode, setMode] = useState<'view' | 'create'>('view')
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const isAdmin = currentUser?.role === 'مدير عام'
@@ -158,58 +733,38 @@ export default function PayrollPage() {
         .eq('tenant_id', tenant.id)
         .order('year', { ascending: false }).order('month', { ascending: false }),
       supabase.from('hr_employees')
-        .select('id, employee_id, basic_salary, housing_allow, transport_allow, other_allow, gosi_enrolled, gosi_pct, nationality, employee:employees!hr_employees_employee_id_fkey(name, role)')
-        .eq('tenant_id', tenant.id).order('id'),
+        .select('id, employee_id, basic_salary, housing_allow, transport_allow, other_allow, gosi_enrolled, gosi_pct, nationality, hire_date, department, job_title, employee:employees!hr_employees_employee_id_fkey(name, role)')
+        .eq('tenant_id', tenant.id).eq('is_active', true).order('id'),
     ])
     setPayrolls(p.data || [])
     setHREmployees((e.data || []) as any[])
     setLoading(false)
   }
 
-  // بناء صفوف المسير عند الدخول لوضع الإنشاء
   function enterCreateMode() {
     const existing = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
     const built: PayrollRow[] = hrEmployees.map(emp => {
       const ex = existing.find(p => p.employee_id === emp.employee_id)
-      const gosiAmt = emp.gosi_enrolled
-        ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100))
-        : 0
+      const gosiAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100)) : 0
       return calcRow({
-        employee_id:     emp.employee_id,
-        name:            emp.employee?.name || '—',
-        role:            emp.employee?.role || '—',
-        included:        true,   // كل الموظفين مُفعَّلون افتراضياً
-        basic_salary:    ex?.basic_salary    ?? emp.basic_salary,
-        housing_allow:   ex?.housing_allow   ?? emp.housing_allow,
-        transport_allow: ex?.transport_allow ?? emp.transport_allow,
-        other_allow:     ex?.other_allow     ?? emp.other_allow,
-        overtime_pay:    ex?.overtime_pay    ?? 0,
-        bonuses:         ex?.bonuses         ?? 0,
-        gosi_deduction:  ex?.gosi_deduction  ?? gosiAmt,
-        absence_deduct:  ex?.absence_deduct  ?? 0,
-        other_deduct:    ex?.other_deduct    ?? 0,
-        present_days:    ex?.present_days    ?? 26,
-        notes:           ex?.notes           ?? '',
-        gross: 0, net: 0,
-        existingId: ex?.id,
+        employee_id: emp.employee_id, name: emp.employee?.name || '—', role: emp.employee?.role || '—',
+        included: true,
+        basic_salary: ex?.basic_salary ?? emp.basic_salary, housing_allow: ex?.housing_allow ?? emp.housing_allow,
+        transport_allow: ex?.transport_allow ?? emp.transport_allow, other_allow: ex?.other_allow ?? emp.other_allow,
+        overtime_pay: ex?.overtime_pay ?? 0, bonuses: ex?.bonuses ?? 0,
+        gosi_deduction: ex?.gosi_deduction ?? gosiAmt, absence_deduct: ex?.absence_deduct ?? 0,
+        other_deduct: ex?.other_deduct ?? 0, present_days: ex?.present_days ?? 26,
+        notes: ex?.notes ?? '', gross: 0, net: 0, existingId: ex?.id,
       })
     })
-    setRows(built)
-    setExpandedRow(null)
-    setMode('create')
+    setRows(built); setExpandedRow(null); setMode('create')
   }
 
   function updateRow(idx: number, k: keyof PayrollRow, v: any) {
-    setRows(prev => {
-      const next = [...prev]
-      next[idx] = calcRow({ ...next[idx], [k]: v })
-      return next
-    })
+    setRows(prev => { const next = [...prev]; next[idx] = calcRow({ ...next[idx], [k]: v }); return next })
   }
 
-  function toggleAll(val: boolean) {
-    setRows(prev => prev.map(r => ({ ...r, included: val })))
-  }
+  function toggleAll(val: boolean) { setRows(prev => prev.map(r => ({ ...r, included: val }))) }
 
   const includedRows = rows.filter(r => r.included)
   const totalGross = includedRows.reduce((s, r) => s + r.gross, 0)
@@ -235,9 +790,7 @@ export default function PayrollPage() {
       if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
       else await supabase.from('hr_payroll').insert(payload)
     }
-    await load()
-    setMode('view')
-    setSaving(false)
+    await load(); setMode('view'); setSaving(false)
     toast.success(`✅ تم حفظ مسير ${ARABIC_MONTHS[filterMonth - 1]} — ${includedRows.length} موظف`)
   }
 
@@ -250,347 +803,273 @@ export default function PayrollPage() {
   const vGross = filteredPayrolls.reduce((s, p) => s + p.gross_salary, 0)
   const vDeduct = filteredPayrolls.reduce((s, p) => s + p.gosi_deduction + p.absence_deduct + p.other_deduct, 0)
   const vNet = filteredPayrolls.reduce((s, p) => s + p.net_salary, 0)
-
-  // ── input style مصغر للجدول ──
   const cellInput = (color?: string): React.CSSProperties => ({
     width: '76px', padding: '4px 6px', border: `1px solid ${color || 'var(--border)'}`,
     borderRadius: '6px', fontSize: '0.78rem', textAlign: 'left' as const,
-    background: color === '#fca5a5' ? '#fff5f5' : 'var(--bg2)',
-    direction: 'ltr',
+    background: color === '#fca5a5' ? '#fff5f5' : 'var(--bg2)', direction: 'ltr',
   })
+
+  const TABS = [
+    { id: 'payroll',     label: '📋 مسير الرواتب',         color: '#1a56db' },
+    { id: 'settlements', label: '💼 تسوية نهاية الخدمة',   color: '#c81e1e' },
+    { id: 'leave_comp',  label: '🏖️ تعويض الإجازات',       color: '#0ea77b' },
+  ]
 
   return (
     <div className="space-y-5 fade-in">
-
-      {/* ── العنوان ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Banknote style={{ width: '20px', height: '20px', color: 'var(--primary)' }} />
-            {mode === 'create'
-              ? `مسير رواتب — ${ARABIC_MONTHS[filterMonth - 1]} ${filterYear}`
-              : 'الرواتب'}
-          </h1>
-          <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>إدارة كشوف الرواتب الشهرية</p>
-        </div>
-
-        {/* أزرار رأس الصفحة */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* فلتر الشهر والسنة */}
-          <select value={filterMonth} onChange={e => { setFilterMonth(Number(e.target.value)); setMode('view') }} className="select" style={{ width: 'auto' }}>
-            {ARABIC_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-          </select>
-          <input type="number" value={filterYear} onChange={e => { setFilterYear(Number(e.target.value)); setMode('view') }}
-            className="input" style={{ width: '88px' }} min="2020" max="2030" />
-
-          {mode === 'view' ? (
-            isAdmin && (
-              <button onClick={enterCreateMode} className="btn btn-primary">
-                <Banknote style={{ width: '16px', height: '16px' }} />
-                {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}
-              </button>
-            )
-          ) : (
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => setMode('view')} className="btn btn-ghost">
-                <X style={{ width: '15px', height: '15px' }} /> إلغاء
-              </button>
-              <button type="button" onClick={handleSaveBulk} disabled={saving} className="btn btn-primary">
-                {saving
-                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Save style={{ width: '15px', height: '15px' }} />}
-                حفظ المسير ({includedRows.length} موظف)
-              </button>
-            </div>
-          )}
-        </div>
+      {/* العنوان */}
+      <div>
+        <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Banknote style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> الرواتب والتعويضات
+        </h1>
+        <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>مسير الرواتب — تسوية نهاية الخدمة — تعويض الإجازات</p>
       </div>
 
-      {/* ── KPIs ── */}
-      {(mode === 'view' ? filteredPayrolls.length > 0 : includedRows.length > 0) && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'إجمالي المستحقات', value: (mode === 'view' ? vGross : totalGross).toLocaleString() + ' ر.س', color: 'var(--primary)', bg: 'var(--primary-light)' },
-            { label: 'إجمالي الخصومات', value: (mode === 'view' ? vDeduct : totalDeduct).toLocaleString() + ' ر.س', color: '#c81e1e', bg: '#fef2f2' },
-            { label: 'إجمالي الصافي',   value: (mode === 'view' ? vNet : totalNet).toLocaleString() + ' ر.س',   color: '#0ea77b', bg: '#ecfdf5' },
-          ].map(kpi => (
-            <div key={kpi.label} className="card" style={{ padding: '14px', textAlign: 'center', background: kpi.bg }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>{kpi.label}</div>
+      {/* تابات الصفحة */}
+      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
+            style={{
+              padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem',
+              fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+              background: activeTab === t.id ? t.color : 'transparent',
+              color: activeTab === t.id ? 'white' : 'var(--text3)',
+              boxShadow: activeTab === t.id ? `0 2px 8px ${t.color}44` : 'none',
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ══ تاب مسير الرواتب ══ */}
+      {activeTab === 'payroll' && (
+        <>
+          {/* شريط الفلتر + الأزرار */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <select value={filterMonth} onChange={e => { setFilterMonth(Number(e.target.value)); setMode('view') }} className="select" style={{ width: 'auto' }}>
+                {ARABIC_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+              <input type="number" value={filterYear} onChange={e => { setFilterYear(Number(e.target.value)); setMode('view') }} className="input" style={{ width: '88px' }} min="2020" max="2030" />
+              {mode === 'view' && <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>{filteredPayrolls.length} موظف</span>}
             </div>
-          ))}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-        </div>
-
-      ) : mode === 'create' ? (
-        /* ════════════════════════════════
-           وضع الإنشاء — جدول المسير
-        ════════════════════════════════ */
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {/* تلميح */}
-          <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af', display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span>💡</span>
-            <span>أزل علامة الاختيار عن الموظفين في إجازة أو لا يستحقون راتب هذا الشهر — اضغط على السهم لتعديل التفاصيل</span>
+            {mode === 'view' ? (
+              isAdmin && (
+                <button onClick={enterCreateMode} className="btn btn-primary">
+                  <Banknote style={{ width: '16px', height: '16px' }} />
+                  {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}
+                </button>
+              )
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" onClick={() => setMode('view')} className="btn btn-ghost">
+                  <X style={{ width: '15px', height: '15px' }} /> إلغاء
+                </button>
+                <button type="button" onClick={handleSaveBulk} disabled={saving} className="btn btn-primary">
+                  {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+                  حفظ المسير ({includedRows.length} موظف)
+                </button>
+              </div>
+            )}
           </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {/* checkbox الكل */}
-                  <th style={{ padding: '10px 12px', width: '40px' }}>
-                    <button type="button" onClick={() => toggleAll(!rows.every(r => r.included))}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
-                      {rows.every(r => r.included)
-                        ? <CheckSquare style={{ width: '18px', height: '18px' }} />
-                        : <Square style={{ width: '18px', height: '18px', color: 'var(--text3)' }} />}
-                    </button>
-                  </th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>الأساسي</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>السكن</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>النقل</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>بدلات أخرى</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>إضافي</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>مكافأة</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>تأمينات</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>غياب</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>خصم آخر</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: 'var(--primary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>الإجمالي</th>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', whiteSpace: 'nowrap', background: '#ecfdf5' }}>الصافي</th>
-                  <th style={{ padding: '10px 8px', width: '32px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => (
-                  <>
-                    <tr key={row.employee_id}
-                      style={{
-                        borderBottom: expandedRow === idx ? 'none' : '1px solid var(--bg2)',
-                        opacity: row.included ? 1 : 0.4,
-                        background: !row.included ? '#fafafa' : expandedRow === idx ? '#f0f9ff' : 'transparent',
-                        transition: 'opacity 0.2s',
-                      }}>
-
-                      {/* checkbox */}
-                      <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                        <button type="button" onClick={() => updateRow(idx, 'included', !row.included)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {row.included
-                            ? <CheckSquare style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
-                            : <Square style={{ width: '18px', height: '18px', color: '#d1d5db' }} />}
-                        </button>
-                      </td>
-
-                      {/* اسم الموظف */}
-                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.82rem' }}>{row.name}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{row.role}</div>
-                        {row.existingId && <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1e40af', borderRadius: '4px', padding: '1px 5px' }}>محفوظ</span>}
-                        {!row.included && <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#991b1b', borderRadius: '4px', padding: '1px 5px', marginRight: '4px' }}>خارج المسير</span>}
-                      </td>
-
-                      {/* حقول المستحقات */}
-                      {(['basic_salary','housing_allow','transport_allow','other_allow','overtime_pay','bonuses'] as const).map(k => (
-                        <td key={k} style={{ padding: '6px 4px' }}>
-                          <input type="number" min="0" value={row[k] as number}
-                            disabled={!row.included}
-                            onChange={e => updateRow(idx, k, Number(e.target.value))}
-                            style={cellInput()}
-                          />
-                        </td>
-                      ))}
-
-                      {/* حقول الخصومات */}
-                      {(['gosi_deduction','absence_deduct','other_deduct'] as const).map(k => (
-                        <td key={k} style={{ padding: '6px 4px' }}>
-                          <input type="number" min="0" value={row[k] as number}
-                            disabled={!row.included}
-                            onChange={e => updateRow(idx, k, Number(e.target.value))}
-                            style={cellInput('#fca5a5')}
-                          />
-                        </td>
-                      ))}
-
-                      {/* الإجمالي والصافي */}
-                      <td style={{ padding: '8px', fontWeight: 700, color: row.included ? 'var(--primary)' : 'var(--text3)', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
-                        {row.included ? row.gross.toLocaleString() : '—'}
-                      </td>
-                      <td style={{ padding: '8px', fontWeight: 700, color: row.included ? '#0ea77b' : 'var(--text3)', whiteSpace: 'nowrap', fontSize: '0.9rem', background: row.included ? '#f0fdf4' : 'transparent' }}>
-                        {row.included ? row.net.toLocaleString() : '—'}
-                      </td>
-
-                      {/* زر التوسيع */}
-                      <td style={{ padding: '8px 6px' }}>
-                        <button type="button" onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>
-                          {expandedRow === idx
-                            ? <ChevronUp style={{ width: '15px', height: '15px' }} />
-                            : <ChevronDown style={{ width: '15px', height: '15px' }} />}
-                        </button>
-                      </td>
-                    </tr>
-
-                    {/* صف التفاصيل */}
-                    {expandedRow === idx && (
-                      <tr key={`exp-${row.employee_id}`} style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border)' }}>
-                        <td colSpan={15} style={{ padding: '10px 16px' }}>
-                          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <div>
-                              <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>أيام الحضور</label>
-                              <input type="number" min="0" max="31" value={row.present_days}
-                                onChange={e => updateRow(idx, 'present_days', Number(e.target.value))}
-                                style={{ width: '70px', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }}
-                              />
-                            </div>
-                            <div style={{ flex: 1, minWidth: '180px' }}>
-                              <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>ملاحظات</label>
-                              <input type="text" value={row.notes} placeholder="مثال: في إجازة نصف الشهر..."
-                                onChange={e => updateRow(idx, 'notes', e.target.value)}
-                                style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }}
-                              />
-                            </div>
-                            <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '8px 16px', textAlign: 'center' }}>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>صافي الراتب</div>
-                              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0ea77b' }}>{row.net.toLocaleString()} ر.س</div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-              {/* الإجماليات */}
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                  <td colSpan={2} style={{ padding: '10px 12px' }}>
-                    الإجمالي — {includedRows.length} من {rows.length} موظف
-                  </td>
-                  <td colSpan={9}></td>
-                  <td style={{ padding: '10px 8px', color: 'var(--primary)' }}>{totalGross.toLocaleString()}</td>
-                  <td style={{ padding: '10px 8px', color: '#0ea77b', background: '#ecfdf5' }}>{totalNet.toLocaleString()}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {/* زر الحفظ أسفل الجدول */}
-          <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg2)', flexWrap: 'wrap', gap: '10px' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>
-              {includedRows.length} موظف في المسير — {rows.length - includedRows.length} خارج المسير
-            </span>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => setMode('view')} className="btn btn-ghost">
-                <X style={{ width: '15px', height: '15px' }} /> إلغاء
-              </button>
-              <button type="button" onClick={handleSaveBulk} disabled={saving || includedRows.length === 0} className="btn btn-primary">
-                {saving
-                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Save style={{ width: '15px', height: '15px' }} />}
-                حفظ مسير {ARABIC_MONTHS[filterMonth - 1]} ({includedRows.length} موظف)
-              </button>
+          {/* KPIs */}
+          {(mode === 'view' ? filteredPayrolls.length > 0 : includedRows.length > 0) && (
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'إجمالي المستحقات', value: (mode==='view'?vGross:totalGross).toLocaleString()+' ر.س', color: 'var(--primary)', bg: 'var(--primary-light)' },
+                { label: 'إجمالي الخصومات', value: (mode==='view'?vDeduct:totalDeduct).toLocaleString()+' ر.س', color: '#c81e1e', bg: '#fef2f2' },
+                { label: 'إجمالي الصافي',   value: (mode==='view'?vNet:totalNet).toLocaleString()+' ر.س',   color: '#0ea77b', bg: '#ecfdf5' },
+              ].map(kpi => (
+                <div key={kpi.label} className="card" style={{ padding: '14px', textAlign: 'center', background: kpi.bg }}>
+                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>{kpi.label}</div>
+                </div>
+              ))}
             </div>
-          </div>
-        </div>
-
-      ) : filteredPayrolls.length === 0 ? (
-        /* ── لا توجد رواتب ── */
-        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-          <Banknote style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-          <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد كشوف رواتب لهذا الشهر</p>
-          {isAdmin && (
-            <button onClick={enterCreateMode} className="btn btn-primary">
-              <Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب
-            </button>
           )}
-        </div>
 
-      ) : (
-        /* ════════════════════════════════
-           وضع العرض — جدول الرواتب المحفوظة
-        ════════════════════════════════ */
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الراتب الأساسي</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>البدلات</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إضافي + مكافآت</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الإجمالي</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>تأمينات</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>خصومات أخرى</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap', background: '#ecfdf5' }}>صافي الراتب</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحضور</th>
-                  <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحالة</th>
-                  {isAdmin && <th style={{ padding: '11px 14px' }}></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPayrolls.map(p => {
-                  const allowances = p.housing_allow + p.transport_allow + p.other_allow
-                  const extras = p.overtime_pay + p.bonuses
-                  const otherDeduct = p.absence_deduct + p.other_deduct
-                  return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontWeight: 700 }}>{p.employee?.name || `#${p.employee_id}`}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{p.employee?.role}</div>
-                      </td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>{p.basic_salary.toLocaleString()} ر.س</td>
-                      <td style={{ padding: '12px 14px', color: 'var(--text2)' }}>
-                        {allowances.toLocaleString()} ر.س
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>
-                          {[p.housing_allow && `سكن ${p.housing_allow.toLocaleString()}`, p.transport_allow && `نقل ${p.transport_allow.toLocaleString()}`].filter(Boolean).join(' · ')}
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px', color: extras > 0 ? '#0ea77b' : 'var(--text3)' }}>{extras > 0 ? `+${extras.toLocaleString()} ر.س` : '—'}</td>
-                      <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 700 }}>{p.gross_salary.toLocaleString()} ر.س</td>
-                      <td style={{ padding: '12px 14px', color: '#c81e1e' }}>{p.gosi_deduction > 0 ? `-${p.gosi_deduction.toLocaleString()} ر.س` : '—'}</td>
-                      <td style={{ padding: '12px 14px', color: otherDeduct > 0 ? '#c81e1e' : 'var(--text3)' }}>{otherDeduct > 0 ? `-${otherDeduct.toLocaleString()} ر.س` : '—'}</td>
-                      <td style={{ padding: '12px 14px', color: '#0ea77b', fontWeight: 700, fontSize: '1rem', background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center', fontSize: '0.82rem' }}>{p.present_days}/26</td>
-                      <td style={{ padding: '12px 14px', textAlign: 'center' }}><span className={`badge ${STATUS_COLOR[p.status] || 'badge-gray'}`}>{p.status}</span></td>
-                      {isAdmin && (
-                        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                          <button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs">
-                            <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
-                          </button>
-                        </td>
-                      )}
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : mode === 'create' ? (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span>💡</span><span>أزل علامة الاختيار عن الموظفين في إجازة أو لا يستحقون راتب هذا الشهر</span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '10px 12px', width: '40px' }}>
+                        <button type="button" onClick={() => toggleAll(!rows.every(r => r.included))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center' }}>
+                          {rows.every(r => r.included) ? <CheckSquare style={{ width: '18px', height: '18px' }} /> : <Square style={{ width: '18px', height: '18px', color: 'var(--text3)' }} />}
+                        </button>
+                      </th>
+                      {['الموظف','الأساسي','السكن','النقل','بدلات','إضافي','مكافأة','تأمينات','غياب','خصم آخر','الإجمالي','الصافي',''].map(h => (
+                        <th key={h} style={{ padding: '10px 8px', textAlign: h==='الإجمالي'||h==='الصافي'?'left':'right', fontWeight: 700, color: ['تأمينات','غياب','خصم آخر'].includes(h)?'#c81e1e':['الأساسي','السكن','النقل','بدلات','إضافي','مكافأة'].includes(h)?'#0ea77b':h==='الإجمالي'?'var(--primary)':h==='الصافي'?'#0ea77b':'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap', background: h==='الصافي'?'#ecfdf5':'transparent' }}>{h}</th>
+                      ))}
                     </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
-                  <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>الإجمالي ({filteredPayrolls.length} موظف)</td>
-                  <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.basic_salary,0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.housing_allow+p.transport_allow+p.other_allow,0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.overtime_pay+p.bonuses,0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px', color: 'var(--primary)' }}>{vGross.toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.gosi_deduction,0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.absence_deduct+p.other_deduct,0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 14px', color: '#0ea77b', fontSize: '1rem', background: '#ecfdf5' }}>{vNet.toLocaleString()} ر.س</td>
-                  <td colSpan={isAdmin ? 3 : 2}></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, idx) => (
+                      <>
+                        <tr key={row.employee_id} style={{ borderBottom: expandedRow===idx?'none':'1px solid var(--bg2)', opacity: row.included?1:0.4, background: !row.included?'#fafafa':expandedRow===idx?'#f0f9ff':'transparent', transition: 'opacity 0.2s' }}>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                            <button type="button" onClick={() => updateRow(idx, 'included', !row.included)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {row.included ? <CheckSquare style={{ width: '18px', height: '18px', color: 'var(--primary)' }} /> : <Square style={{ width: '18px', height: '18px', color: '#d1d5db' }} />}
+                            </button>
+                          </td>
+                          <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.82rem' }}>{row.name}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{row.role}</div>
+                            {!row.included && <span style={{ fontSize: '0.65rem', background: '#fee2e2', color: '#991b1b', borderRadius: '4px', padding: '1px 5px' }}>خارج المسير</span>}
+                          </td>
+                          {(['basic_salary','housing_allow','transport_allow','other_allow','overtime_pay','bonuses'] as const).map(k => (
+                            <td key={k} style={{ padding: '6px 4px' }}>
+                              <input type="number" min="0" value={row[k] as number} disabled={!row.included} onChange={e => updateRow(idx, k, Number(e.target.value))} style={cellInput()} />
+                            </td>
+                          ))}
+                          {(['gosi_deduction','absence_deduct','other_deduct'] as const).map(k => (
+                            <td key={k} style={{ padding: '6px 4px' }}>
+                              <input type="number" min="0" value={row[k] as number} disabled={!row.included} onChange={e => updateRow(idx, k, Number(e.target.value))} style={cellInput('#fca5a5')} />
+                            </td>
+                          ))}
+                          <td style={{ padding: '8px', fontWeight: 700, color: row.included?'var(--primary)':'var(--text3)', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{row.included?row.gross.toLocaleString():'—'}</td>
+                          <td style={{ padding: '8px', fontWeight: 700, color: row.included?'#0ea77b':'var(--text3)', whiteSpace: 'nowrap', fontSize: '0.9rem', background: row.included?'#f0fdf4':'transparent' }}>{row.included?row.net.toLocaleString():'—'}</td>
+                          <td style={{ padding: '8px 6px' }}>
+                            <button type="button" onClick={() => setExpandedRow(expandedRow===idx?null:idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', alignItems: 'center' }}>
+                              {expandedRow===idx ? <ChevronUp style={{ width: '15px', height: '15px' }} /> : <ChevronDown style={{ width: '15px', height: '15px' }} />}
+                            </button>
+                          </td>
+                        </tr>
+                        {expandedRow === idx && (
+                          <tr key={`exp-${row.employee_id}`} style={{ background: '#f0f9ff', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={15} style={{ padding: '10px 16px' }}>
+                              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div>
+                                  <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>أيام الحضور</label>
+                                  <input type="number" min="0" max="31" value={row.present_days} onChange={e => updateRow(idx, 'present_days', Number(e.target.value))} style={{ width: '70px', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }} />
+                                </div>
+                                <div style={{ flex: 1, minWidth: '180px' }}>
+                                  <label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>ملاحظات</label>
+                                  <input type="text" value={row.notes} placeholder="ملاحظات..." onChange={e => updateRow(idx, 'notes', e.target.value)} style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }} />
+                                </div>
+                                <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '8px 16px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الصافي</div>
+                                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0ea77b' }}>{row.net.toLocaleString()} ر.س</div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                      <td colSpan={2} style={{ padding: '10px 12px' }}>الإجمالي — {includedRows.length} من {rows.length} موظف</td>
+                      <td colSpan={9}></td>
+                      <td style={{ padding: '10px 8px', color: 'var(--primary)' }}>{totalGross.toLocaleString()}</td>
+                      <td style={{ padding: '10px 8px', color: '#0ea77b', background: '#ecfdf5' }}>{totalNet.toLocaleString()}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg2)', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>{includedRows.length} موظف في المسير — {rows.length - includedRows.length} خارج المسير</span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" onClick={() => setMode('view')} className="btn btn-ghost"><X style={{ width: '15px', height: '15px' }} /> إلغاء</button>
+                  <button type="button" onClick={handleSaveBulk} disabled={saving || includedRows.length === 0} className="btn btn-primary">
+                    {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+                    حفظ مسير {ARABIC_MONTHS[filterMonth - 1]} ({includedRows.length} موظف)
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : filteredPayrolls.length === 0 ? (
+            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+              <Banknote style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد كشوف رواتب لهذا الشهر</p>
+              {isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
+            </div>
+          ) : (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الراتب الأساسي</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>البدلات</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إضافي + مكافآت</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الإجمالي</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>تأمينات</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>خصومات أخرى</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.75rem', whiteSpace: 'nowrap', background: '#ecfdf5' }}>صافي الراتب</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحضور</th>
+                      <th style={{ padding: '11px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>الحالة</th>
+                      {isAdmin && <th style={{ padding: '11px 14px' }}></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPayrolls.map(p => {
+                      const allowances = p.housing_allow + p.transport_allow + p.other_allow
+                      const extras = p.overtime_pay + p.bonuses
+                      const otherDeduct = p.absence_deduct + p.other_deduct
+                      return (
+                        <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '12px 14px' }}><div style={{ fontWeight: 700 }}>{p.employee?.name || `#${p.employee_id}`}</div><div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{p.employee?.role}</div></td>
+                          <td style={{ padding: '12px 14px', fontWeight: 600 }}>{p.basic_salary.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '12px 14px', color: 'var(--text2)' }}>{allowances.toLocaleString()} ر.س<div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{[p.housing_allow&&`سكن ${p.housing_allow.toLocaleString()}`,p.transport_allow&&`نقل ${p.transport_allow.toLocaleString()}`].filter(Boolean).join(' · ')}</div></td>
+                          <td style={{ padding: '12px 14px', color: extras>0?'#0ea77b':'var(--text3)' }}>{extras>0?`+${extras.toLocaleString()} ر.س`:'—'}</td>
+                          <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 700 }}>{p.gross_salary.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '12px 14px', color: '#c81e1e' }}>{p.gosi_deduction>0?`-${p.gosi_deduction.toLocaleString()} ر.س`:'—'}</td>
+                          <td style={{ padding: '12px 14px', color: otherDeduct>0?'#c81e1e':'var(--text3)' }}>{otherDeduct>0?`-${otherDeduct.toLocaleString()} ر.س`:'—'}</td>
+                          <td style={{ padding: '12px 14px', color: '#0ea77b', fontWeight: 700, fontSize: '1rem', background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center', fontSize: '0.82rem' }}>{p.present_days}/26</td>
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}><span className={`badge ${STATUS_COLOR[p.status]||'badge-gray'}`}>{p.status}</span></td>
+                          {isAdmin && <td style={{ padding: '12px 14px', textAlign: 'center' }}><button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /> تعديل</button></td>}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
+                      <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>الإجمالي ({filteredPayrolls.length} موظف)</td>
+                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.basic_salary,0).toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.housing_allow+p.transport_allow+p.other_allow,0).toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px' }}>{filteredPayrolls.reduce((s,p)=>s+p.overtime_pay+p.bonuses,0).toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--primary)' }}>{vGross.toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.gosi_deduction,0).toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{filteredPayrolls.reduce((s,p)=>s+p.absence_deduct+p.other_deduct,0).toLocaleString()} ر.س</td>
+                      <td style={{ padding: '10px 14px', color: '#0ea77b', fontSize: '1rem', background: '#ecfdf5' }}>{vNet.toLocaleString()} ر.س</td>
+                      <td colSpan={isAdmin ? 3 : 2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* مودال تعديل كشف واحد */}
+      {/* ══ تاب تسوية نهاية الخدمة ══ */}
+      {activeTab === 'settlements' && (
+        <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />
+      )}
+
+      {/* ══ تاب تعويض الإجازات ══ */}
+      {activeTab === 'leave_comp' && (
+        <LeaveCompensationTab tenant={tenant} hrEmployees={hrEmployees} />
+      )}
+
+      {/* مودال تعديل راتب */}
       {editPayroll && (
         <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />
       )}
