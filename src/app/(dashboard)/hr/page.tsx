@@ -1,933 +1,737 @@
-'use client'
-import { useEffect, useState } from 'react'
-import { useStore } from '@/hooks/useStore'
-import { supabase } from '@/lib/supabase'
-import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Briefcase, Building2, Trash2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+'use client';
 
-type HREmployee = {
-  id: number; tenant_id: string; employee_id: number
-  national_id?: string; nationality: string; birth_date?: string
-  gender: string; marital_status: string; hire_date?: string
-  contract_type: string; job_title?: string; department?: string
-  basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
-  gosi_enrolled: boolean; gosi_pct: number
-  iqama_number?: string; iqama_expiry?: string
-  bank_name?: string; iban?: string; notes?: string
-  is_active: boolean; direct_manager?: number
-  employee?: { name: string; role: string }
+import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Department {
+  id: string;
+  name: string;
+  manager_id: string | null;
+  manager_name?: string;
 }
 
-type Department = {
-  id: number; tenant_id: string; name: string; manager_id?: number
-  manager?: { name: string; role: string }
+interface JobTitle {
+  id: string;
+  name: string;
+  department_id: string;
+  department_name?: string;
 }
 
-type JobTitle = {
-  id: number; tenant_id: string; name: string; department_id?: number
-  department?: { name: string }
+interface HREmployee {
+  id: string;
+  employee_id: string;
+  name: string;
+  job_title_id: string | null;
+  job_title_name?: string;
+  department_id: string | null;
+  department_name?: string;
+  nationality: string | null;
+  hire_date: string | null;
+  salary: number | null;
+  is_active: boolean;
 }
 
-function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
-  const base = basicSalary + housingAllow
-  if (nationality === 'سعودي') {
-    return {
-      employeeDeduction: Math.round(base * 0.0975),
-      employerContribution: Math.round(base * 0.1175),
-      employeePct: 9.75, employerPct: 11.75,
-      breakdown: {
-        employee: [
-          { label: 'معاشات', pct: '9%', amount: Math.round(base * 0.09) },
-          { label: 'ساند (تعطل)', pct: '0.75%', amount: Math.round(base * 0.0075) },
-        ],
-        employer: [
-          { label: 'معاشات', pct: '9%', amount: Math.round(base * 0.09) },
-          { label: 'ساند (تعطل)', pct: '1%', amount: Math.round(base * 0.01) },
-          { label: 'أخطار مهنية', pct: '1.75%', amount: Math.round(base * 0.0175) },
-        ],
-      }
-    }
-  } else {
-    return {
-      employeeDeduction: 0, employerContribution: Math.round(base * 0.02),
-      employeePct: 0, employerPct: 2,
-      breakdown: {
-        employee: [],
-        employer: [{ label: 'أخطار مهنية', pct: '2%', amount: Math.round(base * 0.02) }],
-      }
-    }
-  }
+interface EmployeeBase {
+  id: string;
+  name: string;
+  role: string;
 }
 
-// ══════════════════════════════════════
-// نافذة إضافة / تعديل موظف
-// ══════════════════════════════════════
-function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
-  emp: HREmployee | null
-  departments: Department[]
-  managers: any[]
-  onClose: () => void
-  onSave: (d: any) => Promise<void>
-}) {
-  const [saving, setSaving] = useState(false)
-  const [tab, setTab] = useState<'personal'|'salary'|'bank'>('personal')
-  const [jobTitlesForDept, setJobTitlesForDept] = useState<JobTitle[]>([])
+// ─── Component ───────────────────────────────────────────────────────────────
 
-  const [form, setForm] = useState({
-    emp_name:         emp?.employee?.name   || '',
-    national_id:      emp?.national_id      || '',
-    nationality:      emp?.nationality      || 'سعودي',
-    nationality_text: (emp?.nationality && emp.nationality !== 'سعودي') ? emp.nationality : '',
-    birth_date:       emp?.birth_date       || '',
-    gender:           emp?.gender           || 'ذكر',
-    marital_status:   emp?.marital_status   || 'أعزب',
-    hire_date:        emp?.hire_date        || '',
-    contract_type:    emp?.contract_type    || 'دوام كامل',
-    department:       emp?.department       || '',
-    job_title:        emp?.job_title        || '',
-    direct_manager:   emp?.direct_manager   ? String(emp.direct_manager) : '',
-    basic_salary:     emp?.basic_salary     ?? 0,
-    housing_allow:    emp?.housing_allow    ?? 0,
-    transport_allow:  emp?.transport_allow  ?? 0,
-    other_allow:      emp?.other_allow      ?? 0,
-    gosi_enrolled:    emp?.gosi_enrolled    ?? true,
-    bank_name:        emp?.bank_name        || '',
-    iban:             emp?.iban             || '',
-    iqama_number:     emp?.iqama_number     || '',
-    iqama_expiry:     emp?.iqama_expiry     || '',
-    notes:            emp?.notes            || '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
-
-  const isSaudi = form.nationality === 'سعودي'
-  const gosi = calcGOSI(form.nationality, Number(form.basic_salary), Number(form.housing_allow))
-  const gosiBase = Number(form.basic_salary) + Number(form.housing_allow)
-  const totalAllowances = Number(form.housing_allow) + Number(form.transport_allow) + Number(form.other_allow)
-  const grossSalary = Number(form.basic_salary) + totalAllowances
-  const netSalary = grossSalary - (form.gosi_enrolled ? gosi.employeeDeduction : 0)
-
-  // عند تغيير القسم — جلب مسمياته وتعيين المدير تلقائياً
-  async function handleDeptChange(deptName: string) {
-    set('department', deptName)
-    set('job_title', '')
-
-    const dept = departments.find(d => d.name === deptName)
-    if (dept) {
-      // تعيين مدير القسم تلقائياً
-      if (dept.manager_id) set('direct_manager', String(dept.manager_id))
-
-      // جلب المسميات المرتبطة بهذا القسم
-      const { data } = await supabase.from('hr_job_titles')
-        .select('*').eq('department_id', dept.id).order('name')
-      setJobTitlesForDept(data || [])
-    } else {
-      setJobTitlesForDept([])
-    }
-  }
-
-  // عند فتح النافذة إذا كان هناك قسم محدد مسبقاً
-  useEffect(() => {
-    if (form.department) handleDeptChange(form.department)
-  }, [])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.emp_name.trim()) { toast.error('أدخل اسم الموظف'); return }
-    if (!form.department) { toast.error('اختر القسم'); return }
-    if (!form.job_title) { toast.error('اختر المسمى الوظيفي'); return }
-    if (!form.hire_date) { toast.error('أدخل تاريخ التعيين'); return }
-    if (!form.national_id.trim()) { toast.error('أدخل رقم الهوية / الإقامة'); return }
-    if (!form.birth_date) { toast.error('أدخل تاريخ الميلاد'); return }
-    if (!Number(form.basic_salary)) { toast.error('أدخل الراتب الأساسي'); return }
-    if (!form.bank_name.trim()) { toast.error('أدخل اسم البنك'); return }
-    if (!form.iban.trim()) { toast.error('أدخل رقم IBAN'); return }
-    setSaving(true)
-    const finalNationality = isSaudi ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
-    await onSave({
-      ...(emp ? { id: emp.id, employee_id: emp.employee_id } : {}),
-      emp_name: form.emp_name.trim(),
-      national_id: form.national_id,
-      nationality: finalNationality,
-      birth_date: form.birth_date,
-      gender: form.gender,
-      marital_status: form.marital_status,
-      hire_date: form.hire_date,
-      contract_type: form.contract_type,
-      job_title: form.job_title,
-      department: form.department,
-      direct_manager: form.direct_manager ? Number(form.direct_manager) : null,
-      basic_salary: Number(form.basic_salary),
-      housing_allow: Number(form.housing_allow),
-      transport_allow: Number(form.transport_allow),
-      other_allow: Number(form.other_allow),
-      gosi_enrolled: form.gosi_enrolled,
-      gosi_pct: form.gosi_enrolled ? gosi.employeePct : 0,
-      bank_name: form.bank_name,
-      iban: form.iban,
-      iqama_number: form.iqama_number,
-      iqama_expiry: form.iqama_expiry || null,
-      notes: form.notes,
-    })
-    setSaving(false)
-  }
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{emp ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-        </div>
-        <div style={{ display: 'flex', gap: '4px', padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
-          {[{id:'personal',label:'📋 البيانات الشخصية'},{id:'salary',label:'💰 الراتب والتأمينات'},{id:'bank',label:'🏦 البنك والإقامة'}].map(t => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id as any)}
-              style={{ padding: '6px 14px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 600, border: 'none', cursor: 'pointer',
-                background: tab === t.id ? 'var(--primary)' : 'transparent',
-                color: tab === t.id ? 'white' : 'var(--text3)' }}>{t.label}</button>
-          ))}
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
-
-            {/* ── البيانات الشخصية ── */}
-            {tab === 'personal' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الموظف <span className="text-red-500">*</span></label>
-                  <input value={form.emp_name} onChange={e => set('emp_name', e.target.value)} className="input" placeholder="الاسم الكامل" onKeyDown={noEnter} />
-                </div>
-
-                {/* القسم أولاً */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
-                  <select value={form.department} onChange={e => handleDeptChange(e.target.value)} className="select">
-                    <option value="">— اختر القسم —</option>
-                    {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                </div>
-
-                {/* المسمى الوظيفي — يظهر بعد اختيار القسم */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
-                  <select value={form.job_title} onChange={e => set('job_title', e.target.value)} className="select" disabled={!form.department}>
-                    <option value="">{form.department ? '— اختر المسمى —' : '— اختر القسم أولاً —'}</option>
-                    {jobTitlesForDept.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                  </select>
-                  {form.department && jobTitlesForDept.length === 0 && (
-                    <p style={{ fontSize: '0.75rem', color: '#e6820a', marginTop: '4px' }}>⚠️ لا توجد مسميات لهذا القسم — أضف من تاب المسميات الوظيفية</p>
-                  )}
-                </div>
-
-                {/* المدير المباشر — يُملأ تلقائياً من مدير القسم */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    المدير المباشر
-                    {form.direct_manager && <span style={{ fontSize: '0.72rem', color: '#0ea77b', marginRight: '6px' }}>✓ مُعيَّن تلقائياً من مدير القسم</span>}
-                  </label>
-                  <select value={form.direct_manager} onChange={e => set('direct_manager', e.target.value)} className="select">
-                    <option value="">— بدون مدير مباشر —</option>
-                    {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
-                  </select>
-                </div>
-
-                {/* الجنسية */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنسية <span className="text-red-500">*</span></label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="button" onClick={() => { set('nationality', 'سعودي'); set('nationality_text', '') }}
-                      style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem',
-                        borderColor: isSaudi ? '#1a56db' : 'var(--border)', background: isSaudi ? '#eff6ff' : 'white', color: isSaudi ? '#1a56db' : 'var(--text3)' }}>
-                      🇸🇦 سعودي
-                    </button>
-                    <button type="button" onClick={() => set('nationality', 'وافد')}
-                      style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem',
-                        borderColor: !isSaudi ? '#e6820a' : 'var(--border)', background: !isSaudi ? '#fffbeb' : 'white', color: !isSaudi ? '#e6820a' : 'var(--text3)' }}>
-                      🌍 وافد (غير سعودي)
-                    </button>
-                  </div>
-                  {!isSaudi && (
-                    <input value={form.nationality_text} onChange={e => set('nationality_text', e.target.value)}
-                      className="input" style={{ marginTop: '8px' }} placeholder="اكتب الجنسية (مثال: مصري، يمني...)" onKeyDown={noEnter} />
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الهوية / الإقامة <span className="text-red-500">*</span></label>
-                    <input value={form.national_id} onChange={e => set('national_id', e.target.value)} className="input" dir="ltr" placeholder={isSaudi ? '1XXXXXXXXX' : '2XXXXXXXXX'} onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الميلاد <span className="text-red-500">*</span></label>
-                    <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} className="input" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنس <span className="text-red-500">*</span></label>
-                    <select value={form.gender} onChange={e => set('gender', e.target.value)} className="select">
-                      <option value="ذكر">ذكر</option><option value="أنثى">أنثى</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة الاجتماعية <span className="text-red-500">*</span></label>
-                    <select value={form.marital_status} onChange={e => set('marital_status', e.target.value)} className="select">
-                      {['أعزب','متزوج','مطلق','أرمل'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ التعيين <span className="text-red-500">*</span></label>
-                    <input type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className="input" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع العقد <span className="text-red-500">*</span></label>
-                    <select value={form.contract_type} onChange={e => set('contract_type', e.target.value)} className="select">
-                      {['دوام كامل','دوام جزئي','مؤقت','مياومة'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── الراتب والتأمينات ── */}
-            {tab === 'salary' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الراتب الأساسي <span className="text-red-500">*</span></label>
-                    <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل السكن <span className="text-red-500">*</span></label>
-                    <input type="number" value={form.housing_allow} onChange={e => set('housing_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل النقل</label>
-                    <input type="number" value={form.transport_allow} onChange={e => set('transport_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدلات أخرى</label>
-                    <input type="number" value={form.other_allow} onChange={e => set('other_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--bg2)', borderRadius: '10px' }}>
-                  <input type="checkbox" checked={form.gosi_enrolled} onChange={e => set('gosi_enrolled', e.target.checked)} className="w-4 h-4" id="gosi" />
-                  <label htmlFor="gosi" className="text-sm font-medium text-gray-700">مسجل في التأمينات الاجتماعية (GOSI)</label>
-                </div>
-
-                {form.gosi_enrolled && Number(form.basic_salary) > 0 && (
-                  <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                    <div style={{ padding: '10px 14px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>🧮 حساب GOSI التفصيلي</span>
-                      <span style={{ fontSize: '0.8rem', opacity: 0.85 }}>وعاء: {gosiBase.toLocaleString()} ر.س</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                      <div style={{ padding: '12px 14px', borderLeft: '1px solid var(--border)', background: '#fef2f2' }}>
-                        <div style={{ fontWeight: 700, color: '#c81e1e', fontSize: '0.8rem', marginBottom: '8px' }}>خصم الموظف — {gosi.employeePct}%</div>
-                        {gosi.breakdown.employee.length > 0 ? gosi.breakdown.employee.map((b, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
-                            <span>{b.label} ({b.pct})</span><span style={{ fontWeight: 600 }}>{b.amount.toLocaleString()} ر.س</span>
-                          </div>
-                        )) : <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>لا يوجد خصم على الموظف</div>}
-                        <div style={{ borderTop: '1px solid #fca5a5', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#c81e1e' }}>
-                          <span>الإجمالي</span><span>{gosi.employeeDeduction.toLocaleString()} ر.س</span>
-                        </div>
-                      </div>
-                      <div style={{ padding: '12px 14px', background: '#fffbeb' }}>
-                        <div style={{ fontWeight: 700, color: '#e6820a', fontSize: '0.8rem', marginBottom: '8px' }}>حصة صاحب العمل — {gosi.employerPct}%</div>
-                        {gosi.breakdown.employer.map((b, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
-                            <span>{b.label} ({b.pct})</span><span style={{ fontWeight: 600 }}>{b.amount.toLocaleString()} ر.س</span>
-                          </div>
-                        ))}
-                        <div style={{ borderTop: '1px solid #fcd34d', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#e6820a' }}>
-                          <span>الإجمالي</span><span>{gosi.employerContribution.toLocaleString()} ر.س</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ background: 'var(--primary-light)', borderRadius: '12px', padding: '14px' }}>
-                  <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.875rem', marginBottom: '10px' }}>📊 ملخص الراتب</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الراتب الأساسي</span><span style={{ fontWeight: 600 }}>{Number(form.basic_salary).toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>البدلات</span><span style={{ fontWeight: 600 }}>{totalAllowances.toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي</span><span style={{ fontWeight: 600, color: 'var(--primary)' }}>{grossSalary.toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>خصم GOSI</span><span style={{ fontWeight: 600, color: '#c81e1e' }}>{(form.gosi_enrolled ? gosi.employeeDeduction : 0).toLocaleString()} ر.س</span></div>
-                  </div>
-                  <div style={{ borderTop: '1px solid rgba(26,86,219,0.2)', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700 }}>صافي الراتب</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0ea77b' }}>{netSalary.toLocaleString()} ر.س</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── البنك والإقامة ── */}
-            {tab === 'bank' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم البنك <span className="text-red-500">*</span></label>
-                    <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="مثال: الراجحي، الأهلي" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN <span className="text-red-500">*</span></label>
-                    <input value={form.iban} onChange={e => set('iban', e.target.value)} className="input" dir="ltr" placeholder="SA..." onKeyDown={noEnter} />
-                  </div>
-                </div>
-                {!isSaudi && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الإقامة</label>
-                      <input value={form.iqama_number} onChange={e => set('iqama_number', e.target.value)} className="input" dir="ltr" placeholder="2XXXXXXXXX" onKeyDown={noEnter} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">انتهاء الإقامة</label>
-                      <input type="date" value={form.iqama_expiry} onChange={e => set('iqama_expiry', e.target.value)} className="input" />
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
-                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '80px', resize: 'none' }} />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-            <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-              حفظ الموظف
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// تاب الأقسام
-// ══════════════════════════════════════
-function DepartmentsTab({ tenantId, managers, onUpdate }: { tenantId: string; managers: any[]; onUpdate?: () => void }) {
-  const [depts, setDepts] = useState<Department[]>([])
-  const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', manager_id: '' })
-  const [editId, setEditId] = useState<number | null>(null)
-  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
-
-  useEffect(() => { load() }, [])
-
-  async function load() {
-    setLoading(true)
-    const { data } = await supabase.from('hr_departments')
-      .select('*, manager:employees(name, role)')
-      .eq('tenant_id', tenantId).order('name')
-    setDepts(data || [])
-    setLoading(false)
-  }
-
-  async function save() {
-    if (!form.name.trim()) { toast.error('أدخل اسم القسم'); return }
-    if (!form.manager_id) { toast.error('اختر مدير القسم'); return }
-    const payload = { tenant_id: tenantId, name: form.name.trim(), manager_id: Number(form.manager_id) }
-    if (editId) {
-      await supabase.from('hr_departments').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('hr_departments').insert(payload)
-    }
-    setForm({ name: '', manager_id: '' }); setEditId(null)
-    await load(); onUpdate?.(); toast.success('تم الحفظ ✅')
-  }
-
-  async function remove(id: number) {
-    if (!confirm('حذف هذا القسم؟ سيتأثر الموظفون المرتبطون به')) return
-    await supabase.from('hr_departments').delete().eq('id', id)
-    setDepts(d => d.filter(x => x.id !== id)); onUpdate?.(); toast.success('تم الحذف')
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* نموذج الإضافة */}
-      <div className="card" style={{ padding: '16px' }}>
-        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
-          {editId ? '✏️ تعديل القسم' : '➕ إضافة قسم جديد'}
-        </div>
-        <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم القسم <span className="text-red-500">*</span></label>
-            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              className="input" placeholder="مثال: قسم المشاريع" onKeyDown={noEnter} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير القسم <span className="text-red-500">*</span></label>
-            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select">
-              <option value="">— اختر المدير —</option>
-              {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
-            </select>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={save} className="btn btn-primary btn-sm">
-            <Save style={{ width: '14px', height: '14px' }} /> {editId ? 'حفظ التعديل' : 'إضافة القسم'}
-          </button>
-          {editId && <button onClick={() => { setForm({ name: '', manager_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">إلغاء</button>}
-        </div>
-      </div>
-
-      {/* قائمة الأقسام */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-        </div>
-      ) : depts.length === 0 ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <Building2 style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
-          <p style={{ color: 'var(--text3)' }}>لا توجد أقسام بعد</p>
-        </div>
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {depts.map((d, i) => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: i < depts.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Building2 style={{ width: '16px', height: '16px' }} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700 }}>{d.name}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
-                    {d.manager ? `👤 ${d.manager.name} — ${d.manager.role}` : <span style={{ color: '#c81e1e' }}>⚠️ لا يوجد مدير</span>}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '' }); setEditId(d.id) }}
-                  className="btn btn-ghost btn-xs"><Pencil style={{ width: '14px', height: '14px' }} /></button>
-                <button onClick={() => remove(d.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                  <Trash2 style={{ width: '14px', height: '14px' }} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// تاب المسميات الوظيفية
-// ══════════════════════════════════════
-function JobTitlesTab({ tenantId }: { tenantId: string }) {
-  const [titles, setTitles] = useState<JobTitle[]>([])
-  const [depts, setDepts] = useState<Department[]>([])
-  const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', department_id: '' })
-  const [editId, setEditId] = useState<number | null>(null)
-  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
-
-  useEffect(() => { load() }, [])
-
-  async function load() {
-    setLoading(true)
-    const [tRes, dRes] = await Promise.all([
-      supabase.from('hr_job_titles').select('*, department:hr_departments(name)').eq('tenant_id', tenantId).order('name'),
-      supabase.from('hr_departments').select('id, name').eq('tenant_id', tenantId).order('name'),
-    ])
-    setTitles((tRes.data || []) as JobTitle[])
-    setDepts((dRes.data || []) as Department[])
-    setLoading(false)
-  }
-
-  async function save() {
-    if (!form.name.trim()) { toast.error('أدخل اسم المسمى الوظيفي'); return }
-    if (!form.department_id) { toast.error('اختر القسم'); return }
-    const payload = { tenant_id: tenantId, name: form.name.trim(), department_id: Number(form.department_id) }
-    if (editId) {
-      await supabase.from('hr_job_titles').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('hr_job_titles').insert(payload)
-    }
-    setForm({ name: '', department_id: '' }); setEditId(null)
-    await load(); toast.success('تم الحفظ ✅')
-  }
-
-  async function remove(id: number) {
-    if (!confirm('حذف هذا المسمى؟')) return
-    await supabase.from('hr_job_titles').delete().eq('id', id)
-    setTitles(t => t.filter(x => x.id !== id)); toast.success('تم الحذف')
-  }
-
-  // تجميع المسميات حسب القسم
-  const grouped = depts.map(d => ({
-    dept: d,
-    titles: titles.filter(t => t.department_id === d.id)
-  })).filter(g => g.titles.length > 0)
-
-  const ungrouped = titles.filter(t => !t.department_id)
-
-  return (
-    <div className="space-y-4">
-      {/* نموذج الإضافة */}
-      <div className="card" style={{ padding: '16px' }}>
-        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
-          {editId ? '✏️ تعديل المسمى' : '➕ إضافة مسمى وظيفي'}
-        </div>
-        {depts.length === 0 ? (
-          <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.875rem', color: '#e6820a' }}>
-            ⚠️ يجب إضافة أقسام أولاً من تاب الأقسام
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
-                <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))} className="select">
-                  <option value="">— اختر القسم —</option>
-                  {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المسمى الوظيفي <span className="text-red-500">*</span></label>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="input" placeholder="مثال: مهندس كهرباء" onKeyDown={noEnter} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button onClick={save} className="btn btn-primary btn-sm">
-                <Save style={{ width: '14px', height: '14px' }} /> {editId ? 'حفظ التعديل' : 'إضافة المسمى'}
-              </button>
-              {editId && <button onClick={() => { setForm({ name: '', department_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">إلغاء</button>}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* قائمة المسميات مجمعة حسب القسم */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-        </div>
-      ) : titles.length === 0 ? (
-        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
-          <Briefcase style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
-          <p style={{ color: 'var(--text3)' }}>لا توجد مسميات وظيفية بعد</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {grouped.map(g => (
-            <div key={g.dept.id} className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Building2 style={{ width: '14px', height: '14px', color: '#e6820a' }} />
-                <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{g.dept.name}</span>
-                <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>{g.titles.length} مسمى</span>
-              </div>
-              {g.titles.map((t, i) => (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < g.titles.length - 1 ? '1px solid var(--bg2)' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Briefcase style={{ width: '12px', height: '12px' }} />
-                    </div>
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '' }); setEditId(t.id) }}
-                      className="btn btn-ghost btn-xs"><Pencil style={{ width: '14px', height: '14px' }} /></button>
-                    <button onClick={() => remove(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                      <Trash2 style={{ width: '14px', height: '14px' }} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// الصفحة الرئيسية
-// ══════════════════════════════════════
 export default function HRPage() {
-  const { tenant, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'employees'|'jobtitles'|'departments'>('employees')
-  const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
-  const [managers, setManagers] = useState<any[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [editEmp, setEditEmp] = useState<HREmployee | null>(null)
-  const isAdmin = currentUser?.role === 'مدير عام'
-  const now = new Date()
+  const [activeTab, setActiveTab] = useState<'employees' | 'departments' | 'jobtitles'>('employees');
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  useEffect(() => { load() }, [tenant?.id])
+  // Employees state
+  const [hrEmployees, setHrEmployees] = useState<HREmployee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
+  const [baseEmployees, setBaseEmployees] = useState<EmployeeBase[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  async function load() {
-    if (!tenant) return
-    setLoading(true)
-    const [hrRes, mgRes, deptRes] = await Promise.all([
-      supabase.from('hr_employees').select('*, employee:employees(name, role)').eq('tenant_id', tenant.id).order('id'),
-      supabase.from('employees').select('id, name, role').eq('tenant_id', tenant.id).eq('is_active', true).in('role', ['مدير عام', 'مدير مشروع']),
-      supabase.from('hr_departments').select('*, manager:employees(name, role)').eq('tenant_id', tenant.id).order('name'),
-    ])
-    setHREmployees(hrRes.data || [])
-    setManagers(mgRes.data || [])
-    setDepartments((deptRes.data || []) as Department[])
-    setLoading(false)
+  // New employee form
+  const [newEmp, setNewEmp] = useState({
+    name: '',
+    nationality: 'سعودي',
+    hire_date: '',
+    salary: '',
+    department_id: '',
+    job_title_id: '',
+  });
+
+  // New department form
+  const [newDept, setNewDept] = useState({ name: '', manager_id: '' });
+
+  // New job title form
+  const [newTitle, setNewTitle] = useState({ name: '', department_id: '' });
+
+  // ─── Load tenant ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const stored = localStorage.getItem('currentUser');
+    if (stored) {
+      const user = JSON.parse(stored);
+      setTenantId(user.tenant_id);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    fetchAll();
+  }, [tenantId]);
+
+  async function fetchAll() {
+    setLoading(true);
+    await Promise.all([fetchDepartments(), fetchJobTitles(), fetchHREmployees(), fetchBaseEmployees()]);
+    setLoading(false);
   }
 
-  async function handleSave(data: any) {
-    if (!tenant) return
+  // ─── Fetch functions ──────────────────────────────────────────────────────
+
+  async function fetchDepartments() {
+    const { data, error } = await supabase
+      .from('hr_departments')
+      .select(`
+        id, name,
+        manager_id,
+        employees:manager_id ( name )
+      `)
+      .eq('tenant_id', tenantId);
+
+    if (error) { console.error('departments:', error); return; }
+
+    setDepartments(
+      (data || []).map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        manager_id: d.manager_id,
+        manager_name: d.employees?.name ?? '—',
+      }))
+    );
+  }
+
+  async function fetchJobTitles() {
+    const { data, error } = await supabase
+      .from('hr_job_titles')
+      .select(`
+        id, name, department_id,
+        hr_departments:department_id ( name )
+      `)
+      .eq('tenant_id', tenantId);
+
+    if (error) { console.error('jobtitles:', error); return; }
+
+    setJobTitles(
+      (data || []).map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        department_id: t.department_id,
+        department_name: t.hr_departments?.name ?? '—',
+      }))
+    );
+  }
+
+  async function fetchHREmployees() {
+    const { data, error } = await supabase
+      .from('hr_employees')
+      .select(`
+        id,
+        employee_id,
+        nationality,
+        hire_date,
+        salary,
+        is_active,
+        department_id,
+        job_title_id,
+        employees:employee_id ( name ),
+        hr_departments:department_id ( name ),
+        hr_job_titles:job_title_id ( name )
+      `)
+      .eq('tenant_id', tenantId);
+
+    if (error) { console.error('hr_employees:', error); return; }
+
+    setHrEmployees(
+      (data || []).map((e: any) => ({
+        id: e.id,
+        employee_id: e.employee_id,
+        name: e.employees?.name ?? '—',
+        nationality: e.nationality,
+        hire_date: e.hire_date,
+        salary: e.salary,
+        is_active: e.is_active,
+        department_id: e.department_id,
+        department_name: e.hr_departments?.name ?? '—',
+        job_title_id: e.job_title_id,
+        job_title_name: e.hr_job_titles?.name ?? '—',
+      }))
+    );
+  }
+
+  async function fetchBaseEmployees() {
+    const { data, error } = await supabase
+      .from('employees')
+      .select('id, name, role')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+
+    if (error) { console.error('base employees:', error); return; }
+    setBaseEmployees(data || []);
+  }
+
+  // ─── Add Employee ─────────────────────────────────────────────────────────
+
+  async function handleAddEmployee(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newEmp.name.trim()) return showMsg('error', 'اسم الموظف مطلوب');
+    if (!tenantId) return showMsg('error', 'لم يتم التعرف على المستأجر');
+
     try {
-      let employeeId = data.employee_id
-      if (!employeeId) {
-        const { data: newEmp, error } = await supabase.from('employees').insert({
-          tenant_id: tenant.id,
-          name: data.emp_name,
-          role: data.job_title,
-          username: `emp_${Date.now()}`,
+      // 1. Create base employee in `employees` table
+      const { data: empData, error: empError } = await supabase
+        .from('employees')
+        .insert({
+          name: newEmp.name.trim(),
           password: '1234',
-          permissions: [],
           is_active: true,
-        }).select('id').single()
-        if (error) throw error
-        employeeId = newEmp.id
-      } else {
-        await supabase.from('employees').update({ name: data.emp_name, role: data.job_title }).eq('id', employeeId)
-      }
+          tenant_id: tenantId,
+          role: 'employee',
+          permissions: {},
+        })
+        .select('id')
+        .single();
 
-      const hrPayload: Record<string, any> = {
-        tenant_id: tenant.id,
-        employee_id: employeeId,
-        national_id: data.national_id || null,
-        nationality: data.nationality,
-        birth_date: data.birth_date || null,
-        gender: data.gender,
-        marital_status: data.marital_status,
-        hire_date: data.hire_date || null,
-        contract_type: data.contract_type,
-        job_title: data.job_title,
-        department: data.department,
-        direct_manager: data.direct_manager || null,
-        basic_salary: data.basic_salary,
-        housing_allow: data.housing_allow,
-        transport_allow: data.transport_allow,
-        other_allow: data.other_allow,
-        gosi_enrolled: data.gosi_enrolled,
-        gosi_pct: data.gosi_pct,
-        bank_name: data.bank_name || null,
-        iban: data.iban || null,
-        iqama_number: data.iqama_number || null,
-        iqama_expiry: data.iqama_expiry || null,
-        notes: data.notes || null,
+      if (empError) throw empError;
+
+      // 2. Create HR record — branch_id is intentionally omitted (nullable)
+      const hrRecord: Record<string, any> = {
+        employee_id: empData.id,
+        tenant_id: tenantId,
+        nationality: newEmp.nationality || null,
+        hire_date: newEmp.hire_date || null,
+        salary: newEmp.salary ? parseFloat(newEmp.salary) : null,
         is_active: true,
-      }
-      // حذف أي قيم undefined تماماً
-      Object.keys(hrPayload).forEach(k => hrPayload[k] === undefined && delete hrPayload[k])
+      };
 
-      if (data.id) {
-        const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
-        if (updateErr) throw updateErr
-      } else {
-        const { error: insertErr } = await supabase.from('hr_employees').insert(hrPayload)
-        if (insertErr) throw insertErr
-      }
+      // Only include FKs when they have actual values
+      if (newEmp.department_id) hrRecord.department_id = newEmp.department_id;
+      if (newEmp.job_title_id) hrRecord.job_title_id = newEmp.job_title_id;
 
-      await load()
-      setShowModal(false); setEditEmp(null)
-      toast.success(data.id ? 'تم التعديل ✅' : 'تمت إضافة الموظف ✅')
+      const { error: hrError } = await supabase.from('hr_employees').insert(hrRecord);
+      if (hrError) throw hrError;
+
+      showMsg('success', `تم إضافة الموظف "${newEmp.name}" بنجاح`);
+      setNewEmp({ name: '', nationality: 'سعودي', hire_date: '', salary: '', department_id: '', job_title_id: '' });
+      await fetchAll();
     } catch (err: any) {
-      toast.error('حدث خطأ: ' + err.message)
+      showMsg('error', err.message || 'حدث خطأ أثناء الإضافة');
     }
   }
 
-  const filtered = hrEmployees.filter(e => !search || e.employee?.name.toLowerCase().includes(search.toLowerCase()))
-  const totalSalaries = hrEmployees.reduce((s, e) => s + e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow, 0)
-  const active = hrEmployees.filter(e => e.is_active).length
-  const saudiCount = hrEmployees.filter(e => e.nationality === 'سعودي').length
-  const expats = hrEmployees.filter(e => e.nationality !== 'سعودي').length
+  // ─── Add Department ───────────────────────────────────────────────────────
 
-  const TABS = [
-    { id: 'employees',   label: '👥 ملفات الموظفين',    color: '#1a56db' },
-    { id: 'departments', label: '🏢 الأقسام',            color: '#e6820a' },
-    { id: 'jobtitles',  label: '💼 المسميات الوظيفية',  color: '#0ea77b' },
-  ]
+  async function handleAddDepartment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDept.name.trim()) return showMsg('error', 'اسم القسم مطلوب');
+
+    const record: Record<string, any> = {
+      name: newDept.name.trim(),
+      tenant_id: tenantId,
+    };
+    if (newDept.manager_id) record.manager_id = newDept.manager_id;
+
+    const { error } = await supabase.from('hr_departments').insert(record);
+    if (error) return showMsg('error', error.message);
+
+    showMsg('success', `تم إضافة القسم "${newDept.name}"`);
+    setNewDept({ name: '', manager_id: '' });
+    await fetchDepartments();
+  }
+
+  // ─── Add Job Title ────────────────────────────────────────────────────────
+
+  async function handleAddJobTitle(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTitle.name.trim()) return showMsg('error', 'اسم المسمى مطلوب');
+    if (!newTitle.department_id) return showMsg('error', 'القسم مطلوب');
+
+    const { error } = await supabase.from('hr_job_titles').insert({
+      name: newTitle.name.trim(),
+      department_id: newTitle.department_id,
+      tenant_id: tenantId,
+    });
+
+    if (error) return showMsg('error', error.message);
+
+    showMsg('success', `تم إضافة المسمى "${newTitle.name}"`);
+    setNewTitle({ name: '', department_id: '' });
+    await fetchJobTitles();
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  function showMsg(type: 'success' | 'error', text: string) {
+    setMsg({ type, text });
+    setTimeout(() => setMsg(null), 4000);
+  }
+
+  function filteredJobTitles(deptId: string) {
+    return jobTitles.filter((t) => t.department_id === deptId);
+  }
+
+  // ─── Auto-fill manager when dept selected ────────────────────────────────
+
+  function getDeptManager(deptId: string): string {
+    const dept = departments.find((d) => d.id === deptId);
+    return dept?.manager_name ?? '—';
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-5 fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Users style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> ملفات الموظفين
-        </h1>
-        <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>بيانات الموظفين مع حسابات GOSI</p>
+    <div className="hr-page">
+      <style>{`
+        .hr-page { padding: 24px; direction: rtl; font-family: 'Segoe UI', Tahoma, sans-serif; }
+
+        /* Header */
+        .hr-header { margin-bottom: 24px; }
+        .hr-header h1 { font-size: 22px; font-weight: 700; color: #1a1a2e; margin: 0 0 4px; }
+        .hr-header p { font-size: 14px; color: #6b7280; margin: 0; }
+
+        /* Alert */
+        .hr-alert {
+          padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;
+          font-size: 14px; display: flex; align-items: center; gap: 8px;
+        }
+        .hr-alert.success { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .hr-alert.error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+        /* Tabs */
+        .hr-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e5e7eb; margin-bottom: 28px; }
+        .hr-tab {
+          padding: 10px 20px; border: none; background: none; cursor: pointer;
+          font-size: 14px; color: #6b7280; font-weight: 500; border-radius: 6px 6px 0 0;
+          transition: all 0.15s;
+        }
+        .hr-tab:hover { color: #374151; background: #f9fafb; }
+        .hr-tab.active {
+          color: #2563eb; border-bottom: 2px solid #2563eb;
+          margin-bottom: -2px; background: #eff6ff;
+        }
+
+        /* Card */
+        .hr-card {
+          background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 24px; margin-bottom: 24px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .hr-card h2 { font-size: 16px; font-weight: 600; color: #111827; margin: 0 0 20px; }
+
+        /* Form grid */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+        .form-field { display: flex; flex-direction: column; gap: 6px; }
+        .form-field label { font-size: 13px; font-weight: 500; color: #374151; }
+        .form-field input,
+        .form-field select {
+          padding: 9px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+          font-size: 14px; color: #111827; background: #fafafa;
+          transition: border-color 0.15s;
+          direction: rtl;
+        }
+        .form-field input:focus,
+        .form-field select:focus {
+          outline: none; border-color: #2563eb; background: #fff;
+          box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+        }
+
+        /* Manager info box */
+        .manager-info {
+          padding: 9px 12px; background: #f3f4f6; border: 1px solid #e5e7eb;
+          border-radius: 8px; font-size: 14px; color: #6b7280;
+        }
+
+        /* Buttons */
+        .btn-primary {
+          padding: 10px 24px; background: #2563eb; color: #fff;
+          border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
+          font-weight: 600; transition: background 0.15s; margin-top: 8px;
+        }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-primary:active { background: #1e40af; }
+
+        /* Table */
+        .hr-table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead tr { background: #f9fafb; }
+        th {
+          padding: 11px 14px; text-align: right; font-size: 12px;
+          font-weight: 600; color: #6b7280; text-transform: uppercase;
+          letter-spacing: 0.03em; border-bottom: 1px solid #e5e7eb;
+        }
+        td {
+          padding: 12px 14px; border-bottom: 1px solid #f3f4f6;
+          color: #374151; vertical-align: middle;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f9fafb; }
+
+        /* Badges */
+        .badge {
+          display: inline-block; padding: 3px 10px; border-radius: 20px;
+          font-size: 12px; font-weight: 600;
+        }
+        .badge-active   { background: #d1fae5; color: #065f46; }
+        .badge-inactive { background: #fee2e2; color: #991b1b; }
+        .badge-saudi  { background: #dbeafe; color: #1e40af; }
+        .badge-expat  { background: #fef3c7; color: #92400e; }
+
+        /* Loading */
+        .hr-loading { text-align: center; padding: 48px; color: #6b7280; font-size: 15px; }
+        .hr-empty   { text-align: center; padding: 48px; color: #9ca3af; font-size: 14px; }
+
+        @media (max-width: 640px) {
+          .form-grid { grid-template-columns: 1fr; }
+          .hr-tabs { overflow-x: auto; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="hr-header">
+        <h1>🏢 الموارد البشرية</h1>
+        <p>إدارة ملفات الموظفين والأقسام والمسميات الوظيفية</p>
       </div>
+
+      {/* Alert */}
+      {msg && (
+        <div className={`hr-alert ${msg.type}`}>
+          {msg.type === 'success' ? '✅' : '❌'} {msg.text}
+        </div>
+      )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
-            style={{ padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-              background: activeTab === t.id ? t.color : 'transparent',
-              color: activeTab === t.id ? 'white' : 'var(--text3)',
-              boxShadow: activeTab === t.id ? `0 2px 8px ${t.color}44` : 'none' }}>
-            {t.label}
-          </button>
-        ))}
+      <div className="hr-tabs">
+        <button
+          className={`hr-tab ${activeTab === 'employees' ? 'active' : ''}`}
+          onClick={() => setActiveTab('employees')}
+        >
+          👥 ملفات الموظفين
+        </button>
+        <button
+          className={`hr-tab ${activeTab === 'departments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('departments')}
+        >
+          🏗️ الأقسام
+        </button>
+        <button
+          className={`hr-tab ${activeTab === 'jobtitles' ? 'active' : ''}`}
+          onClick={() => setActiveTab('jobtitles')}
+        >
+          🏷️ المسميات الوظيفية
+        </button>
       </div>
 
-      {/* ══ تاب الموظفين ══ */}
+      {/* ═══════════ TAB: EMPLOYEES ═══════════ */}
       {activeTab === 'employees' && (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'الموظفون النشطون', value: active, color: '#1a56db', bg: '#eff6ff' },
-              { label: 'إجمالي الرواتب', value: `${totalSalaries.toLocaleString()} ر.س`, color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'سعوديون', value: saudiCount, color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'وافدون', value: expats, color: '#e6820a', bg: '#fffbeb' },
-            ].map(kpi => (
-              <div key={kpi.label} className="card" style={{ padding: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '4px' }}>{kpi.label}</div>
+          {/* Add Employee Form */}
+          <div className="hr-card">
+            <h2>➕ إضافة موظف جديد</h2>
+            <form onSubmit={handleAddEmployee}>
+              <div className="form-grid">
+                {/* Name */}
+                <div className="form-field" style={{ gridColumn: 'span 2' }}>
+                  <label>الاسم الكامل *</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: محمد عبدالله الغامدي"
+                    value={newEmp.name}
+                    onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                {/* Nationality */}
+                <div className="form-field">
+                  <label>الجنسية</label>
+                  <select
+                    value={newEmp.nationality}
+                    onChange={(e) => setNewEmp({ ...newEmp, nationality: e.target.value })}
+                  >
+                    <option value="سعودي">🇸🇦 سعودي</option>
+                    <option value="مصري">🇪🇬 مصري</option>
+                    <option value="يمني">🇾🇪 يمني</option>
+                    <option value="سوداني">🇸🇩 سوداني</option>
+                    <option value="باكستاني">🇵🇰 باكستاني</option>
+                    <option value="هندي">🇮🇳 هندي</option>
+                    <option value="بنغلاديشي">🇧🇩 بنغلاديشي</option>
+                    <option value="فلبيني">🇵🇭 فلبيني</option>
+                    <option value="أردني">🇯🇴 أردني</option>
+                    <option value="سوري">🇸🇾 سوري</option>
+                    <option value="أخرى">أخرى</option>
+                  </select>
+                </div>
+
+                {/* Hire date */}
+                <div className="form-field">
+                  <label>تاريخ التوظيف</label>
+                  <input
+                    type="date"
+                    value={newEmp.hire_date}
+                    onChange={(e) => setNewEmp({ ...newEmp, hire_date: e.target.value })}
+                  />
+                </div>
+
+                {/* Salary */}
+                <div className="form-field">
+                  <label>الراتب الأساسي (ريال)</label>
+                  <input
+                    type="number"
+                    placeholder="5000"
+                    min="0"
+                    step="0.01"
+                    value={newEmp.salary}
+                    onChange={(e) => setNewEmp({ ...newEmp, salary: e.target.value })}
+                  />
+                </div>
+
+                {/* Department */}
+                <div className="form-field">
+                  <label>القسم</label>
+                  <select
+                    value={newEmp.department_id}
+                    onChange={(e) => setNewEmp({ ...newEmp, department_id: e.target.value, job_title_id: '' })}
+                  >
+                    <option value="">— اختر القسم —</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Job title — filtered by dept */}
+                <div className="form-field">
+                  <label>المسمى الوظيفي</label>
+                  <select
+                    value={newEmp.job_title_id}
+                    onChange={(e) => setNewEmp({ ...newEmp, job_title_id: e.target.value })}
+                    disabled={!newEmp.department_id}
+                  >
+                    <option value="">— اختر المسمى —</option>
+                    {filteredJobTitles(newEmp.department_id).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Auto manager */}
+                {newEmp.department_id && (
+                  <div className="form-field">
+                    <label>المدير المباشر (تلقائي)</label>
+                    <div className="manager-info">
+                      👤 {getDeptManager(newEmp.department_id)}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+
+              <button type="submit" className="btn-primary">
+                💾 حفظ الموظف
+              </button>
+            </form>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '36px', width: '240px' }} placeholder="بحث باسم الموظف..." />
-            </div>
-            {isAdmin && (
-              <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary">
-                <Plus style={{ width: '16px', height: '16px' }} /> إضافة موظف
-              </button>
+          {/* Employees Table */}
+          <div className="hr-card">
+            <h2>قائمة الموظفين ({hrEmployees.length})</h2>
+            {loading ? (
+              <div className="hr-loading">⏳ جاري التحميل...</div>
+            ) : hrEmployees.length === 0 ? (
+              <div className="hr-empty">لا يوجد موظفون بعد. أضف أول موظف من النموذج أعلاه.</div>
+            ) : (
+              <div className="hr-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>الاسم</th>
+                      <th>الجنسية</th>
+                      <th>القسم</th>
+                      <th>المسمى</th>
+                      <th>تاريخ التوظيف</th>
+                      <th>الراتب</th>
+                      <th>الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hrEmployees.map((emp, i) => (
+                      <tr key={emp.id}>
+                        <td style={{ color: '#9ca3af' }}>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{emp.name}</td>
+                        <td>
+                          <span className={`badge ${emp.nationality === 'سعودي' ? 'badge-saudi' : 'badge-expat'}`}>
+                            {emp.nationality ?? '—'}
+                          </span>
+                        </td>
+                        <td>{emp.department_name}</td>
+                        <td>{emp.job_title_name}</td>
+                        <td>{emp.hire_date ?? '—'}</td>
+                        <td>
+                          {emp.salary
+                            ? `${Number(emp.salary).toLocaleString('ar-SA')} ريال`
+                            : '—'}
+                        </td>
+                        <td>
+                          <span className={`badge ${emp.is_active ? 'badge-active' : 'badge-inactive'}`}>
+                            {emp.is_active ? 'نشط' : 'غير نشط'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
-
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-              <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ color: 'var(--text3)' }}>لا يوجد موظفون بعد</p>
-              {isAdmin && (
-                <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary" style={{ marginTop: '16px' }}>
-                  <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول موظف
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filtered.map(emp => {
-                const totalSal = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
-                const iqamaDays = emp.iqama_expiry ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000) : null
-                const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow)
-                const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
-                const isSaudi = emp.nationality === 'سعودي'
-                const manager = managers.find(m => m.id === emp.direct_manager)
-
-                return (
-                  <div key={emp.id} className="card" style={{ padding: '20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: isSaudi ? '#eff6ff' : '#fffbeb', color: isSaudi ? '#1a56db' : '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.2rem', flexShrink: 0 }}>
-                          {emp.employee?.name?.charAt(0)}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.95rem' }}>{emp.employee?.name}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>{emp.job_title}</div>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                        <span className={`badge ${emp.is_active ? 'badge-green' : 'badge-gray'} text-xs`}>{emp.is_active ? 'نشط' : 'غير نشط'}</span>
-                        <span className={`badge text-xs ${isSaudi ? 'badge-blue' : 'badge-amber'}`}>{isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality}`}</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px', fontSize: '0.8rem' }}>
-                      {emp.department && <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}><span style={{ color: 'var(--text3)' }}>القسم: </span><span style={{ fontWeight: 600 }}>{emp.department}</span></div>}
-                      {manager && <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}><span style={{ color: 'var(--text3)' }}>المدير: </span><span style={{ fontWeight: 600 }}>{manager.name}</span></div>}
-                      <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                        <div style={{ color: 'var(--text3)', fontSize: '0.7rem' }}>العقد</div>
-                        <div style={{ fontWeight: 600 }}>{emp.contract_type}</div>
-                      </div>
-                      {emp.hire_date && <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '6px 10px' }}>
-                        <div style={{ color: 'var(--text3)', fontSize: '0.7rem' }}>التعيين</div>
-                        <div style={{ fontWeight: 600 }}>{formatDate(emp.hire_date)}</div>
-                      </div>}
-                    </div>
-
-                    <div style={{ background: 'var(--primary-light)', borderRadius: '10px', padding: '10px 14px', marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>الإجمالي</span>
-                        <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{totalSal.toLocaleString()} ر.س</span>
-                      </div>
-                      {emp.gosi_enrolled && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>خصم GOSI ({gosi.employeePct}%)</span>
-                        <span style={{ fontWeight: 600, color: '#c81e1e' }}>- {gosi.employeeDeduction.toLocaleString()} ر.س</span>
-                      </div>}
-                      <div style={{ borderTop: '1px solid rgba(26,86,219,0.15)', paddingTop: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>الصافي</span>
-                        <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1rem' }}>{netSal.toLocaleString()} ر.س</span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                      {emp.gosi_enrolled && <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>✓ GOSI</span>}
-                      {emp.bank_name && <span className="badge badge-blue" style={{ fontSize: '0.7rem' }}>🏦 {emp.bank_name}</span>}
-                    </div>
-
-                    {iqamaDays !== null && iqamaDays <= 60 && (
-                      <div style={{ background: iqamaDays <= 0 ? '#fef2f2' : '#fffbeb', borderRadius: '8px', padding: '7px 10px', marginBottom: '10px', fontSize: '0.75rem', color: iqamaDays <= 0 ? '#c81e1e' : '#e6820a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <AlertTriangle style={{ width: '13px', height: '13px', flexShrink: 0 }} />
-                        {iqamaDays <= 0 ? `إقامة منتهية منذ ${Math.abs(iqamaDays)} يوم!` : `إقامة تنتهي خلال ${iqamaDays} يوم`}
-                      </div>
-                    )}
-
-                    {isAdmin && (
-                      <div style={{ paddingTop: '10px', borderTop: '1px solid var(--bg2)' }}>
-                        <button onClick={() => { setEditEmp(emp); setShowModal(true) }} className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'center' }}>
-                          <Pencil style={{ width: '14px', height: '14px' }} /> تعديل البيانات
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </>
       )}
 
-      {/* ══ تاب الأقسام ══ */}
-      {activeTab === 'departments' && tenant && <DepartmentsTab tenantId={tenant.id} managers={managers} onUpdate={load} />}
+      {/* ═══════════ TAB: DEPARTMENTS ═══════════ */}
+      {activeTab === 'departments' && (
+        <>
+          <div className="hr-card">
+            <h2>➕ إضافة قسم جديد</h2>
+            <form onSubmit={handleAddDepartment}>
+              <div className="form-grid">
+                <div className="form-field" style={{ gridColumn: 'span 2' }}>
+                  <label>اسم القسم *</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: قسم الكهرباء"
+                    value={newDept.name}
+                    onChange={(e) => setNewDept({ ...newDept, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label>مدير القسم</label>
+                  <select
+                    value={newDept.manager_id}
+                    onChange={(e) => setNewDept({ ...newDept, manager_id: e.target.value })}
+                  >
+                    <option value="">— اختر المدير —</option>
+                    {baseEmployees.map((e) => (
+                      <option key={e.id} value={e.id}>{e.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <button type="submit" className="btn-primary">💾 حفظ القسم</button>
+            </form>
+          </div>
 
-      {/* ══ تاب المسميات ══ */}
-      {activeTab === 'jobtitles' && tenant && <JobTitlesTab tenantId={tenant.id} />}
+          <div className="hr-card">
+            <h2>الأقسام ({departments.length})</h2>
+            {departments.length === 0 ? (
+              <div className="hr-empty">لا توجد أقسام بعد.</div>
+            ) : (
+              <div className="hr-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>اسم القسم</th>
+                      <th>المدير</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {departments.map((d, i) => (
+                      <tr key={d.id}>
+                        <td style={{ color: '#9ca3af' }}>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{d.name}</td>
+                        <td>{d.manager_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
-      {showModal && (
-        <HREmployeeModal emp={editEmp} departments={departments} managers={managers}
-          onClose={() => { setShowModal(false); setEditEmp(null) }}
-          onSave={handleSave} />
+      {/* ═══════════ TAB: JOB TITLES ═══════════ */}
+      {activeTab === 'jobtitles' && (
+        <>
+          <div className="hr-card">
+            <h2>➕ إضافة مسمى وظيفي</h2>
+            <form onSubmit={handleAddJobTitle}>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label>القسم *</label>
+                  <select
+                    value={newTitle.department_id}
+                    onChange={(e) => setNewTitle({ ...newTitle, department_id: e.target.value })}
+                    required
+                  >
+                    <option value="">— اختر القسم —</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>المسمى الوظيفي *</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: كهربائي أول"
+                    value={newTitle.name}
+                    onChange={(e) => setNewTitle({ ...newTitle, name: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <button type="submit" className="btn-primary">💾 حفظ المسمى</button>
+            </form>
+          </div>
+
+          <div className="hr-card">
+            <h2>المسميات الوظيفية ({jobTitles.length})</h2>
+            {jobTitles.length === 0 ? (
+              <div className="hr-empty">لا توجد مسميات بعد.</div>
+            ) : (
+              <div className="hr-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>المسمى</th>
+                      <th>القسم</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobTitles.map((t, i) => (
+                      <tr key={t.id}>
+                        <td style={{ color: '#9ca3af' }}>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{t.name}</td>
+                        <td>{t.department_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
-  )
+  );
 }
