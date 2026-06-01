@@ -38,51 +38,152 @@ type Termination = {
 }
 
 // ── حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي ──
-function calcGratuity(hireDateStr: string, lastDayStr: string, basicSalary: number): {
-  years: number; months: number; amount: number; breakdown: string
-} {
-  if (!hireDateStr || !lastDayStr) return { years: 0, months: 0, amount: 0, breakdown: '' }
+// ══════════════════════════════════════════════════════════════════
+// حساب مكافأة نهاية الخدمة — نظام العمل السعودي (المادة 84-88)
+// ══════════════════════════════════════════════════════════════════
+
+type GratuityResult = {
+  years: number; months: number; days: number
+  fullAmount: number       // المكافأة الكاملة قبل أي تخفيض
+  finalAmount: number      // المبلغ النهائي بعد تطبيق نوع الإنهاء
+  reductionPct: number     // نسبة التخفيض (0 = بدون تخفيض)
+  reductionLabel: string   // سبب التخفيض
+  breakdown: string[]      // تفاصيل الحساب
+  entitlement: string      // وصف الاستحقاق
+  isEntitled: boolean      // هل يستحق أصلاً
+}
+
+function calcGratuity(
+  hireDateStr: string,
+  lastDayStr: string,
+  basicSalary: number,
+  terminationType: string
+): GratuityResult {
+
+  const empty = (msg: string): GratuityResult => ({
+    years: 0, months: 0, days: 0, fullAmount: 0, finalAmount: 0,
+    reductionPct: 0, reductionLabel: '', breakdown: [], entitlement: msg, isEntitled: false
+  })
+
+  if (!hireDateStr || !lastDayStr || !basicSalary) return empty('بيانات غير مكتملة')
+
   const hire = new Date(hireDateStr)
   const last = new Date(lastDayStr)
-  const diffMs = last.getTime() - hire.getTime()
-  const totalMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30.44))
-  const years = Math.floor(totalMonths / 12)
-  const months = totalMonths % 12
+  if (last <= hire) return empty('تاريخ الإنهاء قبل تاريخ المباشرة')
+
+  // ── حساب مدة الخدمة بدقة ──
+  let years = last.getFullYear() - hire.getFullYear()
+  let months = last.getMonth() - hire.getMonth()
+  let days = last.getDate() - hire.getDate()
+  if (days < 0) { months--; days += 30 }
+  if (months < 0) { years--; months += 12 }
+  const totalMonths = years * 12 + months
   const dailySalary = basicSalary / 30
 
-  let amount = 0
-  const parts: string[] = []
+  // ── تحديد الاستحقاق حسب نوع الإنهاء ──
+  // المادة 84: مكافأة كاملة في حالات: إنهاء صاحب العمل، انتهاء العقد، وفاة، عجز
+  // المادة 85: مكافأة مخفّضة في حالة الاستقالة
+  // المادة 80: لا مكافأة في حالة الفصل بسبب مخالفة جسيمة
 
-  if (years <= 0 && months < 24) {
-    // أقل من سنتين — لا مكافأة
-    return { years, months, amount: 0, breakdown: 'أقل من سنتين — لا تستحق مكافأة' }
+  type TermRule = { fullRights: boolean; reduction: (y: number) => number; note: string; minMonths: number }
+
+  const TERM_RULES: Record<string, TermRule> = {
+    // ← مكافأة كاملة — صاحب العمل هو المنهي
+    'إنهاء عقد من صاحب العمل': { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — المادة 84', minMonths: 1 },
+    'انتهاء عقد':               { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة عند انتهاء مدة العقد — المادة 84', minMonths: 1 },
+    'إنهاء باتفاق الطرفين':     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة باتفاق الطرفين — المادة 84', minMonths: 1 },
+    'إحالة للتقاعد':            { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — إحالة للتقاعد', minMonths: 1 },
+    'وفاة':                     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — تصرف لورثة الموظف', minMonths: 1 },
+    'عجز كلي':                  { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — عجز كلي عن العمل المادة 84', minMonths: 1 },
+    'إغلاق المنشأة':            { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — إغلاق المنشأة', minMonths: 1 },
+    'تغيير جوهري في العقد':     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — رفض تغيير جوهري في العقد المادة 81', minMonths: 1 },
+
+    // ← استقالة — مكافأة مخفّضة حسب المادة 85
+    'استقالة': {
+      fullRights: false,
+      reduction: (y: number) => {
+        if (y < 2)   return 0      // أقل من سنتين = لا شيء
+        if (y < 5)   return 1/3    // 2-5 سنوات = ثلث
+        if (y < 10)  return 2/3    // 5-10 سنوات = ثلثان
+        return 1                    // 10 سنوات فأكثر = كاملة
+      },
+      note: 'استقالة — المادة 85 (تُخفَّض حسب سنوات الخدمة)',
+      minMonths: 24,
+    },
+
+    // ← انتهاء عقد موسمي / جزئي
+    'انتهاء عقد موسمي':   { fullRights: true, reduction: () => 1, note: 'مكافأة بنسبة أيام العمل الفعلية', minMonths: 1 },
+
+    // ← فصل تأديبي — لا مكافأة (المادة 80)
+    'فصل تأديبي':    { fullRights: false, reduction: () => 0, note: 'لا مكافأة — فصل بسبب مخالفة جسيمة المادة 80', minMonths: 0 },
+    'فصل':           { fullRights: false, reduction: () => 0, note: 'لا مكافأة — فصل تأديبي المادة 80', minMonths: 0 },
   }
 
-  // أول 5 سنوات: نصف شهر لكل سنة
+  const rule = TERM_RULES[terminationType] || { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة', minMonths: 1 }
+
+  // ── حساب المكافأة الكاملة الأساسية ──
+  const breakdown: string[] = []
+  let fullAmount = 0
+
+  if (totalMonths < rule.minMonths) {
+    const msg = rule.minMonths >= 24
+      ? `أقل من سنتين خدمة (${years} سنة ${months} شهر) — لا تستحق مكافأة عند الاستقالة`
+      : `مدة الخدمة أقل من الحد الأدنى المطلوب`
+    return empty(msg)
+  }
+
+  // أول 5 سنوات → نصف شهر لكل سنة
   const firstFive = Math.min(years, 5)
   if (firstFive > 0) {
     const a = Math.round(dailySalary * 15 * firstFive)
-    amount += a
-    parts.push(`${firstFive} سنة × نصف شهر = ${a.toLocaleString()} ر.س`)
+    fullAmount += a
+    breakdown.push(`${firstFive} سنة × 15 يوم (نصف شهر) = ${a.toLocaleString()} ر.س`)
   }
 
-  // بعد 5 سنوات: شهر كامل لكل سنة
+  // بعد 5 سنوات → شهر كامل لكل سنة
   if (years > 5) {
     const extra = years - 5
     const a = Math.round(dailySalary * 30 * extra)
-    amount += a
-    parts.push(`${extra} سنة × شهر كامل = ${a.toLocaleString()} ر.س`)
+    fullAmount += a
+    breakdown.push(`${extra} سنة × 30 يوم (شهر كامل) = ${a.toLocaleString()} ر.س`)
   }
 
-  // الأشهر المتبقية (نسبة)
-  if (months > 0 && years >= 2) {
-    const monthRate = years >= 5 ? 30 : 15
-    const a = Math.round(dailySalary * monthRate * months / 12)
-    amount += a
-    parts.push(`${months} شهر إضافي = ${a.toLocaleString()} ر.س`)
+  // الأشهر المتبقية بالنسبة
+  if (months > 0) {
+    const dayRate = years >= 5 ? 30 : 15
+    const a = Math.round(dailySalary * dayRate * months / 12)
+    fullAmount += a
+    breakdown.push(`${months} شهر متبقي × نسبة = ${a.toLocaleString()} ر.س`)
   }
 
-  return { years, months, amount, breakdown: parts.join(' + ') }
+  // الأيام المتبقية بالنسبة
+  if (days > 0 && years >= 1) {
+    const dayRate = years >= 5 ? 30 : 15
+    const a = Math.round(dailySalary * dayRate * days / 365)
+    fullAmount += a
+    if (a > 0) breakdown.push(`${days} يوم متبقي = ${a.toLocaleString()} ر.س`)
+  }
+
+  // ── تطبيق نسبة التخفيض حسب نوع الإنهاء ──
+  const reductionFactor = rule.reduction(years)
+  const finalAmount = Math.round(fullAmount * reductionFactor)
+  const reductionPct = Math.round((1 - reductionFactor) * 100)
+
+  // وصف الاستحقاق
+  let entitlement = rule.note
+  if (terminationType === 'استقالة' && reductionFactor < 1 && reductionFactor > 0) {
+    entitlement = `استقالة — ${years >= 5 ? 'ثلثا' : 'ثلث'} المكافأة (${100 - reductionPct}%) — المادة 85`
+  }
+
+  return {
+    years, months, days,
+    fullAmount, finalAmount,
+    reductionPct,
+    reductionLabel: reductionPct > 0 ? `تخفيض ${reductionPct}% بسبب الاستقالة` : '',
+    breakdown,
+    entitlement,
+    isEntitled: finalAmount > 0,
+  }
 }
 
 function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
@@ -833,7 +934,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 
   const selectedHR = hrEmployees.find(e => e.id === Number(form.hr_employee_id))
   const gratuity = selectedHR && form.last_working_day
-    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, selectedHR.basic_salary)
+    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, selectedHR.basic_salary, form.termination_type)
     : null
 
   useEffect(() => { loadData() }, [])
@@ -870,7 +971,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
       termination_date: form.termination_date,
       last_working_day: form.last_working_day,
       years_of_service: gratuity ? gratuity.years + (gratuity.months / 12) : 0,
-      gratuity_amount: gratuity?.amount || 0,
+      gratuity_amount: gratuity?.finalAmount || 0,
       notes: form.notes || null,
       status: form.status,
     }
@@ -898,18 +999,34 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
   }
 
   const TYPES = [
-    { value: 'استقالة',       icon: '🚪', color: '#e6820a' },
-    { value: 'إنهاء عقد',     icon: '📋', color: '#c81e1e' },
-    { value: 'انتهاء عقد',    icon: '📅', color: '#1a56db' },
-    { value: 'إحالة للتقاعد', icon: '🎖️', color: '#0ea77b' },
-    { value: 'وفاة',          icon: '🖤', color: '#374151' },
-    { value: 'فصل',           icon: '⚠️', color: '#c81e1e' },
+    // ← مكافأة كاملة
+    { value: 'إنهاء عقد من صاحب العمل', icon: '📋', color: '#c81e1e',  group: 'كاملة' },
+    { value: 'انتهاء عقد',              icon: '📅', color: '#1a56db',  group: 'كاملة' },
+    { value: 'إنهاء باتفاق الطرفين',    icon: '🤝', color: '#0ea77b',  group: 'كاملة' },
+    { value: 'إحالة للتقاعد',           icon: '🎖️', color: '#0ea77b',  group: 'كاملة' },
+    { value: 'وفاة',                    icon: '🖤', color: '#374151',  group: 'كاملة' },
+    { value: 'عجز كلي',                 icon: '🏥', color: '#6b7280',  group: 'كاملة' },
+    { value: 'إغلاق المنشأة',           icon: '🏢', color: '#e6820a',  group: 'كاملة' },
+    { value: 'تغيير جوهري في العقد',    icon: '📝', color: '#e6820a',  group: 'كاملة' },
+    // ← مكافأة مخفّضة
+    { value: 'استقالة',                 icon: '🚪', color: '#e6820a',  group: 'مخفّضة' },
+    // ← لا مكافأة
+    { value: 'فصل تأديبي',             icon: '⛔', color: '#c81e1e',  group: 'لا مكافأة' },
+    { value: 'فصل',                    icon: '⚠️', color: '#c81e1e',  group: 'لا مكافأة' },
   ]
 
   const TYPE_COLOR: Record<string, string> = {
-    'استقالة': 'badge-amber', 'إنهاء عقد': 'badge-red',
-    'انتهاء عقد': 'badge-blue', 'إحالة للتقاعد': 'badge-green',
-    'وفاة': 'badge-gray', 'فصل': 'badge-red',
+    'إنهاء عقد من صاحب العمل': 'badge-red',
+    'انتهاء عقد': 'badge-blue',
+    'إنهاء باتفاق الطرفين': 'badge-green',
+    'إحالة للتقاعد': 'badge-green',
+    'وفاة': 'badge-gray',
+    'عجز كلي': 'badge-gray',
+    'إغلاق المنشأة': 'badge-amber',
+    'تغيير جوهري في العقد': 'badge-amber',
+    'استقالة': 'badge-amber',
+    'فصل تأديبي': 'badge-red',
+    'فصل': 'badge-red',
   }
 
   return (
@@ -948,20 +1065,32 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
             {/* نوع الإنهاء */}
             <div style={{ gridColumn: '1/-1' }}>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإنهاء <span className="text-red-500">*</span></label>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {TYPES.map(t => (
-                  <button key={t.value} type="button" onClick={() => set('termination_type', t.value)}
-                    style={{
-                      padding: '7px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer',
-                      fontSize: '0.85rem', fontWeight: 600,
-                      borderColor: form.termination_type === t.value ? t.color : 'var(--border)',
-                      background: form.termination_type === t.value ? t.color + '18' : 'white',
-                      color: form.termination_type === t.value ? t.color : 'var(--text3)',
-                    }}>
-                    {t.icon} {t.value}
-                  </button>
-                ))}
-              </div>
+              {/* مجموعات الأنواع */}
+              {[
+                { group: 'كاملة',     label: '✅ مكافأة كاملة',   bg: '#ecfdf5', border: '#6ee7b7' },
+                { group: 'مخفّضة',   label: '⚠️ مكافأة مخفّضة', bg: '#fffbeb', border: '#fcd34d' },
+                { group: 'لا مكافأة', label: '❌ لا مكافأة',       bg: '#fef2f2', border: '#fca5a5' },
+              ].map(grp => (
+                <div key={grp.group} style={{ marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px', padding: '3px 8px', background: grp.bg, border: `1px solid ${grp.border}`, borderRadius: '6px', display: 'inline-block' }}>
+                    {grp.label}
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {TYPES.filter(t => t.group === grp.group).map(t => (
+                      <button key={t.value} type="button" onClick={() => set('termination_type', t.value)}
+                        style={{
+                          padding: '6px 12px', borderRadius: '8px', border: '2px solid', cursor: 'pointer',
+                          fontSize: '0.82rem', fontWeight: 600,
+                          borderColor: form.termination_type === t.value ? t.color : 'var(--border)',
+                          background: form.termination_type === t.value ? t.color + '18' : 'white',
+                          color: form.termination_type === t.value ? t.color : 'var(--text3)',
+                        }}>
+                        {t.icon} {t.value}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* التواريخ */}
@@ -974,23 +1103,59 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
               <input type="date" value={form.last_working_day} onChange={e => set('last_working_day', e.target.value)} className="input" />
             </div>
 
-            {/* مكافأة نهاية الخدمة — تلقائية */}
+            {/* مكافأة نهاية الخدمة — تلقائية حسب نظام العمل السعودي */}
             {gratuity && (
-              <div style={{ gridColumn: '1/-1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                <div style={{ padding: '10px 14px', background: '#0ea77b', color: 'white', fontWeight: 700, fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>🧮 مكافأة نهاية الخدمة (تلقائي)</span>
-                  <span style={{ opacity: 0.9, fontSize: '0.8rem' }}>
-                    {gratuity.years} سنة {gratuity.months > 0 ? `و ${gratuity.months} شهر` : ''}
+              <div style={{ gridColumn: '1/-1', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${gratuity.isEntitled ? '#bbf7d0' : '#fca5a5'}` }}>
+                {/* رأس البطاقة */}
+                <div style={{
+                  padding: '10px 14px', color: 'white', fontWeight: 700, fontSize: '0.875rem',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  background: gratuity.isEntitled ? '#0ea77b' : '#c81e1e',
+                }}>
+                  <span>🧮 مكافأة نهاية الخدمة — حسب نظام العمل السعودي</span>
+                  <span style={{ opacity: 0.9, fontSize: '0.78rem' }}>
+                    {gratuity.years} سنة {gratuity.months > 0 ? `و ${gratuity.months} شهر` : ''} {gratuity.days > 0 ? `و ${gratuity.days} يوم` : ''}
                   </span>
                 </div>
-                <div style={{ padding: '12px 14px', background: '#f0fdf4' }}>
-                  <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: '8px' }}>{gratuity.breakdown}</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #bbf7d0', paddingTop: '8px' }}>
-                    <span style={{ fontWeight: 700 }}>إجمالي المكافأة</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0ea77b' }}>{gratuity.amount.toLocaleString()} ر.س</span>
+
+                <div style={{ padding: '12px 14px', background: gratuity.isEntitled ? '#f0fdf4' : '#fef2f2' }}>
+                  {/* الأساس القانوني */}
+                  <div style={{ fontSize: '0.78rem', color: gratuity.isEntitled ? '#065f46' : '#991b1b', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>{gratuity.isEntitled ? '✅' : '❌'}</span>
+                    <span>{gratuity.entitlement}</span>
                   </div>
-                  {gratuity.amount === 0 && (
-                    <div style={{ fontSize: '0.78rem', color: '#c81e1e', marginTop: '6px' }}>⚠️ {gratuity.breakdown}</div>
+
+                  {/* تفاصيل الحساب */}
+                  {gratuity.breakdown.length > 0 && (
+                    <div style={{ marginBottom: '10px' }}>
+                      {gratuity.breakdown.map((line, i) => (
+                        <div key={i} style={{ fontSize: '0.8rem', color: '#374151', padding: '3px 0', borderBottom: i < gratuity.breakdown.length - 1 ? '1px dashed #d1fae5' : 'none' }}>
+                          • {line}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* المبالغ */}
+                  {gratuity.isEntitled && (
+                    <>
+                      {gratuity.reductionPct > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#6b7280', marginBottom: '4px', paddingBottom: '4px', borderBottom: '1px solid #fde68a' }}>
+                          <span>المكافأة الكاملة قبل التخفيض</span>
+                          <span style={{ fontWeight: 600 }}>{gratuity.fullAmount.toLocaleString()} ر.س</span>
+                        </div>
+                      )}
+                      {gratuity.reductionPct > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#c81e1e', marginBottom: '8px' }}>
+                          <span>تخفيض {gratuity.reductionPct}% ({gratuity.reductionLabel})</span>
+                          <span style={{ fontWeight: 600 }}>- {(gratuity.fullAmount - gratuity.finalAmount).toLocaleString()} ر.س</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${gratuity.reductionPct > 0 ? '#fde68a' : '#bbf7d0'}`, paddingTop: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>💰 المكافأة المستحقة</span>
+                        <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#0ea77b' }}>{gratuity.finalAmount.toLocaleString()} ر.س</span>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
