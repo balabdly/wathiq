@@ -301,8 +301,8 @@ export default function LeavesPage() {
     if (!tenant) return
     setLoading(true)
     const [empRes, leavesRes] = await Promise.all([
-      supabase.from('hr_employees').select('id, employee_id, hire_date, nationality, iqama_number, employee:employees(name, role)').eq('tenant_id', tenant.id).order('id'),
-      supabase.from('hr_leaves').select('*, employee:employees(name)').eq('tenant_id', tenant.id).order('start_date', { ascending: false }),
+      supabase.from('hr_employees').select('id, employee_id, hire_date, nationality, iqama_number, employee:employees!hr_employees_employee_id_fkey(name, role)').eq('tenant_id', tenant.id).order('id'),
+      supabase.from('hr_leaves').select('*, employee:employees!hr_leaves_employee_id_fkey(name)').eq('tenant_id', tenant.id).order('start_date', { ascending: false }),
     ])
     setHREmployees((empRes.data || []) as any[])
     setLeaves(leavesRes.data || [])
