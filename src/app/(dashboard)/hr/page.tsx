@@ -712,23 +712,40 @@ export default function HRPage() {
         await supabase.from('employees').update({ name: data.emp_name, role: data.job_title }).eq('id', employeeId)
       }
 
-      const hrPayload = {
-        tenant_id: tenant.id, employee_id: employeeId,
-        national_id: data.national_id, nationality: data.nationality,
-        birth_date: data.birth_date, gender: data.gender,
-        marital_status: data.marital_status, hire_date: data.hire_date,
-        contract_type: data.contract_type, job_title: data.job_title,
-        department: data.department, direct_manager: data.direct_manager,
-        basic_salary: data.basic_salary, housing_allow: data.housing_allow,
-        transport_allow: data.transport_allow, other_allow: data.other_allow,
-        gosi_enrolled: data.gosi_enrolled, gosi_pct: data.gosi_pct,
-        bank_name: data.bank_name, iban: data.iban,
-        iqama_number: data.iqama_number, iqama_expiry: data.iqama_expiry,
-        notes: data.notes, is_active: true,
+      const hrPayload: Record<string, any> = {
+        tenant_id: tenant.id,
+        employee_id: employeeId,
+        national_id: data.national_id,
+        nationality: data.nationality,
+        birth_date: data.birth_date || null,
+        gender: data.gender,
+        marital_status: data.marital_status,
+        hire_date: data.hire_date || null,
+        contract_type: data.contract_type,
+        job_title: data.job_title,
+        department: data.department,
+        direct_manager: data.direct_manager || null,
+        basic_salary: data.basic_salary,
+        housing_allow: data.housing_allow,
+        transport_allow: data.transport_allow,
+        other_allow: data.other_allow,
+        gosi_enrolled: data.gosi_enrolled,
+        gosi_pct: data.gosi_pct,
+        bank_name: data.bank_name,
+        iban: data.iban,
+        iqama_number: data.iqama_number || null,
+        iqama_expiry: data.iqama_expiry || null,
+        notes: data.notes || null,
+        is_active: true,
       }
 
-      if (data.id) await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
-      else await supabase.from('hr_employees').insert(hrPayload)
+      if (data.id) {
+        const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
+        if (updateErr) throw updateErr
+      } else {
+        const { error: insertErr } = await supabase.from('hr_employees').insert(hrPayload)
+        if (insertErr) throw insertErr
+      }
 
       await load()
       setShowModal(false); setEditEmp(null)
