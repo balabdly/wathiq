@@ -780,7 +780,7 @@ export default function HRPage() {
       // ✅ إصلاح: إضافة فلتر tenant_id + is_active لجلب الموظفين الصحيحين فقط
       supabase
         .from('hr_employees')
-        .select('*, employee:employees(name, role)')
+        .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
         .eq('tenant_id', tenant.id)
         .order('id'),
       supabase
