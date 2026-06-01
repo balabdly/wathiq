@@ -547,8 +547,8 @@ function JobTitlesTab({ tenantId }: { tenantId: string }) {
       supabase.from('hr_job_titles').select('*, department:hr_departments(name)').eq('tenant_id', tenantId).order('name'),
       supabase.from('hr_departments').select('id, name').eq('tenant_id', tenantId).order('name'),
     ])
-    setTitles(tRes.data || [])
-    setDepts(dRes.data || [])
+    setTitles((tRes.data || []) as JobTitle[])
+    setDepts((dRes.data || []) as Department[])
     setLoading(false)
   }
 
