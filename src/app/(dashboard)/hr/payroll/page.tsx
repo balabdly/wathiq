@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree } from 'lucide-react'
+import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ══════════════════════════════════════
@@ -720,6 +720,7 @@ export default function PayrollPage() {
   const [mode, setMode] = useState<'view' | 'create'>('view')
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
+  const [expandedPayrollKey, setExpandedPayrollKey] = useState<string | null>(null) // 'YYYY-M'
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => { load() }, [tenant?.id])
@@ -797,6 +798,25 @@ export default function PayrollPage() {
   async function handleEditSave(data: any) {
     await supabase.from('hr_payroll').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id)
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
+  }
+
+  // ── تصدير CSV ──
+  function exportCSV(data: Payroll[], month: number, year: number) {
+    const headers = ['الموظف','الدور','الراتب الأساسي','السكن','النقل','بدلات أخرى','إضافي','مكافآت','الإجمالي','تأمينات','خصم غياب','خصومات أخرى','صافي الراتب','أيام الحضور','الحالة']
+    const rows = data.map(p => [
+      p.employee?.name || '',
+      p.employee?.role || '',
+      p.basic_salary, p.housing_allow, p.transport_allow, p.other_allow,
+      p.overtime_pay, p.bonuses, p.gross_salary,
+      p.gosi_deduction, p.absence_deduct, p.other_deduct,
+      p.net_salary, p.present_days, p.status
+    ])
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `مسير_رواتب_${ARABIC_MONTHS[month-1]}_${year}.csv`
+    a.click(); URL.revokeObjectURL(url)
   }
 
   const filteredPayrolls = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
