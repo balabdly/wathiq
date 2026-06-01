@@ -715,7 +715,7 @@ export default function HRPage() {
       const hrPayload: Record<string, any> = {
         tenant_id: tenant.id,
         employee_id: employeeId,
-        national_id: data.national_id,
+        national_id: data.national_id || null,
         nationality: data.nationality,
         birth_date: data.birth_date || null,
         gender: data.gender,
@@ -731,13 +731,15 @@ export default function HRPage() {
         other_allow: data.other_allow,
         gosi_enrolled: data.gosi_enrolled,
         gosi_pct: data.gosi_pct,
-        bank_name: data.bank_name,
-        iban: data.iban,
+        bank_name: data.bank_name || null,
+        iban: data.iban || null,
         iqama_number: data.iqama_number || null,
         iqama_expiry: data.iqama_expiry || null,
         notes: data.notes || null,
         is_active: true,
       }
+      // حذف أي قيم undefined تماماً
+      Object.keys(hrPayload).forEach(k => hrPayload[k] === undefined && delete hrPayload[k])
 
       if (data.id) {
         const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
