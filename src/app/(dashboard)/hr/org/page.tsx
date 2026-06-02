@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Pencil, Trash2, X, Save, Download, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Save, Download, ZoomIn, ZoomOut, Maximize2, Building2, Briefcase } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ══════════════════════════════════════
