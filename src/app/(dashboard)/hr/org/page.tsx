@@ -40,8 +40,8 @@ const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#089
 // ══════════════════════════════════════
 // Org Chart SVG
 // ══════════════════════════════════════
-function OrgChart({ branches, divisions, hasBranches, allDivisions, ceoId, allEmployees }: {
-  branches: Branch[]; divisions: Division[]; hasBranches: boolean; allDivisions: Division[]
+function OrgChart({ divisions, ceoId, allEmployees }: {
+  divisions: Division[]
   ceoId: number | null; allEmployees: Employee[]
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -70,45 +70,18 @@ function OrgChart({ branches, divisions, hasBranches, allDivisions, ceoId, allEm
   const companySubLabel = ceoEmp ? `👑 ${ceoEmp.name}` : 'المقر الرئيسي'
   nodes.push({ id: 'company', label: companyLabel, sublabel: companySubLabel, color: '#1a1a2e', x: companyX, y: 20, w: 200, h: 62, type: 'company' })
 
-  if (hasBranches && branches.length > 0) {
-    // مع فروع
-    const branchSpacing = Math.max(NODE_W + H_GAP, (branches.length > 1 ? 800 / (branches.length - 1) : 0))
-    const totalBranchW = (branches.length - 1) * branchSpacing
-    const branchStartX = companyX + 90 - totalBranchW / 2
+  // مباشر بدون فروع: شركة ← إدارات ← أقسام
+  const spacing = Math.max(NODE_W + H_GAP, divisions.length > 1 ? 900 / divisions.length : NODE_W + H_GAP)
+  const totalW = (divisions.length - 1) * spacing
+  const startX = companyX + 90 - totalW / 2
 
-    branches.forEach((br, bi) => {
-      const brX = branchStartX + bi * branchSpacing
-      const brY = 20 + 58 + V_GAP
-      nodes.push({ id: `br-${br.id}`, label: br.name, sublabel: 'فرع', color: '#2563eb', x: brX, y: brY, w: NODE_W, h: NODE_H, type: 'branch' })
-      edges.push({ x1: companyX + 90, y1: 20 + 58, x2: brX + NODE_W/2, y2: brY, color: '#94a3b8' })
-
-      const brDivs = divisions.filter(d => d.branch_id === br.id)
-      const divSpacing = Math.max(NODE_W + H_GAP, brDivs.length > 1 ? 300 / (brDivs.length) : NODE_W + H_GAP)
-      const divStartX = brX + NODE_W/2 - (brDivs.length - 1) * divSpacing / 2
-
-      brDivs.forEach((div, di) => {
-        const divX = divStartX + di * divSpacing - NODE_W/2
-        const divY = brY + NODE_H + V_GAP
-        nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
-        edges.push({ x1: brX + NODE_W/2, y1: brY + NODE_H, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
-        renderDepts(div, divX, divY, div.color || '#1a56db')
-      })
-    })
-  } else {
-    // بدون فروع
-    const divs = allDivisions
-    const spacing = Math.max(NODE_W + H_GAP, divs.length > 1 ? 900 / divs.length : NODE_W + H_GAP)
-    const totalW = (divs.length - 1) * spacing
-    const startX = companyX + 90 - totalW / 2
-
-    divs.forEach((div, di) => {
-      const divX = startX + di * spacing - NODE_W/2
-      const divY = 20 + 58 + V_GAP
-      nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
-      edges.push({ x1: companyX + 90, y1: 20 + 58, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
-      renderDepts(div, divX, divY, div.color || '#1a56db')
-    })
-  }
+  divisions.forEach((div, di) => {
+    const divX = startX + di * spacing - NODE_W/2
+    const divY = 20 + 62 + V_GAP
+    nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
+    edges.push({ x1: companyX + 100, y1: 20 + 62, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
+    renderDepts(div, divX, divY, div.color || '#1a56db')
+  })
 
   function renderDepts(div: Division, divX: number, divY: number, color: string) {
     const depts = div.departments || []
@@ -247,7 +220,7 @@ function OrgChart({ branches, divisions, hasBranches, allDivisions, ceoId, allEm
 export default function OrgStructurePage() {
   const { tenant } = useStore()
   const [ceoId, setCeoId] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState<'chart'|'ceo'|'branches'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart'|'ceo'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
   const [branches, setBranches] = useState<Branch[]>([])
   const [divisions, setDivisions] = useState<Division[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -257,7 +230,7 @@ export default function OrgStructurePage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [managers, setManagers] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
-  const hasBranches = branches.length > 1
+  // hasBranches removed — no branches feature
 
   // ── Modal states ──
   const [branchModal, setBranchModal] = useState(false)
@@ -356,7 +329,7 @@ export default function OrgStructurePage() {
 
   // ══ CRUD: الإدارات ══
   async function saveDivision(form: any) {
-    const payload = { tenant_id: tenant?.id, name: form.name, branch_id: form.branch_id || null, manager_id: form.manager_id || null, color: form.color }
+    const payload = { tenant_id: tenant?.id, name: form.name, manager_id: form.manager_id || null, color: form.color }
     if (editDiv) await supabase.from('org_divisions').update(payload).eq('id', editDiv.id)
     else await supabase.from('org_divisions').insert(payload)
     await loadAll(); setDivModal(false); setEditDiv(null); toast.success('تم الحفظ ✅')
@@ -391,7 +364,6 @@ export default function OrgStructurePage() {
   const TABS = [
     { id: 'chart',        label: '🏢 المخطط التنظيمي' },
     { id: 'ceo',          label: '👑 المدير التنفيذي' },
-    { id: 'branches',     label: '🌿 الفروع' },
     { id: 'divisions',    label: '🏗️ الإدارات' },
     { id: 'departments',  label: '🏢 الأقسام' },
     { id: 'jobtitles',   label: '💼 المسميات' },
@@ -411,11 +383,7 @@ export default function OrgStructurePage() {
             {hasBranches ? `${branches.length} فروع · ` : ''}{divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
           </p>
         </div>
-        {activeTab === 'branches' && (
-          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
-          </button>
-        )}
+
         {activeTab === 'divisions' && (
           <button onClick={() => { setEditDiv(null); setDivModal(true) }} className="btn btn-primary">
             <Plus style={{ width: '16px', height: '16px' }} /> إضافة إدارة
@@ -460,7 +428,7 @@ export default function OrgStructurePage() {
         <>
           {/* ══ المخطط التنظيمي ══ */}
           {activeTab === 'chart' && (
-            <OrgChart branches={branches} divisions={divisions} hasBranches={hasBranches} allDivisions={divisions} ceoId={ceoId} allEmployees={employees} />
+            <OrgChart divisions={divisions} ceoId={ceoId} allEmployees={employees} />
           )}
 
           {/* ══ المدير التنفيذي ══ */}
@@ -516,11 +484,7 @@ export default function OrgStructurePage() {
           )}
 
           {/* ══ الفروع ══ */}
-          {activeTab === 'branches' && (
-          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
-          </button>
-        )}
+  
         {activeTab === 'divisions' && (
             <div className="space-y-3">
               {divisions.length === 0 ? (
@@ -778,7 +742,7 @@ function BranchModal({ branch, employees, onClose, onSave }: any) {
 function DivisionModal({ div, branches, hasBranches, employees, onClose, onSave }: any) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    name: div?.name || '', branch_id: div?.branch_id || '',
+    name: div?.name || '',
     manager_id: div?.manager_id || '', color: div?.color || '#1a56db',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
