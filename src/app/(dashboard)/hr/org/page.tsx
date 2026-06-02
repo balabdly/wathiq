@@ -33,14 +33,16 @@ type JobDescription = {
   job_title?: { name: string }; grade?: { grade_code: string; grade_name: string }
 }
 type Employee = { id: number; name: string; role: string }
+type Tenant = { id: string; name: string; ceo_id?: number; ceo_name?: string }
 
 const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#0891b2','#be185d']
 
 // ══════════════════════════════════════
 // Org Chart SVG
 // ══════════════════════════════════════
-function OrgChart({ branches, divisions, hasBranches, allDivisions }: {
+function OrgChart({ branches, divisions, hasBranches, allDivisions, ceoId, allEmployees }: {
   branches: Branch[]; divisions: Division[]; hasBranches: boolean; allDivisions: Division[]
+  ceoId: number | null; allEmployees: Employee[]
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -61,9 +63,12 @@ function OrgChart({ branches, divisions, hasBranches, allDivisions }: {
   const nodes: OrgNode[] = []
   const edges: OrgEdge[] = []
 
-  // شركة
+  // شركة + CEO
   const companyX = 400
-  nodes.push({ id: 'company', label: 'الشركة', sublabel: 'المقر الرئيسي', color: '#1a1a2e', x: companyX, y: 20, w: 180, h: 58, type: 'company' })
+  const ceoEmp = allEmployees.find(e => e.id === ceoId)
+  const companyLabel = 'الشركة'
+  const companySubLabel = ceoEmp ? `👑 ${ceoEmp.name}` : 'المقر الرئيسي'
+  nodes.push({ id: 'company', label: companyLabel, sublabel: companySubLabel, color: '#1a1a2e', x: companyX, y: 20, w: 200, h: 62, type: 'company' })
 
   if (hasBranches && branches.length > 0) {
     // مع فروع
@@ -241,7 +246,8 @@ function OrgChart({ branches, divisions, hasBranches, allDivisions }: {
 // ══════════════════════════════════════
 export default function OrgStructurePage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'chart'|'branches'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
+  const [ceoId, setCeoId] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<'chart'|'ceo'|'branches'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
   const [branches, setBranches] = useState<Branch[]>([])
   const [divisions, setDivisions] = useState<Division[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -309,6 +315,11 @@ export default function OrgStructurePage() {
     setGrades(gradeRes.data || []); setDescriptions(descRes.data || [])
     setEmployees(empRes.data || [])
     setManagers((empRes.data || []).filter((e: any) => ['مدير عام','مدير مشروع','مدير قسم'].includes(e.role)))
+    // جلب CEO من tenant
+    if (tenant) {
+      const { data: tenantData } = await supabase.from('tenants').select('ceo_id').eq('id', tenant.id).single()
+      if (tenantData?.ceo_id) setCeoId(tenantData.ceo_id)
+    }
     setLoading(false)
   }
 
@@ -379,6 +390,7 @@ export default function OrgStructurePage() {
 
   const TABS = [
     { id: 'chart',        label: '🏢 المخطط التنظيمي' },
+    { id: 'ceo',          label: '👑 المدير التنفيذي' },
     { id: 'branches',     label: '🌿 الفروع' },
     { id: 'divisions',    label: '🏗️ الإدارات' },
     { id: 'departments',  label: '🏢 الأقسام' },
@@ -448,7 +460,7 @@ export default function OrgStructurePage() {
         <>
           {/* ══ المخطط التنظيمي ══ */}
           {activeTab === 'chart' && (
-            <OrgChart branches={branches} divisions={divisions} hasBranches={hasBranches} allDivisions={divisions} />
+            <OrgChart branches={branches} divisions={divisions} hasBranches={hasBranches} allDivisions={divisions} ceoId={ceoId} allEmployees={employees} />
           )}
 
           {/* ══ الإدارات ══ */}
@@ -511,7 +523,7 @@ export default function OrgStructurePage() {
 
           {/* ══ الأقسام ══ */}
           {activeTab === 'departments' && tenant && (
-            <DepartmentsTab tenantId={tenant.id} managers={managers} onUpdate={loadAll} />
+            <DepartmentsTab tenantId={tenant.id} managers={managers} divisions={divisions} onUpdate={loadAll} />
           )}
 
           {/* ══ المسميات الوظيفية ══ */}
@@ -885,11 +897,13 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
 
   async function save() {
     if (!form.name.trim()) { toast.error('أدخل اسم القسم'); return }
+    if (!form.division_id) { toast.error('يجب تحديد الإدارة أولاً'); return }
     if (!form.manager_id) { toast.error('اختر مدير القسم'); return }
-    const payload = {
+    const payload: any = {
       tenant_id: tenantId,
       name: form.name.trim(),
       manager_id: Number(form.manager_id),
+      division_id: Number(form.division_id),
     }
     if (editId) {
       await supabase.from('hr_departments').update(payload).eq('id', editId)
@@ -917,7 +931,17 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
         <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
           {editId ? '✏️ تعديل القسم' : '➕ إضافة قسم جديد'}
         </div>
-        <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">الإدارة <span className="text-red-500">*</span></label>
+            <select value={(form as any).division_id} onChange={e => setForm(f => ({ ...f, division_id: e.target.value }))} className="select">
+              <option value="">— اختر الإدارة أولاً —</option>
+              {divisions.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            {divisions.length === 0 && (
+              <p style={{ fontSize: '0.72rem', color: '#c81e1e', marginTop: '4px' }}>⚠️ أضف إدارات أولاً</p>
+            )}
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم القسم <span className="text-red-500">*</span></label>
             <input
@@ -925,11 +949,12 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               className="input" placeholder="مثال: قسم المشاريع"
               onKeyDown={noEnter}
+              disabled={!(form as any).division_id}
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير القسم <span className="text-red-500">*</span></label>
-            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select">
+            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select" disabled={!(form as any).division_id}>
               <option value="">— اختر المدير —</option>
               {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
             </select>
@@ -980,7 +1005,7 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
-                  onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '' }); setEditId(d.id) }}
+                  onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '', division_id: (d as any).division_id ? String((d as any).division_id) : '' }); setEditId(d.id) }}
                   className="btn btn-ghost btn-xs">
                   <Pencil style={{ width: '14px', height: '14px' }} />
                 </button>
@@ -1022,8 +1047,8 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
   }
 
   async function save() {
+    if (!form.department_id) { toast.error('يجب تحديد القسم أولاً'); return }
     if (!form.name.trim()) { toast.error('أدخل اسم المسمى الوظيفي'); return }
-    if (!form.department_id) { toast.error('اختر القسم'); return }
     const payload = {
       tenant_id: tenantId,
       name: form.name.trim(),
