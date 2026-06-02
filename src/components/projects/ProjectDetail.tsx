@@ -23,7 +23,16 @@ type Attachment = {
   created_at: string; public_url?: string
 }
 
-const CATEGORIES = ['عقد','مخططات','صور الموقع','تقارير','تصاريح','أخرى']
+const CATEGORIES = ['مخططات','رخصة بلدية','إخلاء بلدية','مستخلصات','فواتير','صور الموقع','أخرى']
+
+// المستندات الإلزامية لإغلاق المشروع
+const REQUIRED_DOCS = [
+  { category: 'مخططات',     label: 'مخططات المشروع',  icon: '📐' },
+  { category: 'رخصة بلدية', label: 'رخصة البلدية',     icon: '📋' },
+  { category: 'إخلاء بلدية',label: 'إخلاء البلدية',    icon: '📋' },
+  { category: 'مستخلصات',   label: 'المستخلص',          icon: '📄' },
+  { category: 'فواتير',      label: 'الفاتورة',          icon: '🧾' },
+]
 
 function fileIcon(type: string) {
   if (type?.startsWith('image/')) return <Image style={{ width: '16px', height: '16px', color: '#0ea77b' }} />
@@ -198,12 +207,54 @@ function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) 
   )
 }
 
+
+// ══════════════════════════════════════
+// مكوّن تحديث نسبة الإنجاز
+// ══════════════════════════════════════
+function ProgressUpdater({ project, tenant, onRefresh }: { project: Project; tenant: any; onRefresh: () => void }) {
+  const [progress, setProgress] = useState(project.progress)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!tenant) return
+    setSaving(true)
+    const now = new Date().toLocaleDateString('ar-EG')
+    const history = [...(project.history || []), `${now}: تحديث نسبة الإنجاز إلى ${progress}%`]
+    await projectsApi.upsert({ id: project.id, tenant_id: tenant.id, progress, history })
+    await onRefresh()
+    setSaving(false)
+    toast.success(`✅ تم تحديث الإنجاز إلى ${progress}%`)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <input type="range" min="0" max="100" step="5" value={progress}
+          onChange={e => setProgress(Number(e.target.value))}
+          style={{ flex: 1 }} />
+        <span style={{ fontWeight: 700, color: '#1a56db', fontSize: '1.1rem', minWidth: '48px', textAlign: 'center' }}>
+          {progress}%
+        </span>
+      </div>
+      <div style={{ height: '8px', background: '#f3f4f6', borderRadius: '6px', overflow: 'hidden' }}>
+        <div style={{ height: '100%', borderRadius: '6px', width: `${progress}%`, transition: 'width 0.2s', background: progress >= 100 ? '#0ea77b' : '#1a56db' }} />
+      </div>
+      {progress !== project.progress && (
+        <button onClick={handleSave} disabled={saving} className="btn btn-primary btn-sm" style={{ alignSelf: 'flex-end' }}>
+          {saving ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+          حفظ التحديث
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ══════════════════════════════════════
 // ProjectDetail الرئيسي
 // ══════════════════════════════════════
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'info'|'stages'|'attachments'|'inventory'|'history'>('info')
+  const [activeTab, setActiveTab] = useState<'info'|'attachments'|'inventory'|'history'>('info')
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv] = useState(false)
   const [advancing, setAdvancing] = useState(false)
@@ -295,9 +346,8 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
   const TABS = [
     { id: 'info',        label: 'المعلومات' },
-    { id: 'stages',      label: 'مراحل التنفيذ' },
-    { id: 'inventory',   label: '📦 المخزون' },
     { id: 'attachments', label: '📎 المرفقات' },
+    { id: 'inventory',   label: '📦 المخزون' },
     { id: 'history',     label: 'السجل' },
   ]
 
@@ -362,76 +412,39 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
       {/* Tab: المعلومات */}
       {activeTab === 'info' && (
-        <div className="card" style={{ padding: '20px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            {[
-              { label: 'رقم المشروع', value: project.code },
-              { label: 'نوع المشروع', value: project.type },
-              { label: 'المهندس المسؤول', value: project.engineer },
-              { label: 'الحالة', value: project.status },
-              { label: 'قيمة المشروع', value: project.value ? formatCurrency(project.value) : null },
-              { label: 'تاريخ البداية', value: formatDate(project.start_date) },
-              { label: 'تاريخ التسليم', value: formatDate(project.end_date) },
-              { label: 'نسبة الإنجاز', value: `${project.progress}%` },
-            ].map(({ label, value }) => value ? (
-              <div key={label}>
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '3px' }}>{label}</div>
-                <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{value}</div>
-              </div>
-            ) : null)}
-          </div>
-        </div>
-      )}
-
-      {/* Tab: مراحل التنفيذ */}
-      {activeTab === 'stages' && (
-        <div className="space-y-3">
-          {PROJECT_STAGES.map((stage, idx) => {
-            const stageData = (project.stages || []).find(s => s.id === stage.id)
-            const isDone    = stageData?.done === true
-            const isCurrent = idx === currentIdx
-            const isPast    = idx < currentIdx
-
-            return (
-              <div key={stage.id} className="card" style={{ padding: '16px', border: isCurrent ? '2px solid #1a56db' : isDone ? '1px solid #86efac' : '1px solid var(--border)', background: isDone ? '#f0fdf4' : isCurrent ? '#eff6ff' : 'white' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', background: isDone ? '#ecfdf5' : isCurrent ? '#eff6ff' : '#f9fafb' }}>
-                      {isDone ? '✅' : isCurrent ? '🔄' : stage.icon}
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{stage.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                        {isDone && stageData?.completedAt ? `مكتمل: ${stageData.completedAt}` : isCurrent && stageData?.startedAt ? `بدأ: ${stageData.startedAt}` : `${stage.pct}%`}
-                      </div>
-                    </div>
-                  </div>
-                  {canEdit && isCurrent && idx < PROJECT_STAGES.length - 1 && (
-                    <button onClick={() => advanceStage(idx + 1)} disabled={advancing}
-                      className="btn btn-primary btn-sm">
-                      {advancing ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
-                      الانتقال للمرحلة التالية ←
-                    </button>
-                  )}
+        <div className="space-y-4">
+          <div className="card" style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              {[
+                { label: 'رقم المشروع',    value: project.code },
+                { label: 'نوع المشروع',    value: project.type },
+                { label: 'المهندس المسؤول',value: project.engineer },
+                { label: 'الحالة',          value: project.status },
+                { label: 'قيمة المشروع',   value: project.value ? formatCurrency(project.value) : null },
+                { label: 'تاريخ البداية',  value: formatDate(project.start_date) },
+                { label: 'تاريخ التسليم',  value: formatDate(project.end_date) },
+              ].map(({ label, value }) => value ? (
+                <div key={label}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '3px' }}>{label}</div>
+                  <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{value}</div>
                 </div>
+              ) : null)}
+            </div>
+          </div>
 
-                {/* رفع مرفق للمرحلة */}
-                {(isCurrent || isPast) && canEdit && (
-                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-                    <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#1a56db', fontWeight: 600 }}>
-                      <input type="file" style={{ display: 'none' }} onChange={e => e.target.files && uploadStageAttachment(stage.id, e.target.files[0])} />
-                      <Upload style={{ width: '13px', height: '13px' }} /> رفع مرفق للمرحلة
-                    </label>
-                    {stageData?.attach && (
-                      <span style={{ marginRight: '10px', fontSize: '0.75rem', color: '#0ea77b' }}>📎 {stageData.attach}</span>
-                    )}
-                  </div>
-                )}
+          {/* تحديث نسبة الإنجاز */}
+          {canEdit && (
+            <div className="card" style={{ padding: '18px' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: '#1a56db' }}>📊</span> تحديث نسبة الإنجاز
               </div>
-            )
-          })}
+              <ProgressUpdater project={project} tenant={tenant} onRefresh={onRefresh} />
+            </div>
+          )}
         </div>
       )}
+
+
 
       {/* Tab: المرفقات */}
       {activeTab === 'attachments' && (
