@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Briefcase, Building2, Trash2, LogOut } from 'lucide-react'
+import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type HREmployee = {
@@ -1291,7 +1291,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 // ══════════════════════════════════════
 export default function HRPage() {
   const { tenant, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'employees' | 'jobtitles' | 'departments' | 'terminations'>('employees')
+  const [activeTab, setActiveTab] = useState<'employees' | 'terminations'>('employees')
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [managers, setManagers] = useState<any[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -1435,8 +1435,6 @@ export default function HRPage() {
 
   const TABS = [
     { id: 'employees',    label: '👥 ملفات الموظفين',   color: '#1a56db' },
-    { id: 'departments',  label: '🏢 الأقسام',           color: '#e6820a' },
-    { id: 'jobtitles',   label: '💼 المسميات الوظيفية', color: '#0ea77b' },
     { id: 'terminations', label: '🚪 إنهاء الخدمة',      color: '#c81e1e' },
   ]
 
@@ -1668,16 +1666,6 @@ export default function HRPage() {
             </div>
           )}
         </>
-      )}
-
-      {/* ══ تاب الأقسام ══ */}
-      {activeTab === 'departments' && tenant && (
-        <DepartmentsTab tenantId={tenant.id} managers={managers} onUpdate={load} />
-      )}
-
-      {/* ══ تاب المسميات ══ */}
-      {activeTab === 'jobtitles' && tenant && (
-        <JobTitlesTab tenantId={tenant.id} />
       )}
 
       {/* ══ تاب إنهاء الخدمة ══ */}
