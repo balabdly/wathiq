@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
@@ -210,13 +211,11 @@ export default function ProjectsPage() {
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
     const newStatus = COLUMNS[newIdx].id as any
     const newProgress = newStatus === 'مكتمل' ? 100 : p.progress
-    // upsert مع كل بيانات المشروع الأصلية + التغييرات فقط
-    const { error } = await projectsApi.upsert({
-      ...p,
-      tenant_id: tenant!.id,
-      status: newStatus,
-      progress: newProgress,
-    })
+    // استخدام update مباشرة بدون upsert
+    const { error } = await supabase
+      .from('projects')
+      .update({ status: newStatus, progress: newProgress })
+      .eq('id', p.id)
     if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
     setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
     toast.success(`نُقل إلى: ${COLUMNS[newIdx].icon} ${newStatus}`)
