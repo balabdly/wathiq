@@ -58,7 +58,7 @@ function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove }: {
 
   return (
     <div style={{
-      background: 'white', borderRadius: '10px', padding: '14px',
+      background: 'white', borderRadius: '10px', padding: '10px',
       border: `1px solid ${isLate ? '#fca5a5' : '#e5e7eb'}`,
       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       transition: 'box-shadow 0.15s, transform 0.15s',
@@ -347,7 +347,7 @@ export default function ProjectsPage() {
 
       ) : viewMode === 'kanban' ? (
         /* ══ Kanban View ══ */
-        <div style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '8px', alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '12px', alignItems: 'flex-start', minWidth: 0 }}>
           {COLUMNS.map(col => {
             const colProjects = filtered.filter(p => {
               if (col.id === 'متأخر') return p.status === 'متأخر' || (p.status === 'قيد التنفيذ' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
@@ -355,7 +355,7 @@ export default function ProjectsPage() {
             })
 
             return (
-              <div key={col.id} style={{ flexShrink: 0, width: '280px' }}>
+              <div key={col.id} style={{ flexShrink: 0, width: '220px' }}>
                 {/* رأس العمود */}
                 <div style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
