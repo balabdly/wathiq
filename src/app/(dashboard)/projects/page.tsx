@@ -236,9 +236,7 @@ export default function ProjectsPage() {
           }
           return labels[c] || c
         })
-        toast.error(`⛔ لا يمكن إغلاق المشروع — المستندات الناقصة:
-${missingLabels.join('
-')}`, { duration: 6000 })
+        toast.error('⛔ لا يمكن إغلاق المشروع. الناقص: ' + missingLabels.join(' | '), { duration: 6000 })
         return
       }
     }
