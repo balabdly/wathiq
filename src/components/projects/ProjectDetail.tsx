@@ -213,36 +213,44 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
   function getCurrentStageIndex() {
     const stages = project.stages || []
+    // أولاً: ابحث عن مرحلة startedAt بدون done (المرحلة الحالية)
     for (let i = PROJECT_STAGES.length - 1; i >= 0; i--) {
-      if (stages.find(s => s.id === PROJECT_STAGES[i].id && s.done)) return Math.min(i + 1, PROJECT_STAGES.length - 1)
+      const s = stages.find(st => st.id === PROJECT_STAGES[i].id)
+      if (s && s.startedAt && !s.done) return i
+    }
+    // ثانياً: ابحث عن آخر مرحلة مكتملة + 1
+    for (let i = PROJECT_STAGES.length - 1; i >= 0; i--) {
+      if (stages.find(s => s.id === PROJECT_STAGES[i].id && s.done)) {
+        return Math.min(i + 1, PROJECT_STAGES.length - 1)
+      }
     }
     return 0
   }
 
   const currentIdx = getCurrentStageIndex()
 
-  async function advanceStage(idx: number, attachName?: string, note?: string) {
+  async function advanceStage(idx: number, note?: string) {
     if (!tenant) return
-    const stage = PROJECT_STAGES[idx]
-    const currentStage = PROJECT_STAGES[idx - 1]
-    const currentStageData = currentStage ? (project.stages || []).find(s => s.id === currentStage.id) : null
-    const hasAttachmentInCurrent = currentStageData?.attach || (currentStageData?.attachments && currentStageData.attachments.length > 0)
-    if (stage.requiresAttach && !hasAttachmentInCurrent) {
-      toast.error(`يجب رفع مرفق في مرحلة "${currentStage?.name}" قبل الانتقال إلى "${stage.name}"`)
-      return
-    }
     setAdvancing(true)
+    const stage = PROJECT_STAGES[idx]
     const now = new Date().toLocaleDateString('ar-EG')
+
+    // نسخ المراحل الحالية
     const stages = [...(project.stages || [])]
-    if (idx > 0) {
-      const prevId = PROJECT_STAGES[idx-1].id
+
+    // تعليم كل المراحل السابقة كمكتملة
+    for (let i = 0; i < idx; i++) {
+      const prevId = PROJECT_STAGES[i].id
       const prev = stages.find(s => s.id === prevId)
       if (!prev) stages.push({ id: prevId, done: true, completedAt: now })
-      else prev.done = true
+      else { prev.done = true; if (!prev.completedAt) prev.completedAt = now }
     }
+
+    // تعيين المرحلة الجديدة كـ current (غير مكتملة)
     const existing = stages.find(s => s.id === stage.id)
-    if (existing) { existing.done = false; existing.note = note; existing.attach = attachName; existing.startedAt = now }
-    else stages.push({ id: stage.id, done: false, note, attach: attachName, startedAt: now })
+    if (existing) { existing.done = false; existing.startedAt = now }
+    else stages.push({ id: stage.id, done: false, startedAt: now })
+
     const history = [...(project.history || []), `${now}: الانتقال إلى مرحلة "${stage.name}"${note ? ' — ' + note : ''}`]
     await projectsApi.upsert({ id: project.id, tenant_id: tenant.id, stages, progress: stage.pct, history })
     await onRefresh()
