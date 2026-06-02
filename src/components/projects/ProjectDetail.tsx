@@ -2,22 +2,208 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
-import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-import { ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle, Package, TrendingDown, TrendingUp, ArrowLeftRight } from 'lucide-react'
-import type { Project, ProjectStage } from '@/types'
 import { supabase } from '@/lib/supabase'
+import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
+import {
+  ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle,
+  Package, TrendingDown, TrendingUp, ArrowLeftRight,
+  Paperclip, Trash2, Download, FileText, Image, File, X
+} from 'lucide-react'
+import type { Project, ProjectStage } from '@/types'
 import toast from 'react-hot-toast'
 
 interface Props {
-  project: Project
-  onBack: () => void
-  onEdit: (p: Project) => void
-  onRefresh: () => void
+  project: Project; onBack: () => void
+  onEdit: (p: Project) => void; onRefresh: () => void
 }
 
+type Attachment = {
+  id: number; file_name: string; file_path: string
+  file_size: number; file_type: string; category: string
+  created_at: string; public_url?: string
+}
+
+const CATEGORIES = ['عقد','مخططات','صور الموقع','تقارير','تصاريح','أخرى']
+
+function fileIcon(type: string) {
+  if (type?.startsWith('image/')) return <Image style={{ width: '16px', height: '16px', color: '#0ea77b' }} />
+  if (type?.includes('pdf')) return <FileText style={{ width: '16px', height: '16px', color: '#c81e1e' }} />
+  return <File style={{ width: '16px', height: '16px', color: '#1a56db' }} />
+}
+
+function formatSize(bytes: number) {
+  if (!bytes) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// ══════════════════════════════════════
+// تاب المرفقات
+// ══════════════════════════════════════
+function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) {
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [loading, setLoading]         = useState(false)
+  const [uploading, setUploading]     = useState(false)
+  const [category, setCategory]       = useState('أخرى')
+  const [dragOver, setDragOver]       = useState(false)
+
+  useEffect(() => { loadAttachments() }, [project.id])
+
+  async function loadAttachments() {
+    if (!tenant) return
+    setLoading(true)
+    const { data } = await supabase
+      .from('project_attachments')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('tenant_id', tenant.id)
+      .order('created_at', { ascending: false })
+
+    // جلب الـ signed URLs
+    const withUrls = await Promise.all((data || []).map(async (a: Attachment) => {
+      const { data: urlData } = await supabase.storage
+        .from('project-attachments')
+        .createSignedUrl(a.file_path, 3600)
+      return { ...a, public_url: urlData?.signedUrl }
+    }))
+    setAttachments(withUrls)
+    setLoading(false)
+  }
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || !tenant) return
+    setUploading(true)
+    for (const file of Array.from(files)) {
+      const filePath = `${tenant.id}/${project.id}/${Date.now()}_${file.name}`
+      const { error: uploadError } = await supabase.storage
+        .from('project-attachments')
+        .upload(filePath, file)
+
+      if (uploadError) { toast.error(`خطأ في رفع ${file.name}: ${uploadError.message}`); continue }
+
+      const { error: dbError } = await supabase.from('project_attachments').insert({
+        tenant_id: tenant.id,
+        project_id: project.id,
+        file_name: file.name,
+        file_path: filePath,
+        file_size: file.size,
+        file_type: file.type,
+        category,
+      })
+      if (dbError) toast.error(`خطأ في حفظ ${file.name}`)
+      else toast.success(`✅ تم رفع ${file.name}`)
+    }
+    await loadAttachments()
+    setUploading(false)
+  }
+
+  async function handleDelete(a: Attachment) {
+    if (!confirm(`حذف "${a.file_name}"؟`)) return
+    await supabase.storage.from('project-attachments').remove([a.file_path])
+    await supabase.from('project_attachments').delete().eq('id', a.id)
+    setAttachments(prev => prev.filter(x => x.id !== a.id))
+    toast.success('تم الحذف')
+  }
+
+  // تجميع حسب الفئة
+  const byCategory: Record<string, Attachment[]> = {}
+  attachments.forEach(a => {
+    if (!byCategory[a.category]) byCategory[a.category] = []
+    byCategory[a.category].push(a)
+  })
+
+  return (
+    <div className="space-y-4">
+      {/* منطقة الرفع */}
+      <div
+        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
+        style={{
+          border: `2px dashed ${dragOver ? '#1a56db' : '#d1d5db'}`,
+          borderRadius: '12px', padding: '24px',
+          textAlign: 'center', background: dragOver ? '#eff6ff' : '#fafafa',
+          transition: 'all 0.2s',
+        }}>
+        <Upload style={{ width: '32px', height: '32px', color: dragOver ? '#1a56db' : '#9ca3af', margin: '0 auto 10px' }} />
+        <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '12px' }}>
+          اسحب الملفات هنا أو
+        </p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={category} onChange={e => setCategory(e.target.value)} className="select" style={{ width: 'auto' }}>
+            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          </select>
+          <label style={{ cursor: 'pointer' }}>
+            <input type="file" multiple onChange={e => handleUpload(e.target.files)} style={{ display: 'none' }} />
+            <span className="btn btn-primary" style={{ pointerEvents: 'none' }}>
+              {uploading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload style={{ width: '15px', height: '15px' }} />}
+              اختر ملفات
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {/* قائمة المرفقات */}
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : attachments.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af', fontSize: '0.875rem' }}>
+          <Paperclip style={{ width: '36px', height: '36px', margin: '0 auto 8px' }} />
+          لا توجد مرفقات بعد
+        </div>
+      ) : (
+        Object.entries(byCategory).map(([cat, files]) => (
+          <div key={cat}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#6b7280', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Paperclip style={{ width: '13px', height: '13px' }} />
+              {cat} ({files.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {files.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', background: 'var(--bg2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <div style={{ flexShrink: 0 }}>{fileIcon(a.file_type)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{a.file_name}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{formatSize(a.file_size)} · {new Date(a.created_at).toLocaleDateString('ar-SA')}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                    {a.public_url && (
+                      <a href={a.public_url} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <Download style={{ width: '12px', height: '12px' }} /> فتح
+                      </a>
+                    )}
+                    <button onClick={() => handleDelete(a)}
+                      style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fff5f5', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <Trash2 style={{ width: '12px', height: '12px' }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+
+      {/* إجمالي */}
+      {attachments.length > 0 && (
+        <div style={{ fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+          {attachments.length} ملف · {formatSize(attachments.reduce((s, a) => s + (a.file_size || 0), 0))} إجمالي
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// ProjectDetail الرئيسي
+// ══════════════════════════════════════
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'info'|'stages'|'files'|'history'|'inventory'>('info')
+  const [activeTab, setActiveTab] = useState<'info'|'stages'|'attachments'|'inventory'|'history'>('info')
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv] = useState(false)
   const [advancing, setAdvancing] = useState(false)
@@ -38,15 +224,9 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   async function advanceStage(idx: number, attachName?: string, note?: string) {
     if (!tenant) return
     const stage = PROJECT_STAGES[idx]
-
-    // التحقق: إذا المرحلة التالية تتطلب مرفق، يجب أن يكون موجوداً في المرحلة الحالية
     const currentStage = PROJECT_STAGES[idx - 1]
-    const currentStageData = currentStage
-      ? (project.stages || []).find(s => s.id === currentStage.id)
-      : null
-    const hasAttachmentInCurrent = currentStageData?.attach ||
-      (currentStageData?.attachments && currentStageData.attachments.length > 0)
-
+    const currentStageData = currentStage ? (project.stages || []).find(s => s.id === currentStage.id) : null
+    const hasAttachmentInCurrent = currentStageData?.attach || (currentStageData?.attachments && currentStageData.attachments.length > 0)
     if (stage.requiresAttach && !hasAttachmentInCurrent) {
       toast.error(`يجب رفع مرفق في مرحلة "${currentStage?.name}" قبل الانتقال إلى "${stage.name}"`)
       return
@@ -54,26 +234,17 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     setAdvancing(true)
     const now = new Date().toLocaleDateString('ar-EG')
     const stages = [...(project.stages || [])]
-
-    // إكمال المرحلة السابقة
     if (idx > 0) {
       const prevId = PROJECT_STAGES[idx-1].id
       const prev = stages.find(s => s.id === prevId)
       if (!prev) stages.push({ id: prevId, done: true, completedAt: now })
       else prev.done = true
     }
-
-    // تحديث المرحلة الجديدة
     const existing = stages.find(s => s.id === stage.id)
     if (existing) { existing.done = false; existing.note = note; existing.attach = attachName; existing.startedAt = now }
     else stages.push({ id: stage.id, done: false, note, attach: attachName, startedAt: now })
-
     const history = [...(project.history || []), `${now}: الانتقال إلى مرحلة "${stage.name}"${note ? ' — ' + note : ''}`]
-
-    await projectsApi.upsert({
-      id: project.id, tenant_id: tenant.id,
-      stages, progress: stage.pct, history
-    })
+    await projectsApi.upsert({ id: project.id, tenant_id: tenant.id, stages, progress: stage.pct, history })
     await onRefresh()
     setAdvancing(false)
     toast.success(`تم الانتقال إلى: ${stage.icon} ${stage.name}`)
@@ -98,25 +269,12 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     reader.readAsDataURL(file)
   }
 
-  const TABS = [
-    { id: 'info',      label: 'المعلومات' },
-    { id: 'stages',    label: 'مراحل التنفيذ' },
-    { id: 'inventory', label: '📦 المخزون' },
-    { id: 'files',     label: 'المرفقات' },
-    { id: 'history',   label: 'السجل' },
-  ]
-
   async function loadInventory() {
     if (!tenant || loadingInv) return
     setLoadingInv(true)
-    const { data } = await supabase
-      .from('stock_ledger')
-      .select('*')
-      .eq('project_name', project.name)
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('stock_ledger').select('*').eq('project_name', project.name).order('created_at', { ascending: false })
     const ledgerData = data || []
-    // تجميع المواد
-    const matMap: Record<string, { name: string; unit: string; totalIn: number; totalOut: number; loans: number }> = {}
+    const matMap: Record<string, any> = {}
     ledgerData.forEach((l: any) => {
       if (!matMap[l.mat_name]) matMap[l.mat_name] = { name: l.mat_name, unit: l.unit, totalIn: 0, totalOut: 0, loans: 0 }
       if (l.type === 'توريد') matMap[l.mat_name].totalIn += l.qty
@@ -127,276 +285,202 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     setLoadingInv(false)
   }
 
+  const TABS = [
+    { id: 'info',        label: 'المعلومات' },
+    { id: 'stages',      label: 'مراحل التنفيذ' },
+    { id: 'inventory',   label: '📦 المخزون' },
+    { id: 'attachments', label: '📎 المرفقات' },
+    { id: 'history',     label: 'السجل' },
+  ]
+
   return (
     <div className="space-y-5 fade-in">
       {/* Back + header */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={onBack} className="btn btn-ghost btn-sm">
-          <ArrowRight className="w-4 h-4" /> العودة
+          <ArrowRight style={{ width: '16px', height: '16px' }} /> العودة
         </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold text-gray-800 truncate">{project.name}</h1>
-          <p className="text-sm text-gray-400">{project.code || ''} {project.type ? `· ${project.type}` : ''}</p>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a1a2e', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{project.name}</h1>
+          <p style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{project.code || ''} {project.type ? `· ${project.type}` : ''}</p>
         </div>
         {canEdit && (
           <button onClick={() => onEdit(project)} className="btn btn-ghost btn-sm">
-            <Pencil className="w-3.5 h-3.5" /> تعديل
+            <Pencil style={{ width: '14px', height: '14px' }} /> تعديل
           </button>
         )}
       </div>
 
       {/* Progress banner */}
-      <div className={`card p-4 ${isLate ? 'border-red-200 bg-red-50/50' : ''}`}>
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-600">
+      <div className={`card p-4 ${isLate ? 'border-red-200' : ''}`} style={{ background: isLate ? '#fff5f5' : 'white' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#6b7280' }}>
               {PROJECT_STAGES[currentIdx]?.icon} {PROJECT_STAGES[currentIdx]?.name}
             </span>
-            {isLate && <span className="badge badge-red text-xs">متأخر</span>}
+            {isLate && <span className="badge badge-red" style={{ fontSize: '0.72rem' }}>متأخر</span>}
           </div>
-          <span className="text-lg font-bold text-primary-600">{project.progress}%</span>
+          <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a56db' }}>{project.progress}%</span>
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-500 ${project.progress >= 100 ? 'bg-emerald-500' : isLate ? 'bg-red-400' : 'bg-primary-500'}`}
-            style={{ width: `${project.progress}%` }} />
+        <div style={{ height: '8px', background: '#f3f4f6', borderRadius: '6px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', borderRadius: '6px', transition: 'width 0.5s', width: `${project.progress}%`, background: project.progress >= 100 ? '#0ea77b' : isLate ? '#ef4444' : '#1a56db' }} />
         </div>
+        {project.end_date && (
+          <div style={{ marginTop: '8px', fontSize: '0.8rem', color: isLate ? '#ef4444' : '#6b7280' }}>
+            التسليم: {formatDate(project.end_date)}
+            {days !== null && project.progress < 100 && (
+              <span style={{ marginRight: '8px' }}>({isLate ? `متأخر ${Math.abs(days)} يوم` : days === 0 ? 'اليوم' : `${days} يوم متبقي`})</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+      <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory() }}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === t.id ? 'bg-white shadow-sm text-primary-600' : 'text-gray-500 hover:text-gray-700'}`}>
+            style={{
+              padding: '8px 16px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer',
+              fontSize: '0.875rem', fontWeight: 600, whiteSpace: 'nowrap',
+              background: activeTab === t.id ? 'var(--primary)' : 'transparent',
+              color: activeTab === t.id ? 'white' : 'var(--text3)',
+              borderBottom: activeTab === t.id ? '2px solid var(--primary)' : '2px solid transparent',
+              marginBottom: '-2px',
+            }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Info tab */}
+      {/* Tab: المعلومات */}
       {activeTab === 'info' && (
-        <div className="card p-5">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             {[
+              { label: 'رقم المشروع', value: project.code },
+              { label: 'نوع المشروع', value: project.type },
               { label: 'المهندس المسؤول', value: project.engineer },
-              { label: 'قيمة المشروع',    value: formatCurrency(project.value) },
-              { label: 'الحالة',           value: project.status },
-              { label: 'تاريخ البداية',   value: formatDate(project.start_date) },
-              { label: 'تاريخ التسليم',   value: formatDate(project.end_date) },
-              { label: 'المتبقي',
-                value: days !== null && project.progress < 100
-                  ? (isLate ? `متأخر ${Math.abs(days)} يوم` : `${days} يوم`)
-                  : '—' },
-            ].map(item => (
-              <div key={item.label}>
-                <div className="text-xs text-gray-400 mb-0.5">{item.label}</div>
-                <div className="font-semibold text-gray-800">{item.value || '—'}</div>
+              { label: 'الحالة', value: project.status },
+              { label: 'قيمة المشروع', value: project.value ? formatCurrency(project.value) : null },
+              { label: 'تاريخ البداية', value: formatDate(project.start_date) },
+              { label: 'تاريخ التسليم', value: formatDate(project.end_date) },
+              { label: 'نسبة الإنجاز', value: `${project.progress}%` },
+            ].map(({ label, value }) => value ? (
+              <div key={label}>
+                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '3px' }}>{label}</div>
+                <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{value}</div>
               </div>
-            ))}
+            ) : null)}
           </div>
         </div>
       )}
 
-      {/* Stages tab */}
+      {/* Tab: مراحل التنفيذ */}
       {activeTab === 'stages' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {PROJECT_STAGES.map((stage, idx) => {
             const stageData = (project.stages || []).find(s => s.id === stage.id)
-            const isDone  = stageData?.done === true
-            const isCurr  = idx === currentIdx
-            const isNext  = idx === currentIdx + 1
-            const isLocked = idx > currentIdx + 1
+            const isDone    = stageData?.done === true
+            const isCurrent = idx === currentIdx
+            const isPast    = idx < currentIdx
 
             return (
-              <div key={stage.id}
-                className={`card p-4 transition-all ${isDone ? 'border-emerald-200 bg-emerald-50/30' : isCurr ? 'border-primary-200 bg-primary-50/30 shadow-sm' : isLocked ? 'opacity-60' : ''}`}>
-                <div className="flex items-start gap-3">
-                  {/* Icon */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 text-sm
-                    ${isDone ? 'bg-emerald-500' : isCurr ? 'bg-primary-500' : 'bg-gray-200'}`}>
-                    {isDone ? <CheckCircle2 className="w-4 h-4 text-white" /> :
-                     isCurr ? <Clock className="w-4 h-4 text-white" /> :
-                     <span className="text-xs text-gray-500 font-bold">{idx+1}</span>}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-semibold text-sm ${isDone ? 'text-emerald-700' : isCurr ? 'text-primary-700' : 'text-gray-600'}`}>
-                          {stage.icon} {stage.name}
-                        </span>
-                        {stage.requiresAttach && !isDone && (
-                          <span className="badge badge-amber text-xs">يتطلب مرفق</span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {isDone && stageData?.completedAt && (
-                          <span className="text-xs text-emerald-600">✓ {stageData.completedAt}</span>
-                        )}
-                        {/* زر إرفاق للمرحلة الحالية والسابقة والتالية إذا تطلبت مرفق */}
-                        {canEdit && (isCurr || isDone || (isNext && stage.requiresAttach)) && (
-                          <label className="btn btn-ghost btn-xs cursor-pointer">
-                            <Upload className="w-3 h-3" /> إرفاق
-                            <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                              onChange={e => { const f = e.target.files?.[0]; if(f) uploadStageAttachment(stage.id, f) }} />
-                          </label>
-                        )}
-                        {/* زر الانتقال */}
-                        {canEdit && isCurr && (
-                          <button
-                            onClick={async () => {
-                              if (idx === PROJECT_STAGES.length - 2) {
-                                if (!confirm('إغلاق المشروع نهائياً؟')) return
-                              }
-                              const note = idx < PROJECT_STAGES.length - 1
-                                ? prompt(`ملاحظة على مرحلة "${PROJECT_STAGES[idx+1]?.name}" (اختياري):`) || undefined
-                                : undefined
-                              await advanceStage(idx + 1, undefined, note)
-                            }}
-                            disabled={advancing}
-                            className={`btn btn-sm ${idx >= PROJECT_STAGES.length - 2 ? 'btn-success' : 'btn-primary'}`}>
-                            {advancing ? <span className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" /> : null}
-                            {idx >= PROJECT_STAGES.length - 2 ? '🏁 إغلاق المشروع' : 'الانتقال للتالية ←'}
-                          </button>
-                        )}
+              <div key={stage.id} className="card" style={{ padding: '16px', border: isCurrent ? '2px solid #1a56db' : isDone ? '1px solid #86efac' : '1px solid var(--border)', background: isDone ? '#f0fdf4' : isCurrent ? '#eff6ff' : 'white' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', background: isDone ? '#ecfdf5' : isCurrent ? '#eff6ff' : '#f9fafb' }}>
+                      {isDone ? '✅' : isCurrent ? '🔄' : stage.icon}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{stage.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                        {isDone && stageData?.completedAt ? `مكتمل: ${stageData.completedAt}` : isCurrent && stageData?.startedAt ? `بدأ: ${stageData.startedAt}` : `${stage.pct}%`}
                       </div>
                     </div>
+                  </div>
+                  {canEdit && isCurrent && idx < PROJECT_STAGES.length - 1 && (
+                    <button onClick={() => advanceStage(idx + 1)} disabled={advancing}
+                      className="btn btn-primary btn-sm">
+                      {advancing ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+                      الانتقال للمرحلة التالية ←
+                    </button>
+                  )}
+                </div>
 
-                    {/* مرفقات المرحلة */}
-                    {stageData?.attachments && stageData.attachments.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {stageData.attachments.map((att, i) => (
-                          <a key={i} href={att.data} download={att.name}
-                            className="inline-flex items-center gap-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded-lg transition-colors">
-                            📎 {att.name}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    {stageData?.note && (
-                      <p className="text-xs text-gray-500 mt-1">{stageData.note}</p>
+                {/* رفع مرفق للمرحلة */}
+                {(isCurrent || isPast) && canEdit && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+                    <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#1a56db', fontWeight: 600 }}>
+                      <input type="file" style={{ display: 'none' }} onChange={e => e.target.files && uploadStageAttachment(stage.id, e.target.files[0])} />
+                      <Upload style={{ width: '13px', height: '13px' }} /> رفع مرفق للمرحلة
+                    </label>
+                    {stageData?.attach && (
+                      <span style={{ marginRight: '10px', fontSize: '0.75rem', color: '#0ea77b' }}>📎 {stageData.attach}</span>
                     )}
                   </div>
-                </div>
+                )}
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Inventory tab */}
+      {/* Tab: المرفقات */}
+      {activeTab === 'attachments' && (
+        <AttachmentsTab project={project} tenant={tenant} />
+      )}
+
+      {/* Tab: المخزون */}
       {activeTab === 'inventory' && (
         <div className="space-y-4">
           {loadingInv ? (
-            <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+              <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
             </div>
           ) : inventoryData.length === 0 ? (
-            <div className="card p-12 text-center">
-              <Package className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-400">لا توجد حركات مخزون لهذا المشروع</p>
+            <div className="card" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>
+              لا توجد حركات مخزون لهذا المشروع
             </div>
           ) : (
             <>
-              {/* KPIs */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="card p-4 text-center border-emerald-100 bg-emerald-50/30">
-                  <div className="text-2xl font-bold text-emerald-600">
-                    {inventoryData.reduce((s, m) => s + m.totalIn, 0)}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                {[
+                  { label: 'إجمالي الوارد',   value: inventoryData.reduce((s,m)=>s+m.totalIn,0), color: '#0ea77b', icon: TrendingUp },
+                  { label: 'إجمالي المصروف', value: inventoryData.reduce((s,m)=>s+m.totalOut,0), color: '#c81e1e', icon: TrendingDown },
+                  { label: 'المتبقي (العهدة)', value: inventoryData.reduce((s,m)=>s+(m.totalIn-m.totalOut),0), color: '#1a56db', icon: Package },
+                ].map(kpi => (
+                  <div key={kpi.label} className="card" style={{ padding: '16px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.6rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '4px' }}>{kpi.label}</div>
                   </div>
-                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> إجمالي الوارد
-                  </div>
-                </div>
-                <div className="card p-4 text-center border-red-100 bg-red-50/30">
-                  <div className="text-2xl font-bold text-red-600">
-                    {inventoryData.reduce((s, m) => s + m.totalOut, 0)}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
-                    <TrendingDown className="w-3 h-3" /> إجمالي المصروف
-                  </div>
-                </div>
-                <div className="card p-4 text-center border-blue-100 bg-blue-50/30">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {inventoryData.reduce((s, m) => s + (m.totalIn - m.totalOut), 0)}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-0.5 flex items-center justify-center gap-1">
-                    <Package className="w-3 h-3" /> المتبقي (العهدة)
-                  </div>
-                </div>
+                ))}
               </div>
-
-              {/* تنبيه الاستعارات */}
-              {inventoryData.some(m => m.loans > 0) && (
-                <div className="card p-3 border-amber-200 bg-amber-50/50 flex items-center gap-2">
-                  <ArrowLeftRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                  <p className="text-sm text-amber-700">
-                    يوجد مواد مستعارة لهذا المشروع — راجع سجل الحركات في المخزون
-                  </p>
-                </div>
-              )}
-
-              {/* جدول العهدة */}
-              <div className="card overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-100">
-                  <h3 className="font-semibold text-gray-700 text-sm">عهدة المشروع التفصيلية</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-600">المادة</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-emerald-600">وارد</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-red-600">صادر</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-blue-600">المتبقي</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-amber-600">مستعار</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600">الوحدة</th>
-                        <th className="text-center px-4 py-2.5 text-xs font-semibold text-gray-600">الحالة</th>
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['المادة','وارد','صادر','المتبقي','مستعار','الوحدة','الحالة'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>{h}</th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody>
                       {inventoryData.map((m, i) => {
                         const remaining = m.totalIn - m.totalOut
                         return (
-                          <tr key={i} className="hover:bg-gray-50/50">
-                            <td className="px-4 py-2.5 font-medium text-gray-800">{m.name}</td>
-                            <td className="px-4 py-2.5 text-center text-emerald-600 font-bold">{m.totalIn}</td>
-                            <td className="px-4 py-2.5 text-center text-red-600 font-bold">{m.totalOut}</td>
-                            <td className={`px-4 py-2.5 text-center font-bold ${remaining <= 0 ? 'text-gray-400' : 'text-blue-600'}`}>
-                              {remaining}
-                            </td>
-                            <td className="px-4 py-2.5 text-center text-amber-600">
-                              {m.loans > 0 ? <span className="badge badge-amber text-xs">🔄 {m.loans}</span> : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-center text-gray-400 text-xs">{m.unit}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              {remaining <= 0
-                                ? <span className="badge badge-gray text-xs">✓ صُرف كله</span>
-                                : <span className="badge badge-blue text-xs">📦 عهدة</span>
-                              }
-                            </td>
+                          <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                            <td style={{ padding: '10px 14px', fontWeight: 600 }}>{m.name}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center', color: '#0ea77b', fontWeight: 700 }}>{m.totalIn}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center', color: '#c81e1e', fontWeight: 700 }}>{m.totalOut}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: remaining <= 0 ? '#9ca3af' : '#1a56db' }}>{remaining}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center' }}>{m.loans > 0 ? <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>🔄 {m.loans}</span> : '—'}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>{m.unit}</td>
+                            <td style={{ padding: '10px 14px', textAlign: 'center' }}>{remaining <= 0 ? <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>✓ صُرف كله</span> : <span className="badge badge-blue" style={{ fontSize: '0.7rem' }}>📦 عهدة</span>}</td>
                           </tr>
                         )
                       })}
                     </tbody>
-                    <tfoot>
-                      <tr className="bg-primary-50 border-t-2 border-primary-100">
-                        <td className="px-4 py-2.5 font-bold text-primary-700">الإجمالي</td>
-                        <td className="px-4 py-2.5 text-center font-bold text-emerald-600">
-                          {inventoryData.reduce((s, m) => s + m.totalIn, 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-center font-bold text-red-600">
-                          {inventoryData.reduce((s, m) => s + m.totalOut, 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-center font-bold text-blue-600">
-                          {inventoryData.reduce((s, m) => s + (m.totalIn - m.totalOut), 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-center font-bold text-amber-600">
-                          {inventoryData.reduce((s, m) => s + m.loans, 0) || '—'}
-                        </td>
-                        <td colSpan={2}></td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               </div>
@@ -405,13 +489,13 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
         </div>
       )}
 
-      {/* History tab */}
+      {/* Tab: السجل */}
       {activeTab === 'history' && (
-        <div className="card divide-y divide-gray-50">
+        <div className="card" style={{ overflow: 'hidden' }}>
           {(project.history || []).length === 0 ? (
-            <p className="p-8 text-center text-gray-400 text-sm">لا يوجد سجل بعد</p>
+            <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>لا يوجد سجل بعد</div>
           ) : [...(project.history || [])].reverse().map((h, i) => (
-            <div key={i} className="px-5 py-3 text-sm text-gray-600">{h}</div>
+            <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid var(--bg2)', fontSize: '0.875rem', color: '#6b7280' }}>{h}</div>
           ))}
         </div>
       )}
