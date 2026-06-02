@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut } from 'lucide-react'
+import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut, Building2, Briefcase } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type HREmployee = {
