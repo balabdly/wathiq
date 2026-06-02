@@ -1014,7 +1014,7 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
     } else {
       await supabase.from('hr_job_titles').insert(payload)
     }
-    setForm({ name: '', department_id: '' })
+    setForm({ name: '', department_id: '', grade_id: '' })
     setEditId(null)
     await load()
     toast.success('تم الحفظ ✅')
@@ -1068,7 +1068,7 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
                 {editId ? 'حفظ التعديل' : 'إضافة المسمى'}
               </button>
               {editId && (
-                <button onClick={() => { setForm({ name: '', department_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
+                <button onClick={() => { setForm({ name: '', department_id: '', grade_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
                   إلغاء
                 </button>
               )}
