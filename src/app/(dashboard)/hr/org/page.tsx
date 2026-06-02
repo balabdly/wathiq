@@ -953,7 +953,7 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
                   <div style={{ fontWeight: 700 }}>{d.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
                     {d.manager
-                      ? `👤 ${d.manager.name} — ${d.manager.role}`
+                      ? `👤 ${d.manager.name}`
                       : <span style={{ color: '#c81e1e' }}>⚠️ لا يوجد مدير</span>}
                   </div>
                 </div>
