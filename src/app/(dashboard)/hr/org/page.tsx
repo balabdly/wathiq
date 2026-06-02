@@ -463,7 +463,59 @@ export default function OrgStructurePage() {
             <OrgChart branches={branches} divisions={divisions} hasBranches={hasBranches} allDivisions={divisions} ceoId={ceoId} allEmployees={employees} />
           )}
 
-          {/* ══ الإدارات ══ */}
+          {/* ══ المدير التنفيذي ══ */}
+          {activeTab === 'ceo' && (
+            <div className="card" style={{ padding: '28px', maxWidth: '520px' }}>
+              <div style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  👑 المدير التنفيذي (CEO)
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text3)', lineHeight: 1.6 }}>
+                  يظهر على رأس المخطط التنظيمي ويمثل القيادة العليا للشركة
+                </p>
+              </div>
+              {ceoId && employees.find(e => e.id === ceoId) && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
+                    {employees.find(e => e.id === ceoId)?.name.charAt(0)}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700 }}>{employees.find(e => e.id === ceoId)?.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#92400e' }}>{employees.find(e => e.id === ceoId)?.role} · المدير التنفيذي</div>
+                  </div>
+                  <button type="button" onClick={async () => {
+                    if (!tenant) return
+                    await supabase.from('tenants').update({ ceo_id: null }).eq('id', tenant.id)
+                    setCeoId(null); toast.success('تم الإلغاء')
+                  }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
+                    <X style={{ width: '16px', height: '16px' }} />
+                  </button>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {ceoId ? 'تغيير المدير التنفيذي' : 'تحديد المدير التنفيذي'} <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={ceoId || ''}
+                  onChange={async (e) => {
+                    const id = Number(e.target.value)
+                    if (!id || !tenant) return
+                    const { error } = await supabase.from('tenants').update({ ceo_id: id }).eq('id', tenant.id)
+                    if (error) { toast.error('خطأ: ' + error.message); return }
+                    setCeoId(id); toast.success('✅ تم تحديد المدير التنفيذي')
+                  }}
+                  className="select">
+                  <option value="">— اختر المدير التنفيذي —</option>
+                  {employees.map(e => (
+                    <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* ══ الفروع ══ */}
           {activeTab === 'branches' && (
           <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
             <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
