@@ -16,6 +16,9 @@ import toast from 'react-hot-toast'
 const ProjectModal  = dynamic(() => import('@/components/projects/ProjectModal'),  { ssr: false })
 const ProjectDetail = dynamic(() => import('@/components/projects/ProjectDetail'), { ssr: false })
 
+// ── المستندات الإلزامية للإغلاق ──
+const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
+
 // ── ألوان وإعدادات الأعمدة ──
 const COLUMNS = [
   { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
@@ -210,8 +213,37 @@ export default function ProjectsPage() {
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
     const newStatus = COLUMNS[newIdx].id as any
+
+    // ── تحقق من المرفقات عند الإغلاق ──
+    if (newStatus === 'مكتمل') {
+      const { data: attachments } = await supabase
+        .from('project_attachments')
+        .select('category')
+        .eq('project_id', p.id)
+        .eq('tenant_id', tenant?.id)
+
+      const uploadedCategories = (attachments || []).map((a: any) => a.category)
+      const missing = REQUIRED_DOC_CATEGORIES.filter(c => !uploadedCategories.includes(c))
+
+      if (missing.length > 0) {
+        const missingLabels = missing.map(c => {
+          const labels: Record<string,string> = {
+            'مخططات': '📐 مخططات المشروع',
+            'رخصة بلدية': '📋 رخصة البلدية',
+            'إخلاء بلدية': '📋 إخلاء البلدية',
+            'مستخلصات': '📄 المستخلص',
+            'فواتير': '🧾 الفاتورة',
+          }
+          return labels[c] || c
+        })
+        toast.error(`⛔ لا يمكن إغلاق المشروع — المستندات الناقصة:
+${missingLabels.join('
+')}`, { duration: 6000 })
+        return
+      }
+    }
+
     const newProgress = newStatus === 'مكتمل' ? 100 : p.progress
-    // استخدام update مباشرة بدون upsert
     const { error } = await supabase
       .from('projects')
       .update({ status: newStatus, progress: newProgress })
