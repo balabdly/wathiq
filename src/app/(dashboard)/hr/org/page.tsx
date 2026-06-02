@@ -230,7 +230,7 @@ export default function OrgStructurePage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [managers, setManagers] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
-  // hasBranches removed — no branches feature
+
 
   // ── Modal states ──
   const [branchModal, setBranchModal] = useState(false)
@@ -380,7 +380,7 @@ export default function OrgStructurePage() {
             🏛️ الهيكل التنظيمي
           </h1>
           <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>
-            {hasBranches ? `${branches.length} فروع · ` : ''}{divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
+            {divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
           </p>
         </div>
 
@@ -506,7 +506,6 @@ export default function OrgStructurePage() {
                           <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{div.name}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
                             {div.manager?.name ? `👤 ${div.manager.name}` : '⚠️ لا يوجد مدير'}
-                            {hasBranches && div.branch_id && ` · ${branches.find(b => b.id === div.branch_id)?.name}`}
                           </div>
                         </div>
                       </div>
@@ -663,7 +662,7 @@ export default function OrgStructurePage() {
       {/* ══ Modal: إدارة ══ */}
       {divModal && (
         <DivisionModal
-          div={editDiv} branches={branches} hasBranches={hasBranches} employees={employees}
+          div={editDiv} employees={employees}
           onClose={() => { setDivModal(false); setEditDiv(null) }}
           onSave={saveDivision}
         />
@@ -739,7 +738,7 @@ function BranchModal({ branch, employees, onClose, onSave }: any) {
 }
 
 // ── Modal: إدارة ──
-function DivisionModal({ div, branches, hasBranches, employees, onClose, onSave }: any) {
+function DivisionModal({ div, employees, onClose, onSave }: any) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     name: div?.name || '',
@@ -760,14 +759,7 @@ function DivisionModal({ div, branches, hasBranches, employees, onClose, onSave 
         <form onSubmit={submit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div><label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الإدارة <span className="text-red-500">*</span></label><input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: إدارة الهندسة" /></div>
-            {hasBranches && (
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الفرع</label>
-                <select value={form.branch_id} onChange={e => set('branch_id', e.target.value)} className="select">
-                  <option value="">— بدون فرع محدد —</option>
-                  {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            )}
+
             <div><label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الإدارة</label>
               <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
                 <option value="">— بدون مدير —</option>
