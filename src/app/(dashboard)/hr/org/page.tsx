@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 // ══════════════════════════════════════
 // Types
 // ══════════════════════════════════════
-type Branch = { id: number; name: string; manager_id?: number; manager?: { name: string } }
+type Branch = { id: number; name: string; manager_id?: number; manager?: any }
 type Division = {
   id: number; name: string; branch_id: number | null; manager_id: number | null
   color: string; manager?: { name: string }
@@ -299,7 +299,12 @@ export default function OrgStructurePage() {
         })),
     }))
 
-    setBranches(brs); setDivisions(divsWithDepts); setDepartments(depts)
+    // normalize manager (Supabase returns array for foreign key joins)
+    const normalizedBrs = brs.map((b: any) => ({
+      ...b,
+      manager: Array.isArray(b.manager) ? b.manager[0] : b.manager
+    }))
+    setBranches(normalizedBrs as any[]); setDivisions(divsWithDepts); setDepartments(depts)
     setJobTitles(titles.map((t: any) => ({ ...t, employee_count: countMap[t.name] || 0 })))
     setGrades(gradeRes.data || []); setDescriptions(descRes.data || [])
     setEmployees(empRes.data || [])
