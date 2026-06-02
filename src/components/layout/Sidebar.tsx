@@ -13,6 +13,7 @@ const IC = {
   safety:      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01',
   quality:     'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   environment: 'M12 2a10 10 0 100 20A10 10 0 0012 2zM2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z',
+  org:         'M3 3h6v6H3zM15 3h6v6h-6zM9 6h6M12 6v6M3 15h6v6H3zM15 15h6v6h-6zM6 15v-3M18 15v-3',
   hr:          'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M12 7a4 4 0 110 8 4 4 0 010-8z',
   attendance:  'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
   leaves:      'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
@@ -292,13 +293,14 @@ export default function Sidebar() {
         {hasHR && (
           <NavSection label="الموارد البشرية" icon={IC.hr}
             isActive={inHR} isOpen={hrOpen} onToggle={() => setHrOpen(o => !o)}>
-            <SubLink href="/hr/dashboard"  label="لوحة التحكم"         icon={IC.dashboard}  active={pathname === '/hr/dashboard'} />
-            <SubLink href="/hr"            label="ملفات الموظفين"       icon={IC.employees}  active={pathname === '/hr'} />
-            <SubLink href="/hr/attendance" label="الحضور والغياب"       icon={IC.attendance} active={pathname.startsWith('/hr/attendance')} />
-            <SubLink href="/hr/leaves"     label="الإجازات"             icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')} />
-            <SubLink href="/hr/payroll"    label="الرواتب والتعويضات"   icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
-            <SubLink href="/hr/documents"  label="الوثائق"              icon={IC.documents}  active={pathname.startsWith('/hr/documents')} />
-            <SubLink href="/hr/jobs"       label="عروض الوظائف"         icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')} />
+            <SubLink href="/hr/dashboard"  label="لوحة التحكم"           icon={IC.dashboard}  active={pathname === '/hr/dashboard'} />
+            <SubLink href="/hr/org"        label="الهيكل التنظيمي"       icon={IC.org}        active={pathname.startsWith('/hr/org')} />
+            <SubLink href="/hr"            label="ملفات الموظفين"         icon={IC.employees}  active={pathname === '/hr'} />
+            <SubLink href="/hr/attendance" label="الحضور والغياب"         icon={IC.attendance} active={pathname.startsWith('/hr/attendance')} />
+            <SubLink href="/hr/leaves"     label="الإجازات"               icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')} />
+            <SubLink href="/hr/payroll"    label="الرواتب والتعويضات"     icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
+            <SubLink href="/hr/documents"  label="الوثائق"                icon={IC.documents}  active={pathname.startsWith('/hr/documents')} />
+            <SubLink href="/hr/jobs"       label="عروض الوظائف"           icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')} />
           </NavSection>
         )}
 
