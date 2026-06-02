@@ -1,619 +1,687 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Save, Download, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-type HREmployee = {
-  id: number; tenant_id: string; employee_id: number
-  national_id?: string; nationality: string; birth_date?: string
-  gender: string; marital_status: string; hire_date?: string
-  contract_type: string; job_title?: string; department?: string
-  basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
-  gosi_enrolled: boolean; gosi_pct: number
-  iqama_number?: string; iqama_expiry?: string
-  bank_name?: string; iban?: string; notes?: string
-  is_active: boolean; direct_manager?: number
-  employee?: { name: string; role: string }
+// ══════════════════════════════════════
+// Types
+// ══════════════════════════════════════
+type Branch = { id: number; name: string; manager_id?: number; manager?: { name: string } | { name: string }[] | null }
+type Division = {
+  id: number; name: string; branch_id: number | null; manager_id: number | null
+  color: string; manager?: { name: string }
+  departments?: Department[]
 }
-
 type Department = {
-  id: number; tenant_id: string; name: string; manager_id?: number
-  manager?: { name: string; role: string }
+  id: number; name: string; division_id: number | null; manager_id: number | null
+  manager?: { name: string }; job_titles?: JobTitle[]
 }
-
 type JobTitle = {
-  id: number; tenant_id: string; name: string; department_id?: number
-  department?: { name: string }
+  id: number; name: string; department_id: number | null; grade_id: number | null
+  grade?: { grade_code: string; grade_name: string }
+  employee_count?: number
 }
-
-type Termination = {
-  id: number; tenant_id: string; employee_id: number; hr_employee_id: number
-  termination_type: string; termination_date: string
-  last_working_day: string; years_of_service: number
-  gratuity_amount: number; notes?: string; status: string
-  employee?: { name: string; role: string }
+type JobGrade = {
+  id: number; grade_code: string; grade_name: string
+  salary_min: number; salary_mid: number; salary_max: number
 }
-
-// ── حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي ──
-// ══════════════════════════════════════════════════════════════════
-// حساب مكافأة نهاية الخدمة — نظام العمل السعودي (المادة 84-88)
-// ══════════════════════════════════════════════════════════════════
-
-type GratuityResult = {
-  years: number; months: number; days: number
-  fullAmount: number       // المكافأة الكاملة قبل أي تخفيض
-  finalAmount: number      // المبلغ النهائي بعد تطبيق نوع الإنهاء
-  reductionPct: number     // نسبة التخفيض (0 = بدون تخفيض)
-  reductionLabel: string   // سبب التخفيض
-  breakdown: string[]      // تفاصيل الحساب
-  entitlement: string      // وصف الاستحقاق
-  isEntitled: boolean      // هل يستحق أصلاً
+type JobDescription = {
+  id: number; job_title_id: number; grade_id: number | null
+  description: string; responsibilities: string; qualifications: string
+  job_title?: { name: string }; grade?: { grade_code: string; grade_name: string }
 }
+type Employee = { id: number; name: string; role: string }
 
-function calcGratuity(
-  hireDateStr: string,
-  lastDayStr: string,
-  basicSalary: number,
-  terminationType: string
-): GratuityResult {
-
-  const empty = (msg: string): GratuityResult => ({
-    years: 0, months: 0, days: 0, fullAmount: 0, finalAmount: 0,
-    reductionPct: 0, reductionLabel: '', breakdown: [], entitlement: msg, isEntitled: false
-  })
-
-  if (!hireDateStr || !lastDayStr || !basicSalary) return empty('بيانات غير مكتملة')
-
-  const hire = new Date(hireDateStr)
-  const last = new Date(lastDayStr)
-  if (last <= hire) return empty('تاريخ الإنهاء قبل تاريخ المباشرة')
-
-  // ── حساب مدة الخدمة بدقة ──
-  let years = last.getFullYear() - hire.getFullYear()
-  let months = last.getMonth() - hire.getMonth()
-  let days = last.getDate() - hire.getDate()
-  if (days < 0) { months--; days += 30 }
-  if (months < 0) { years--; months += 12 }
-  const totalMonths = years * 12 + months
-  const dailySalary = basicSalary / 30
-
-  // ── تحديد الاستحقاق حسب نوع الإنهاء ──
-  // المادة 84: مكافأة كاملة في حالات: إنهاء صاحب العمل، انتهاء العقد، وفاة، عجز
-  // المادة 85: مكافأة مخفّضة في حالة الاستقالة
-  // المادة 80: لا مكافأة في حالة الفصل بسبب مخالفة جسيمة
-
-  type TermRule = { fullRights: boolean; reduction: (y: number) => number; note: string; minMonths: number }
-
-  const TERM_RULES: Record<string, TermRule> = {
-    // ← مكافأة كاملة — صاحب العمل هو المنهي
-    'إنهاء عقد من صاحب العمل': { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — المادة 84', minMonths: 1 },
-    'انتهاء عقد':               { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة عند انتهاء مدة العقد — المادة 84', minMonths: 1 },
-    'إنهاء باتفاق الطرفين':     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة باتفاق الطرفين — المادة 84', minMonths: 1 },
-    'إحالة للتقاعد':            { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — إحالة للتقاعد', minMonths: 1 },
-    'وفاة':                     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — تصرف لورثة الموظف', minMonths: 1 },
-    'عجز كلي':                  { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — عجز كلي عن العمل المادة 84', minMonths: 1 },
-    'إغلاق المنشأة':            { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — إغلاق المنشأة', minMonths: 1 },
-    'تغيير جوهري في العقد':     { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة — رفض تغيير جوهري في العقد المادة 81', minMonths: 1 },
-
-    // ← استقالة — مكافأة مخفّضة حسب المادة 85
-    'استقالة': {
-      fullRights: false,
-      reduction: (y: number) => {
-        if (y < 2)   return 0      // أقل من سنتين = لا شيء
-        if (y < 5)   return 1/3    // 2-5 سنوات = ثلث
-        if (y < 10)  return 2/3    // 5-10 سنوات = ثلثان
-        return 1                    // 10 سنوات فأكثر = كاملة
-      },
-      note: 'استقالة — المادة 85 (تُخفَّض حسب سنوات الخدمة)',
-      minMonths: 24,
-    },
-
-    // ← انتهاء عقد موسمي / جزئي
-    'انتهاء عقد موسمي':   { fullRights: true, reduction: () => 1, note: 'مكافأة بنسبة أيام العمل الفعلية', minMonths: 1 },
-
-    // ← فصل تأديبي — لا مكافأة (المادة 80)
-    'فصل تأديبي':    { fullRights: false, reduction: () => 0, note: 'لا مكافأة — فصل بسبب مخالفة جسيمة المادة 80', minMonths: 0 },
-    'فصل':           { fullRights: false, reduction: () => 0, note: 'لا مكافأة — فصل تأديبي المادة 80', minMonths: 0 },
-  }
-
-  const rule = TERM_RULES[terminationType] || { fullRights: true, reduction: () => 1, note: 'مكافأة كاملة', minMonths: 1 }
-
-  // ── حساب المكافأة الكاملة الأساسية ──
-  const breakdown: string[] = []
-  let fullAmount = 0
-
-  if (totalMonths < rule.minMonths) {
-    const msg = rule.minMonths >= 24
-      ? `أقل من سنتين خدمة (${years} سنة ${months} شهر) — لا تستحق مكافأة عند الاستقالة`
-      : `مدة الخدمة أقل من الحد الأدنى المطلوب`
-    return empty(msg)
-  }
-
-  // أول 5 سنوات → نصف شهر لكل سنة
-  const firstFive = Math.min(years, 5)
-  if (firstFive > 0) {
-    const a = Math.round(dailySalary * 15 * firstFive)
-    fullAmount += a
-    breakdown.push(`${firstFive} سنة × 15 يوم (نصف شهر) = ${a.toLocaleString()} ر.س`)
-  }
-
-  // بعد 5 سنوات → شهر كامل لكل سنة
-  if (years > 5) {
-    const extra = years - 5
-    const a = Math.round(dailySalary * 30 * extra)
-    fullAmount += a
-    breakdown.push(`${extra} سنة × 30 يوم (شهر كامل) = ${a.toLocaleString()} ر.س`)
-  }
-
-  // الأشهر المتبقية بالنسبة
-  if (months > 0) {
-    const dayRate = years >= 5 ? 30 : 15
-    const a = Math.round(dailySalary * dayRate * months / 12)
-    fullAmount += a
-    breakdown.push(`${months} شهر متبقي × نسبة = ${a.toLocaleString()} ر.س`)
-  }
-
-  // الأيام المتبقية بالنسبة
-  if (days > 0 && years >= 1) {
-    const dayRate = years >= 5 ? 30 : 15
-    const a = Math.round(dailySalary * dayRate * days / 365)
-    fullAmount += a
-    if (a > 0) breakdown.push(`${days} يوم متبقي = ${a.toLocaleString()} ر.س`)
-  }
-
-  // ── تطبيق نسبة التخفيض حسب نوع الإنهاء ──
-  const reductionFactor = rule.reduction(years)
-  const finalAmount = Math.round(fullAmount * reductionFactor)
-  const reductionPct = Math.round((1 - reductionFactor) * 100)
-
-  // وصف الاستحقاق
-  let entitlement = rule.note
-  if (terminationType === 'استقالة' && reductionFactor < 1 && reductionFactor > 0) {
-    entitlement = `استقالة — ${years >= 5 ? 'ثلثا' : 'ثلث'} المكافأة (${100 - reductionPct}%) — المادة 85`
-  }
-
-  return {
-    years, months, days,
-    fullAmount, finalAmount,
-    reductionPct,
-    reductionLabel: reductionPct > 0 ? `تخفيض ${reductionPct}% بسبب الاستقالة` : '',
-    breakdown,
-    entitlement,
-    isEntitled: finalAmount > 0,
-  }
-}
-
-function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
-  const base = basicSalary + housingAllow
-  if (nationality === 'سعودي') {
-    return {
-      employeeDeduction: Math.round(base * 0.0975),
-      employerContribution: Math.round(base * 0.1175),
-      employeePct: 9.75, employerPct: 11.75,
-      breakdown: {
-        employee: [
-          { label: 'معاشات', pct: '9%', amount: Math.round(base * 0.09) },
-          { label: 'ساند (تعطل)', pct: '0.75%', amount: Math.round(base * 0.0075) },
-        ],
-        employer: [
-          { label: 'معاشات', pct: '9%', amount: Math.round(base * 0.09) },
-          { label: 'ساند (تعطل)', pct: '1%', amount: Math.round(base * 0.01) },
-          { label: 'أخطار مهنية', pct: '1.75%', amount: Math.round(base * 0.0175) },
-        ],
-      }
-    }
-  } else {
-    return {
-      employeeDeduction: 0, employerContribution: Math.round(base * 0.02),
-      employeePct: 0, employerPct: 2,
-      breakdown: {
-        employee: [],
-        employer: [{ label: 'أخطار مهنية', pct: '2%', amount: Math.round(base * 0.02) }],
-      }
-    }
-  }
-}
+const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#0891b2','#be185d']
 
 // ══════════════════════════════════════
-// نافذة إضافة / تعديل موظف
+// Org Chart SVG
 // ══════════════════════════════════════
-function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
-  emp: HREmployee | null
-  departments: Department[]
-  managers: any[]
-  onClose: () => void
-  onSave: (d: any) => Promise<void>
+function OrgChart({ branches, divisions, hasBranches, allDivisions }: {
+  branches: Branch[]; divisions: Division[]; hasBranches: boolean; allDivisions: Division[]
 }) {
-  const [saving, setSaving] = useState(false)
-  const [tab, setTab] = useState<'personal' | 'salary' | 'bank'>('personal')
-  const [jobTitlesForDept, setJobTitlesForDept] = useState<JobTitle[]>([])
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
-  const [form, setForm] = useState({
-    emp_name:         emp?.employee?.name   || '',
-    national_id:      emp?.national_id      || '',
-    nationality:      emp?.nationality      || 'سعودي',
-    nationality_text: (emp?.nationality && emp.nationality !== 'سعودي') ? emp.nationality : '',
-    birth_date:       emp?.birth_date       || '',
-    gender:           emp?.gender           || 'ذكر',
-    marital_status:   emp?.marital_status   || 'أعزب',
-    hire_date:        emp?.hire_date        || '',
-    contract_type:    emp?.contract_type    || 'دوام كامل',
-    department:       emp?.department       || '',
-    job_title:        emp?.job_title        || '',
-    direct_manager:   emp?.direct_manager   ? String(emp.direct_manager) : '',
-    basic_salary:     emp?.basic_salary     ?? 0,
-    housing_allow:    emp?.housing_allow    ?? 0,
-    transport_allow:  emp?.transport_allow  ?? 0,
-    other_allow:      emp?.other_allow      ?? 0,
-    gosi_enrolled:    emp?.gosi_enrolled    ?? true,
-    bank_name:        emp?.bank_name        || '',
-    iban:             emp?.iban             || '',
-    iqama_number:     emp?.iqama_number     || '',
-    iqama_expiry:     emp?.iqama_expiry     || '',
-    notes:            emp?.notes            || '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
+  // ── حسابات الرسم ──
+  const NODE_W = 160; const NODE_H = 54
+  const H_GAP = 30;  const V_GAP = 70
 
-  const isSaudi = form.nationality === 'سعودي'
-  const gosi = calcGOSI(form.nationality, Number(form.basic_salary), Number(form.housing_allow))
-  const gosiBase = Number(form.basic_salary) + Number(form.housing_allow)
-  const totalAllowances = Number(form.housing_allow) + Number(form.transport_allow) + Number(form.other_allow)
-  const grossSalary = Number(form.basic_salary) + totalAllowances
-  const netSalary = grossSalary - (form.gosi_enrolled ? gosi.employeeDeduction : 0)
+  type OrgNode = {
+    id: string; label: string; sublabel?: string; color: string
+    x: number; y: number; w: number; h: number; type: 'company'|'branch'|'division'|'dept'|'title'
+  }
+  type OrgEdge = { x1: number; y1: number; x2: number; y2: number; color: string }
 
-  // عند تغيير القسم — جلب مسمياته وتعيين المدير تلقائياً
-  async function handleDeptChange(deptName: string) {
-    set('department', deptName)
-    set('job_title', '')
+  const nodes: OrgNode[] = []
+  const edges: OrgEdge[] = []
 
-    if (!deptName) {
-      setJobTitlesForDept([])
-      return
-    }
+  // شركة
+  const companyX = 400
+  nodes.push({ id: 'company', label: 'الشركة', sublabel: 'المقر الرئيسي', color: '#1a1a2e', x: companyX, y: 20, w: 180, h: 58, type: 'company' })
 
-    const dept = departments.find(d => d.name === deptName)
-    if (dept) {
-      // تعيين مدير القسم تلقائياً
-      if (dept.manager_id) set('direct_manager', String(dept.manager_id))
+  if (hasBranches && branches.length > 0) {
+    // مع فروع
+    const branchSpacing = Math.max(NODE_W + H_GAP, (branches.length > 1 ? 800 / (branches.length - 1) : 0))
+    const totalBranchW = (branches.length - 1) * branchSpacing
+    const branchStartX = companyX + 90 - totalBranchW / 2
 
-      // جلب المسميات المرتبطة بهذا القسم
-      const { data } = await supabase
-        .from('hr_job_titles')
-        .select('*')
-        .eq('department_id', dept.id)
-        .order('name')
-      setJobTitlesForDept(data || [])
-    } else {
-      setJobTitlesForDept([])
-    }
+    branches.forEach((br, bi) => {
+      const brX = branchStartX + bi * branchSpacing
+      const brY = 20 + 58 + V_GAP
+      nodes.push({ id: `br-${br.id}`, label: br.name, sublabel: 'فرع', color: '#2563eb', x: brX, y: brY, w: NODE_W, h: NODE_H, type: 'branch' })
+      edges.push({ x1: companyX + 90, y1: 20 + 58, x2: brX + NODE_W/2, y2: brY, color: '#94a3b8' })
+
+      const brDivs = divisions.filter(d => d.branch_id === br.id)
+      const divSpacing = Math.max(NODE_W + H_GAP, brDivs.length > 1 ? 300 / (brDivs.length) : NODE_W + H_GAP)
+      const divStartX = brX + NODE_W/2 - (brDivs.length - 1) * divSpacing / 2
+
+      brDivs.forEach((div, di) => {
+        const divX = divStartX + di * divSpacing - NODE_W/2
+        const divY = brY + NODE_H + V_GAP
+        nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
+        edges.push({ x1: brX + NODE_W/2, y1: brY + NODE_H, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
+        renderDepts(div, divX, divY, div.color || '#1a56db')
+      })
+    })
+  } else {
+    // بدون فروع
+    const divs = allDivisions
+    const spacing = Math.max(NODE_W + H_GAP, divs.length > 1 ? 900 / divs.length : NODE_W + H_GAP)
+    const totalW = (divs.length - 1) * spacing
+    const startX = companyX + 90 - totalW / 2
+
+    divs.forEach((div, di) => {
+      const divX = startX + di * spacing - NODE_W/2
+      const divY = 20 + 58 + V_GAP
+      nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
+      edges.push({ x1: companyX + 90, y1: 20 + 58, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
+      renderDepts(div, divX, divY, div.color || '#1a56db')
+    })
   }
 
-  // عند فتح النافذة إذا كان هناك قسم محدد مسبقاً
-  useEffect(() => {
-    if (form.department) handleDeptChange(form.department)
-  }, [])
+  function renderDepts(div: Division, divX: number, divY: number, color: string) {
+    const depts = div.departments || []
+    if (depts.length === 0) return
+    const spacing = Math.max(NODE_W + H_GAP - 20, 140)
+    const totalW = (depts.length - 1) * spacing
+    const startX = divX + NODE_W/2 - totalW/2
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.emp_name.trim()) { toast.error('أدخل اسم الموظف'); return }
-    if (!form.department) { toast.error('اختر القسم'); return }
-    if (!form.job_title) { toast.error('اختر المسمى الوظيفي'); return }
-    if (!form.hire_date) { toast.error('أدخل تاريخ التعيين'); return }
-    if (!form.national_id.trim()) { toast.error('أدخل رقم الهوية / الإقامة'); return }
-    if (!form.birth_date) { toast.error('أدخل تاريخ الميلاد'); return }
-    if (!Number(form.basic_salary)) { toast.error('أدخل الراتب الأساسي'); return }
-    if (!form.bank_name.trim()) { toast.error('أدخل اسم البنك'); return }
-    if (!form.iban.trim()) { toast.error('أدخل رقم IBAN'); return }
+    depts.forEach((dept, di) => {
+      const dX = startX + di * spacing - (NODE_W - 20)/2
+      const dY = divY + NODE_H + V_GAP - 10
+      nodes.push({ id: `dept-${dept.id}`, label: dept.name, sublabel: dept.manager?.name || '—', color, x: dX, y: dY, w: NODE_W - 20, h: NODE_H - 6, type: 'dept' })
+      edges.push({ x1: divX + NODE_W/2, y1: divY + NODE_H, x2: dX + (NODE_W-20)/2, y2: dY, color })
 
-    setSaving(true)
-    const finalNationality = isSaudi ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
-    await onSave({
-      ...(emp ? { id: emp.id, employee_id: emp.employee_id } : {}),
-      emp_name: form.emp_name.trim(),
-      national_id: form.national_id,
-      nationality: finalNationality,
-      birth_date: form.birth_date,
-      gender: form.gender,
-      marital_status: form.marital_status,
-      hire_date: form.hire_date,
-      contract_type: form.contract_type,
-      job_title: form.job_title,
-      department: form.department,
-      direct_manager: form.direct_manager ? Number(form.direct_manager) : null,
-      basic_salary: Number(form.basic_salary),
-      housing_allow: Number(form.housing_allow),
-      transport_allow: Number(form.transport_allow),
-      other_allow: Number(form.other_allow),
-      gosi_enrolled: form.gosi_enrolled,
-      gosi_pct: form.gosi_enrolled ? gosi.employeePct : 0,
-      bank_name: form.bank_name,
-      iban: form.iban,
-      iqama_number: form.iqama_number,
-      iqama_expiry: form.iqama_expiry || null,
-      notes: form.notes,
+      const titles = dept.job_titles || []
+      const tSpacing = 110
+      const tTotalW = (titles.length - 1) * tSpacing
+      const tStartX = dX + (NODE_W-20)/2 - tTotalW/2
+      titles.forEach((t, ti) => {
+        const tX = tStartX + ti * tSpacing - 55
+        const tY = dY + (NODE_H-6) + V_GAP - 20
+        nodes.push({ id: `title-${t.id}`, label: t.name, sublabel: t.grade?.grade_code || '', color: color + 'bb', x: tX, y: tY, w: 110, h: 44, type: 'title' })
+        edges.push({ x1: dX + (NODE_W-20)/2, y1: dY + (NODE_H-6), x2: tX + 55, y2: tY, color: color + '88' })
+      })
     })
-    setSaving(false)
+  }
+
+  const svgW = Math.max(1000, ...nodes.map(n => n.x + n.w + 40))
+  const svgH = Math.max(500, ...nodes.map(n => n.y + n.h + 60))
+
+  // Pan/Zoom
+  const onMouseDown = (e: React.MouseEvent) => { setDragging(true); setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y }) }
+  const onMouseMove = (e: React.MouseEvent) => { if (dragging) setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }) }
+  const onMouseUp = () => setDragging(false)
+
+  function exportSVG() {
+    if (!svgRef.current) return
+    const data = new XMLSerializer().serializeToString(svgRef.current)
+    const blob = new Blob([data], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'org-chart.svg'; a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{emp ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-        </div>
+    <div style={{ position: 'relative', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: '#f8fafc' }}>
+      {/* أدوات التحكم */}
+      <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 10, display: 'flex', gap: '6px' }}>
+        <button onClick={() => setZoom(z => Math.min(z + 0.15, 2))} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
+          <ZoomIn style={{ width: '14px', height: '14px' }} />
+        </button>
+        <button onClick={() => setZoom(z => Math.max(z - 0.15, 0.4))} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
+          <ZoomOut style={{ width: '14px', height: '14px' }} />
+        </button>
+        <button onClick={() => { setZoom(0.8); setPan({ x: 0, y: 0 }) }} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
+          <Maximize2 style={{ width: '14px', height: '14px' }} /> إعادة ضبط
+        </button>
+        <button onClick={exportSVG} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
+          <Download style={{ width: '14px', height: '14px' }} /> تصدير
+        </button>
+        <span style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', fontSize: '0.78rem', color: 'var(--text3)' }}>{Math.round(zoom * 100)}%</span>
+      </div>
 
-        {/* تابات النافذة */}
-        <div style={{ display: 'flex', gap: '4px', padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg2)' }}>
-          {[
-            { id: 'personal', label: '📋 البيانات الشخصية' },
-            { id: 'salary',   label: '💰 الراتب والتأمينات' },
-            { id: 'bank',     label: '🏦 البنك والإقامة' },
-          ].map(t => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id as any)}
-              style={{
-                padding: '6px 14px', borderRadius: '8px', fontSize: '0.8rem',
-                fontWeight: 600, border: 'none', cursor: 'pointer',
-                background: tab === t.id ? 'var(--primary)' : 'transparent',
-                color: tab === t.id ? 'white' : 'var(--text3)',
-              }}>
-              {t.label}
-            </button>
+      {/* SVG */}
+      <div style={{ overflow: 'hidden', height: '520px', cursor: dragging ? 'grabbing' : 'grab' }}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+        <svg ref={svgRef} width={svgW} height={svgH}
+          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '50% 0', transition: dragging ? 'none' : 'transform 0.1s' }}
+          viewBox={`0 0 ${svgW} ${svgH}`}>
+          <defs>
+            <filter id="shadow">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
+            </filter>
+          </defs>
+
+          {/* الخطوط */}
+          {edges.map((e, i) => (
+            <path key={i}
+              d={`M ${e.x1} ${e.y1} C ${e.x1} ${(e.y1 + e.y2) / 2}, ${e.x2} ${(e.y1 + e.y2) / 2}, ${e.x2} ${e.y2}`}
+              fill="none" stroke={e.color} strokeWidth="1.5" opacity="0.6" />
           ))}
+
+          {/* العقد */}
+          {nodes.map(n => (
+            <g key={n.id} filter="url(#shadow)">
+              <rect x={n.x} y={n.y} width={n.w} height={n.h} rx="8"
+                fill={n.type === 'company' ? '#1a1a2e' : n.type === 'title' ? 'white' : 'white'}
+                stroke={n.type === 'title' ? n.color : n.color}
+                strokeWidth={n.type === 'company' ? 0 : n.type === 'title' ? 1 : 2} />
+
+              {/* شريط لوني أعلى */}
+              {n.type !== 'company' && n.type !== 'title' && (
+                <rect x={n.x} y={n.y} width={n.w} height="4" rx="8"
+                  fill={n.color} />
+              )}
+
+              {/* النص الرئيسي */}
+              <text x={n.x + n.w / 2} y={n.y + n.h / 2 - (n.sublabel ? 8 : 0)}
+                textAnchor="middle" dominantBaseline="central"
+                fontSize={n.type === 'company' ? 14 : n.type === 'title' ? 11 : 12}
+                fontWeight="700"
+                fill={n.type === 'company' ? 'white' : n.type === 'title' ? n.color : '#1a1a2e'}
+                fontFamily="'Segoe UI', Tahoma, sans-serif">
+                {n.label.length > 16 ? n.label.substring(0, 15) + '…' : n.label}
+              </text>
+
+              {/* النص الفرعي */}
+              {n.sublabel && (
+                <text x={n.x + n.w / 2} y={n.y + n.h / 2 + 10}
+                  textAnchor="middle" dominantBaseline="central"
+                  fontSize="9" fill={n.type === 'company' ? 'rgba(255,255,255,0.6)' : '#94a3b8'}
+                  fontFamily="'Segoe UI', Tahoma, sans-serif">
+                  {n.sublabel.length > 18 ? n.sublabel.substring(0, 17) + '…' : n.sublabel}
+                </text>
+              )}
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {nodes.length <= 1 && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(248,250,252,0.9)' }}>
+          <div style={{ textAlign: 'center', color: 'var(--text3)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏢</div>
+            <div style={{ fontSize: '0.875rem' }}>أضف إدارات وأقساماً لرؤية المخطط التنظيمي</div>
+          </div>
         </div>
+      )}
+    </div>
+  )
+}
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body">
+// ══════════════════════════════════════
+// الصفحة الرئيسية
+// ══════════════════════════════════════
+export default function OrgStructurePage() {
+  const { tenant } = useStore()
+  const [activeTab, setActiveTab] = useState<'chart'|'branches'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [divisions, setDivisions] = useState<Division[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [jobTitles, setJobTitles] = useState<JobTitle[]>([])
+  const [grades, setGrades] = useState<JobGrade[]>([])
+  const [descriptions, setDescriptions] = useState<JobDescription[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [managers, setManagers] = useState<Employee[]>([])
+  const [loading, setLoading] = useState(false)
+  const hasBranches = branches.length > 1
 
-            {/* ── البيانات الشخصية ── */}
-            {tab === 'personal' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+  // ── Modal states ──
+  const [branchModal, setBranchModal] = useState(false)
+  const [editBranch, setEditBranch]   = useState<any>(null)
+  const [divModal, setDivModal]   = useState(false)
+  const [editDiv, setEditDiv]     = useState<Division | null>(null)
+  const [gradeModal, setGradeModal] = useState(false)
+  const [editGrade, setEditGrade] = useState<JobGrade | null>(null)
+  const [descModal, setDescModal] = useState(false)
+  const [editDesc, setEditDesc]   = useState<JobDescription | null>(null)
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الموظف <span className="text-red-500">*</span></label>
-                  <input value={form.emp_name} onChange={e => set('emp_name', e.target.value)} className="input" placeholder="الاسم الكامل" onKeyDown={noEnter} />
+  useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
+
+  async function loadAll() {
+    if (!tenant) return
+    setLoading(true)
+    const [brRes, divRes, deptRes, titleRes, gradeRes, descRes, empRes] = await Promise.all([
+      supabase.from('branches').select('id, name, manager_id, manager:employees!branches_manager_id_fkey(name)').eq('tenant_id', tenant.id),
+      supabase.from('org_divisions').select('*, manager:employees!org_divisions_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('hr_departments').select('*, manager:employees!hr_departments_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('hr_job_titles').select('*, grade:org_job_grades(grade_code, grade_name)').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('org_job_grades').select('*').eq('tenant_id', tenant.id).order('grade_code'),
+      supabase.from('org_job_descriptions').select('*, job_title:hr_job_titles(name), grade:org_job_grades(grade_code, grade_name)').eq('tenant_id', tenant.id),
+      supabase.from('employees').select('id, name, role').eq('tenant_id', tenant.id).eq('is_active', true),
+    ])
+
+    const brs = brRes.data || []
+    const divs = divRes.data || []
+    const depts = deptRes.data || []
+    const titles = titleRes.data || []
+
+    // جلب عدد الموظفين لكل مسمى
+    const { data: hrEmps } = await supabase.from('hr_employees').select('job_title').eq('tenant_id', tenant.id).eq('is_active', true)
+    const countMap: Record<string, number> = {}
+    ;(hrEmps || []).forEach((e: any) => { if (e.job_title) countMap[e.job_title] = (countMap[e.job_title] || 0) + 1 })
+
+    // ربط الأقسام بالإدارات
+    const divsWithDepts = divs.map((div: any) => ({
+      ...div,
+      departments: depts
+        .filter((d: any) => d.division_id === div.id)
+        .map((d: any) => ({
+          ...d,
+          job_titles: titles.filter((t: any) => t.department_id === d.id).map((t: any) => ({ ...t, employee_count: countMap[t.name] || 0 })),
+        })),
+    }))
+
+    // normalize manager (Supabase returns array for foreign key joins)
+    const normalizedBrs = brs.map((b: any) => ({
+      ...b,
+      manager: Array.isArray(b.manager) ? b.manager[0] : b.manager
+    }))
+    setBranches(normalizedBrs); setDivisions(divsWithDepts); setDepartments(depts)
+    setJobTitles(titles.map((t: any) => ({ ...t, employee_count: countMap[t.name] || 0 })))
+    setGrades(gradeRes.data || []); setDescriptions(descRes.data || [])
+    setEmployees(empRes.data || [])
+    setManagers((empRes.data || []).filter((e: any) => ['مدير عام','مدير مشروع','مدير قسم'].includes(e.role)))
+    setLoading(false)
+  }
+
+
+  // ══ CRUD: الفروع ══
+  async function saveBranch(form: any) {
+    const payload: any = { tenant_id: tenant?.id, name: form.name }
+    if (form.manager_id) payload.manager_id = Number(form.manager_id)
+    if (form.id) await supabase.from('branches').update(payload).eq('id', form.id)
+    else await supabase.from('branches').insert(payload)
+    await loadAll(); toast.success('تم الحفظ ✅')
+  }
+  async function deleteBranch(id: number) {
+    if (!confirm('حذف هذا الفرع؟ سيؤثر على الإدارات والموظفين المرتبطين به')) return
+    await supabase.from('branches').delete().eq('id', id)
+    await loadAll(); toast.success('تم الحذف')
+  }
+
+  // ══ CRUD: الإدارات ══
+  async function saveDivision(form: any) {
+    const payload = { tenant_id: tenant?.id, name: form.name, branch_id: form.branch_id || null, manager_id: form.manager_id || null, color: form.color }
+    if (editDiv) await supabase.from('org_divisions').update(payload).eq('id', editDiv.id)
+    else await supabase.from('org_divisions').insert(payload)
+    await loadAll(); setDivModal(false); setEditDiv(null); toast.success('تم الحفظ ✅')
+  }
+  async function deleteDivision(id: number) {
+    if (!confirm('حذف هذه الإدارة؟')) return
+    await supabase.from('org_divisions').delete().eq('id', id)
+    await loadAll(); toast.success('تم الحذف')
+  }
+
+  // ══ CRUD: الدرجات ══
+  async function saveGrade(form: any) {
+    const payload = { tenant_id: tenant?.id, grade_code: form.grade_code, grade_name: form.grade_name, salary_min: Number(form.salary_min), salary_mid: Number(form.salary_mid), salary_max: Number(form.salary_max) }
+    if (editGrade) await supabase.from('org_job_grades').update(payload).eq('id', editGrade.id)
+    else await supabase.from('org_job_grades').insert(payload)
+    await loadAll(); setGradeModal(false); setEditGrade(null); toast.success('تم الحفظ ✅')
+  }
+  async function deleteGrade(id: number) {
+    if (!confirm('حذف هذه الدرجة؟')) return
+    await supabase.from('org_job_grades').delete().eq('id', id)
+    await loadAll(); toast.success('تم الحذف')
+  }
+
+  // ══ CRUD: الأوصاف ══
+  async function saveDesc(form: any) {
+    const payload = { tenant_id: tenant?.id, job_title_id: Number(form.job_title_id), grade_id: form.grade_id || null, description: form.description, responsibilities: form.responsibilities, qualifications: form.qualifications }
+    if (editDesc) await supabase.from('org_job_descriptions').update(payload).eq('id', editDesc.id)
+    else await supabase.from('org_job_descriptions').insert(payload)
+    await loadAll(); setDescModal(false); setEditDesc(null); toast.success('تم الحفظ ✅')
+  }
+
+  const TABS = [
+    { id: 'chart',        label: '🏢 المخطط التنظيمي' },
+    { id: 'branches',     label: '🌿 الفروع' },
+    { id: 'divisions',    label: '🏗️ الإدارات' },
+    { id: 'departments',  label: '🏢 الأقسام' },
+    { id: 'jobtitles',   label: '💼 المسميات' },
+    { id: 'grades',       label: '📊 الدرجات الوظيفية' },
+    { id: 'descriptions', label: '📄 الأوصاف الوظيفية' },
+  ]
+
+  return (
+    <div className="space-y-5 fade-in">
+      {/* العنوان */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🏛️ الهيكل التنظيمي
+          </h1>
+          <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>
+            {hasBranches ? `${branches.length} فروع · ` : ''}{divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
+          </p>
+        </div>
+        {activeTab === 'branches' && (
+          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
+          </button>
+        )}
+        {activeTab === 'divisions' && (
+          <button onClick={() => { setEditDiv(null); setDivModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة إدارة
+          </button>
+        )}
+        {activeTab === 'departments' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
+        )}
+        {activeTab === 'jobtitles' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
+        )}
+        {activeTab === 'grades' && (
+          <button onClick={() => { setEditGrade(null); setGradeModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة درجة
+          </button>
+        )}
+        {activeTab === 'descriptions' && (
+          <button onClick={() => { setEditDesc(null); setDescModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة وصف
+          </button>
+        )}
+      </div>
+
+      {/* التابات */}
+      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '5px', borderRadius: '12px', width: 'fit-content', flexWrap: 'wrap' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
+            style={{ padding: '7px 16px', borderRadius: '9px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+              background: activeTab === t.id ? 'var(--primary)' : 'transparent',
+              color: activeTab === t.id ? 'white' : 'var(--text3)',
+              boxShadow: activeTab === t.id ? '0 2px 8px rgba(26,86,219,0.3)' : 'none' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
+          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : (
+        <>
+          {/* ══ المخطط التنظيمي ══ */}
+          {activeTab === 'chart' && (
+            <OrgChart branches={branches} divisions={divisions} hasBranches={hasBranches} allDivisions={divisions} />
+          )}
+
+          {/* ══ الإدارات ══ */}
+          {activeTab === 'branches' && (
+          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
+          </button>
+        )}
+        {activeTab === 'divisions' && (
+            <div className="space-y-3">
+              {divisions.length === 0 ? (
+                <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🏗️</div>
+                  <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد إدارات بعد</p>
+                  <button onClick={() => setDivModal(true)} className="btn btn-primary">
+                    <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول إدارة
+                  </button>
                 </div>
-
-                {/* القسم أولاً */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
-                  <select value={form.department} onChange={e => handleDeptChange(e.target.value)} className="select">
-                    <option value="">— اختر القسم —</option>
-                    {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                </div>
-
-                {/* المسمى الوظيفي */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
-                  <select value={form.job_title} onChange={e => set('job_title', e.target.value)} className="select" disabled={!form.department}>
-                    <option value="">{form.department ? '— اختر المسمى —' : '— اختر القسم أولاً —'}</option>
-                    {jobTitlesForDept.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                  </select>
-                  {form.department && jobTitlesForDept.length === 0 && (
-                    <p style={{ fontSize: '0.75rem', color: '#e6820a', marginTop: '4px' }}>
-                      ⚠️ لا توجد مسميات لهذا القسم — أضف من تاب المسميات الوظيفية
-                    </p>
-                  )}
-                </div>
-
-                {/* المدير المباشر */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    المدير المباشر
-                    {form.direct_manager && (
-                      <span style={{ fontSize: '0.72rem', color: '#0ea77b', marginRight: '6px' }}>
-                        ✓ مُعيَّن تلقائياً من مدير القسم
-                      </span>
-                    )}
-                  </label>
-                  <select value={form.direct_manager} onChange={e => set('direct_manager', e.target.value)} className="select">
-                    <option value="">— بدون مدير مباشر —</option>
-                    {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
-                  </select>
-                </div>
-
-                {/* الجنسية */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنسية <span className="text-red-500">*</span></label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="button" onClick={() => { set('nationality', 'سعودي'); set('nationality_text', '') }}
-                      style={{
-                        flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer',
-                        fontWeight: 700, fontSize: '0.9rem',
-                        borderColor: isSaudi ? '#1a56db' : 'var(--border)',
-                        background: isSaudi ? '#eff6ff' : 'white',
-                        color: isSaudi ? '#1a56db' : 'var(--text3)',
-                      }}>
-                      🇸🇦 سعودي
-                    </button>
-                    <button type="button" onClick={() => set('nationality', 'وافد')}
-                      style={{
-                        flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer',
-                        fontWeight: 700, fontSize: '0.9rem',
-                        borderColor: !isSaudi ? '#e6820a' : 'var(--border)',
-                        background: !isSaudi ? '#fffbeb' : 'white',
-                        color: !isSaudi ? '#e6820a' : 'var(--text3)',
-                      }}>
-                      🌍 وافد (غير سعودي)
-                    </button>
-                  </div>
-                  {!isSaudi && (
-                    <input
-                      value={form.nationality_text}
-                      onChange={e => set('nationality_text', e.target.value)}
-                      className="input" style={{ marginTop: '8px' }}
-                      placeholder="اكتب الجنسية (مثال: مصري، يمني...)"
-                      onKeyDown={noEnter}
-                    />
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الهوية / الإقامة <span className="text-red-500">*</span></label>
-                    <input value={form.national_id} onChange={e => set('national_id', e.target.value)} className="input" dir="ltr" placeholder={isSaudi ? '1XXXXXXXXX' : '2XXXXXXXXX'} onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الميلاد <span className="text-red-500">*</span></label>
-                    <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} className="input" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنس <span className="text-red-500">*</span></label>
-                    <select value={form.gender} onChange={e => set('gender', e.target.value)} className="select">
-                      <option value="ذكر">ذكر</option>
-                      <option value="أنثى">أنثى</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة الاجتماعية <span className="text-red-500">*</span></label>
-                    <select value={form.marital_status} onChange={e => set('marital_status', e.target.value)} className="select">
-                      {['أعزب', 'متزوج', 'مطلق', 'أرمل'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ التعيين <span className="text-red-500">*</span></label>
-                    <input type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className="input" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع العقد <span className="text-red-500">*</span></label>
-                    <select value={form.contract_type} onChange={e => set('contract_type', e.target.value)} className="select">
-                      {['دوام كامل', 'دوام جزئي', 'مؤقت', 'مياومة'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-              </div>
-            )}
-
-            {/* ── الراتب والتأمينات ── */}
-            {tab === 'salary' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الراتب الأساسي <span className="text-red-500">*</span></label>
-                    <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل السكن</label>
-                    <input type="number" value={form.housing_allow} onChange={e => set('housing_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل النقل</label>
-                    <input type="number" value={form.transport_allow} onChange={e => set('transport_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدلات أخرى</label>
-                    <input type="number" value={form.other_allow} onChange={e => set('other_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--bg2)', borderRadius: '10px' }}>
-                  <input type="checkbox" checked={form.gosi_enrolled} onChange={e => set('gosi_enrolled', e.target.checked)} className="w-4 h-4" id="gosi" />
-                  <label htmlFor="gosi" className="text-sm font-medium text-gray-700">مسجل في التأمينات الاجتماعية (GOSI)</label>
-                </div>
-
-                {form.gosi_enrolled && Number(form.basic_salary) > 0 && (
-                  <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                    <div style={{ padding: '10px 14px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>🧮 حساب GOSI التفصيلي</span>
-                      <span style={{ fontSize: '0.8rem', opacity: 0.85 }}>وعاء: {gosiBase.toLocaleString()} ر.س</span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                      <div style={{ padding: '12px 14px', borderLeft: '1px solid var(--border)', background: '#fef2f2' }}>
-                        <div style={{ fontWeight: 700, color: '#c81e1e', fontSize: '0.8rem', marginBottom: '8px' }}>خصم الموظف — {gosi.employeePct}%</div>
-                        {gosi.breakdown.employee.length > 0 ? gosi.breakdown.employee.map((b, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
-                            <span>{b.label} ({b.pct})</span><span style={{ fontWeight: 600 }}>{b.amount.toLocaleString()} ر.س</span>
+              ) : (
+                divisions.map(div => (
+                  <div key={div.id} className="card" style={{ overflow: 'hidden' }}>
+                    {/* رأس الإدارة */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)', background: div.color + '10' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: div.color }} />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{div.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
+                            {div.manager?.name ? `👤 ${div.manager.name}` : '⚠️ لا يوجد مدير'}
+                            {hasBranches && div.branch_id && ` · ${branches.find(b => b.id === div.branch_id)?.name}`}
                           </div>
-                        )) : <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>لا يوجد خصم على الموظف</div>}
-                        <div style={{ borderTop: '1px solid #fca5a5', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#c81e1e' }}>
-                          <span>الإجمالي</span><span>{gosi.employeeDeduction.toLocaleString()} ر.س</span>
                         </div>
                       </div>
-                      <div style={{ padding: '12px 14px', background: '#fffbeb' }}>
-                        <div style={{ fontWeight: 700, color: '#e6820a', fontSize: '0.8rem', marginBottom: '8px' }}>حصة صاحب العمل — {gosi.employerPct}%</div>
-                        {gosi.breakdown.employer.map((b, i) => (
-                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
-                            <span>{b.label} ({b.pct})</span><span style={{ fontWeight: 600 }}>{b.amount.toLocaleString()} ر.س</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span style={{ background: div.color + '20', color: div.color, borderRadius: '20px', padding: '3px 12px', fontSize: '0.75rem', fontWeight: 600 }}>
+                          {div.departments?.length || 0} قسم
+                        </span>
+                        <button onClick={() => { setEditDiv(div); setDivModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
+                        <button onClick={() => deleteDivision(div.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
+                      </div>
+                    </div>
+                    {/* الأقسام */}
+                    {(div.departments || []).length > 0 && (
+                      <div style={{ padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {(div.departments || []).map(dept => (
+                          <div key={dept.id} style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '8px 12px', border: `1px solid ${div.color}30`, fontSize: '0.82rem' }}>
+                            <div style={{ fontWeight: 600 }}>{dept.name}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>
+                              {dept.manager?.name || '—'} · {(dept.job_titles || []).length} مسمى
+                            </div>
                           </div>
                         ))}
-                        <div style={{ borderTop: '1px solid #fcd34d', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#e6820a' }}>
-                          <span>الإجمالي</span><span>{gosi.employerContribution.toLocaleString()} ر.س</span>
-                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ══ الدرجات الوظيفية ══ */}
+          {activeTab === 'departments' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
+        )}
+        {activeTab === 'jobtitles' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
+        )}
+        {activeTab === 'grades' && (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              {grades.length === 0 ? (
+                <div style={{ padding: '60px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '12px' }}>📊</div>
+                  <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد درجات وظيفية بعد</p>
+                  <button onClick={() => setGradeModal(true)} className="btn btn-primary">
+                    <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول درجة
+                  </button>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['الكود','اسم الدرجة','الحد الأدنى','المتوسط','الحد الأعلى','نطاق الراتب',''].map(h => (
+                          <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grades.map(g => {
+                        const range = g.salary_max - g.salary_min
+                        const midPct = range > 0 ? ((g.salary_mid - g.salary_min) / range) * 100 : 50
+                        return (
+                          <tr key={g.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <td style={{ padding: '12px 14px' }}>
+                              <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '6px', padding: '3px 10px', fontWeight: 700, fontSize: '0.82rem' }}>{g.grade_code}</span>
+                            </td>
+                            <td style={{ padding: '12px 14px', fontWeight: 600 }}>{g.grade_name}</td>
+                            <td style={{ padding: '12px 14px', color: '#0ea77b' }}>{g.salary_min.toLocaleString()} ر.س</td>
+                            <td style={{ padding: '12px 14px', color: 'var(--primary)', fontWeight: 600 }}>{g.salary_mid.toLocaleString()} ر.س</td>
+                            <td style={{ padding: '12px 14px', color: '#c81e1e' }}>{g.salary_max.toLocaleString()} ر.س</td>
+                            <td style={{ padding: '12px 14px', minWidth: '150px' }}>
+                              <div style={{ position: 'relative', height: '8px', background: '#e5e7eb', borderRadius: '4px' }}>
+                                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to left, #c81e1e, #0ea77b)', borderRadius: '4px' }} />
+                                <div style={{ position: 'absolute', top: '-3px', right: `${100 - midPct}%`, width: '14px', height: '14px', background: 'var(--primary)', borderRadius: '50%', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                              </div>
+                            </td>
+                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                <button onClick={() => { setEditGrade(g); setGradeModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
+                                <button onClick={() => deleteGrade(g.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══ الأوصاف الوظيفية ══ */}
+          {activeTab === 'descriptions' && (
+            <div className="space-y-3">
+              {descriptions.length === 0 ? (
+                <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '12px' }}>📄</div>
+                  <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد أوصاف وظيفية بعد</p>
+                  <button onClick={() => setDescModal(true)} className="btn btn-primary">
+                    <Plus style={{ width: '16px', height: '16px' }} /> إضافة وصف
+                  </button>
+                </div>
+              ) : (
+                descriptions.map(d => (
+                  <div key={d.id} className="card" style={{ padding: '18px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{d.job_title?.name}</div>
+                        {d.grade && <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '6px', padding: '2px 8px', fontSize: '0.75rem', fontWeight: 600 }}>{d.grade.grade_code} — {d.grade.grade_name}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button onClick={() => { setEditDesc(d); setDescModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
+                        <button onClick={async () => { if (confirm('حذف؟')) { await supabase.from('org_job_descriptions').delete().eq('id', d.id); await loadAll(); toast.success('تم') } }} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
                       </div>
                     </div>
+                    {d.description && <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '8px', lineHeight: 1.6 }}>{d.description}</p>}
+                    {d.responsibilities && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '4px' }}>المهام والمسؤوليات</div>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{d.responsibilities}</p>
+                      </div>
+                    )}
+                    {d.qualifications && (
+                      <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0ea77b', marginBottom: '4px' }}>المؤهلات المطلوبة</div>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{d.qualifications}</p>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))
+              )}
+            </div>
+          )}
+        </>
+      )}
 
-                <div style={{ background: 'var(--primary-light)', borderRadius: '12px', padding: '14px' }}>
-                  <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.875rem', marginBottom: '10px' }}>📊 ملخص الراتب</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الراتب الأساسي</span><span style={{ fontWeight: 600 }}>{Number(form.basic_salary).toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>البدلات</span><span style={{ fontWeight: 600 }}>{totalAllowances.toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي</span><span style={{ fontWeight: 600, color: 'var(--primary)' }}>{grossSalary.toLocaleString()} ر.س</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>خصم GOSI</span><span style={{ fontWeight: 600, color: '#c81e1e' }}>{(form.gosi_enrolled ? gosi.employeeDeduction : 0).toLocaleString()} ر.س</span></div>
-                  </div>
-                  <div style={{ borderTop: '1px solid rgba(26,86,219,0.2)', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700 }}>صافي الراتب</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0ea77b' }}>{netSalary.toLocaleString()} ر.س</span>
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* ── البنك والإقامة ── */}
-            {tab === 'bank' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم البنك <span className="text-red-500">*</span></label>
-                    <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="مثال: الراجحي، الأهلي" onKeyDown={noEnter} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN <span className="text-red-500">*</span></label>
-                    <input value={form.iban} onChange={e => set('iban', e.target.value)} className="input" dir="ltr" placeholder="SA..." onKeyDown={noEnter} />
-                  </div>
-                </div>
-                {!isSaudi && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الإقامة</label>
-                      <input value={form.iqama_number} onChange={e => set('iqama_number', e.target.value)} className="input" dir="ltr" placeholder="2XXXXXXXXX" onKeyDown={noEnter} />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">انتهاء الإقامة</label>
-                      <input type="date" value={form.iqama_expiry} onChange={e => set('iqama_expiry', e.target.value)} className="input" />
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
-                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '80px', resize: 'none' }} />
-                </div>
-              </div>
-            )}
+      {/* ══ Modal: فرع ══ */}
+      {branchModal && (
+        <BranchModal
+          branch={editBranch} employees={employees}
+          onClose={() => { setBranchModal(false); setEditBranch(null) }}
+          onSave={saveBranch}
+        />
+      )}
+
+      {/* ══ Modal: إدارة ══ */}
+      {divModal && (
+        <DivisionModal
+          div={editDiv} branches={branches} hasBranches={hasBranches} employees={employees}
+          onClose={() => { setDivModal(false); setEditDiv(null) }}
+          onSave={saveDivision}
+        />
+      )}
+
+      {/* ══ Modal: درجة ══ */}
+      {gradeModal && (
+        <GradeModal
+          grade={editGrade}
+          onClose={() => { setGradeModal(false); setEditGrade(null) }}
+          onSave={saveGrade}
+        />
+      )}
+
+      {/* ══ Modal: وصف ══ */}
+      {descModal && (
+        <DescriptionModal
+          desc={editDesc} jobTitles={jobTitles} grades={grades}
+          onClose={() => { setDescModal(false); setEditDesc(null) }}
+          onSave={saveDesc}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ── Modal: فرع ──
+function BranchModal({ branch, employees, onClose, onSave }: any) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    id: branch?.id || null,
+    name: branch?.name || '',
+    manager_id: branch?.manager_id || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim()) { toast.error('اسم الفرع مطلوب'); return }
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">{branch ? 'تعديل الفرع' : 'إضافة فرع جديد'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الفرع <span className="text-red-500">*</span></label>
+              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: الفرع الرئيسي - الرياض" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الفرع</label>
+              <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
+                <option value="">— بدون مدير —</option>
+                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
+              </select>
+            </div>
           </div>
-
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Save className="w-4 h-4" />}
-              حفظ الموظف
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
             </button>
           </div>
         </form>
@@ -622,9 +690,155 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   )
 }
 
-// ══════════════════════════════════════
-// تاب الأقسام
-// ══════════════════════════════════════
+// ── Modal: إدارة ──
+function DivisionModal({ div, branches, hasBranches, employees, onClose, onSave }: any) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    name: div?.name || '', branch_id: div?.branch_id || '',
+    manager_id: div?.manager_id || '', color: div?.color || '#1a56db',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); if (!form.name.trim()) { toast.error('اسم الإدارة مطلوب'); return }
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">{div ? 'تعديل الإدارة' : 'إضافة إدارة جديدة'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الإدارة <span className="text-red-500">*</span></label><input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: إدارة الهندسة" /></div>
+            {hasBranches && (
+              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الفرع</label>
+                <select value={form.branch_id} onChange={e => set('branch_id', e.target.value)} className="select">
+                  <option value="">— بدون فرع محدد —</option>
+                  {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الإدارة</label>
+              <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
+                <option value="">— بدون مدير —</option>
+                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
+              </select>
+            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">اللون</label>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {DIVISION_COLORS.map(c => (
+                  <button key={c} type="button" onClick={() => set('color', c)}
+                    style={{ width: '28px', height: '28px', borderRadius: '50%', background: c, border: form.color === c ? '3px solid #1a1a2e' : '2px solid transparent', cursor: 'pointer' }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: درجة وظيفية ──
+function GradeModal({ grade, onClose, onSave }: any) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ grade_code: grade?.grade_code || '', grade_name: grade?.grade_name || '', salary_min: grade?.salary_min || 0, salary_mid: grade?.salary_mid || 0, salary_max: grade?.salary_max || 0 })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); if (!form.grade_code || !form.grade_name) { toast.error('الكود والاسم مطلوبان'); return }
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">{grade ? 'تعديل الدرجة' : 'إضافة درجة وظيفية'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-xs text-gray-500 mb-1">كود الدرجة *</label><input value={form.grade_code} onChange={e => set('grade_code', e.target.value)} className="input" placeholder="G1" /></div>
+              <div><label className="block text-xs text-gray-500 mb-1">اسم الدرجة *</label><input value={form.grade_name} onChange={e => set('grade_name', e.target.value)} className="input" placeholder="مبتدئ" /></div>
+            </div>
+            <div style={{ background: 'var(--bg2)', borderRadius: '10px', padding: '14px' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text)' }}>💰 نطاق الراتب (ر.س)</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><label className="block text-xs text-gray-500 mb-1">الحد الأدنى</label><input type="number" value={form.salary_min} onChange={e => set('salary_min', e.target.value)} className="input" min="0" /></div>
+                <div><label className="block text-xs text-gray-500 mb-1">المتوسط</label><input type="number" value={form.salary_mid} onChange={e => set('salary_mid', e.target.value)} className="input" min="0" /></div>
+                <div><label className="block text-xs text-gray-500 mb-1">الحد الأعلى</label><input type="number" value={form.salary_max} onChange={e => set('salary_max', e.target.value)} className="input" min="0" /></div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal: وصف وظيفي ──
+function DescriptionModal({ desc, jobTitles, grades, onClose, onSave }: any) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({ job_title_id: desc?.job_title_id || '', grade_id: desc?.grade_id || '', description: desc?.description || '', responsibilities: desc?.responsibilities || '', qualifications: desc?.qualifications || '' })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); if (!form.job_title_id) { toast.error('المسمى الوظيفي مطلوب'); return }
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">{desc ? 'تعديل الوصف الوظيفي' : 'إضافة وصف وظيفي'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي *</label>
+                <select value={form.job_title_id} onChange={e => set('job_title_id', e.target.value)} className="select">
+                  <option value="">— اختر المسمى —</option>
+                  {jobTitles.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الدرجة الوظيفية</label>
+                <select value={form.grade_id} onChange={e => set('grade_id', e.target.value)} className="select">
+                  <option value="">— بدون درجة —</option>
+                  {grades.map((g: any) => <option key={g.id} value={g.id}>{g.grade_code} — {g.grade_name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">وصف الوظيفة</label><textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="نبذة عامة عن الوظيفة..." /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المهام والمسؤوليات</label><textarea value={form.responsibilities} onChange={e => set('responsibilities', e.target.value)} className="input" style={{ minHeight: '90px', resize: 'none' }} placeholder="- مسؤولية 1&#10;- مسؤولية 2&#10;..." /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المؤهلات المطلوبة</label><textarea value={form.qualifications} onChange={e => set('qualifications', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="- مؤهل 1&#10;- خبرة 2 سنة..." /></div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+
 function DepartmentsTab({ tenantId, managers, onUpdate }: {
   tenantId: string
   managers: any[]
@@ -765,11 +979,12 @@ function DepartmentsTab({ tenantId, managers, onUpdate }: {
 // ══════════════════════════════════════
 // تاب المسميات الوظيفية
 // ══════════════════════════════════════
-function JobTitlesTab({ tenantId }: { tenantId: string }) {
+
+function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade[] }) {
   const [titles, setTitles] = useState<JobTitle[]>([])
   const [depts, setDepts] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', department_id: '' })
+  const [form, setForm] = useState({ name: '', department_id: '', grade_id: '' })
   const [editId, setEditId] = useState<number | null>(null)
   const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
 
@@ -890,11 +1105,14 @@ function JobTitlesTab({ tenantId }: { tenantId: string }) {
                     <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Briefcase style={{ width: '12px', height: '12px' }} />
                     </div>
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
+                    <div>
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
+                      {(t as any).grade && <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '1px' }}>{(t as any).grade.grade_code} — {(t as any).grade.grade_name}</div>}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
-                      onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '' }); setEditId(t.id) }}
+                      onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '', grade_id: t.grade_id ? String(t.grade_id) : '' }); setEditId(t.id) }}
                       className="btn btn-ghost btn-xs">
                       <Pencil style={{ width: '14px', height: '14px' }} />
                     </button>
@@ -907,781 +1125,6 @@ function JobTitlesTab({ tenantId }: { tenantId: string }) {
             </div>
           ))}
         </div>
-      )}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// تاب إنهاء الخدمة
-// ══════════════════════════════════════
-function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmployees: HREmployee[] }) {
-  const [terminations, setTerminations] = useState<Termination[]>([])
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [showForm, setShowForm] = useState(false)
-  const [editId, setEditId] = useState<number | null>(null)
-
-  const [form, setForm] = useState({
-    hr_employee_id: '',
-    termination_type: 'استقالة',
-    termination_date: '',
-    last_working_day: '',
-    notes: '',
-    status: 'نهائي',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  const selectedHR = hrEmployees.find(e => e.id === Number(form.hr_employee_id))
-  const gratuity = selectedHR && form.last_working_day
-    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, selectedHR.basic_salary, form.termination_type)
-    : null
-
-  useEffect(() => { loadData() }, [])
-
-  async function loadData() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('hr_terminations')
-      .select('*, employee:employees!hr_terminations_employee_id_fkey(name, role)')
-      .eq('tenant_id', tenantId)
-      .order('termination_date', { ascending: false })
-    setTerminations(data || [])
-    setLoading(false)
-  }
-
-  function resetForm() {
-    setForm({ hr_employee_id: '', termination_type: 'استقالة', termination_date: '', last_working_day: '', notes: '', status: 'نهائي' })
-    setEditId(null)
-    setShowForm(false)
-  }
-
-  async function handleSave() {
-    if (!form.hr_employee_id) { toast.error('اختر الموظف'); return }
-    if (!form.termination_date) { toast.error('أدخل تاريخ الإنهاء'); return }
-    if (!form.last_working_day) { toast.error('أدخل آخر يوم عمل'); return }
-    if (!selectedHR) return
-
-    setSaving(true)
-    const payload = {
-      tenant_id: tenantId,
-      employee_id: selectedHR.employee_id,
-      hr_employee_id: selectedHR.id,
-      termination_type: form.termination_type,
-      termination_date: form.termination_date,
-      last_working_day: form.last_working_day,
-      years_of_service: gratuity ? gratuity.years + (gratuity.months / 12) : 0,
-      gratuity_amount: gratuity?.finalAmount || 0,
-      notes: form.notes || null,
-      status: form.status,
-    }
-
-    if (editId) {
-      await supabase.from('hr_terminations').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('hr_terminations').insert(payload)
-      // تعطيل الموظف تلقائياً
-      await supabase.from('hr_employees').update({ is_active: false }).eq('id', selectedHR.id)
-      await supabase.from('employees').update({ is_active: false }).eq('id', selectedHR.employee_id)
-    }
-
-    await loadData()
-    resetForm()
-    setSaving(false)
-    toast.success('تم حفظ إنهاء الخدمة ✅')
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm('حذف هذا السجل؟')) return
-    await supabase.from('hr_terminations').delete().eq('id', id)
-    setTerminations(t => t.filter(x => x.id !== id))
-    toast.success('تم الحذف')
-  }
-
-  const TYPES = [
-    // ← مكافأة كاملة
-    { value: 'إنهاء عقد من صاحب العمل', icon: '📋', color: '#c81e1e',  group: 'كاملة' },
-    { value: 'انتهاء عقد',              icon: '📅', color: '#1a56db',  group: 'كاملة' },
-    { value: 'إنهاء باتفاق الطرفين',    icon: '🤝', color: '#0ea77b',  group: 'كاملة' },
-    { value: 'إحالة للتقاعد',           icon: '🎖️', color: '#0ea77b',  group: 'كاملة' },
-    { value: 'وفاة',                    icon: '🖤', color: '#374151',  group: 'كاملة' },
-    { value: 'عجز كلي',                 icon: '🏥', color: '#6b7280',  group: 'كاملة' },
-    { value: 'إغلاق المنشأة',           icon: '🏢', color: '#e6820a',  group: 'كاملة' },
-    { value: 'تغيير جوهري في العقد',    icon: '📝', color: '#e6820a',  group: 'كاملة' },
-    // ← مكافأة مخفّضة
-    { value: 'استقالة',                 icon: '🚪', color: '#e6820a',  group: 'مخفّضة' },
-    // ← لا مكافأة
-    { value: 'فصل تأديبي',             icon: '⛔', color: '#c81e1e',  group: 'لا مكافأة' },
-    { value: 'فصل',                    icon: '⚠️', color: '#c81e1e',  group: 'لا مكافأة' },
-  ]
-
-  const TYPE_COLOR: Record<string, string> = {
-    'إنهاء عقد من صاحب العمل': 'badge-red',
-    'انتهاء عقد': 'badge-blue',
-    'إنهاء باتفاق الطرفين': 'badge-green',
-    'إحالة للتقاعد': 'badge-green',
-    'وفاة': 'badge-gray',
-    'عجز كلي': 'badge-gray',
-    'إغلاق المنشأة': 'badge-amber',
-    'تغيير جوهري في العقد': 'badge-amber',
-    'استقالة': 'badge-amber',
-    'فصل تأديبي': 'badge-red',
-    'فصل': 'badge-red',
-  }
-
-  return (
-    <div className="space-y-4">
-
-      {/* زر إضافة */}
-      {!showForm && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowForm(true)} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> تسجيل إنهاء خدمة
-          </button>
-        </div>
-      )}
-
-      {/* ── نموذج الإضافة ── */}
-      {showForm && (
-        <div className="card" style={{ padding: '20px' }}>
-          <div style={{ fontWeight: 700, marginBottom: '16px', color: 'var(--text)', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <LogOut style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
-            {editId ? 'تعديل سجل إنهاء الخدمة' : 'تسجيل إنهاء خدمة جديد'}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-
-            {/* الموظف */}
-            <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
-              <select value={form.hr_employee_id} onChange={e => set('hr_employee_id', e.target.value)} className="select">
-                <option value="">— اختر الموظف —</option>
-                {hrEmployees.filter(e => e.is_active).map(e => (
-                  <option key={e.id} value={e.id}>{e.employee?.name} — {e.job_title || e.employee?.role}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* نوع الإنهاء */}
-            <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإنهاء <span className="text-red-500">*</span></label>
-              <select value={form.termination_type} onChange={e => set('termination_type', e.target.value)} className="select">
-                <optgroup label="✅ مكافأة كاملة">
-                  <option value="إنهاء عقد من صاحب العمل">📋 إنهاء عقد من صاحب العمل</option>
-                  <option value="انتهاء عقد">📅 انتهاء مدة العقد</option>
-                  <option value="إنهاء باتفاق الطرفين">🤝 إنهاء باتفاق الطرفين</option>
-                  <option value="إحالة للتقاعد">🎖️ إحالة للتقاعد</option>
-                  <option value="وفاة">🖤 وفاة</option>
-                  <option value="عجز كلي">🏥 عجز كلي عن العمل</option>
-                  <option value="إغلاق المنشأة">🏢 إغلاق المنشأة</option>
-                  <option value="تغيير جوهري في العقد">📝 رفض تغيير جوهري في العقد</option>
-                </optgroup>
-                <optgroup label="⚠️ مكافأة مخفّضة">
-                  <option value="استقالة">🚪 استقالة</option>
-                </optgroup>
-                <optgroup label="❌ لا مكافأة">
-                  <option value="فصل تأديبي">⛔ فصل تأديبي</option>
-                  <option value="فصل">⚠️ فصل</option>
-                </optgroup>
-              </select>
-              {/* مؤشر نوع المكافأة */}
-              {form.termination_type && (() => {
-                const t = TYPES.find(x => x.value === form.termination_type)
-                const grpLabel = t?.group === 'كاملة' ? { text: '✅ يستحق مكافأة كاملة', bg: '#ecfdf5', color: '#065f46' }
-                  : t?.group === 'مخفّضة' ? { text: '⚠️ يستحق مكافأة مخفّضة حسب سنوات الخدمة', bg: '#fffbeb', color: '#92400e' }
-                  : { text: '❌ لا يستحق مكافأة نهاية خدمة', bg: '#fef2f2', color: '#991b1b' }
-                return (
-                  <div style={{ marginTop: '6px', padding: '5px 10px', background: grpLabel.bg, borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, color: grpLabel.color }}>
-                    {grpLabel.text}
-                  </div>
-                )
-              })()}
-            </div>
-
-            {/* التواريخ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإنهاء الرسمي <span className="text-red-500">*</span></label>
-              <input type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">آخر يوم عمل فعلي <span className="text-red-500">*</span></label>
-              <input type="date" value={form.last_working_day} onChange={e => set('last_working_day', e.target.value)} className="input" />
-            </div>
-
-            {/* مكافأة نهاية الخدمة — تلقائية حسب نظام العمل السعودي */}
-            {gratuity && (
-              <div style={{ gridColumn: '1/-1', borderRadius: '12px', overflow: 'hidden', border: `1px solid ${gratuity.isEntitled ? '#bbf7d0' : '#fca5a5'}` }}>
-                {/* رأس البطاقة */}
-                <div style={{
-                  padding: '10px 14px', color: 'white', fontWeight: 700, fontSize: '0.875rem',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  background: gratuity.isEntitled ? '#0ea77b' : '#c81e1e',
-                }}>
-                  <span>🧮 مكافأة نهاية الخدمة — حسب نظام العمل السعودي</span>
-                  <span style={{ opacity: 0.9, fontSize: '0.78rem' }}>
-                    {gratuity.years} سنة {gratuity.months > 0 ? `و ${gratuity.months} شهر` : ''} {gratuity.days > 0 ? `و ${gratuity.days} يوم` : ''}
-                  </span>
-                </div>
-
-                <div style={{ padding: '12px 14px', background: gratuity.isEntitled ? '#f0fdf4' : '#fef2f2' }}>
-                  {/* الأساس القانوني */}
-                  <div style={{ fontSize: '0.78rem', color: gratuity.isEntitled ? '#065f46' : '#991b1b', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{gratuity.isEntitled ? '✅' : '❌'}</span>
-                    <span>{gratuity.entitlement}</span>
-                  </div>
-
-                  {/* تفاصيل الحساب */}
-                  {gratuity.breakdown.length > 0 && (
-                    <div style={{ marginBottom: '10px' }}>
-                      {gratuity.breakdown.map((line, i) => (
-                        <div key={i} style={{ fontSize: '0.8rem', color: '#374151', padding: '3px 0', borderBottom: i < gratuity.breakdown.length - 1 ? '1px dashed #d1fae5' : 'none' }}>
-                          • {line}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* المبالغ */}
-                  {gratuity.isEntitled && (
-                    <>
-                      {gratuity.reductionPct > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#6b7280', marginBottom: '4px', paddingBottom: '4px', borderBottom: '1px solid #fde68a' }}>
-                          <span>المكافأة الكاملة قبل التخفيض</span>
-                          <span style={{ fontWeight: 600 }}>{gratuity.fullAmount.toLocaleString()} ر.س</span>
-                        </div>
-                      )}
-                      {gratuity.reductionPct > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#c81e1e', marginBottom: '8px' }}>
-                          <span>تخفيض {gratuity.reductionPct}% ({gratuity.reductionLabel})</span>
-                          <span style={{ fontWeight: 600 }}>- {(gratuity.fullAmount - gratuity.finalAmount).toLocaleString()} ر.س</span>
-                        </div>
-                      )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${gratuity.reductionPct > 0 ? '#fde68a' : '#bbf7d0'}`, paddingTop: '8px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>💰 المكافأة المستحقة</span>
-                        <span style={{ fontSize: '1.3rem', fontWeight: 700, color: '#0ea77b' }}>{gratuity.finalAmount.toLocaleString()} ر.س</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* بيانات الموظف المختار */}
-            {selectedHR && (
-              <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem' }}>
-                <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                  <div><span style={{ color: 'var(--text3)' }}>الراتب الأساسي: </span><strong>{selectedHR.basic_salary.toLocaleString()} ر.س</strong></div>
-                  <div><span style={{ color: 'var(--text3)' }}>تاريخ المباشرة: </span><strong>{selectedHR.hire_date || '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text3)' }}>القسم: </span><strong>{selectedHR.department || '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text3)' }}>الجنسية: </span><strong>{selectedHR.nationality}</strong></div>
-                </div>
-              </div>
-            )}
-
-            {/* ملاحظات */}
-            <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات / سبب الإنهاء</label>
-              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-                className="input" style={{ minHeight: '70px', resize: 'none' }}
-                placeholder="مثال: قدّم استقالته لأسباب شخصية..." />
-            </div>
-
-            {/* الحالة */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                <option value="مؤقت">مؤقت (قيد المعالجة)</option>
-                <option value="نهائي">نهائي</option>
-              </select>
-            </div>
-          </div>
-
-          {/* أزرار الحفظ */}
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
-            <button type="button" onClick={resetForm} className="btn btn-ghost">إلغاء</button>
-            <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary"
-              style={{ background: '#c81e1e' }}>
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <LogOut style={{ width: '15px', height: '15px' }} />}
-              تأكيد إنهاء الخدمة
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── جدول السجلات ── */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-        </div>
-      ) : terminations.length === 0 ? (
-        <div className="card" style={{ padding: '50px', textAlign: 'center' }}>
-          <LogOut style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 12px' }} />
-          <p style={{ color: 'var(--text3)' }}>لا توجد سجلات إنهاء خدمة</p>
-        </div>
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['الموظف', 'نوع الإنهاء', 'تاريخ الإنهاء', 'آخر يوم عمل', 'سنوات الخدمة', 'مكافأة نهاية الخدمة', 'الحالة', ''].map(h => (
-                    <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {terminations.map(t => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 700 }}>{t.employee?.name || `#${t.employee_id}`}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{t.employee?.role}</div>
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span className={`badge ${TYPE_COLOR[t.termination_type] || 'badge-gray'}`}>
-                        {TYPES.find(x => x.value === t.termination_type)?.icon} {t.termination_type}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{t.termination_date}</td>
-                    <td style={{ padding: '12px 14px', fontSize: '0.85rem' }}>{t.last_working_day}</td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 600 }}>
-                      {Math.floor(t.years_of_service)} سنة
-                    </td>
-                    <td style={{ padding: '12px 14px', fontWeight: 700, color: t.gratuity_amount > 0 ? '#0ea77b' : 'var(--text3)' }}>
-                      {t.gratuity_amount > 0 ? `${t.gratuity_amount.toLocaleString()} ر.س` : 'لا تستحق'}
-                    </td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span className={`badge ${t.status === 'نهائي' ? 'badge-red' : 'badge-amber'}`}>{t.status}</span>
-                    </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                        <button onClick={() => {
-                          setForm({
-                            hr_employee_id: String(t.hr_employee_id),
-                            termination_type: t.termination_type,
-                            termination_date: t.termination_date,
-                            last_working_day: t.last_working_day,
-                            notes: t.notes || '',
-                            status: t.status,
-                          })
-                          setEditId(t.id)
-                          setShowForm(true)
-                        }} className="btn btn-ghost btn-xs">
-                          <Pencil style={{ width: '13px', height: '13px' }} />
-                        </button>
-                        <button onClick={() => handleDelete(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                          <Trash2 style={{ width: '13px', height: '13px' }} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// الصفحة الرئيسية
-// ══════════════════════════════════════
-export default function HRPage() {
-  const { tenant, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'employees' | 'terminations'>('employees')
-  const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
-  const [managers, setManagers] = useState<any[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [editEmp, setEditEmp] = useState<HREmployee | null>(null)
-  const isAdmin = currentUser?.role === 'مدير عام'
-  const now = new Date()
-
-  useEffect(() => { load() }, [tenant?.id])
-
-  async function load() {
-    if (!tenant) return
-    setLoading(true)
-    const [hrRes, mgRes, deptRes] = await Promise.all([
-      // ✅ إصلاح: إضافة فلتر tenant_id + is_active لجلب الموظفين الصحيحين فقط
-      supabase
-        .from('hr_employees')
-        .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
-        .eq('tenant_id', tenant.id)
-        .order('id'),
-      supabase
-        .from('employees')
-        .select('id, name, role')
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .in('role', ['مدير عام', 'مدير مشروع']),
-      supabase
-        .from('hr_departments')
-        .select('*, manager:employees(name, role)')
-        .eq('tenant_id', tenant.id)
-        .order('name'),
-    ])
-    setHREmployees(hrRes.data || [])
-    setManagers(mgRes.data || [])
-    setDepartments((deptRes.data || []) as Department[])
-    setLoading(false)
-  }
-
-  async function handleSave(data: any) {
-    if (!tenant) return
-    try {
-      let employeeId = data.employee_id
-
-      if (!employeeId) {
-        // ✅ إنشاء موظف جديد في جدول employees
-        const { data: newEmp, error: empError } = await supabase
-          .from('employees')
-          .insert({
-            tenant_id: tenant.id,
-            name: data.emp_name,
-            role: data.job_title,
-            username: `emp_${Date.now()}`,
-            password: '1234',
-            permissions: [],
-            is_active: true,
-          })
-          .select('id')
-          .single()
-
-        if (empError) throw empError
-        employeeId = newEmp.id
-      } else {
-        // تحديث اسم ومسمى الموظف الموجود
-        await supabase
-          .from('employees')
-          .update({ name: data.emp_name, role: data.job_title })
-          .eq('id', employeeId)
-      }
-
-      // ✅ إصلاح: بناء payload نظيف بدون أي undefined
-      const hrPayload: Record<string, any> = {
-        tenant_id:      tenant.id,
-        employee_id:    employeeId,
-        national_id:    data.national_id    || null,
-        nationality:    data.nationality,
-        birth_date:     data.birth_date     || null,
-        gender:         data.gender,
-        marital_status: data.marital_status,
-        hire_date:      data.hire_date      || null,
-        contract_type:  data.contract_type,
-        job_title:      data.job_title      || null,
-        department:     data.department     || null,
-        direct_manager: data.direct_manager || null,
-        basic_salary:   data.basic_salary,
-        housing_allow:  data.housing_allow,
-        transport_allow: data.transport_allow,
-        other_allow:    data.other_allow,
-        gosi_enrolled:  data.gosi_enrolled,
-        gosi_pct:       data.gosi_pct,
-        bank_name:      data.bank_name      || null,
-        iban:           data.iban           || null,
-        iqama_number:   data.iqama_number   || null,
-        iqama_expiry:   data.iqama_expiry   || null,
-        notes:          data.notes          || null,
-        is_active:      true,
-      }
-
-      // حذف أي مفتاح قيمته undefined تحسباً
-      Object.keys(hrPayload).forEach(k => {
-        if (hrPayload[k] === undefined) delete hrPayload[k]
-      })
-
-      if (data.id) {
-        // تعديل موظف موجود
-        const { error: updateErr } = await supabase
-          .from('hr_employees')
-          .update(hrPayload)
-          .eq('id', data.id)
-        if (updateErr) throw updateErr
-      } else {
-        // إضافة موظف جديد
-        const { error: insertErr } = await supabase
-          .from('hr_employees')
-          .insert(hrPayload)
-        if (insertErr) throw insertErr
-      }
-
-      // ✅ إعادة تحميل القائمة بعد الحفظ
-      await load()
-      setShowModal(false)
-      setEditEmp(null)
-      toast.success(data.id ? 'تم التعديل ✅' : 'تمت إضافة الموظف ✅')
-
-    } catch (err: any) {
-      console.error('HR Save Error:', err)
-      toast.error('حدث خطأ: ' + (err.message || 'خطأ غير معروف'))
-    }
-  }
-
-  const filtered = hrEmployees.filter(e =>
-    !search || e.employee?.name?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const totalSalaries = hrEmployees.reduce((s, e) =>
-    s + e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow, 0)
-  const active = hrEmployees.filter(e => e.is_active).length
-  const saudiCount = hrEmployees.filter(e => e.nationality === 'سعودي').length
-  const expats = hrEmployees.filter(e => e.nationality !== 'سعودي').length
-
-  const TABS = [
-    { id: 'employees',    label: '👥 ملفات الموظفين',   color: '#1a56db' },
-    { id: 'terminations', label: '🚪 إنهاء الخدمة',      color: '#c81e1e' },
-  ]
-
-  return (
-    <div className="space-y-5 fade-in">
-      <div>
-        <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Users style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> ملفات الموظفين
-        </h1>
-        <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>بيانات الموظفين مع حسابات GOSI</p>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id as any)}
-            style={{
-              padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem',
-              fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-              background: activeTab === t.id ? t.color : 'transparent',
-              color: activeTab === t.id ? 'white' : 'var(--text3)',
-              boxShadow: activeTab === t.id ? `0 2px 8px ${t.color}44` : 'none',
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ══ تاب الموظفين ══ */}
-      {activeTab === 'employees' && (
-        <>
-          {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: 'الموظفون النشطون', value: active,                                    color: '#1a56db', bg: '#eff6ff' },
-              { label: 'إجمالي الرواتب',   value: `${totalSalaries.toLocaleString()} ر.س`,  color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'سعوديون',           value: saudiCount,                               color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'وافدون',            value: expats,                                   color: '#e6820a', bg: '#fffbeb' },
-            ].map(kpi => (
-              <div key={kpi.label} className="card" style={{ padding: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '4px' }}>{kpi.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* شريط البحث + زر إضافة */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="input"
-                style={{ paddingRight: '36px', width: '240px' }}
-                placeholder="بحث باسم الموظف..."
-              />
-            </div>
-            {isAdmin && (
-              <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary">
-                <Plus style={{ width: '16px', height: '16px' }} /> إضافة موظف
-              </button>
-            )}
-          </div>
-
-          {/* قائمة الموظفين */}
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-              <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ color: 'var(--text3)' }}>
-                {search ? 'لا توجد نتائج للبحث' : 'لا يوجد موظفون بعد'}
-              </p>
-              {isAdmin && !search && (
-                <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary" style={{ marginTop: '16px' }}>
-                  <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول موظف
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>#</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الموظف</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>القسم / المسمى</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الجنسية</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>تاريخ التعيين</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الراتب الأساسي</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>صافي الراتب</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>GOSI</th>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الحالة</th>
-                      {isAdmin && <th style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إجراء</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((emp, idx) => {
-                      const totalSal = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
-                      const iqamaDays = emp.iqama_expiry
-                        ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000)
-                        : null
-                      const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow)
-                      const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
-                      const isSaudi = emp.nationality === 'سعودي'
-                      const empName = emp.employee?.name || '—'
-                      const iqamaWarning = iqamaDays !== null && iqamaDays <= 60
-
-                      return (
-                        <tr key={emp.id}
-                          style={{ borderBottom: '1px solid var(--bg2)', transition: 'background 0.15s' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-
-                          {/* # */}
-                          <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.8rem' }}>{idx + 1}</td>
-
-                          {/* الموظف */}
-                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div style={{
-                                width: '36px', height: '36px', borderRadius: '10px', flexShrink: 0,
-                                background: isSaudi ? '#eff6ff' : '#fffbeb',
-                                color: isSaudi ? '#1a56db' : '#e6820a',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 700, fontSize: '1rem',
-                              }}>
-                                {empName.charAt(0)}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: 700, color: 'var(--text)' }}>{empName}</div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.contract_type}</div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* القسم / المسمى */}
-                          <td style={{ padding: '12px 14px' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.8rem' }}>{emp.department || '—'}</div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.job_title || '—'}</div>
-                          </td>
-
-                          {/* الجنسية */}
-                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            <span className={`badge text-xs ${isSaudi ? 'badge-blue' : 'badge-amber'}`}>
-                              {isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality}`}
-                            </span>
-                            {iqamaWarning && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.7rem', color: iqamaDays! <= 0 ? '#c81e1e' : '#e6820a' }}>
-                                <AlertTriangle style={{ width: '11px', height: '11px' }} />
-                                {iqamaDays! <= 0 ? `منتهية ${Math.abs(iqamaDays!)} يوم` : `تنتهي ${iqamaDays} يوم`}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* تاريخ التعيين */}
-                          <td style={{ padding: '12px 14px', color: 'var(--text)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                            {emp.hire_date ? formatDate(emp.hire_date) : '—'}
-                          </td>
-
-                          {/* الراتب الأساسي */}
-                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{emp.basic_salary.toLocaleString()} ر.س</div>
-                            {totalSal !== emp.basic_salary && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>إجمالي: {totalSal.toLocaleString()}</div>
-                            )}
-                          </td>
-
-                          {/* صافي الراتب */}
-                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '0.9rem' }}>
-                              {netSal.toLocaleString()} ر.س
-                            </span>
-                          </td>
-
-                          {/* GOSI */}
-                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            {emp.gosi_enrolled ? (
-                              <div>
-                                <span className="badge badge-green" style={{ fontSize: '0.7rem' }}>✓ مسجل</span>
-                                <div style={{ fontSize: '0.7rem', color: '#c81e1e', marginTop: '3px' }}>
-                                  -{gosi.employeeDeduction.toLocaleString()} ر.س
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>غير مسجل</span>
-                            )}
-                          </td>
-
-                          {/* الحالة */}
-                          <td style={{ padding: '12px 14px' }}>
-                            <span className={`badge ${emp.is_active ? 'badge-green' : 'badge-gray'} text-xs`}>
-                              {emp.is_active ? 'نشط' : 'غير نشط'}
-                            </span>
-                          </td>
-
-                          {/* إجراء */}
-                          {isAdmin && (
-                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                              <button
-                                onClick={() => { setEditEmp(emp); setShowModal(true) }}
-                                className="btn btn-ghost btn-xs"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {/* Footer */}
-              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', fontSize: '0.78rem', color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>إجمالي الموظفين: <strong>{filtered.length}</strong></span>
-                <span>إجمالي الرواتب الصافية: <strong style={{ color: '#0ea77b' }}>
-                  {filtered.reduce((s, e) => {
-                    const tot = e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow
-                    const g = calcGOSI(e.nationality, e.basic_salary, e.housing_allow)
-                    return s + tot - (e.gosi_enrolled ? g.employeeDeduction : 0)
-                  }, 0).toLocaleString()} ر.س
-                </strong></span>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ══ تاب إنهاء الخدمة ══ */}
-      {activeTab === 'terminations' && tenant && (
-        <TerminationTab tenantId={tenant.id} hrEmployees={hrEmployees} />
-      )}
-
-      {/* Modal */}
-      {showModal && (
-        <HREmployeeModal
-          emp={editEmp}
-          departments={departments}
-          managers={managers}
-          onClose={() => { setShowModal(false); setEditEmp(null) }}
-          onSave={handleSave}
-        />
       )}
     </div>
   )
