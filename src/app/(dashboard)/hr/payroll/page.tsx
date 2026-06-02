@@ -709,7 +709,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
 // ══════════════════════════════════════
 export default function PayrollPage() {
   const { tenant, activeBranch, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'payroll' | 'settlements' | 'leave_comp'>('payroll')
+  const [activeTab, setActiveTab] = useState<'payroll' | 'archive' | 'settlements' | 'leave_comp'>('payroll')
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [loading, setLoading] = useState(false)
@@ -831,6 +831,7 @@ export default function PayrollPage() {
 
   const TABS = [
     { id: 'payroll',     label: '📋 مسير الرواتب',         color: '#1a56db' },
+    { id: 'archive',     label: '📂 المسيرات السابقة',      color: '#6b7280' },
     { id: 'settlements', label: '💼 تسوية نهاية الخدمة',   color: '#c81e1e' },
     { id: 'leave_comp',  label: '🏖️ تعويض الإجازات',       color: '#0ea77b' },
   ]
@@ -1017,17 +1018,26 @@ export default function PayrollPage() {
               {isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
             </div>
           ) : (() => {
-            // تجميع كل المسيرات حسب الشهر/السنة
+            // عرض مسير الشهر الحالي فقط
             const groups: Record<string, Payroll[]> = {}
             payrolls.forEach(p => {
               const key = `${p.year}-${p.month}`
               if (!groups[key]) groups[key] = []
               groups[key].push(p)
             })
-            const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+            const currentKey = `${filterYear}-${filterMonth}`
+            const currentGroup = groups[currentKey] || []
+            // إذا لا يوجد مسير للشهر الحالي
+            if (currentGroup.length === 0) return (
+              <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <Banknote style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد كشوف رواتب لهذا الشهر</p>
+                {isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
+              </div>
+            )
             return (
               <div className="space-y-3">
-                {sortedKeys.map(key => {
+                {[currentKey].map(key => {
                   const [yr, mo] = key.split('-').map(Number)
                   const group = groups[key]
                   const gGross = group.reduce((s, p) => s + p.gross_salary, 0)
@@ -1162,6 +1172,11 @@ export default function PayrollPage() {
         </>
       )}
 
+      {/* ══ تاب المسيرات السابقة ══ */}
+      {activeTab === 'archive' && (
+        <ArchiveTab payrolls={payrolls} isAdmin={isAdmin} onEdit={(p) => setEditPayroll(p)} exportCSV={exportCSV} />
+      )}
+
       {/* ══ تاب تسوية نهاية الخدمة ══ */}
       {activeTab === 'settlements' && (
         <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />
@@ -1175,6 +1190,199 @@ export default function PayrollPage() {
       {/* مودال تعديل راتب */}
       {editPayroll && (
         <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// تاب المسيرات السابقة
+// ══════════════════════════════════════
+function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: {
+  payrolls: Payroll[]
+  isAdmin: boolean
+  onEdit: (p: Payroll) => void
+  exportCSV: (data: Payroll[], month: number, year: number) => void
+}) {
+  const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1
+  const [archiveYear, setArchiveYear] = useState(currentYear)
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+
+  const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
+
+  // تجميع المسيرات حسب الشهر — باستثناء الشهر الحالي
+  const groups: Record<string, Payroll[]> = {}
+  payrolls.forEach(p => {
+    const isCurrent = p.year === currentYear && p.month === currentMonth
+    if (isCurrent) return // تجاهل الشهر الحالي
+    if (p.year !== archiveYear) return
+    const key = `${p.year}-${p.month}`
+    if (!groups[key]) groups[key] = []
+    groups[key].push(p)
+  })
+  const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+
+  // إجمالي السنة
+  const yearPayrolls = payrolls.filter(p => p.year === archiveYear && !(p.year === currentYear && p.month === currentMonth))
+  const yearNet = yearPayrolls.reduce((s, p) => s + p.net_salary, 0)
+  const yearGross = yearPayrolls.reduce((s, p) => s + p.gross_salary, 0)
+
+  return (
+    <div className="space-y-4">
+
+      {/* شريط الفلتر */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <select value={archiveYear} onChange={e => { setArchiveYear(Number(e.target.value)); setExpandedKey(null) }}
+            className="select" style={{ width: 'auto' }}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>{sortedKeys.length} مسير</span>
+        </div>
+        {/* إجمالي السنة */}
+        {yearNet > 0 && (
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>إجمالي الصرف {archiveYear}</div>
+              <div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '0.95rem' }}>{yearNet.toLocaleString()} ر.س</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>إجمالي المستحقات</div>
+              <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.95rem' }}>{yearGross.toLocaleString()} ر.س</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* قائمة المسيرات */}
+      {sortedKeys.length === 0 ? (
+        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+          <FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد مسيرات محفوظة لسنة {archiveYear}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sortedKeys.map(key => {
+            const [yr, mo] = key.split('-').map(Number)
+            const group = groups[key]
+            const gGross = group.reduce((s, p) => s + p.gross_salary, 0)
+            const gDeduct = group.reduce((s, p) => s + p.gosi_deduction + p.absence_deduct + p.other_deduct, 0)
+            const gNet = group.reduce((s, p) => s + p.net_salary, 0)
+            const isOpen = expandedKey === key
+            const allPaid = group.every(p => p.status === 'مدفوع')
+            const allApproved = group.every(p => p.status === 'معتمد' || p.status === 'مدفوع')
+
+            return (
+              <div key={key} className="card" style={{ overflow: 'hidden' }}>
+                {/* سطر ملخص */}
+                <div
+                  onClick={() => setExpandedKey(isOpen ? null : key)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', background: isOpen ? 'var(--primary-light)' : 'white', flexWrap: 'wrap', gap: '10px', userSelect: 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: allPaid ? '#ecfdf5' : allApproved ? '#eff6ff' : '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem', flexShrink: 0 }}>
+                      {allPaid ? '✅' : allApproved ? '📋' : '⏳'}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>
+                        مسير {ARABIC_MONTHS[mo - 1]} {yr}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '2px' }}>
+                        {group.length} موظف · {allPaid ? '✅ مدفوع' : allApproved ? '📋 معتمد' : '⏳ مسودة'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الإجمالي</div>
+                      <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.9rem' }}>{gGross.toLocaleString()} ر.س</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الخصومات</div>
+                      <div style={{ fontWeight: 700, color: '#c81e1e', fontSize: '0.9rem' }}>{gDeduct.toLocaleString()} ر.س</div>
+                    </div>
+                    <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '4px 14px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الصافي</div>
+                      <div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1rem' }}>{gNet.toLocaleString()} ر.س</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => exportCSV(group, mo, yr)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text3)', fontWeight: 600 }}>
+                        <Download style={{ width: '13px', height: '13px' }} /> CSV
+                      </button>
+                    </div>
+                    <div style={{ color: 'var(--text3)' }}>
+                      {isOpen ? <ChevronUp style={{ width: '18px', height: '18px' }} /> : <ChevronDown style={{ width: '18px', height: '18px' }} />}
+                    </div>
+                  </div>
+                </div>
+
+                {/* تفاصيل المسير */}
+                {isOpen && (
+                  <div style={{ borderTop: '2px solid var(--primary)', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>الموظف</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem' }}>الأساسي</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem' }}>البدلات</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--primary)', fontSize: '0.72rem' }}>الإجمالي</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#c81e1e', fontSize: '0.72rem' }}>الخصومات</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#0ea77b', fontSize: '0.72rem', background: '#ecfdf5' }}>الصافي</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>حضور</th>
+                          <th style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>الحالة</th>
+                          {isAdmin && <th></th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.map(p => {
+                          const allowances = p.housing_allow + p.transport_allow + p.other_allow
+                          const totalDeduct = p.gosi_deduction + p.absence_deduct + p.other_deduct
+                          return (
+                            <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                              <td style={{ padding: '11px 14px' }}>
+                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{p.employee?.name || `#${p.employee_id}`}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{p.employee?.role}</div>
+                              </td>
+                              <td style={{ padding: '11px 14px', fontSize: '0.875rem' }}>{p.basic_salary.toLocaleString()} ر.س</td>
+                              <td style={{ padding: '11px 14px', fontSize: '0.875rem' }}>{allowances.toLocaleString()} ر.س</td>
+                              <td style={{ padding: '11px 14px', color: 'var(--primary)', fontWeight: 700 }}>{p.gross_salary.toLocaleString()} ر.س</td>
+                              <td style={{ padding: '11px 14px', color: '#c81e1e' }}>{totalDeduct > 0 ? `-${totalDeduct.toLocaleString()} ر.س` : '—'}</td>
+                              <td style={{ padding: '11px 14px', color: '#0ea77b', fontWeight: 700, background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
+                              <td style={{ padding: '11px 14px', textAlign: 'center', fontSize: '0.82rem' }}>{p.present_days}/26</td>
+                              <td style={{ padding: '11px 14px', textAlign: 'center' }}><span className={`badge ${STATUS_COLOR[p.status] || 'badge-gray'}`}>{p.status}</span></td>
+                              {isAdmin && (
+                                <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+                                  <button onClick={() => onEdit(p)} className="btn btn-ghost btn-xs">
+                                    <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                          <td style={{ padding: '10px 14px' }}>الإجمالي ({group.length})</td>
+                          <td style={{ padding: '10px 14px' }}>{group.reduce((s,p)=>s+p.basic_salary,0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 14px' }}>{group.reduce((s,p)=>s+p.housing_allow+p.transport_allow+p.other_allow,0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--primary)' }}>{gGross.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 14px', color: '#c81e1e' }}>{gDeduct.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 14px', color: '#0ea77b', background: '#ecfdf5' }}>{gNet.toLocaleString()} ر.س</td>
+                          <td colSpan={isAdmin ? 3 : 2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
