@@ -402,7 +402,7 @@ export default function LeavesPage() {
   useEffect(() => {
     if (!tenant || activeTab !== 'balance') return
     supabase.from('hr_leaves')
-      .select('id, employee_id, leave_type, days, status, start_date')
+      .select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
       .eq('tenant_id', tenant.id)
       .eq('status', 'موافق')
       .then(({ data }) => setAllLeaves(data || []))
@@ -434,7 +434,7 @@ export default function LeavesPage() {
     toast.success('تم الحفظ ✅')
     fetchLeaves(true)
     // تحديث allLeaves للأرصدة
-    supabase.from('hr_leaves').select('id, employee_id, leave_type, days, status, start_date')
+    supabase.from('hr_leaves').select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
       .eq('tenant_id', tenant.id).eq('status', 'موافق')
       .then(({ data: d }) => setAllLeaves(d || []))
   }
