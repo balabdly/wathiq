@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 // ══════════════════════════════════════
 // Types
 // ══════════════════════════════════════
-type Branch = { id: number; name: string }
+type Branch = { id: number; name: string; manager_id?: number; manager?: { name: string } }
 type Division = {
   id: number; name: string; branch_id: number | null; manager_id: number | null
   color: string; manager?: { name: string }
@@ -241,7 +241,7 @@ function OrgChart({ branches, divisions, hasBranches, allDivisions }: {
 // ══════════════════════════════════════
 export default function OrgStructurePage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'chart'|'divisions'|'grades'|'descriptions'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart'|'branches'|'divisions'|'departments'|'jobtitles'|'grades'|'descriptions'>('chart')
   const [branches, setBranches] = useState<Branch[]>([])
   const [divisions, setDivisions] = useState<Division[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
@@ -249,10 +249,13 @@ export default function OrgStructurePage() {
   const [grades, setGrades] = useState<JobGrade[]>([])
   const [descriptions, setDescriptions] = useState<JobDescription[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [managers, setManagers] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const hasBranches = branches.length > 1
 
   // ── Modal states ──
+  const [branchModal, setBranchModal] = useState(false)
+  const [editBranch, setEditBranch]   = useState<any>(null)
   const [divModal, setDivModal]   = useState(false)
   const [editDiv, setEditDiv]     = useState<Division | null>(null)
   const [gradeModal, setGradeModal] = useState(false)
@@ -266,7 +269,7 @@ export default function OrgStructurePage() {
     if (!tenant) return
     setLoading(true)
     const [brRes, divRes, deptRes, titleRes, gradeRes, descRes, empRes] = await Promise.all([
-      supabase.from('branches').select('id, name').eq('tenant_id', tenant.id),
+      supabase.from('branches').select('id, name, manager_id, manager:employees!branches_manager_id_fkey(name)').eq('tenant_id', tenant.id),
       supabase.from('org_divisions').select('*, manager:employees!org_divisions_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_departments').select('*, manager:employees!hr_departments_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_job_titles').select('*, grade:org_job_grades(grade_code, grade_name)').eq('tenant_id', tenant.id).order('name'),
@@ -300,7 +303,23 @@ export default function OrgStructurePage() {
     setJobTitles(titles.map((t: any) => ({ ...t, employee_count: countMap[t.name] || 0 })))
     setGrades(gradeRes.data || []); setDescriptions(descRes.data || [])
     setEmployees(empRes.data || [])
+    setManagers((empRes.data || []).filter((e: any) => ['مدير عام','مدير مشروع','مدير قسم'].includes(e.role)))
     setLoading(false)
+  }
+
+
+  // ══ CRUD: الفروع ══
+  async function saveBranch(form: any) {
+    const payload: any = { tenant_id: tenant?.id, name: form.name }
+    if (form.manager_id) payload.manager_id = Number(form.manager_id)
+    if (form.id) await supabase.from('branches').update(payload).eq('id', form.id)
+    else await supabase.from('branches').insert(payload)
+    await loadAll(); toast.success('تم الحفظ ✅')
+  }
+  async function deleteBranch(id: number) {
+    if (!confirm('حذف هذا الفرع؟ سيؤثر على الإدارات والموظفين المرتبطين به')) return
+    await supabase.from('branches').delete().eq('id', id)
+    await loadAll(); toast.success('تم الحذف')
   }
 
   // ══ CRUD: الإدارات ══
@@ -339,7 +358,10 @@ export default function OrgStructurePage() {
 
   const TABS = [
     { id: 'chart',        label: '🏢 المخطط التنظيمي' },
+    { id: 'branches',     label: '🌿 الفروع' },
     { id: 'divisions',    label: '🏗️ الإدارات' },
+    { id: 'departments',  label: '🏢 الأقسام' },
+    { id: 'jobtitles',   label: '💼 المسميات' },
     { id: 'grades',       label: '📊 الدرجات الوظيفية' },
     { id: 'descriptions', label: '📄 الأوصاف الوظيفية' },
   ]
@@ -356,10 +378,21 @@ export default function OrgStructurePage() {
             {hasBranches ? `${branches.length} فروع · ` : ''}{divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
           </p>
         </div>
+        {activeTab === 'branches' && (
+          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
+          </button>
+        )}
         {activeTab === 'divisions' && (
           <button onClick={() => { setEditDiv(null); setDivModal(true) }} className="btn btn-primary">
             <Plus style={{ width: '16px', height: '16px' }} /> إضافة إدارة
           </button>
+        )}
+        {activeTab === 'departments' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
+        )}
+        {activeTab === 'jobtitles' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
         )}
         {activeTab === 'grades' && (
           <button onClick={() => { setEditGrade(null); setGradeModal(true) }} className="btn btn-primary">
@@ -398,7 +431,12 @@ export default function OrgStructurePage() {
           )}
 
           {/* ══ الإدارات ══ */}
-          {activeTab === 'divisions' && (
+          {activeTab === 'branches' && (
+          <button onClick={() => { setEditBranch(null); setBranchModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة فرع
+          </button>
+        )}
+        {activeTab === 'divisions' && (
             <div className="space-y-3">
               {divisions.length === 0 ? (
                 <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
@@ -451,7 +489,13 @@ export default function OrgStructurePage() {
           )}
 
           {/* ══ الدرجات الوظيفية ══ */}
-          {activeTab === 'grades' && (
+          {activeTab === 'departments' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
+        )}
+        {activeTab === 'jobtitles' && (
+          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
+        )}
+        {activeTab === 'grades' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               {grades.length === 0 ? (
                 <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -553,6 +597,16 @@ export default function OrgStructurePage() {
         </>
       )}
 
+
+      {/* ══ Modal: فرع ══ */}
+      {branchModal && (
+        <BranchModal
+          branch={editBranch} employees={employees}
+          onClose={() => { setBranchModal(false); setEditBranch(null) }}
+          onSave={saveBranch}
+        />
+      )}
+
       {/* ══ Modal: إدارة ══ */}
       {divModal && (
         <DivisionModal
@@ -579,6 +633,54 @@ export default function OrgStructurePage() {
           onSave={saveDesc}
         />
       )}
+    </div>
+  )
+}
+
+
+// ── Modal: فرع ──
+function BranchModal({ branch, employees, onClose, onSave }: any) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    id: branch?.id || null,
+    name: branch?.name || '',
+    manager_id: branch?.manager_id || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim()) { toast.error('اسم الفرع مطلوب'); return }
+    setSaving(true); await onSave(form); setSaving(false)
+  }
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800">{branch ? 'تعديل الفرع' : 'إضافة فرع جديد'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الفرع <span className="text-red-500">*</span></label>
+              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: الفرع الرئيسي - الرياض" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الفرع</label>
+              <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
+                <option value="">— بدون مدير —</option>
+                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
@@ -727,6 +829,298 @@ function DescriptionModal({ desc, jobTitles, grades, onClose, onSave }: any) {
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+
+function DepartmentsTab({ tenantId, managers, onUpdate }: {
+  tenantId: string
+  managers: any[]
+  onUpdate?: () => void
+}) {
+  const [depts, setDepts] = useState<Department[]>([])
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', manager_id: '' })
+  const [editId, setEditId] = useState<number | null>(null)
+  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('hr_departments')
+      .select('*, manager:employees(name, role)')
+      .eq('tenant_id', tenantId)
+      .order('name')
+    setDepts(data || [])
+    setLoading(false)
+  }
+
+  async function save() {
+    if (!form.name.trim()) { toast.error('أدخل اسم القسم'); return }
+    if (!form.manager_id) { toast.error('اختر مدير القسم'); return }
+    const payload = {
+      tenant_id: tenantId,
+      name: form.name.trim(),
+      manager_id: Number(form.manager_id),
+    }
+    if (editId) {
+      await supabase.from('hr_departments').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('hr_departments').insert(payload)
+    }
+    setForm({ name: '', manager_id: '' })
+    setEditId(null)
+    await load()
+    onUpdate?.()
+    toast.success('تم الحفظ ✅')
+  }
+
+  async function remove(id: number) {
+    if (!confirm('حذف هذا القسم؟ سيتأثر الموظفون المرتبطون به')) return
+    await supabase.from('hr_departments').delete().eq('id', id)
+    setDepts(d => d.filter(x => x.id !== id))
+    onUpdate?.()
+    toast.success('تم الحذف')
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="card" style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
+          {editId ? '✏️ تعديل القسم' : '➕ إضافة قسم جديد'}
+        </div>
+        <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم القسم <span className="text-red-500">*</span></label>
+            <input
+              value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              className="input" placeholder="مثال: قسم المشاريع"
+              onKeyDown={noEnter}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير القسم <span className="text-red-500">*</span></label>
+            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select">
+              <option value="">— اختر المدير —</option>
+              {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={save} className="btn btn-primary btn-sm">
+            <Save style={{ width: '14px', height: '14px' }} />
+            {editId ? 'حفظ التعديل' : 'إضافة القسم'}
+          </button>
+          {editId && (
+            <button onClick={() => { setForm({ name: '', manager_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
+              إلغاء
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : depts.length === 0 ? (
+        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
+          <Building2 style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد أقسام بعد</p>
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {depts.map((d, i) => (
+            <div key={d.id} style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '14px 16px',
+              borderBottom: i < depts.length - 1 ? '1px solid var(--bg2)' : 'none',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fffbeb', color: '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 style={{ width: '16px', height: '16px' }} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{d.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
+                    {d.manager
+                      ? `👤 ${d.manager.name} — ${d.manager.role}`
+                      : <span style={{ color: '#c81e1e' }}>⚠️ لا يوجد مدير</span>}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '' }); setEditId(d.id) }}
+                  className="btn btn-ghost btn-xs">
+                  <Pencil style={{ width: '14px', height: '14px' }} />
+                </button>
+                <button onClick={() => remove(d.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                  <Trash2 style={{ width: '14px', height: '14px' }} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// تاب المسميات الوظيفية
+// ══════════════════════════════════════
+
+function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade[] }) {
+  const [titles, setTitles] = useState<JobTitle[]>([])
+  const [depts, setDepts] = useState<Department[]>([])
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: '', department_id: '', grade_id: '' })
+  const [editId, setEditId] = useState<number | null>(null)
+  const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    const [tRes, dRes] = await Promise.all([
+      supabase.from('hr_job_titles').select('*, department:hr_departments(name)').eq('tenant_id', tenantId).order('name'),
+      supabase.from('hr_departments').select('id, name').eq('tenant_id', tenantId).order('name'),
+    ])
+    setTitles((tRes.data || []) as JobTitle[])
+    setDepts((dRes.data || []) as Department[])
+    setLoading(false)
+  }
+
+  async function save() {
+    if (!form.name.trim()) { toast.error('أدخل اسم المسمى الوظيفي'); return }
+    if (!form.department_id) { toast.error('اختر القسم'); return }
+    const payload = {
+      tenant_id: tenantId,
+      name: form.name.trim(),
+      department_id: Number(form.department_id),
+    }
+    if (editId) {
+      await supabase.from('hr_job_titles').update(payload).eq('id', editId)
+    } else {
+      await supabase.from('hr_job_titles').insert(payload)
+    }
+    setForm({ name: '', department_id: '' })
+    setEditId(null)
+    await load()
+    toast.success('تم الحفظ ✅')
+  }
+
+  async function remove(id: number) {
+    if (!confirm('حذف هذا المسمى؟')) return
+    await supabase.from('hr_job_titles').delete().eq('id', id)
+    setTitles(t => t.filter(x => x.id !== id))
+    toast.success('تم الحذف')
+  }
+
+  const grouped = depts.map(d => ({
+    dept: d,
+    titles: titles.filter(t => t.department_id === d.id),
+  })).filter(g => g.titles.length > 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="card" style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
+          {editId ? '✏️ تعديل المسمى' : '➕ إضافة مسمى وظيفي'}
+        </div>
+        {depts.length === 0 ? (
+          <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.875rem', color: '#e6820a' }}>
+            ⚠️ يجب إضافة أقسام أولاً من تاب الأقسام
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
+                <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))} className="select">
+                  <option value="">— اختر القسم —</option>
+                  {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المسمى الوظيفي <span className="text-red-500">*</span></label>
+                <input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="input" placeholder="مثال: مهندس كهرباء"
+                  onKeyDown={noEnter}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={save} className="btn btn-primary btn-sm">
+                <Save style={{ width: '14px', height: '14px' }} />
+                {editId ? 'حفظ التعديل' : 'إضافة المسمى'}
+              </button>
+              {editId && (
+                <button onClick={() => { setForm({ name: '', department_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
+                  إلغاء
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      ) : titles.length === 0 ? (
+        <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
+          <Briefcase style={{ width: '40px', height: '40px', color: 'var(--border)', margin: '0 auto 10px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد مسميات وظيفية بعد</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {grouped.map(g => (
+            <div key={g.dept.id} className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Building2 style={{ width: '14px', height: '14px', color: '#e6820a' }} />
+                <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{g.dept.name}</span>
+                <span className="badge badge-gray" style={{ fontSize: '0.7rem' }}>{g.titles.length} مسمى</span>
+              </div>
+              {g.titles.map((t, i) => (
+                <div key={t.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 16px',
+                  borderBottom: i < g.titles.length - 1 ? '1px solid var(--bg2)' : 'none',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'var(--primary-light)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Briefcase style={{ width: '12px', height: '12px' }} />
+                    </div>
+                    <div>
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
+                      {(t as any).grade && <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '1px' }}>{(t as any).grade.grade_code} — {(t as any).grade.grade_name}</div>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '', grade_id: t.grade_id ? String(t.grade_id) : '' }); setEditId(t.id) }}
+                      className="btn btn-ghost btn-xs">
+                      <Pencil style={{ width: '14px', height: '14px' }} />
+                    </button>
+                    <button onClick={() => remove(t.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                      <Trash2 style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
