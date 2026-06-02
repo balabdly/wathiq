@@ -269,7 +269,7 @@ export default function OrgStructurePage() {
     if (!tenant) return
     setLoading(true)
     const [brRes, divRes, deptRes, titleRes, gradeRes, descRes, empRes] = await Promise.all([
-      supabase.from('branches').select('id, name, manager_id, manager:employees!branches_manager_id_fkey(name)').eq('tenant_id', tenant.id),
+      supabase.from('branches').select('id, name, manager_id, manager:employees!branches_manager_id_fkey(name)'),
       supabase.from('org_divisions').select('*, manager:employees!org_divisions_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_departments').select('*, manager:employees!hr_departments_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_job_titles').select('*, grade:org_job_grades(grade_code, grade_name)').eq('tenant_id', tenant.id).order('name'),
@@ -315,11 +315,27 @@ export default function OrgStructurePage() {
 
   // ══ CRUD: الفروع ══
   async function saveBranch(form: any) {
-    const payload: any = { tenant_id: tenant?.id, name: form.name }
+    const payload: any = { name: form.name }
     if (form.manager_id) payload.manager_id = Number(form.manager_id)
-    if (form.id) await supabase.from('branches').update(payload).eq('id', form.id)
-    else await supabase.from('branches').insert(payload)
-    await loadAll(); toast.success('تم الحفظ ✅')
+    // بعض الجداول تحتوي tenant_id وبعضها لا
+    try {
+      if (form.id) {
+        const { error } = await supabase.from('branches').update(payload).eq('id', form.id)
+        if (error) throw error
+      } else {
+        // جرب مع tenant_id أولاً
+        const payloadWithTenant = { ...payload, tenant_id: tenant?.id }
+        const { error } = await supabase.from('branches').insert(payloadWithTenant)
+        if (error) {
+          // إذا فشل، جرب بدون tenant_id
+          const { error: err2 } = await supabase.from('branches').insert(payload)
+          if (err2) throw err2
+        }
+      }
+      await loadAll(); toast.success('تم الحفظ ✅')
+    } catch (err: any) {
+      toast.error('خطأ: ' + err.message)
+    }
   }
   async function deleteBranch(id: number) {
     if (!confirm('حذف هذا الفرع؟ سيؤثر على الإدارات والموظفين المرتبطين به')) return
@@ -394,10 +410,10 @@ export default function OrgStructurePage() {
           </button>
         )}
         {activeTab === 'departments' && (
-          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
+          <div /> 
         )}
         {activeTab === 'jobtitles' && (
-          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
+          <div />
         )}
         {activeTab === 'grades' && (
           <button onClick={() => { setEditGrade(null); setGradeModal(true) }} className="btn btn-primary">
@@ -493,14 +509,18 @@ export default function OrgStructurePage() {
             </div>
           )}
 
+          {/* ══ الأقسام ══ */}
+          {activeTab === 'departments' && tenant && (
+            <DepartmentsTab tenantId={tenant.id} managers={managers} onUpdate={loadAll} />
+          )}
+
+          {/* ══ المسميات الوظيفية ══ */}
+          {activeTab === 'jobtitles' && tenant && (
+            <JobTitlesTab tenantId={tenant.id} grades={grades} />
+          )}
+
           {/* ══ الدرجات الوظيفية ══ */}
-          {activeTab === 'departments' && (
-          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار الأقسام من تاب الأقسام أدناه</span>
-        )}
-        {activeTab === 'jobtitles' && (
-          <span style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>تُدار المسميات من تاب المسميات أدناه</span>
-        )}
-        {activeTab === 'grades' && (
+          {activeTab === 'grades' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               {grades.length === 0 ? (
                 <div style={{ padding: '60px', textAlign: 'center' }}>
