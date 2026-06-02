@@ -871,14 +871,15 @@ function DescriptionModal({ desc, jobTitles, grades, onClose, onSave }: any) {
 }
 
 
-function DepartmentsTab({ tenantId, managers, onUpdate }: {
+function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
   tenantId: string
   managers: any[]
+  divisions: Division[]
   onUpdate?: () => void
 }) {
   const [depts, setDepts] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({ name: '', manager_id: '' })
+  const [form, setForm] = useState({ name: '', manager_id: '', division_id: '' })
   const [editId, setEditId] = useState<number | null>(null)
   const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
 
