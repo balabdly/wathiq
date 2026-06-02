@@ -208,7 +208,7 @@ export default function ProjectsPage() {
     const colIdx = COLUMNS.findIndex(c => c.id === p.status)
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
-    const newStatus = COLUMNS[newIdx].id
+    const newStatus = COLUMNS[newIdx].id as any
     const { error } = await projectsApi.upsert({
       id: p.id, tenant_id: tenant!.id,
       status: newStatus,
