@@ -209,13 +209,16 @@ export default function ProjectsPage() {
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
     const newStatus = COLUMNS[newIdx].id as any
+    const newProgress = newStatus === 'مكتمل' ? 100 : p.progress
+    // upsert مع كل بيانات المشروع الأصلية + التغييرات فقط
     const { error } = await projectsApi.upsert({
-      id: p.id, tenant_id: tenant!.id,
+      ...p,
+      tenant_id: tenant!.id,
       status: newStatus,
-      progress: newStatus === 'مكتمل' ? 100 : p.progress,
+      progress: newProgress,
     })
-    if (error) { toast.error('خطأ في التحديث'); return }
-    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus as any, progress: newStatus === 'مكتمل' ? 100 : x.progress } : x))
+    if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
+    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
     toast.success(`نُقل إلى: ${COLUMNS[newIdx].icon} ${newStatus}`)
   }
 
