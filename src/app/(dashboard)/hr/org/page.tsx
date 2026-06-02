@@ -911,7 +911,7 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
     } else {
       await supabase.from('hr_departments').insert(payload)
     }
-    setForm({ name: '', manager_id: '' })
+    setForm({ name: '', manager_id: '', division_id: '' })
     setEditId(null)
     await load()
     onUpdate?.()
@@ -967,7 +967,7 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
             {editId ? 'حفظ التعديل' : 'إضافة القسم'}
           </button>
           {editId && (
-            <button onClick={() => { setForm({ name: '', manager_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
+            <button onClick={() => { setForm({ name: '', manager_id: '', division_id: '' }); setEditId(null) }} className="btn btn-ghost btn-sm">
               إلغاء
             </button>
           )}
