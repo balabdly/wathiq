@@ -1699,7 +1699,19 @@ export default function InventoryPage() {
 
   async function handleSaveWarehouse(data: any) {
     if (!tenant || !activeBranch) return
-    const { error } = await warehousesApi.upsert({ ...data, tenant_id: tenant.id, branch_id: activeBranch.id })
+    let error: any = null
+    if (data.id) {
+      // تعديل — update مباشر
+      const { error: err } = await supabase.from('warehouses')
+        .update({ name: data.name, stock_type: data.stock_type, location: data.location, sections: data.sections })
+        .eq('id', data.id)
+      error = err
+    } else {
+      // إضافة جديدة
+      const { error: err } = await supabase.from('warehouses')
+        .insert({ name: data.name, stock_type: data.stock_type, location: data.location, sections: data.sections, tenant_id: tenant.id, branch_id: activeBranch.id })
+      error = err
+    }
     if (error) { toast.error('حدث خطأ: ' + error.message); return }
     await loadData(); setWhModal(false); setEditWh(null)
     toast.success(data.id ? 'تم تعديل المستودع ✅' : 'تم إضافة المستودع ✅')
