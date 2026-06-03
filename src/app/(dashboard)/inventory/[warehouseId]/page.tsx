@@ -17,7 +17,6 @@ import DispatchModal from '@/components/inventory/DispatchModal'
 import TransferModal from '@/components/inventory/TransferModal'
 import InventoryCheckModal from '@/components/inventory/InventoryCheckModal'
 import { formatDate } from '@/lib/utils'
-import { TX_COLORS } from '@/components/inventory/types'
 
 export default function WarehouseDetailPage() {
   const params    = useParams()
