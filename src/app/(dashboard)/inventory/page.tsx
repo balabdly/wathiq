@@ -1878,7 +1878,7 @@ export default function InventoryPage() {
       const wh = warehouses.find(w => w.id === row.mat.warehouse_id)
       await ledgerApi.insert({
         tenant_id: tenant.id, branch_id: activeBranch.id,
-        type: data.returnType === 'إرجاع للكهرباء' ? 'إرجاع للكهرباء' : 'تحويل لمشروع',
+        type: (data.returnType === 'إرجاع للكهرباء' ? 'إرجاع للكهرباء' : 'تحويل لمشروع') as any,
         mat_name: row.mat.name, unit: row.mat.unit,
         qty: row.qty, qty_before: row.mat.qty, qty_after: newQty,
         wh_name: wh?.name || '',
