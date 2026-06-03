@@ -6,11 +6,10 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { ledgerApi } from '@/lib/db'
 import {
-  Package, Warehouse as WarehouseIcon, ChevronLeft,
-  ArrowDownToLine, TrendingDown, TrendingUp, X
+  Package, Warehouse as WarehouseIcon, ChevronLeft
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { WH_TYPES, TX_COLORS, type InventoryWarehouse } from '@/components/inventory/types'
+import { TX_COLORS, type InventoryWarehouse } from '@/components/inventory/types'
 import ReceiveModal from '@/components/inventory/ReceiveModal'
 import ReturnModal from '@/components/inventory/ReturnModal'
 import DispatchModal from '@/components/inventory/DispatchModal'
@@ -23,14 +22,7 @@ export default function InventoryPage() {
   const { tenant, activeBranch, warehouses, setWarehouses, projects, currentUser } = useStore()
   const [loading, setLoading]   = useState(true)
   const [stats, setStats]       = useState({ total: 0, sec: 0, low: 0, empty: 0 })
-  const [activeTab, setActiveTab] = useState<'ledger' | 'byproject' | 'returns'>('ledger')
-  const [ledger, setLedger]     = useState<any[]>([])
-  const [ledgerLoaded, setLedgerLoaded] = useState(false)
-  const [returns, setReturns]   = useState<any[]>([])
-  const [loadingReturns, setLoadingReturns] = useState(false)
-  const [selectedProject, setSelectedProject] = useState('')
-  const [projectLedger, setProjectLedger]     = useState<any[]>([])
-  const [loadingProject, setLoadingProject]   = useState(false)
+
   const [showReceive, setReceive]   = useState(false)
   const [showReturn, setReturn]     = useState(false)
   const [showDispatch, setDispatch] = useState(false)
@@ -58,26 +50,9 @@ export default function InventoryPage() {
     setStats({ total: total.count || 0, sec: sec.count || 0, low: low.count || 0, empty: empty.count || 0 })
     setLoading(false)
 
-    // جلب سجل الحركات تلقائياً
-    const { data: lData } = await supabase.from('stock_ledger').select('*')
-      .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id)
-      .order('created_at', { ascending: false }).limit(100)
-    setLedger(lData || [])
-    setLedgerLoaded(true)
   }
 
-  async function loadReturns() {
-    if (!tenant || loadingReturns) return
-    setLoadingReturns(true)
-    const { data } = await supabase.from('stock_returns')
-      .select('*').eq('tenant_id', tenant.id)
-      .order('return_date', { ascending: false })
-    setReturns(data || [])
-    setLoadingReturns(false)
-  }
 
-  async function loadProjectLedger(projectName: string) {
-    if (!tenant || !projectName) { setProjectLedger([]); return }
     setLoadingProject(true)
     const { data } = await supabase.from('stock_ledger').select('*')
       .eq('tenant_id', tenant.id).eq('project_name', projectName)
@@ -202,15 +177,6 @@ export default function InventoryPage() {
     toast.success('تم تأكيد الجرد — ' + changed.length + ' مادة تم تسويتها ✅')
   }
 
-  // مواد المشروع
-  const matMap: Record<string, any> = {}
-  projectLedger.forEach(l => {
-    if (!matMap[l.mat_name]) matMap[l.mat_name] = { matName: l.mat_name, unit: l.unit, totalIn: 0, totalOut: 0 }
-    if (l.type === 'توريد') matMap[l.mat_name].totalIn += l.qty
-    else matMap[l.mat_name].totalOut += l.qty
-    matMap[l.mat_name].net = matMap[l.mat_name].totalIn - matMap[l.mat_name].totalOut
-  })
-  const projectMats = Object.values(matMap)
 
   // إحصائيات المستودعات
   const whByType: Record<string, InventoryWarehouse> = {}
@@ -231,18 +197,7 @@ export default function InventoryPage() {
             {loading && <span className="w-3 h-3 border border-gray-300 border-t-gray-500 rounded-full animate-spin inline-block mr-2" />}
           </p>
         </div>
-        {canEdit && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setReceive(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              <ArrowDownToLine style={{ width: '15px', height: '15px' }} /> استلام مواد
-            </button>
-            <button onClick={() => setReturn(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              <span>↩️</span> إرجاع مواد
-            </button>
-          </div>
-        )}
+
       </div>
 
       {/* KPIs */}
@@ -324,187 +279,10 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '4px', borderRadius: '12px', width: 'fit-content' }}>
-        {[
-          { id: 'ledger',    label: '📋 سجل الحركات' },
-          { id: 'byproject', label: '📊 مواد المشاريع' },
-          { id: 'returns',   label: '↩️ الإرجاع', onSelect: loadReturns },
-        ].map(t => (
-          <button key={t.id} onClick={() => { setActiveTab(t.id as any); (t as any).onSelect?.() }}
-            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s',
-              background: activeTab === t.id ? 'white' : 'transparent',
-              color: activeTab === t.id ? '#1a56db' : '#6b7280',
-              boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
 
-      {/* ══ سجل الحركات ══ */}
-      {activeTab === 'ledger' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {!ledgerLoaded ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-              <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : ledger.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>لا توجد حركات بعد</div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['النوع','المادة','الكمية','المستودع','المشروع','المرجع','التاريخ'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledger.map(l => (
-                    <tr key={l.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span className={`badge ${TX_COLORS[l.type] || 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>{l.type}</span>
-                      </td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600 }}>{l.mat_name}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 700 }}>{l.qty} <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: '0.78rem' }}>{l.unit}</span></td>
-                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.82rem' }}>{l.wh_name}</td>
-                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.82rem' }}>{l.project_name || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.78rem', fontFamily: 'monospace' }}>{l.doc_code || l.clearance_no || '—'}</td>
-                      <td style={{ padding: '10px 14px', color: '#9ca3af', fontSize: '0.78rem' }}>{formatDate(l.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ══ مواد المشاريع ══ */}
-      {activeTab === 'byproject' && (
-        <div className="space-y-4">
-          <div className="card" style={{ padding: '14px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: '0.875rem', fontWeight: 600, flexShrink: 0 }}>اختر مشروعاً:</label>
-              <select value={selectedProject}
-                onChange={e => { setSelectedProject(e.target.value); loadProjectLedger(e.target.value) }}
-                className="select" style={{ flex: 1, minWidth: '200px' }}>
-                <option value="">— اختر مشروعاً لعرض مواده —</option>
-                {projectsList.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>
-              {selectedProject && (
-                <button onClick={() => { setSelectedProject(''); setProjectLedger([]) }}
-                  className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>
-                  <X style={{ width: '14px', height: '14px' }} />
-                </button>
-              )}
-            </div>
-          </div>
 
-          {!selectedProject ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>
-              <Package style={{ width: '48px', height: '48px', margin: '0 auto 12px' }} />
-              اختر مشروعاً لعرض مواده
-            </div>
-          ) : loadingProject ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : projectMats.length === 0 ? (
-            <div className="card" style={{ padding: '48px', textAlign: 'center', color: '#9ca3af' }}>لا توجد مواد لهذا المشروع</div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ padding: '12px 18px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ fontWeight: 700, color: '#1a56db' }}>📁 {selectedProject}</div>
-                <div style={{ display: 'flex', gap: '16px', fontSize: '0.82rem' }}>
-                  <span style={{ color: '#0ea77b' }}>وارد: <b>{projectMats.reduce((s: any, m: any) => s + m.totalIn, 0)}</b></span>
-                  <span style={{ color: '#c81e1e' }}>صادر: <b>{projectMats.reduce((s: any, m: any) => s + m.totalOut, 0)}</b></span>
-                  <span style={{ color: '#1a56db' }}>الرصيد: <b>{projectMats.reduce((s: any, m: any) => s + m.net, 0)}</b></span>
-                </div>
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)' }}>
-                      {['المادة','وارد','صادر','الرصيد','الوحدة'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#6b7280', fontSize: '0.75rem' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectMats.map((m: any, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 14px', fontWeight: 600 }}>{m.matName}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', color: '#0ea77b', fontWeight: 700 }}>{m.totalIn}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', color: '#c81e1e', fontWeight: 700 }}>{m.totalOut}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: m.net < 0 ? '#c81e1e' : m.net === 0 ? '#9ca3af' : '#1a56db' }}>{m.net}</td>
-                        <td style={{ padding: '10px 14px', textAlign: 'center', color: '#9ca3af' }}>{m.unit}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ الإرجاع ══ */}
-      {activeTab === 'returns' && (
-        <div className="space-y-4">
-          {loadingReturns ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '48px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : returns.length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>↩️</div>
-              <p style={{ color: '#9ca3af' }}>لا توجد إرجاعات بعد</p>
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      {['النوع','من مشروع','إلى','المواد','الكمية','التاريخ','المحضر','الحالة'].map(h => (
-                        <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {returns.map((r: any) => (
-                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '12px 14px' }}>
-                          <span className={`badge ${r.return_type === 'إرجاع للكهرباء' ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: '0.72rem' }}>
-                            {r.return_type === 'إرجاع للكهرباء' ? '⚡ للكهرباء' : '🔄 لمشروع'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 14px', fontWeight: 600 }}>{r.from_project}</td>
-                        <td style={{ padding: '12px 14px', color: '#6b7280' }}>{r.to_project || '—'}</td>
-                        <td style={{ padding: '12px 14px', fontSize: '0.8rem', color: '#6b7280', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.mat_name}</td>
-                        <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700 }}>{r.qty} {r.unit}</td>
-                        <td style={{ padding: '12px 14px' }}>{r.return_date}</td>
-                        <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: '0.78rem', color: '#6b7280' }}>{r.reference_no || '—'}</td>
-                        <td style={{ padding: '12px 14px' }}><span className="badge badge-green" style={{ fontSize: '0.72rem' }}>✅ مكتمل</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Modals */}
+            {/* Modals */}
       {showReceive  && <ReceiveModal   materials={[]} warehouses={warehouses as any} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive as any} />}
       {showReturn   && <ReturnModal    materials={[]} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn} />}
       {showDispatch && <DispatchModal  materials={[]} projects={projectsList} warehouse={warehouses[0] as any} onClose={() => setDispatch(false)} onSave={handleDispatch} />}
