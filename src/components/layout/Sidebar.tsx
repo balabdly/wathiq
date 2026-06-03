@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 const IC = {
   dashboard:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
@@ -85,31 +85,54 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
   isActive: boolean; isOpen: boolean
   onToggle: () => void; children: React.ReactNode
 }) {
+  const contentRef = React.useRef<HTMLDivElement>(null)
+  const [height, setHeight] = React.useState(isOpen ? 'auto' : '0px')
+
+  React.useEffect(() => {
+    if (!contentRef.current) return
+    if (isOpen) {
+      const h = contentRef.current.scrollHeight
+      setHeight(h + 'px')
+      const timer = setTimeout(() => setHeight('auto'), 280)
+      return () => clearTimeout(timer)
+    } else {
+      const h = contentRef.current.scrollHeight
+      setHeight(h + 'px')
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setHeight('0px'))
+      })
+    }
+  }, [isOpen])
+
   return (
-    <div style={{ marginBottom: '2px' }}>
+    <div>
       <button onClick={onToggle} style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
         padding: '12px 16px', border: 'none', cursor: 'pointer',
-        background: 'transparent',
+        background: isOpen ? C.groupOpenBg : 'transparent',
         borderBottom: '1px solid ' + C.border,
-        transition: 'background 0.1s',
+        transition: 'background 0.2s',
       }}>
         <span style={{
-          flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: 400,
-          color: C.textPrimary,
+          flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: isOpen ? 500 : 400,
+          color: C.textPrimary, transition: 'font-weight 0.15s',
         }}>
           {label}
         </span>
         <div style={{ color: C.textMuted, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
-            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s', flexShrink: 0 }}>
+            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.25s ease', flexShrink: 0 }}>
             <path d={IC.chevron} />
           </svg>
           <Icon d={icon} size={18} />
         </div>
       </button>
 
-      {isOpen && (
+      <div ref={contentRef} style={{
+        overflow: 'hidden',
+        height: height,
+        transition: 'height 0.25s ease',
+      }}>
         <div style={{
           background: C.groupOpenBg,
           borderBottom: '1px solid ' + C.border,
@@ -117,7 +140,7 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
         }}>
           {children}
         </div>
-      )}
+      </div>
     </div>
   )
 }
