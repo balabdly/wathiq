@@ -303,7 +303,7 @@ export default function InventoryPage() {
                           </div>
                         )}
                         {/* زر الدخول */}
-                        <button onClick={() => router.push('/dashboard/inventory/' + wh.id)}
+                        <button onClick={() => router.push('/inventory/' + wh.id)}
                           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '9px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: wt.color, color: 'white', fontWeight: 700, fontSize: '0.875rem', transition: 'opacity 0.15s' }}
                           onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
                           onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
@@ -343,7 +343,7 @@ export default function InventoryPage() {
                           </button>
                         )}
                       </div>
-                      <button onClick={() => router.push('/dashboard/inventory/' + wh.id)} className="btn btn-primary w-full btn-sm" style={{ display: 'flex', justifyContent: 'center' }}>
+                      <button onClick={() => router.push('/inventory/' + wh.id)} className="btn btn-primary w-full btn-sm" style={{ display: 'flex', justifyContent: 'center' }}>
                         <Eye style={{ width: '13px', height: '13px' }} /> فتح
                       </button>
                     </div>
