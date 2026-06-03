@@ -100,7 +100,7 @@ export default function WarehousesPage() {
               const st = wh ? whStats[wh.id] : null
               return (
                 <div key={wt.type} className="card"
-                  style={{ padding: '20px', border: wh ? `2px solid ${wt.color}22` : '2px dashed #e5e7eb', position: 'relative', overflow: 'hidden' }}>
+                  style={{ padding: '20px', border: wh ? '2px solid ' + (wt.color) + '22' : '2px dashed #e5e7eb', position: 'relative', overflow: 'hidden' }}>
 
                   {/* خط لوني علوي */}
                   {wh && <div style={{ position: 'absolute', top: 0, right: 0, left: 0, height: '3px', background: wt.color }} />}
@@ -142,7 +142,7 @@ export default function WarehousesPage() {
                       {(wh as any).sections?.length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
                           {(wh as any).sections.map((s: string, i: number) => (
-                            <span key={i} style={{ background: wt.color + '12', border: `1px solid ${wt.color}33`, borderRadius: '6px', padding: '2px 8px', fontSize: '0.7rem', color: wt.color, fontWeight: 600 }}>
+                            <span key={i} style={{ background: wt.color + '12', border: '1px solid ' + (wt.color) + '33', borderRadius: '6px', padding: '2px 8px', fontSize: '0.7rem', color: wt.color, fontWeight: 600 }}>
                               📦 {s}
                             </span>
                           ))}
@@ -169,7 +169,7 @@ export default function WarehousesPage() {
                       <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '10px' }}>لم يُنشأ بعد</div>
                       {canEdit && (
                         <button onClick={() => { setModal(true) }}
-                          style={{ padding: '6px 16px', borderRadius: '8px', border: `1px dashed ${wt.color}`, background: 'transparent', cursor: 'pointer', color: wt.color, fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          style={{ padding: '6px 16px', borderRadius: '8px', border: '1px dashed ' + (wt.color) + '', background: 'transparent', cursor: 'pointer', color: wt.color, fontSize: '0.8rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                           <Plus style={{ width: '13px', height: '13px' }} /> إنشاء
                         </button>
                       )}
