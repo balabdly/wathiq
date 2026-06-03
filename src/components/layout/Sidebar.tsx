@@ -21,6 +21,10 @@ const IC = {
   documents:   'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   jobs:        'M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
   purchases:   'M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0',
+  finance:     'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  invoice:     'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  expense:     'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z',
+  treasury:    'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
   reports:     'M18 20V10M12 20V4M6 20v-6',
   settings:    'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   employees:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
@@ -185,6 +189,7 @@ export default function Sidebar() {
   const hasInventory = perms.includes('inventory')                       && tenantModules.inventory !== false
   const hasQHSE      = perms.includes('qhse')                           && tenantModules.qhse      !== false
   const hasPurchases = perms.includes('purchases')                       && tenantModules.purchases !== false
+  const hasFinance   = perms.includes('finance')                         && tenantModules.finance   !== false
   const hasReports   = perms.includes('reports')
   const hasHR        = perms.includes('employees')
   const hasDashboard = perms.includes('dashboard')
@@ -193,11 +198,13 @@ export default function Sidebar() {
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings')
+  const inFinance  = pathname.startsWith('/finance')
 
   const [projectsOpen, setProjectsOpen] = useState(inProjects)
   const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
   const [hrOpen,       setHrOpen]       = useState(inHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
+  const [financeOpen,  setFinanceOpen]  = useState(inFinance)
 
   return (
     <div className="sidebar" style={{
@@ -290,6 +297,19 @@ export default function Sidebar() {
             <SubLink href="/hr/payroll"    label="الرواتب"            icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
             <SubLink href="/hr/documents"  label="الوثائق"            icon={IC.documents}  active={pathname.startsWith('/hr/documents')} />
             <SubLink href="/hr/jobs"       label="عروض الوظائف"       icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')} />
+          </NavSection>
+        )}
+
+        <Divider />
+
+        {hasFinance && (
+          <NavSection label="المالية والمحاسبة" icon={IC.finance}
+            isActive={inFinance} isOpen={financeOpen} onToggle={() => setFinanceOpen(o => !o)}>
+            <SubLink href="/finance"           label="لوحة التحكم المالية" icon={IC.dashboard}  active={pathname === '/finance'} />
+            <SubLink href="/finance/invoices"  label="فواتير المبيعات"     icon={IC.invoice}    active={pathname.startsWith('/finance/invoices')} />
+            <SubLink href="/finance/purchases" label="المشتريات"           icon={IC.purchases}  active={pathname.startsWith('/finance/purchases')} />
+            <SubLink href="/finance/expenses"  label="المصروفات"           icon={IC.expense}    active={pathname.startsWith('/finance/expenses')} />
+            <SubLink href="/finance/treasury"  label="الخزينة"             icon={IC.treasury}   active={pathname.startsWith('/finance/treasury')} />
           </NavSection>
         )}
 
