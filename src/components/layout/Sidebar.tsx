@@ -29,22 +29,22 @@ const IC = {
   branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
 }
 
-// ── ألوان الثيم الرمادي الفاتح ──
+// ── ألوان الثيم الأبيض النظيف ──
 const C = {
-  sidebarBg:     '#f8fafc',
+  sidebarBg:     '#ffffff',
   headerBg:      '#ffffff',
-  activeBg:      '#1a56db',
-  activeLight:   '#eff6ff',
-  hoverBg:       '#f1f5f9',
-  groupOpenBg:   '#f1f5f9',
-  subBg:         '#f8fafc',
-  textPrimary:   '#1e293b',
-  textSecondary: '#64748b',
-  textMuted:     '#94a3b8',
+  activeBg:      '#f0f0f0',
+  activeLight:   '#f0f0f0',
+  hoverBg:       '#f5f5f5',
+  groupOpenBg:   '#f5f5f5',
+  subBg:         '#f5f5f5',
+  textPrimary:   '#1a1a1a',
+  textSecondary: '#444444',
+  textMuted:     '#888888',
   accent:        '#1a56db',
   accentLight:   '#3b82f6',
-  border:        '#e2e8f0',
-  borderLight:   '#f1f5f9',
+  border:        '#e8e8e8',
+  borderLight:   '#f0f0f0',
 }
 
 function Icon({ d, size = 16 }: { d: string; size?: number }) {
@@ -63,22 +63,18 @@ function SubLink({ href, label, icon, active }: {
   return (
     <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '7px 10px', borderRadius: '8px', marginBottom: '2px',
+        display: 'flex', alignItems: 'center',
+        padding: '9px 14px', marginBottom: '1px',
         background: active ? C.activeLight : 'transparent',
-        color: active ? C.accent : C.textSecondary,
-        fontSize: '0.82rem', fontWeight: active ? 600 : 400,
-        cursor: 'pointer', transition: 'all 0.12s',
-        borderRight: active ? '3px solid ' + C.accent : '3px solid transparent',
+        color: active ? C.textPrimary : C.textSecondary,
+        fontSize: '0.875rem', fontWeight: active ? 500 : 400,
+        cursor: 'pointer', transition: 'background 0.1s',
+        borderRadius: '0',
       }}
-        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg; el.style.color = C.textPrimary } }}
-        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = C.textSecondary } }}
+        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg } }}
+        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent' } }}
       >
-        <span style={{ color: active ? C.accent : C.textMuted, display: 'flex', flexShrink: 0 }}>
-          <Icon d={icon} size={14} />
-        </span>
         <span style={{ flex: 1 }}>{label}</span>
-        {active && <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: C.accent, flexShrink: 0 }} />}
       </div>
     </Link>
   )
@@ -93,41 +89,31 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
     <div style={{ marginBottom: '2px' }}>
       <button onClick={onToggle} style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '9px 10px', border: 'none', borderRadius: '10px', cursor: 'pointer',
-        background: isOpen ? C.groupOpenBg : 'transparent',
-        transition: 'background 0.15s',
+        padding: '12px 16px', border: 'none', cursor: 'pointer',
+        background: 'transparent',
+        borderBottom: '1px solid ' + C.border,
+        transition: 'background 0.1s',
       }}>
-        <div style={{
-          width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
-          background: isOpen || isActive ? C.accent : C.borderLight,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: isOpen || isActive ? 'white' : C.textMuted,
-          transition: 'all 0.15s',
-        }}>
-          <Icon d={icon} size={14} />
-        </div>
         <span style={{
-          flex: 1, textAlign: 'right', fontSize: '0.85rem', fontWeight: 600,
-          color: isOpen || isActive ? C.textPrimary : C.textSecondary,
+          flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: 400,
+          color: C.textPrimary,
         }}>
           {label}
         </span>
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5"
-          style={{
-            color: isOpen ? C.accent : C.textMuted,
-            transform: isOpen ? 'rotate(180deg)' : 'rotate(0)',
-            transition: 'transform 0.2s', flexShrink: 0,
-          }}>
-          <path d={IC.chevron} />
-        </svg>
+        <div style={{ color: C.textMuted, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s', flexShrink: 0 }}>
+            <path d={IC.chevron} />
+          </svg>
+          <Icon d={icon} size={18} />
+        </div>
       </button>
 
       {isOpen && (
         <div style={{
-          padding: '4px 4px 4px 8px',
-          marginRight: '12px',
-          borderRight: '2px solid ' + C.border,
-          marginBottom: '4px',
+          background: C.groupOpenBg,
+          borderBottom: '1px solid ' + C.border,
+          paddingBottom: '4px',
         }}>
           {children}
         </div>
@@ -140,35 +126,27 @@ function StandaloneLink({ href, label, icon, active }: {
   href: string; label: string; icon: string; active: boolean
 }) {
   return (
-    <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link href={href} style={{ textDecoration: 'none', display: 'block', borderBottom: '1px solid ' + C.border }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '9px 10px', borderRadius: '10px', marginBottom: '2px',
+        padding: '12px 16px',
         background: active ? C.activeLight : 'transparent',
-        color: active ? C.accent : C.textSecondary,
-        fontSize: '0.85rem', fontWeight: active ? 600 : 400,
-        cursor: 'pointer', transition: 'all 0.12s',
+        color: active ? C.textPrimary : C.textSecondary,
+        fontSize: '0.95rem', fontWeight: active ? 500 : 400,
+        cursor: 'pointer', transition: 'background 0.1s',
       }}
-        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg; el.style.color = C.textPrimary } }}
-        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent'; el.style.color = C.textSecondary } }}
+        onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg } }}
+        onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent' } }}
       >
-        <div style={{
-          width: '30px', height: '30px', borderRadius: '8px', flexShrink: 0,
-          background: active ? C.accent : C.borderLight,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: active ? 'white' : C.textMuted,
-          transition: 'all 0.15s',
-        }}>
-          <Icon d={icon} size={14} />
-        </div>
-        <span>{label}</span>
+        <span style={{ flex: 1 }}>{label}</span>
+        <Icon d={icon} size={18} />
       </div>
     </Link>
   )
 }
 
 function Divider() {
-  return <div style={{ height: '1px', background: C.border, margin: '8px 4px' }} />
+  return <div style={{ height: '1px', background: C.border }} />
 }
 
 export default function Sidebar() {
@@ -225,7 +203,7 @@ export default function Sidebar() {
             <div style={{ color: C.textPrimary, fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {tenant?.name || 'وثيق ERP'}
             </div>
-            <div style={{ color: C.textMuted, fontSize: '0.7rem', marginTop: '1px' }}>مقاول كهرباء معتمد</div>
+            <div style={{ color: C.textMuted, fontSize: '0.72rem', marginTop: '2px' }}>نظام إدارة مقاولي الكهرباء</div>
           </div>
         </div>
 
@@ -256,7 +234,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <nav style={{ flex: 1, padding: '0', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
         {(hasDashboard || hasProjects || hasVisits || hasInventory) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
