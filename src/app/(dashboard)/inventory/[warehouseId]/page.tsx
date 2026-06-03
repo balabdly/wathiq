@@ -17,6 +17,7 @@ import DispatchModal from '@/components/inventory/DispatchModal'
 import TransferModal from '@/components/inventory/TransferModal'
 import InventoryCheckModal from '@/components/inventory/InventoryCheckModal'
 import { formatDate } from '@/lib/utils'
+import { TX_COLORS } from '@/components/inventory/types'
 
 export default function WarehouseDetailPage() {
   const params    = useParams()
@@ -41,6 +42,9 @@ export default function WarehouseDetailPage() {
   const [showTransfer, setTransfer]     = useState(false)
   const [showCheck, setCheck]           = useState(false)
 
+  const [activeTab, setActiveTab] = useState<'materials' | 'ledger'>('materials')
+  const [ledger, setLedger]       = useState<any[]>([])
+  const [ledgerLoaded, setLedgerLoaded] = useState(false)
   const canEdit    = currentUser?.permissions?.includes('inventory')
   const projectsList = (projects || []).map(p => ({ id: p.id, name: p.name }))
   const whInfo     = WH_TYPES.find(w => w.type === (warehouse as any)?.wh_type)
@@ -185,6 +189,15 @@ export default function WarehouseDetailPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const lowCount   = whMaterials.filter(m => m.qty <= m.reorder && m.qty > 0).length
 
+  async function loadLedger() {
+    if (!tenant || !activeBranch || ledgerLoaded) return
+    const { data } = await supabase.from('stock_ledger').select('*')
+      .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id).eq('wh_name', warehouse?.name || '')
+      .order('created_at', { ascending: false }).limit(200)
+    setLedger(data || [])
+    setLedgerLoaded(true)
+  }
+
   if (!warehouse) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
       <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
@@ -248,8 +261,24 @@ export default function WarehouseDetailPage() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', padding: '4px', borderRadius: '12px', width: 'fit-content' }}>
+        {[
+          { id: 'materials', label: '📦 المواد' },
+          { id: 'ledger',    label: '📋 سجل الحركات', onSelect: loadLedger },
+        ].map(t => (
+          <button key={t.id} onClick={() => { setActiveTab(t.id as any); (t as any).onSelect?.() }}
+            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s',
+              background: activeTab === t.id ? 'white' : 'transparent',
+              color: activeTab === t.id ? (whInfo?.color || '#1a56db') : '#6b7280',
+              boxShadow: activeTab === t.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {/* فلاتر */}
-      <div className="card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+      {activeTab === 'materials' && <div className="card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
           <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -278,10 +307,10 @@ export default function WarehouseDetailPage() {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* الجدول */}
-      {loading && whMaterials.length === 0 ? (
+      {activeTab === 'materials' && (loading && whMaterials.length === 0 ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
           <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
@@ -383,6 +412,51 @@ export default function WarehouseDetailPage() {
             )}
           </div>
         </>
+      )}
+
+      )}
+
+      {/* سجل الحركات */}
+      {activeTab === 'ledger' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {!ledgerLoaded ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+              <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : ledger.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد حركات لهذا المستودع</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['النوع','المادة','الكمية','قبل','بعد','المشروع','المرجع','التاريخ'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledger.map(l => (
+                    <tr key={l.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span className={`badge ${TX_COLORS[l.type] || 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>{l.type}</span>
+                      </td>
+                      <td style={{ padding: '10px 14px', fontWeight: 600 }}>{l.mat_name}</td>
+                      <td style={{ padding: '10px 14px', fontWeight: 700 }}>{l.qty} <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: '0.75rem' }}>{l.unit}</span></td>
+                      <td style={{ padding: '10px 14px', color: '#9ca3af', fontSize: '0.82rem' }}>{l.qty_before}</td>
+                      <td style={{ padding: '10px 14px', color: '#1a56db', fontSize: '0.82rem', fontWeight: 600 }}>{l.qty_after}</td>
+                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.82rem' }}>{l.project_name || '—'}</td>
+                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.78rem', fontFamily: 'monospace' }}>{l.doc_code || l.clearance_no || '—'}</td>
+                      <td style={{ padding: '10px 14px', color: '#9ca3af', fontSize: '0.78rem' }}>{formatDate(l.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Modals */}
