@@ -244,31 +244,3 @@ export const clientsApi = {
     return { data: data as Client, error }
   },
 }
-import { supabase } from '@/lib/supabase'
-
-export const zonesApi = {
-  async list(warehouseId: number) {
-    return supabase
-      .from('warehouse_zones')
-      .select('*')
-      .eq('warehouse_id', warehouseId)
-      .order('name', { ascending: true })
-  },
-  async create(payload: {
-    tenant_id: string
-    branch_id: number
-    warehouse_id: number
-    name: string
-    zone_type?: string
-    color?: string
-    notes?: string
-  }) {
-    return supabase.from('warehouse_zones').insert(payload).select().single()
-  },
-  async update(id: number, patch: Partial<{ name: string; zone_type: string; color: string; notes: string }>) {
-    return supabase.from('warehouse_zones').update(patch).eq('id', id)
-  },
-  async delete(id: number) {
-    return supabase.from('warehouse_zones').delete().eq('id', id)
-  },
-}
