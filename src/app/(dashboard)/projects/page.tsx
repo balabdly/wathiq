@@ -175,7 +175,14 @@ export default function ProjectsPage() {
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatus]     = useState('')
   const [typeFilter, setType]         = useState('')
-  const [viewMode, setViewMode]       = useState<'kanban' | 'grid' | 'list'>('kanban')
+  const savedView = (tenant as any)?.display_settings?.projectsView || 'kanban'
+  const [viewMode, setViewMode] = useState<'kanban' | 'grid' | 'list'>(savedView as any)
+
+  // تحديث عند تغيير الإعدادات
+  useEffect(() => {
+    const v = (tenant as any)?.display_settings?.projectsView
+    if (v) setViewMode(v as any)
+  }, [(tenant as any)?.display_settings?.projectsView])
   const [showModal, setShowModal]     = useState(false)
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [detailProject, setDetail]    = useState<Project | null>(null)
