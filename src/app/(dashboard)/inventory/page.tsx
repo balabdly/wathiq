@@ -2,6 +2,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ledgerApi, warehousesApi } from '@/lib/db'
 import {
@@ -301,14 +302,14 @@ export default function InventoryPage() {
                           </div>
                         )}
                         {/* زر الدخول */}
-                        <a href={`/dashboard/inventory/${wh.id}`}
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '9px', borderRadius: '10px', background: wt.color, color: 'white', fontWeight: 700, fontSize: '0.875rem', textDecoration: 'none', transition: 'opacity 0.15s' }}
-                          onMouseEnter={e => ((e.target as HTMLElement).style.opacity = '0.9')}
-                          onMouseLeave={e => ((e.target as HTMLElement).style.opacity = '1')}>
+                        <button onClick={() => router.push('/dashboard/inventory/' + wh.id)}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', padding: '9px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: wt.color, color: 'white', fontWeight: 700, fontSize: '0.875rem', transition: 'opacity 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
                           <Eye style={{ width: '15px', height: '15px' }} />
                           فتح المستودع
                           <ChevronRight style={{ width: '15px', height: '15px' }} />
-                        </a>
+                        </button>
                       </>
                     ) : (
                       <div style={{ textAlign: 'center', padding: '12px 0' }}>
@@ -341,9 +342,9 @@ export default function InventoryPage() {
                           </button>
                         )}
                       </div>
-                      <a href={`/dashboard/inventory/${wh.id}`} className="btn btn-primary w-full btn-sm" style={{ display: 'flex', justifyContent: 'center', textDecoration: 'none' }}>
+                      <button onClick={() => router.push('/dashboard/inventory/' + wh.id)} className="btn btn-primary w-full btn-sm" style={{ display: 'flex', justifyContent: 'center' }}>
                         <Eye style={{ width: '13px', height: '13px' }} /> فتح
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>
