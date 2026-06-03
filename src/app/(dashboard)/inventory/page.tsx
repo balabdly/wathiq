@@ -19,6 +19,7 @@ import { formatDate } from '@/lib/utils'
 
 export default function InventoryPage() {
   const { tenant, activeBranch, warehouses, setWarehouses, projects, currentUser, materials } = useStore()
+  const router = useRouter()
   const [loading, setLoading]   = useState(true)
   const [stats, setStats]       = useState({ total: 0, sec: 0, low: 0, empty: 0 })
   const [activeTab, setActiveTab] = useState<'warehouses' | 'ledger' | 'byproject' | 'returns'>('warehouses')
