@@ -220,7 +220,7 @@ function WarehouseModal({ onClose, onSave }: {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع المستودع</label>
               <div className="grid grid-cols-3 gap-2">
-                {[{v:'SEC',l:'⚡ مواد SEC'},{v:'خاص',l:'🏢 مواد خاصة'},{v:'مختلط',l:'🏭 مختلط'}].map(t => (
+                {[{v:'كهرباء',l:'⚡ مواد SEC'},{v:'خاص',l:'🏢 مواد خاصة'},{v:'مختلط',l:'🏭 مختلط'}].map(t => (
                   <button key={t.v} type="button" onClick={() => set('type', t.v)}
                     className={`py-2 rounded-xl text-xs font-semibold border-2 transition-all ${form.type === t.v ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500'}`}>
                     {t.l}
