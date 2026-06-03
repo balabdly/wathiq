@@ -279,11 +279,8 @@ export default function InventoryPage() {
         </div>
       )}
 
-
-
-
-            {/* Modals */}
-      {showReceive  && <ReceiveModal   materials={[]} warehouses={warehouses as any} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive as any} />}
+      {/* Modals */}
+      {showReceive  && <ReceiveModal   warehouses={warehouses as any} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive as any} />}
       {showReturn   && <ReturnModal    materials={[]} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn} />}
       {showDispatch && <DispatchModal  materials={[]} projects={projectsList} warehouse={warehouses[0] as any} onClose={() => setDispatch(false)} onSave={handleDispatch} />}
       {showTransfer && <TransferModal  materials={[]} warehouses={warehouses as any} onClose={() => setTransfer(false)} onSave={handleTransfer as any} />}
