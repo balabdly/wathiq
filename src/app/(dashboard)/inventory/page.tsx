@@ -9,7 +9,7 @@ import {
   Package, Warehouse as WarehouseIcon, ChevronLeft
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { TX_COLORS, type InventoryWarehouse } from '@/components/inventory/types'
+import { WH_TYPES, TX_COLORS, type InventoryWarehouse } from '@/components/inventory/types'
 import ReceiveModal from '@/components/inventory/ReceiveModal'
 import ReturnModal from '@/components/inventory/ReturnModal'
 import DispatchModal from '@/components/inventory/DispatchModal'
