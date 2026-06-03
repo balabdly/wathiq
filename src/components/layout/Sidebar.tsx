@@ -192,7 +192,7 @@ export default function Sidebar() {
   const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
-  const inSettings = pathname.startsWith('/settings') || pathname.startsWith('/employees')
+  const inSettings = pathname.startsWith('/settings')
 
   const [projectsOpen, setProjectsOpen] = useState(inProjects)
   const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
@@ -303,7 +303,7 @@ export default function Sidebar() {
             <Divider />
             <NavSection label="الإعدادات" icon={IC.settings}
               isActive={inSettings} isOpen={settingsOpen} onToggle={() => setSettingsOpen(o => !o)}>
-              <SubLink href="/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/employees')} />
+              <SubLink href="/settings/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/settings/employees')} />
               <SubLink href="/settings"  label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'} />
             </NavSection>
           </>
