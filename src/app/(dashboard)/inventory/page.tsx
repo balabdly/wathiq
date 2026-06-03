@@ -360,18 +360,31 @@ function MaterialSearchInput({ materials, value, onChange }: {
   )
 }
 
+// ── ثوابت المستودعات الأربعة ──
+const WH_TYPES = [
+  { type: 'projects', label: 'مستودع المشاريع (SEC)', icon: '⚡', color: '#1a56db', desc: 'مواد عهدة من شركة الكهرباء' },
+  { type: 'returns',  label: 'مستودع الرجيع',         icon: '↩️', color: '#0ea77b', desc: 'مواد فائضة سليمة للإرجاع' },
+  { type: 'scrap',    label: 'مستودع السكراب',         icon: '🗑️', color: '#e6820a', desc: 'مواد تالفة لإرجاع للكهرباء' },
+  { type: 'private',  label: 'المستودع الخاص',          icon: '🏢', color: '#6b7280', desc: 'مواد السلامة والبناء والمعدات' },
+]
+
 // ── نافذة استلام مواد ──────────────────────────────────────────────
 function ReceiveModal({ materials, warehouses, projects, onClose, onSave }: {
   materials: Material[]; warehouses: Warehouse[]
   projects: { id: number; name: string }[]
   onClose: () => void
-  onSave: (rows: { mat: Material; qty: number; projectId: number|'' }[], vendor: string, reservationNo: string, exitPermitNo: string) => Promise<void>
+  onSave: (rows: { mat: Material; qty: number; projectId: number|'' }[], vendor: string, reservationNo: string, exitPermitNo: string, warehouseId: number) => Promise<void>
 }) {
   const [saving, setSaving]         = useState(false)
   const [vendor, setVendor]         = useState('')
   const [reservationNo, setReserve] = useState('')
   const [exitPermitNo, setExit]     = useState('')
+  const [selectedWhId, setSelectedWh] = useState<number|''>(warehouses.find(w => (w as any).wh_type === 'projects')?.id || warehouses[0]?.id || '')
   const [rows, setRows] = useState<{ id: number; mat: Material|null; qty: number; projectId: number|'' }[]>([{ id: 1, mat: null, qty: 1, projectId: '' }])
+
+  const selectedWh = warehouses.find(w => w.id === Number(selectedWhId))
+  const whType = (selectedWh as any)?.wh_type || 'projects'
+  const isSecWh = whType === 'projects'
 
   function addRow() { setRows(r => [...r, { id: Date.now(), mat: null, qty: 1, projectId: '' }]) }
   function removeRow(id: number) { setRows(r => r.filter(x => x.id !== id)) }
@@ -379,14 +392,17 @@ function ReceiveModal({ materials, warehouses, projects, onClose, onSave }: {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!selectedWhId) { toast.error('اختر المستودع أولاً'); return }
     const valid = rows.filter(r => r.mat && r.qty > 0)
     if (valid.length === 0) { toast.error('أضف مادة واحدة على الأقل'); return }
-    const secWithoutProject = valid.filter(r => r.mat?.source === 'كهرباء' && !r.projectId)
-    if (secWithoutProject.length > 0) {
-      toast.error(`يجب تحديد مشروع لمواد الكهرباء: ${secWithoutProject.map(r => r.mat!.name).join('، ')}`); return
+    if (isSecWh) {
+      const secWithoutProject = valid.filter(r => !r.projectId)
+      if (secWithoutProject.length > 0) {
+        toast.error('يجب تحديد مشروع لمواد مستودع المشاريع: ' + secWithoutProject.map(r => r.mat!.name).join('، ')); return
+      }
     }
     setSaving(true)
-    await onSave(valid as any, vendor, reservationNo, exitPermitNo)
+    await onSave(valid as any, vendor, reservationNo, exitPermitNo, Number(selectedWhId))
     setSaving(false)
   }
 
@@ -402,6 +418,31 @@ function ReceiveModal({ materials, warehouses, projects, onClose, onSave }: {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {/* اختيار المستودع */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">المستودع المستلِم <span className="text-red-500">*</span></label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '4px' }}>
+                {WH_TYPES.map(wt => {
+                  const wh = warehouses.find(w => (w as any).wh_type === wt.type)
+                  if (!wh) return null
+                  const selected = selectedWhId === wh.id
+                  return (
+                    <button key={wt.type} type="button" onClick={() => setSelectedWh(wh.id)}
+                      style={{ padding: '10px 12px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', textAlign: 'right',
+                        borderColor: selected ? wt.color : 'var(--border)',
+                        background: selected ? wt.color + '15' : 'white' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: selected ? wt.color : 'var(--text2)' }}>{wt.icon} {wt.label}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text3)', marginTop: '2px' }}>{wt.desc}</div>
+                    </button>
+                  )
+                })}
+              </div>
+              {isSecWh && (
+                <div style={{ padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1a56db' }}>
+                  ⚡ مستودع المشاريع — يجب ربط كل مادة بمشروع
+                </div>
+              )}
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">المورد</label>
               <input value={vendor} onChange={e => setVendor(e.target.value)} className="input" placeholder="اسم المورد أو الكهرباء" />
@@ -1735,11 +1776,12 @@ export default function InventoryPage() {
     toast.success(`تم استيراد ${success} مادة ✅`)
   }
 
-  async function handleReceive(rows: { mat: Material; qty: number; projectId: number|'' }[], vendor: string, reservationNo: string, exitPermitNo: string) {
+  async function handleReceive(rows: { mat: Material; qty: number; projectId: number|'' }[], vendor: string, reservationNo: string, exitPermitNo: string, warehouseId?: number) {
     if (!tenant || !activeBranch) return
     for (const row of rows) {
       const newQty = row.mat.qty + row.qty
-      const wh = warehouses.find(w => w.id === row.mat.warehouse_id)
+      const whId = warehouseId || row.mat.warehouse_id
+      const wh = warehouses.find(w => w.id === whId)
       const projectName = (projects||[]).find(p => p.id === Number(row.projectId))?.name
       await ledgerApi.insert({
         tenant_id: tenant.id, branch_id: activeBranch.id,
@@ -2058,53 +2100,114 @@ export default function InventoryPage() {
             <p className="text-gray-400 mb-3">لا توجد مستودعات</p>
             {canEdit && <button onClick={() => setWhModal(true)} className="btn btn-primary btn-sm mx-auto"><Plus className="w-4 h-4" /> إضافة مستودع</button>}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {warehouses.map(wh => (
-              <div key={wh.id} className="card p-5 transition-all hover:shadow-lg">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
-                      <WarehouseIcon className="w-6 h-6 text-primary-500" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-800">{wh.name}</h3>
-                      {wh.location && <p className="text-xs text-gray-400 mt-0.5">📍 {wh.location}</p>}
-                      {(wh as any).stock_type && (
-                        <span className={`badge text-xs mt-0.5 ${(wh as any).stock_type === 'SEC' ? 'badge-blue' : (wh as any).stock_type === 'خاص' ? 'badge-green' : 'badge-gray'}`}>
-                          {(wh as any).stock_type === 'SEC' ? '⚡ مواد SEC' : (wh as any).stock_type === 'خاص' ? '🏢 مواد خاصة' : '🏭 مختلط'}
-                        </span>
+        ) : (() => {
+          // تجميع المستودعات حسب النوع
+          const whByType: Record<string, any> = {}
+          warehouses.forEach(w => { whByType[(w as any).wh_type || 'projects'] = w })
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* بطاقات المستودعات الأربعة */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+                {WH_TYPES.map(wt => {
+                  const wh = whByType[wt.type]
+                  return (
+                    <div key={wt.type} className="card" style={{ padding: '20px', border: wh ? `2px solid ${wt.color}22` : '2px dashed #e5e7eb', opacity: wh ? 1 : 0.6 }}>
+                      {/* هيدر البطاقة */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ width: '46px', height: '46px', borderRadius: '14px', background: wt.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>
+                            {wt.icon}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: wt.color }}>{wt.label}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{wt.desc}</div>
+                          </div>
+                        </div>
+                        {canEdit && wh && (
+                          <button onClick={() => { setEditWh(wh); setWhModal(true) }}
+                            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', padding: '4px 6px', color: 'var(--text3)' }}>
+                            <Pencil style={{ width: '13px', height: '13px' }} />
+                          </button>
+                        )}
+                      </div>
+
+                      {wh ? (
+                        <>
+                          {/* إحصائيات المستودع */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                            <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                              <div style={{ fontWeight: 700, color: wt.color, fontSize: '1.1rem' }}>{stats.total}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>مادة</div>
+                            </div>
+                            {wh.location && (
+                              <div style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '8px 10px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>📍 {wh.location}</div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* أقسام المستودع */}
+                          {(wh as any).sections?.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '12px' }}>
+                              {(wh as any).sections.map((s: string, i: number) => (
+                                <span key={i} style={{ background: wt.color + '12', border: `1px solid ${wt.color}33`, borderRadius: '6px', padding: '2px 8px', fontSize: '0.7rem', color: wt.color, fontWeight: 600 }}>
+                                  📦 {s}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* زر الدخول */}
+                          <button onClick={() => setSelectedWh(wh)}
+                            style={{ width: '100%', padding: '9px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: wt.color, color: 'white', fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'opacity 0.15s' }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+                            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
+                            <Eye style={{ width: '15px', height: '15px' }} />
+                            فتح المستودع
+                            <ChevronRight style={{ width: '15px', height: '15px' }} />
+                          </button>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '10px' }}>لم يُنشأ بعد</div>
+                          {canEdit && (
+                            <button onClick={() => setWhModal(true)}
+                              className="btn btn-ghost btn-sm border border-dashed" style={{ borderColor: wt.color, color: wt.color }}>
+                              <Plus style={{ width: '13px', height: '13px' }} /> إنشاء
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => setSelectedWh(wh)} className="btn btn-primary flex-1 justify-between gap-2">
-                    <Eye className="w-4 h-4" />
-                    <span className="flex-1 text-center">عرض المواد</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  {canEdit && (
-                    <button onClick={() => { setEditWh(wh); setWhModal(true) }}
-                      className="btn btn-ghost btn-sm border border-gray-200" title="تعديل المستودع">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-                {/* أقسام المستودع */}
-                {(wh as any).sections?.length > 0 && (
-                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {(wh as any).sections.map((s: string, i: number) => (
-                      <span key={i} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '2px 8px', fontSize: '0.72rem', color: '#065f46' }}>
-                        📦 {s}
-                      </span>
+                  )
+                })}
+              </div>
+
+              {/* مستودعات إضافية غير مصنّفة */}
+              {warehouses.filter(w => !['projects','returns','scrap','private'].includes((w as any).wh_type || '')).length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '8px' }}>مستودعات إضافية</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '10px' }}>
+                    {warehouses.filter(w => !['projects','returns','scrap','private'].includes((w as any).wh_type || '')).map(wh => (
+                      <div key={wh.id} className="card" style={{ padding: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ fontWeight: 700 }}>{wh.name}</div>
+                          {canEdit && (
+                            <button onClick={() => { setEditWh(wh); setWhModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
+                          )}
+                        </div>
+                        <button onClick={() => setSelectedWh(wh)} className="btn btn-primary w-full btn-sm justify-center">
+                          <Eye style={{ width: '13px', height: '13px' }} /> فتح
+                        </button>
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )
+                </div>
+              )}
+            </div>
+          )
+        })()}
       )}
 
       {/* سجل الحركات */}
@@ -2323,7 +2426,7 @@ export default function InventoryPage() {
       {showWhModal  && <WarehouseModal warehouse={editWh} onClose={() => { setWhModal(false); setEditWh(null) }} onSave={handleSaveWarehouse} />}
       {showReturn   && <ReturnModal materials={materials} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn} />}
       {showImport   && <ImportModal warehouses={warehouses} onClose={() => setImport(false)} onImport={handleImport} />}
-      {showReceive  && <ReceiveModal materials={materials} warehouses={warehouses} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive} />}
+      {showReceive  && <ReceiveModal materials={materials} warehouses={warehouses} projects={projectsList} onClose={() => setReceive(false)} onSave={(rows,vendor,res,exit,whId) => handleReceive(rows,vendor,res,exit,whId)} />}
       {/* وصل الاستلام */}
       {lastReceiptData && (
         <div className="modal-overlay" onClick={() => setLastReceiptData(null)}>
