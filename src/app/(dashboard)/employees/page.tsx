@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Users, Plus, Pencil, X, Save, Shield, UserCheck, UserX, Search } from 'lucide-react'
+import { Users, Plus, Pencil, X, Save, Shield, UserCheck, UserX, Search, LayoutGrid, List } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const ALL_PERMISSIONS = [
@@ -20,20 +20,34 @@ const ALL_PERMISSIONS = [
 
 const ROLES = ['مدير عام','مدير مشروع','مهندس جودة','مهندس سلامة','مشرف كهربائي','مهندس مدني','أمين مستودع','موظف']
 
-function EmployeeModal({ emp, onClose, onSave }: {
-  emp: any | null; onClose: () => void; onSave: (d: any) => Promise<void>
+// ══════════════════════════════════════
+// نافذة منح/تعديل الصلاحيات
+// ══════════════════════════════════════
+function EmployeeModal({ emp, hrCandidates, onClose, onSave }: {
+  emp: any | null
+  hrCandidates: any[]
+  onClose: () => void
+  onSave: (d: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
+  const [selectedHrId, setSelectedHrId] = useState<number|''>('')
   const [form, setForm] = useState({
     name:        emp?.name        || '',
     role:        emp?.role        || 'موظف',
     username:    emp?.username    || '',
     phone:       emp?.phone       || '',
-    email:       emp?.email       || '',
     permissions: emp?.permissions || [] as string[],
     is_active:   emp?.is_active   ?? true,
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  // عند اختيار موظف من HR — تعبئة تلقائية
+  function fillFromHR(id: number) {
+    const hr = hrCandidates.find(e => e.id === id)
+    if (!hr) return
+    setSelectedHrId(id)
+    setForm(f => ({ ...f, name: hr.name, role: hr.role, phone: hr.phone || '' }))
+  }
 
   function togglePerm(perm: string) {
     setForm(f => ({
@@ -46,9 +60,13 @@ function EmployeeModal({ emp, onClose, onSave }: {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!emp && !selectedHrId) { toast.error('يجب اختيار موظف من الموارد البشرية'); return }
     if (!form.name.trim()) { toast.error('أدخل الاسم'); return }
     setSaving(true)
-    await onSave({ ...(emp ? { id: emp.id } : {}), ...form })
+    const saveData = emp
+      ? { id: emp.id, ...form }
+      : { id: selectedHrId, ...form }
+    await onSave(saveData)
     setSaving(false)
   }
 
@@ -56,34 +74,56 @@ function EmployeeModal({ emp, onClose, onSave }: {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{emp ? 'تعديل بيانات المستخدم' : 'إضافة مستخدم جديد'}</h3>
+          <h3 className="font-bold text-gray-800">{emp ? 'تعديل صلاحيات المستخدم' : 'منح صلاحيات لموظف'}</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* إضافة جديدة — يجب اختيار موظف من HR */}
+            {!emp && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
-                <input value={form.name} onChange={e => set('name', e.target.value)} className="input" required />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  اختر موظفاً من الموارد البشرية <span className="text-red-500">*</span>
+                </label>
+                {hrCandidates.length === 0 ? (
+                  <div style={{ padding: '12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', fontSize: '0.82rem', color: '#c81e1e' }}>
+                    ⛔ لا يوجد موظفون في الموارد البشرية — أضف الموظفين أولاً من صفحة HR
+                  </div>
+                ) : (
+                  <select value={selectedHrId} onChange={e => fillFromHR(Number(e.target.value))} className="select" required>
+                    <option value="">— اختر موظفاً —</option>
+                    {hrCandidates.map(e => (
+                      <option key={e.id} value={e.id}>{e.name} — {e.role}</option>
+                    ))}
+                  </select>
+                )}
+                {form.name && (
+                  <div style={{ marginTop: '8px', padding: '8px 12px', background: '#ecfdf5', borderRadius: '8px', fontSize: '0.82rem', color: '#065f46' }}>
+                    ✅ تم تعبئة البيانات من ملف الموظف: <strong>{form.name}</strong>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الدور <span className="text-red-500">*</span></label>
-                <select value={form.role} onChange={e => set('role', e.target.value)} className="select" required>
-                  {ROLES.map(r => <option key={r}>{r}</option>)}
-                </select>
-              </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المستخدم</label>
-                <input value={form.username} onChange={e => set('username', e.target.value)} className="input" dir="ltr" placeholder="للدخول للنظام" />
+            {/* تعديل — عرض الاسم والدور فقط */}
+            {emp && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم</label>
+                  <input value={form.name} readOnly className="input" style={{ background: 'var(--bg2)', cursor: 'not-allowed' }} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الدور</label>
+                  <input value={form.role} readOnly className="input" style={{ background: 'var(--bg2)', cursor: 'not-allowed' }} />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الجوال</label>
-                <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" />
-              </div>
+            )}
+
+            {/* اسم المستخدم */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المستخدم (للدخول)</label>
+              <input value={form.username} onChange={e => set('username', e.target.value)} className="input" dir="ltr" placeholder="مثال: ahmed.ali" />
             </div>
 
             {/* الصلاحيات */}
@@ -93,6 +133,11 @@ function EmployeeModal({ emp, onClose, onSave }: {
                 <span style={{ marginRight: '8px', fontSize: '0.75rem', color: 'var(--text3)', fontWeight: 400 }}>
                   ({form.permissions.length} صلاحية محددة)
                 </span>
+                <button type="button"
+                  onClick={() => set('permissions', form.permissions.length === ALL_PERMISSIONS.length ? [] : ALL_PERMISSIONS.map(p => p.key))}
+                  style={{ marginRight: '8px', fontSize: '0.72rem', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                  {form.permissions.length === ALL_PERMISSIONS.length ? 'إلغاء الكل' : 'تحديد الكل'}
+                </button>
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 {ALL_PERMISSIONS.map(p => (
@@ -119,7 +164,7 @@ function EmployeeModal({ emp, onClose, onSave }: {
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
               {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-              حفظ
+              حفظ الصلاحيات
             </button>
           </div>
         </form>
@@ -128,17 +173,38 @@ function EmployeeModal({ emp, onClose, onSave }: {
   )
 }
 
+// ══════════════════════════════════════
+// الصفحة الرئيسية
+// ══════════════════════════════════════
 export default function EmployeesPage() {
   const { tenant, currentUser, setEmployees } = useStore()
   const [allEmployees, setAllEmps] = useState<any[]>([])
+  const [hrEmployees, setHREmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'active'|'pending'>('active')
+  const [viewMode, setViewMode] = useState<'grid'|'list'>('grid')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editEmp, setEditEmp] = useState<any | null>(null)
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => { load() }, [tenant?.id])
+
+  // جلب موظفي HR
+  useEffect(() => {
+    if (!tenant) return
+    supabase.from('hr_employees')
+      .select('id, employee_id, employee:employees!hr_employees_employee_id_fkey(id, name, role, phone)')
+      .eq('tenant_id', tenant.id).eq('is_active', true)
+      .then(({ data }) => {
+        setHREmployees((data || []).map((e: any) => ({
+          id: e.employee?.id,
+          name: e.employee?.name,
+          role: e.employee?.role,
+          phone: e.employee?.phone,
+        })).filter((e: any) => e.id))
+      })
+  }, [tenant?.id])
 
   async function load() {
     if (!tenant) return
@@ -158,21 +224,21 @@ export default function EmployeesPage() {
     if (data.id) {
       await supabase.from('employees').update(payload).eq('id', data.id)
     } else {
-      await supabase.from('employees').insert({ ...payload, username: `user_${Date.now()}` })
+      await supabase.from('employees').insert({ ...payload, username: payload.username || 'user_' + Date.now() })
     }
     await load()
     setShowModal(false); setEditEmp(null)
-    toast.success(data.id ? 'تم التعديل ✅' : 'تمت الإضافة ✅')
+    // انتقل لتاب المفعّلين بعد منح الصلاحيات
+    if (data.permissions && data.permissions.length > 0) setActiveTab('active')
+    toast.success(data.id ? 'تم التعديل ✅' : 'تمت إضافة الصلاحيات ✅')
   }
 
-  async function activateEmployee(emp: any) {
-    setEditEmp(emp)
-    setShowModal(true)
-  }
+  // الموظفون في HR بدون صلاحيات بعد
+  const hrCandidates = hrEmployees.filter(hr =>
+    !allEmployees.find(e => e.id === hr.id && e.permissions?.length > 0)
+  )
 
-  // الموظفون المفعّلون = لديهم صلاحيات
-  const activeEmps = allEmployees.filter(e => e.permissions && e.permissions.length > 0)
-  // بدون صلاحيات = قادمون من HR
+  const activeEmps  = allEmployees.filter(e => e.permissions && e.permissions.length > 0)
   const pendingEmps = allEmployees.filter(e => !e.permissions || e.permissions.length === 0)
 
   const displayList = (activeTab === 'active' ? activeEmps : pendingEmps)
@@ -190,9 +256,9 @@ export default function EmployeesPage() {
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'لديهم صلاحيات', value: activeEmps.length, color: '#0ea77b', bg: '#ecfdf5', icon: <UserCheck style={{ width: '18px', height: '18px' }} /> },
-          { label: 'بدون صلاحيات', value: pendingEmps.length, color: pendingEmps.length > 0 ? '#e6820a' : '#0ea77b', bg: pendingEmps.length > 0 ? '#fffbeb' : '#ecfdf5', icon: <UserX style={{ width: '18px', height: '18px' }} /> },
-          { label: 'إجمالي الموظفين', value: allEmployees.length, color: '#1a56db', bg: '#eff6ff', icon: <Users style={{ width: '18px', height: '18px' }} /> },
+          { label: 'لديهم صلاحيات',  value: activeEmps.length,  color: '#0ea77b', bg: '#ecfdf5', icon: <UserCheck style={{ width: '18px', height: '18px' }} /> },
+          { label: 'بدون صلاحيات',   value: pendingEmps.length, color: pendingEmps.length > 0 ? '#e6820a' : '#0ea77b', bg: pendingEmps.length > 0 ? '#fffbeb' : '#ecfdf5', icon: <UserX style={{ width: '18px', height: '18px' }} /> },
+          { label: 'إجمالي الموظفين',value: allEmployees.length, color: '#1a56db', bg: '#eff6ff', icon: <Users style={{ width: '18px', height: '18px' }} /> },
         ].map(kpi => (
           <div key={kpi.label} className="card" style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: kpi.bg, color: kpi.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -226,18 +292,32 @@ export default function EmployeesPage() {
 
       {/* Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ position: 'relative' }}>
-          <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '36px', width: '240px' }} placeholder="بحث بالاسم..." />
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '36px', width: '220px' }} placeholder="بحث بالاسم..." />
+          </div>
+          {/* toggle view */}
+          <div style={{ display: 'flex', gap: '2px', background: '#f3f4f6', padding: '3px', borderRadius: '8px' }}>
+            {([{m:'grid',icon:<LayoutGrid style={{width:'15px',height:'15px'}}/>},{m:'list',icon:<List style={{width:'15px',height:'15px'}}/>}] as any[]).map(({m,icon})=>(
+              <button key={m} type="button" onClick={()=>setViewMode(m as any)}
+                style={{ padding:'5px 8px', borderRadius:'6px', border:'none', cursor:'pointer', transition:'all 0.15s',
+                  background: viewMode===m ? 'white' : 'transparent',
+                  color: viewMode===m ? '#1a56db' : '#9ca3af',
+                  boxShadow: viewMode===m ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+                {icon}
+              </button>
+            ))}
+          </div>
         </div>
         {isAdmin && activeTab === 'active' && (
           <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> إضافة مستخدم
+            <Shield style={{ width: '16px', height: '16px' }} /> منح صلاحيات لموظف
           </button>
         )}
       </div>
 
-      {/* List */}
+      {/* المحتوى */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
           <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
@@ -249,13 +329,64 @@ export default function EmployeesPage() {
             : <><UserX style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} /><p style={{ color: 'var(--text3)' }}>جميع الموظفين لديهم صلاحيات</p></>
           }
         </div>
+
+      ) : viewMode === 'list' ? (
+        /* ── عرض جدول ── */
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                  {['الموظف','الدور','اسم المستخدم','الصلاحيات','الحالة',''].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayList.map(emp => (
+                  <tr key={emp.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                    onMouseEnter={e=>(e.currentTarget.style.background='var(--bg2)')}
+                    onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: activeTab==='active'?'#ecfdf5':'#fffbeb', color: activeTab==='active'?'#0ea77b':'#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>
+                          {emp.name?.charAt(0)}
+                        </div>
+                        <span style={{ fontWeight: 700 }}>{emp.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.82rem' }}>{emp.role}</td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.78rem', fontFamily: 'monospace', color: 'var(--text3)' }}>{emp.username || '—'}</td>
+                    <td style={{ padding: '12px 14px' }}>
+                      {emp.permissions?.length > 0
+                        ? <span style={{ fontSize: '0.75rem', color: '#0ea77b', fontWeight: 600 }}>{emp.permissions.length} صلاحية</span>
+                        : <span style={{ fontSize: '0.75rem', color: '#e6820a' }}>⚠️ لا صلاحيات</span>}
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span className={`badge text-xs ${emp.is_active ? 'badge-green' : 'badge-gray'}`}>{emp.is_active ? 'نشط' : 'غير نشط'}</span>
+                    </td>
+                    <td style={{ padding: '12px 14px' }}>
+                      {isAdmin && (
+                        <button onClick={() => { setEditEmp(emp); setShowModal(true) }} className="btn btn-ghost btn-xs">
+                          <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       ) : (
+        /* ── عرض بطاقات ── */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {displayList.map(emp => (
             <div key={emp.id} className="card" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: activeTab === 'active' ? '#ecfdf5' : '#fffbeb', color: activeTab === 'active' ? '#0ea77b' : '#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: activeTab==='active'?'#ecfdf5':'#fffbeb', color: activeTab==='active'?'#0ea77b':'#e6820a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
                     {emp.name?.charAt(0)}
                   </div>
                   <div>
@@ -287,7 +418,6 @@ export default function EmployeesPage() {
                 </div>
               )}
 
-              {/* تاب بدون صلاحيات */}
               {activeTab === 'pending' && (
                 <div style={{ marginBottom: '12px', padding: '10px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#e6820a' }}>
                   ⚠️ هذا الموظف لا يملك صلاحيات للدخول للنظام بعد
@@ -303,7 +433,7 @@ export default function EmployeesPage() {
               {isAdmin && (
                 <div style={{ paddingTop: '10px', borderTop: '1px solid var(--bg2)', display: 'flex', gap: '8px' }}>
                   {activeTab === 'pending' ? (
-                    <button onClick={() => activateEmployee(emp)} className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center', background: '#0ea77b' }}>
+                    <button onClick={() => { setEditEmp(emp); setShowModal(true) }} className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center', background: '#0ea77b' }}>
                       <Shield style={{ width: '14px', height: '14px' }} /> تفعيل وإعطاء صلاحيات
                     </button>
                   ) : (
@@ -319,7 +449,9 @@ export default function EmployeesPage() {
       )}
 
       {showModal && (
-        <EmployeeModal emp={editEmp}
+        <EmployeeModal
+          emp={editEmp}
+          hrCandidates={hrCandidates}
           onClose={() => { setShowModal(false); setEditEmp(null) }}
           onSave={handleSave} />
       )}
