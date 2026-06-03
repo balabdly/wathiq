@@ -244,9 +244,6 @@ export const clientsApi = {
     return { data: data as Client, error }
   },
 }
-// ─────────────────────────────────────────────────────────────────────
-// أضف هذا الكائن في src/lib/db.ts (أو الملف اللي فيه materialsApi)
-// ─────────────────────────────────────────────────────────────────────
 import { supabase } from '@/lib/supabase'
 
 export const zonesApi = {
