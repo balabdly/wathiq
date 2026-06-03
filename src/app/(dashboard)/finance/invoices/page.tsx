@@ -32,9 +32,13 @@ const STATUS_COLOR: Record<string, string> = {
 
 // ══ توليد QR Code لـ ZATCA (المرحلة الأولى) ══
 function generateZATCAQR(company: Company, invoice: Partial<Invoice>): string {
-  const encode = (tag: number, value: string) => {
+  const encode = (tag: number, value: string): string => {
     const bytes = new TextEncoder().encode(value)
-    return String.fromCharCode(tag, bytes.length, ...bytes)
+    let result = String.fromCharCode(tag) + String.fromCharCode(bytes.length)
+    for (let i = 0; i < bytes.length; i++) {
+      result += String.fromCharCode(bytes[i])
+    }
+    return result
   }
   const tlv =
     encode(1, company.name || '') +
