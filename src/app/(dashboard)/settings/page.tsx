@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { branchesApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import {
-  Settings, Building2, Plus, Pencil, X, Save, GitBranch,
+  Settings, Building2, Plus, Pencil, Trash2, X, Save, GitBranch,
   Shield, Bell, Lock, Upload, ImageIcon, CreditCard,
   Printer, Monitor, LayoutGrid, List, Eye, EyeOff,
   CheckCircle2, AlertTriangle, Calendar, Users
@@ -215,6 +215,14 @@ export default function SettingsPage() {
     toast.success(editBranch ? 'تم التعديل ✅' : 'تمت إضافة الفرع ✅')
   }
 
+  async function handleDeleteBranch(branch: Branch) {
+    if (!confirm('حذف فرع "' + branch.name + '"؟ سيتم حذف جميع البيانات المرتبطة به.')) return
+    const { error } = await supabase.from('branches').delete().eq('id', branch.id)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    await loadBranches()
+    toast.success('تم حذف الفرع ✅')
+  }
+
   if (!isAdmin) return (
     <div className="flex flex-col items-center justify-center h-64 text-center">
       <Lock className="w-12 h-12 text-gray-200 mb-3" />
@@ -391,9 +399,14 @@ export default function SettingsPage() {
                       <div className="font-semibold text-gray-800 text-sm">{b.name}</div>
                       {b.location && <div className="text-xs text-gray-400 mt-0.5">📍 {b.location}</div>}
                     </div>
-                    <button onClick={() => { setEditBranch(b); setBranchModal(true) }} className="btn btn-ghost btn-xs">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button onClick={() => { setEditBranch(b); setBranchModal(true) }} className="btn btn-ghost btn-xs">
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDeleteBranch(b)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -489,7 +502,25 @@ export default function SettingsPage() {
                   <h3 className="font-semibold text-gray-700 text-sm">طريقة عرض المشاريع</h3>
                 </div>
                 <div className="p-5">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {/* Kanban */}
+                    <button type="button" onClick={() => setD('projectsView', 'kanban')}
+                      className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${displaySettings.projectsView === 'kanban' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="flex gap-1">
+                        {[1,2,3].map(i => (
+                          <div key={i} className="flex flex-col gap-1">
+                            <div className={`w-5 h-3 rounded ${displaySettings.projectsView === 'kanban' ? 'bg-primary-400' : 'bg-gray-300'}`} />
+                            <div className={`w-5 h-3 rounded ${displaySettings.projectsView === 'kanban' ? 'bg-primary-200' : 'bg-gray-200'}`} />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ fontSize: '0.9rem' }}>📋</span>
+                        <span className="text-sm font-semibold">Kanban</span>
+                      </div>
+                      {displaySettings.projectsView === 'kanban' && <span className="badge badge-blue text-xs">الوضع الحالي</span>}
+                    </button>
+                    {/* بطاقات */}
                     <button type="button" onClick={() => setD('projectsView', 'grid')}
                       className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${displaySettings.projectsView === 'grid' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -499,10 +530,9 @@ export default function SettingsPage() {
                         <LayoutGrid className="w-4 h-4" />
                         <span className="text-sm font-semibold">بطاقات</span>
                       </div>
-                      {displaySettings.projectsView === 'grid' && (
-                        <span className="badge badge-blue text-xs">الوضع الحالي</span>
-                      )}
+                      {displaySettings.projectsView === 'grid' && <span className="badge badge-blue text-xs">الوضع الحالي</span>}
                     </button>
+                    {/* جدول */}
                     <button type="button" onClick={() => setD('projectsView', 'list')}
                       className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${displaySettings.projectsView === 'list' ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
                       <div className="space-y-1.5 w-full">
@@ -512,9 +542,7 @@ export default function SettingsPage() {
                         <List className="w-4 h-4" />
                         <span className="text-sm font-semibold">جدول</span>
                       </div>
-                      {displaySettings.projectsView === 'list' && (
-                        <span className="badge badge-blue text-xs">الوضع الحالي</span>
-                      )}
+                      {displaySettings.projectsView === 'list' && <span className="badge badge-blue text-xs">الوضع الحالي</span>}
                     </button>
                   </div>
                 </div>
