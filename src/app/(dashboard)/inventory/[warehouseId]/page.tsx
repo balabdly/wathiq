@@ -72,7 +72,7 @@ export default function WarehouseDetailPage() {
       .eq('branch_id', activeBranch.id)
       .eq('warehouse_id', whId)
 
-    if (search) query = query.or(`name.ilike.%${search}%,catalog_no.ilike.%${search}%,sec_number.ilike.%${search}%`)
+    if (search) query = query.or('name.ilike.%' + (search) + '%,catalog_no.ilike.%' + (search) + '%,sec_number.ilike.%' + (search) + '%')
     if (srcFilter !== 'الكل') query = query.eq('source', srcFilter)
     if (statusFilter === 'نفدت')    query = query.lte('qty', 0)
     else if (statusFilter === 'منخفض') query = query.gt('qty', 0).lte('qty', 10)
@@ -102,7 +102,7 @@ export default function WarehouseDetailPage() {
   }
 
   async function handleDelete(m: InventoryMaterial) {
-    if (!confirm(`حذف "${m.name}"؟`)) return
+    if (!confirm('حذف "' + (m.name) + '"؟')) return
     await supabase.from('materials').delete().eq('id', m.id)
     await loadMaterials(page)
     toast.success('تم الحذف')
@@ -218,7 +218,7 @@ export default function WarehouseDetailPage() {
           </h1>
           <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginTop: '2px' }}>
             {total} مادة
-            {warehouse.location && ` · 📍 ${warehouse.location}`}
+            {warehouse.location && ' · 📍 ' + (warehouse.location)}
             {lowCount > 0 && <span style={{ color: '#e6820a', marginRight: '8px' }}>· {lowCount} منخفض</span>}
           </p>
         </div>
@@ -235,7 +235,7 @@ export default function WarehouseDetailPage() {
           {(warehouse as any).sections.map((s: string, i: number) => (
             <span key={i} style={{
               background: (whInfo?.color || '#1a56db') + '12',
-              border: `1px solid ${whInfo?.color || '#1a56db'}33`,
+              border: '1px solid ' + (whInfo?.color || '#1a56db') + '33',
               borderRadius: '8px', padding: '4px 12px',
               fontSize: '0.8rem', color: whInfo?.color || '#1a56db', fontWeight: 600
             }}>
@@ -254,7 +254,7 @@ export default function WarehouseDetailPage() {
             { icon: <ClipboardCheck style={{ width: '15px', height: '15px' }} />,  label: 'جرد المستودع',  color: '#e6820a', bg: '#fffbeb', onClick: () => setCheck(true) },
           ].map((op, i) => (
             <button key={i} onClick={op.onClick}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: `1px solid ${op.color}33`, background: op.bg, color: op.color, cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: '1px solid ' + (op.color) + '33', background: op.bg, color: op.color, cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
               {op.icon} {op.label}
             </button>
           ))}
@@ -345,7 +345,7 @@ export default function WarehouseDetailPage() {
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = isEmpty ? '#fff5f5' : isLow ? '#fffbeb' : 'transparent')}>
                         <td style={{ padding: '12px 14px' }}>
-                          <span className={`badge text-xs ${m.source === 'كهرباء' ? 'badge-blue' : 'badge-green'}`}>
+                          <span className={'badge text-xs ' + (m.source === 'كهرباء' ? 'badge-blue' : 'badge-green')}>
                             {m.source === 'كهرباء' ? '⚡ SEC' : '🏢 خاص'}
                           </span>
                         </td>
@@ -362,7 +362,7 @@ export default function WarehouseDetailPage() {
                           {m.qty} <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: '0.78rem' }}>{m.unit}</span>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
-                          <span className={`badge ${isEmpty ? 'badge-red' : isLow ? 'badge-amber' : 'badge-green'}`}>
+                          <span className={'badge ' + (isEmpty ? 'badge-red' : isLow ? 'badge-amber' : 'badge-green')}>
                             {isEmpty ? '⛔ نفدت' : isLow ? '⚠ منخفض' : '✓ طبيعي'}
                           </span>
                         </td>
@@ -399,7 +399,7 @@ export default function WarehouseDetailPage() {
                     const p = Math.max(1, Math.min(page - 2, totalPages - 4)) + i
                     return (
                       <button key={p} onClick={() => loadMaterials(p)}
-                        className={`btn btn-xs ${p === page ? 'btn-primary' : 'btn-ghost'}`}>
+                        className={'btn btn-xs ' + (p === page ? 'btn-primary' : 'btn-ghost')}>
                         {p}
                       </button>
                     )
@@ -412,8 +412,6 @@ export default function WarehouseDetailPage() {
             )}
           </div>
         </>
-      )}
-
       )}
 
       {/* سجل الحركات */}
@@ -441,7 +439,7 @@ export default function WarehouseDetailPage() {
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                       <td style={{ padding: '10px 14px' }}>
-                        <span className={`badge ${TX_COLORS[l.type] || 'badge-gray'}`} style={{ fontSize: '0.72rem' }}>{l.type}</span>
+                        <span className={'badge ' + (TX_COLORS[l.type] || 'badge-gray')} style={{ fontSize: '0.72rem' }}>{l.type}</span>
                       </td>
                       <td style={{ padding: '10px 14px', fontWeight: 600 }}>{l.mat_name}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 700 }}>{l.qty} <span style={{ color: '#9ca3af', fontWeight: 400, fontSize: '0.75rem' }}>{l.unit}</span></td>
