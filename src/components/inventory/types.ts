@@ -49,7 +49,7 @@ export type InventoryLedger = {
 }
 
 export const WH_TYPES = [
-  { type: 'projects', label: 'مستودع المشاريع (SEC)', icon: '⚡', color: '#1a56db', desc: 'مواد عهدة من شركة الكهرباء' },
+  { type: 'projects', label: 'مستودع المشاريع (SE)', icon: '⚡', color: '#1a56db', desc: 'مواد عهدة من السعودية للطاقة' },
   { type: 'returns',  label: 'مستودع الرجيع',         icon: '↩️', color: '#0ea77b', desc: 'مواد فائضة سليمة للإرجاع' },
   { type: 'scrap',    label: 'مستودع السكراب',         icon: '🗑️', color: '#e6820a', desc: 'مواد تالفة لإرجاع للكهرباء' },
   { type: 'private',  label: 'المستودع الخاص',          icon: '🏢', color: '#6b7280', desc: 'مواد السلامة والبناء والمعدات' },
