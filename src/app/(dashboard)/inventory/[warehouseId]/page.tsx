@@ -205,7 +205,7 @@ export default function WarehouseDetailPage() {
           <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
         </div>
       )}
-      {warehouse && <>
+      {/* warehouse content */}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={() => router.back()} className="btn btn-ghost btn-sm">
@@ -214,11 +214,11 @@ export default function WarehouseDetailPage() {
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '1.3rem' }}>{whInfo?.icon || '🏭'}</span>
-            {warehouse.name}
+            {warehouse?.name}
           </h1>
           <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginTop: '2px' }}>
             {total} مادة
-            {warehouse.location && ' · 📍 ' + (warehouse.location)}
+            {warehouse?.location && ' · 📍 ' + (warehouse?.location)}
             {lowCount > 0 && <span style={{ color: '#e6820a', marginRight: '8px' }}>· {lowCount} منخفض</span>}
           </p>
         </div>
@@ -486,7 +486,6 @@ export default function WarehouseDetailPage() {
           onClose={() => setCheck(false)}
           onSave={handleInventoryCheck} />
       )}
-      </>}
     </div>
   )
 }
