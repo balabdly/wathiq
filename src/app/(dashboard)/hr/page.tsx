@@ -186,8 +186,8 @@ function calcGratuity(
   }
 }
 
-function calcGOSI(nationality: string, basicSalary: number, housingAllow: number) {
-  const base = basicSalary + housingAllow
+function calcGOSI(nationality: string, basicSalary: number, housingAllow: number, transportAllow: number = 0) {
+  const base = basicSalary + housingAllow + transportAllow
   if (nationality === 'سعودي') {
     return {
       employeeDeduction: Math.round(base * 0.0975),
@@ -259,8 +259,8 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
 
   const isSaudi = form.nationality === 'سعودي'
-  const gosi = calcGOSI(form.nationality, Number(form.basic_salary), Number(form.housing_allow))
-  const gosiBase = Number(form.basic_salary) + Number(form.housing_allow)
+  const gosi = calcGOSI(form.nationality, Number(form.basic_salary), Number(form.housing_allow), Number(form.transport_allow))
+const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number(form.transport_allow)
   const totalAllowances = Number(form.housing_allow) + Number(form.transport_allow) + Number(form.other_allow)
   const grossSalary = Number(form.basic_salary) + totalAllowances
   const netSalary = grossSalary - (form.gosi_enrolled ? gosi.employeeDeduction : 0)
@@ -340,7 +340,7 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{emp ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}</h3>
@@ -1542,7 +1542,7 @@ export default function HRPage() {
                       const iqamaDays = emp.iqama_expiry
                         ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000)
                         : null
-                      const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow)
+                      const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow, emp.transport_allow)
                       const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
                       const isSaudi = emp.nationality === 'سعودي'
                       const empName = emp.employee?.name || '—'
