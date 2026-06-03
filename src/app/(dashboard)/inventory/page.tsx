@@ -14,7 +14,6 @@ import ReceiveModal from '@/components/inventory/ReceiveModal'
 import ReturnModal from '@/components/inventory/ReturnModal'
 import DispatchModal from '@/components/inventory/DispatchModal'
 import TransferModal from '@/components/inventory/TransferModal'
-import InventoryCheckModal from '@/components/inventory/InventoryCheckModal'
 import { formatDate } from '@/lib/utils'
 
 export default function InventoryPage() {
@@ -27,7 +26,7 @@ export default function InventoryPage() {
   const [showReturn, setReturn]     = useState(false)
   const [showDispatch, setDispatch] = useState(false)
   const [showTransfer, setTransfer] = useState(false)
-  const [showCheck, setCheck]       = useState(false)
+
 
   const canEdit    = currentUser?.permissions?.includes('inventory')
   const projectsList = (projects || []).map(p => ({ id: p.id, name: p.name }))
@@ -52,14 +51,6 @@ export default function InventoryPage() {
 
   }
 
-
-    setLoadingProject(true)
-    const { data } = await supabase.from('stock_ledger').select('*')
-      .eq('tenant_id', tenant.id).eq('project_name', projectName)
-      .order('created_at', { ascending: false })
-    setProjectLedger(data || [])
-    setLoadingProject(false)
-  }
 
   async function handleReceive(rows: any[], vendor: string, reservationNo: string, exitPermitNo: string, warehouseId: number) {
     if (!tenant || !activeBranch) return
@@ -159,23 +150,6 @@ export default function InventoryPage() {
     toast.success('تم تحويل ' + rows.length + ' مادة إلى "' + toWhName + '" ✅')
   }
 
-  async function handleCheck(items: any[]) {
-    if (!tenant || !activeBranch) return
-    const changed = items.filter(i => i.actualQty !== i.systemQty)
-    for (const item of changed) {
-      const diff = item.actualQty - item.systemQty
-      await ledgerApi.insert({
-        tenant_id: tenant.id, branch_id: activeBranch.id,
-        type: diff > 0 ? 'توريد' : 'صرف',
-        mat_name: item.matName, unit: item.unit,
-        qty: Math.abs(diff), qty_before: item.systemQty, qty_after: item.actualQty,
-        wh_name: '', dispatch_note: 'تسوية جرد',
-      })
-      await supabase.from('materials').update({ qty: item.actualQty }).eq('id', item.matId)
-    }
-    await loadData(); setCheck(false)
-    toast.success('تم تأكيد الجرد — ' + changed.length + ' مادة تم تسويتها ✅')
-  }
 
 
   // إحصائيات المستودعات
@@ -263,7 +237,7 @@ export default function InventoryPage() {
             { icon: '📤', label: 'صرف مواد',      sub: 'للمشاريع',            color: '#ef4444', bg: '#fff5f5', border: '#fecaca', onClick: () => setDispatch(true) },
             { icon: '↩️', label: 'إرجاع مواد',   sub: 'للكهرباء أو مشروع',  color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', onClick: () => setReturn(true) },
             { icon: '🔄', label: 'تحويل مواد',   sub: 'بين المستودعات',      color: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe', onClick: () => setTransfer(true) },
-            { icon: '📋', label: 'جرد المستودع', sub: 'مطابقة الكميات',      color: '#e6820a', bg: '#fffbeb', border: '#fde68a', onClick: () => setCheck(true) },
+
           ].map((op, i) => (
             <button key={i} onClick={op.onClick}
               style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', border: '1px solid ' + (op.border), background: op.bg, color: op.color, cursor: 'pointer', transition: 'all 0.15s', textAlign: 'right' }}
@@ -284,7 +258,7 @@ export default function InventoryPage() {
       {showReturn   && <ReturnModal    materials={[]} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn as any} />}
       {showDispatch && <DispatchModal  materials={[]} projects={projectsList} warehouse={(warehouses[0] || {}) as any} onClose={() => setDispatch(false)} onSave={handleDispatch as any} />}
       {showTransfer && <TransferModal  materials={[]} warehouses={warehouses as any} onClose={() => setTransfer(false)} onSave={handleTransfer as any} />}
-      {showCheck    && <InventoryCheckModal materials={[]} onClose={() => setCheck(false)} onSave={handleCheck as any} />}
+
     </div>
   )
 }
