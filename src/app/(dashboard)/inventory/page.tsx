@@ -266,7 +266,7 @@ export default function InventoryPage() {
             { icon: '📋', label: 'جرد المستودع', sub: 'مطابقة الكميات',      color: '#e6820a', bg: '#fffbeb', border: '#fde68a', onClick: () => setCheck(true) },
           ].map((op, i) => (
             <button key={i} onClick={op.onClick}
-              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', border: `1px solid ${op.border}`, background: op.bg, color: op.color, cursor: 'pointer', transition: 'all 0.15s', textAlign: 'right' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '12px', border: '1px solid ' + (op.border), background: op.bg, color: op.color, cursor: 'pointer', transition: 'all 0.15s', textAlign: 'right' }}
               onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-1px)')}
               onMouseLeave={e => (e.currentTarget.style.transform = '')}>
               <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>{op.icon}</span>
