@@ -192,19 +192,38 @@ function MaterialModal({ mat, warehouses, onClose, onSave }: {
   )
 }
 
-// ── نافذة إضافة مستودع ─────────────────────────────────────────────
-function WarehouseModal({ onClose, onSave }: {
-  onClose: () => void; onSave: (d: Partial<Warehouse>) => Promise<void>
+// ── نافذة إضافة/تعديل مستودع ─────────────────────────────────────────────
+function WarehouseModal({ warehouse, onClose, onSave }: {
+  warehouse?: any; onClose: () => void; onSave: (d: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ name: '', type: 'مختلط' as any, location: '' })
+  const [form, setForm] = useState({
+    name: warehouse?.name || '',
+    type: warehouse?.stock_type || 'مختلط',
+    location: warehouse?.location || '',
+  })
+  const [sections, setSections] = useState<string[]>(warehouse?.sections || [])
+  const [newSection, setNewSection] = useState('')
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  function addSection() {
+    const s = newSection.trim()
+    if (!s || sections.includes(s)) return
+    setSections(prev => [...prev, s])
+    setNewSection('')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) return
     setSaving(true)
-    await onSave({ name: form.name, stock_type: form.type, location: form.location || undefined } as any)
+    await onSave({
+      ...(warehouse ? { id: warehouse.id } : {}),
+      name: form.name,
+      stock_type: form.type,
+      location: form.location || undefined,
+      sections: sections.length > 0 ? sections : undefined,
+    })
     setSaving(false)
   }
 
@@ -212,15 +231,16 @@ function WarehouseModal({ onClose, onSave }: {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800">إضافة مستودع</h3>
+          <h3 className="font-bold text-gray-800">{warehouse ? 'تعديل مستودع' : 'إضافة مستودع جديد'}</h3>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {/* نوع المستودع */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع المستودع</label>
               <div className="grid grid-cols-3 gap-2">
-                {[{v:'كهرباء',l:'⚡ مواد SEC'},{v:'خاص',l:'🏢 مواد خاصة'},{v:'مختلط',l:'🏭 مختلط'}].map(t => (
+                {[{v:'SEC',l:'⚡ مواد SEC'},{v:'خاص',l:'🏢 مواد خاصة'},{v:'مختلط',l:'🏭 مختلط'}].map(t => (
                   <button key={t.v} type="button" onClick={() => set('type', t.v)}
                     className={`py-2 rounded-xl text-xs font-semibold border-2 transition-all ${form.type === t.v ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500'}`}>
                     {t.l}
@@ -228,20 +248,62 @@ function WarehouseModal({ onClose, onSave }: {
                 ))}
               </div>
             </div>
+
+            {/* اسم المستودع */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المستودع <span className="text-red-500">*</span></label>
               <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: مستودع الرياض الرئيسي" required />
             </div>
+
+            {/* الموقع */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">الموقع (اختياري)</label>
               <input value={form.location} onChange={e => set('location', e.target.value)} className="input" placeholder="المدينة، الحي" />
+            </div>
+
+            {/* الأقسام الداخلية */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                الأقسام الداخلية
+                <span className="text-xs text-gray-400 font-normal mr-2">مثال: ساحة السكراب، رف الكابلات</span>
+              </label>
+              <div className="flex gap-2 mb-2">
+                <input
+                  value={newSection}
+                  onChange={e => setNewSection(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSection() } }}
+                  className="input flex-1"
+                  placeholder="أدخل اسم القسم ثم اضغط إضافة"
+                />
+                <button type="button" onClick={addSection} className="btn btn-ghost btn-sm border border-gray-200">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+              {sections.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {sections.map((s, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '4px 10px', fontSize: '0.82rem', color: '#1a56db' }}>
+                      <span>📦 {s}</span>
+                      <button type="button" onClick={() => setSections(prev => prev.filter((_, j) => j !== i))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center', padding: '0 2px' }}>
+                        <X style={{ width: '12px', height: '12px' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {sections.length === 0 && (
+                <div style={{ padding: '8px 12px', background: '#f9fafb', borderRadius: '8px', fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
+                  لا توجد أقسام — يمكنك إضافة أقسام داخلية للمستودع
+                </div>
+              )}
             </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
               {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
-              إضافة
+              {warehouse ? 'حفظ التعديلات' : 'إضافة المستودع'}
             </button>
           </div>
         </form>
@@ -1059,6 +1121,143 @@ function PurchaseRequestModal({ materials, warehouses, projects, onClose, onSave
   )
 }
 
+
+// ── نافذة إرجاع مواد ───────────────────────────────────────────────
+function ReturnModal({ materials, projects, onClose, onSave }: {
+  materials: Material[]
+  projects: { id: number; name: string }[]
+  onClose: () => void
+  onSave: (data: any) => Promise<void>
+}) {
+  const [saving, setSaving] = useState(false)
+  const [returnType, setReturnType] = useState<'إرجاع للكهرباء'|'تحويل لمشروع'>('إرجاع للكهرباء')
+  const [fromProject, setFromProject] = useState<number|''>('')
+  const [toProject, setToProject] = useState<number|''>('')
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0])
+  const [referenceNo, setReferenceNo] = useState('')
+  const [notes, setNotes] = useState('')
+  const [rows, setRows] = useState<{ id: number; mat: Material|null; qty: number }[]>([{ id: 1, mat: null, qty: 1 }])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!fromProject) { toast.error('يجب تحديد المشروع المصدر'); return }
+    if (returnType === 'تحويل لمشروع' && !toProject) { toast.error('يجب تحديد المشروع المستقبل'); return }
+    if (Number(fromProject) === Number(toProject) && returnType === 'تحويل لمشروع') { toast.error('لا يمكن التحويل لنفس المشروع'); return }
+    const valid = rows.filter(r => r.mat && r.qty > 0)
+    if (valid.length === 0) { toast.error('أضف مادة واحدة على الأقل'); return }
+    setSaving(true)
+    const fromProjectName = projects.find(p => p.id === Number(fromProject))?.name || ''
+    const toProjectName   = projects.find(p => p.id === Number(toProject))?.name || ''
+    await onSave({ returnType, fromProjectName, toProjectName, returnDate, referenceNo, notes, rows: valid })
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '680px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+              <span>↩️</span> إرجاع مواد فائضة
+            </h3>
+            <p className="text-xs text-gray-400 mt-0.5">إرجاع للكهرباء أو تحويل لمشروع آخر</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإرجاع</label>
+              <div className="grid grid-cols-2 gap-3">
+                {(['إرجاع للكهرباء', 'تحويل لمشروع'] as const).map(t => (
+                  <button key={t} type="button" onClick={() => setReturnType(t)}
+                    style={{ padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem',
+                      borderColor: returnType === t ? (t === 'إرجاع للكهرباء' ? '#1a56db' : '#0ea77b') : 'var(--border)',
+                      background: returnType === t ? (t === 'إرجاع للكهرباء' ? '#eff6ff' : '#ecfdf5') : 'white',
+                      color: returnType === t ? (t === 'إرجاع للكهرباء' ? '#1a56db' : '#0ea77b') : 'var(--text3)' }}>
+                    {t === 'إرجاع للكهرباء' ? '⚡ إرجاع للكهرباء' : '🔄 تحويل لمشروع'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">من مشروع <span className="text-red-500">*</span></label>
+                <select value={fromProject} onChange={e => setFromProject(e.target.value ? Number(e.target.value) : '')} className="select" required>
+                  <option value="">— اختر المشروع —</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              {returnType === 'تحويل لمشروع' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">إلى مشروع <span className="text-red-500">*</span></label>
+                  <select value={toProject} onChange={e => setToProject(e.target.value ? Number(e.target.value) : '')} className="select" required>
+                    <option value="">— اختر المشروع —</option>
+                    {projects.filter(p => p.id !== Number(fromProject)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإرجاع</label>
+                <input type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} className="input" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم محضر الإرجاع</label>
+                <input value={referenceNo} onChange={e => setReferenceNo(e.target.value)} className="input" dir="ltr" placeholder="RET-2024-001" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">المواد المرجعة</label>
+              <div className="space-y-2">
+                {rows.map((row, i) => (
+                  <div key={row.id} className="flex gap-2 items-start">
+                    <div className="flex-shrink-0 w-6 h-9 flex items-center justify-center text-xs text-gray-400">{i + 1}</div>
+                    <div className="flex-1">
+                      <MaterialSearchInput materials={materials} value={row.mat?.name || ''}
+                        onChange={(name, unit, matId) => {
+                          const m = materials.find(x => x.id === matId)
+                          setRows(r => r.map(x => x.id === row.id ? { ...x, mat: m || null } : x))
+                        }} />
+                    </div>
+                    <input type="number" value={row.qty} min="1"
+                      onChange={e => setRows(r => r.map(x => x.id === row.id ? { ...x, qty: Number(e.target.value) } : x))}
+                      className="w-20 input text-sm text-center flex-shrink-0" />
+                    {row.mat && <span className="h-9 flex items-center text-xs text-gray-500 flex-shrink-0">{row.mat.unit}</span>}
+                    {rows.length > 1 && (
+                      <button type="button" onClick={() => setRows(r => r.filter(x => x.id !== row.id))}
+                        className="w-9 h-9 flex-shrink-0 flex items-center justify-center text-red-400 hover:bg-red-50 rounded-lg">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setRows(r => [...r, { id: Date.now(), mat: null, qty: 1 }])}
+                className="mt-2 btn btn-ghost btn-sm w-full border border-dashed border-gray-300">
+                <Plus className="w-3.5 h-3.5" /> إضافة مادة
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <input value={notes} onChange={e => setNotes(e.target.value)} className="input" placeholder="اختياري" />
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary"
+              style={{ background: returnType === 'إرجاع للكهرباء' ? '#1a56db' : '#0ea77b' }}>
+              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+              {returnType === 'إرجاع للكهرباء' ? '⚡ تأكيد الإرجاع' : '🔄 تأكيد التحويل'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── نافذة جرد المستودع ──────────────────────────────────────────────
 function InventoryCheckModal({ warehouses, tenant, activeBranch, onClose, onSave }: {
   warehouses: Warehouse[]; tenant: any; activeBranch: any
@@ -1437,7 +1636,7 @@ function WarehouseMaterialsTable({ warehouse, canEdit, onAdd, onEdit, onDelete, 
 export default function InventoryPage() {
   const { tenant, activeBranch, materials, setMaterials, warehouses, setWarehouses, projects, currentUser } = useStore()
   const [loading, setLoading]       = useState(warehouses.length === 0)
-  const [activeTab, setActiveTab]   = useState<'warehouses'|'ledger'|'byproject'>('warehouses')
+  const [activeTab, setActiveTab]   = useState<'warehouses'|'ledger'|'byproject'|'returns'>('warehouses')
   const [ledger, setLedger]         = useState<StockLedger[]>([])
   const [selectedWh, setSelectedWh] = useState<Warehouse|null>(null)
   // stats للكروت
@@ -1452,6 +1651,10 @@ export default function InventoryPage() {
   const [showTransfer, setTransfer] = useState(false)
   const [showPurchase, setPurchase] = useState(false)
   const [showCheckModal, setCheckModal] = useState(false)
+  const [editWh, setEditWh] = useState<any>(null)
+  const [showReturn, setReturn] = useState(false)
+  const [returns, setReturns] = useState<any[]>([])
+  const [loadingReturns, setLoadingReturns] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string>('')
   const [lastReceiptData, setLastReceiptData] = useState<any>(null)
   const [lastDispatchData, setLastDispatchData] = useState<any>(null)
@@ -1494,12 +1697,12 @@ export default function InventoryPage() {
     toast.success(editMat ? 'تم التعديل ✅' : 'تمت الإضافة ✅')
   }
 
-  async function handleSaveWarehouse(data: Partial<Warehouse>) {
+  async function handleSaveWarehouse(data: any) {
     if (!tenant || !activeBranch) return
     const { error } = await warehousesApi.upsert({ ...data, tenant_id: tenant.id, branch_id: activeBranch.id })
-    if (error) { toast.error('حدث خطأ'); return }
-    await loadData(); setWhModal(false)
-    toast.success('تم إضافة المستودع ✅')
+    if (error) { toast.error('حدث خطأ: ' + error.message); return }
+    await loadData(); setWhModal(false); setEditWh(null)
+    toast.success(data.id ? 'تم تعديل المستودع ✅' : 'تم إضافة المستودع ✅')
   }
 
   async function handleDelete(m: Material) {
@@ -1666,6 +1869,64 @@ export default function InventoryPage() {
     toast.success(`تم تأكيد الجرد — ${changed.length} مادة تم تسويتها ✅`)
   }
 
+  async function handleReturn(data: any) {
+    if (!tenant || !activeBranch) return
+    for (const row of data.rows) {
+      if (!row.mat) continue
+      const newQty = row.mat.qty - row.qty
+      if (newQty < 0) { toast.error('رصيد "' + row.mat.name + '" غير كافٍ'); return }
+      const wh = warehouses.find(w => w.id === row.mat.warehouse_id)
+      await ledgerApi.insert({
+        tenant_id: tenant.id, branch_id: activeBranch.id,
+        type: data.returnType === 'إرجاع للكهرباء' ? 'إرجاع للكهرباء' : 'تحويل لمشروع',
+        mat_name: row.mat.name, unit: row.mat.unit,
+        qty: row.qty, qty_before: row.mat.qty, qty_after: newQty,
+        wh_name: wh?.name || '',
+        project_name: data.fromProjectName,
+        dispatch_note: data.returnType === 'تحويل لمشروع'
+          ? 'تحويل إلى مشروع: ' + data.toProjectName
+          : 'إرجاع للكهرباء — محضر: ' + (data.referenceNo || '—'),
+        doc_code: data.referenceNo || undefined,
+      })
+      await materialsApi.upsert({ ...row.mat, qty: newQty })
+      if (data.returnType === 'تحويل لمشروع') {
+        await ledgerApi.insert({
+          tenant_id: tenant.id, branch_id: activeBranch.id,
+          type: 'توريد', mat_name: row.mat.name, unit: row.mat.unit,
+          qty: row.qty, qty_before: 0, qty_after: row.qty,
+          wh_name: wh?.name || '',
+          project_name: data.toProjectName,
+          dispatch_note: 'تحويل من مشروع: ' + data.fromProjectName,
+        })
+      }
+    }
+    await supabase.from('stock_returns').insert({
+      tenant_id: tenant.id,
+      return_type: data.returnType,
+      from_project: data.fromProjectName,
+      to_project: data.toProjectName || null,
+      return_date: data.returnDate,
+      reference_no: data.referenceNo || null,
+      notes: data.notes || null,
+      mat_name: data.rows.map((r: any) => r.mat?.name).filter(Boolean).join('، '),
+      qty: data.rows.reduce((s: number, r: any) => s + r.qty, 0),
+      unit: data.rows[0]?.mat?.unit || '',
+      status: 'مكتمل',
+    })
+    await loadData(); setReturn(false); await loadLedger(true)
+    toast.success('✅ تم ' + data.returnType + ' بنجاح')
+  }
+
+  async function loadReturns() {
+    if (!tenant) return
+    setLoadingReturns(true)
+    const { data } = await supabase.from('stock_returns')
+      .select('*').eq('tenant_id', tenant.id)
+      .order('return_date', { ascending: false })
+    setReturns(data || [])
+    setLoadingReturns(false)
+  }
+
   // ── عرض مستودع محدد ──
   if (selectedWh) {
     return (
@@ -1744,6 +2005,7 @@ export default function InventoryPage() {
             { id:'transfer', icon:<ArrowLeftRight className="w-6 h-6"/>,   label:'تحويل',            sub:'بين المستودعات',        color:'bg-blue-500 hover:bg-blue-600',       onClick:()=>setTransfer(true) },
             { id:'purchase', icon:<ShoppingCart className="w-6 h-6"/>,     label:'طلب شراء',         sub:'مواد تالفة أو خاصة',   color:'bg-purple-500 hover:bg-purple-600',   onClick:()=>setPurchase(true) },
             { id:'check',    icon:<ClipboardCheck className="w-6 h-6"/>,   label:'جرد مستودع',       sub:'مطابقة الكميات',        color:'bg-orange-500 hover:bg-orange-600',   onClick:()=>setCheckModal(true) },
+            { id:'returns',  icon:<ArrowDownToLine className="w-6 h-6" style={{transform:'scaleX(-1)'}}/>, label:'إرجاع مواد', sub:'للكهرباء أو مشروع', color:'bg-teal-500 hover:bg-teal-600', onClick:()=>setReturn(true) },
           ].map(op => (
             <button key={op.id} onClick={op.onClick}
               className={`${op.color} text-white rounded-2xl p-4 flex items-center gap-3 transition-all hover:shadow-lg active:scale-95`}>
@@ -1765,6 +2027,7 @@ export default function InventoryPage() {
           { id:'warehouses', label:'🏭 المستودعات' },
           { id:'ledger',     label:'📋 سجل الحركات',   onSelect: () => loadLedger() },
           { id:'byproject',  label:'📊 مواد المشاريع', onSelect: () => loadLedger() },
+          { id:'returns',    label:'↩️ الإرجاع',        onSelect: () => loadReturns() },
         ].map(t => (
           <button key={t.id} onClick={() => { setActiveTab(t.id as any); (t as any).onSelect?.() }}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab===t.id?'bg-white shadow-sm text-primary-600':'text-gray-500 hover:text-gray-700'}`}>
@@ -1803,11 +2066,29 @@ export default function InventoryPage() {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setSelectedWh(wh)} className="btn btn-primary w-full justify-between gap-2">
-                  <Eye className="w-4 h-4" />
-                  <span className="flex-1 text-center">عرض المواد</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => setSelectedWh(wh)} className="btn btn-primary flex-1 justify-between gap-2">
+                    <Eye className="w-4 h-4" />
+                    <span className="flex-1 text-center">عرض المواد</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  {canEdit && (
+                    <button onClick={() => { setEditWh(wh); setWhModal(true) }}
+                      className="btn btn-ghost btn-sm border border-gray-200" title="تعديل المستودع">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                {/* أقسام المستودع */}
+                {(wh as any).sections?.length > 0 && (
+                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                    {(wh as any).sections.map((s: string, i: number) => (
+                      <span key={i} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '2px 8px', fontSize: '0.72rem', color: '#065f46' }}>
+                        📦 {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1967,9 +2248,68 @@ export default function InventoryPage() {
         )
       })()}
 
+      {/* تاب الإرجاع */}
+      {activeTab === 'returns' && (
+        <div className="space-y-4">
+          {loadingReturns ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : returns.length === 0 ? (
+            <div className="card p-16 text-center">
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>↩️</div>
+              <p className="text-gray-400 mb-2">لا توجد إرجاعات بعد</p>
+              <p className="text-xs text-gray-400">استخدم زر "إرجاع مواد" لتسجيل إرجاع جديد</p>
+            </div>
+          ) : (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['النوع','من مشروع','إلى','المواد','الكمية','التاريخ','رقم المحضر','الحالة'].map(h => (
+                        <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {returns.map((r: any) => (
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span className={`badge ${r.return_type === 'إرجاع للكهرباء' ? 'badge-blue' : 'badge-green'}`} style={{ fontSize: '0.72rem' }}>
+                            {r.return_type === 'إرجاع للكهرباء' ? '⚡ للكهرباء' : '🔄 لمشروع'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 14px', fontWeight: 600 }}>{r.from_project}</td>
+                        <td style={{ padding: '12px 14px', color: 'var(--text3)' }}>{r.to_project || '—'}</td>
+                        <td style={{ padding: '12px 14px', fontSize: '0.8rem', color: 'var(--text3)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.mat_name}</td>
+                        <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700 }}>{r.qty} {r.unit}</td>
+                        <td style={{ padding: '12px 14px', fontSize: '0.875rem' }}>{r.return_date}</td>
+                        <td style={{ padding: '12px 14px', fontSize: '0.82rem', fontFamily: 'monospace', color: 'var(--text3)' }}>{r.reference_no || '—'}</td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span className="badge badge-green" style={{ fontSize: '0.72rem' }}>✅ مكتمل</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                      <td style={{ padding: '10px 14px' }} colSpan={8}>الإجمالي: {returns.length} عملية إرجاع</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Modals */}
       {showMatModal && <MaterialModal mat={editMat} warehouses={warehouses} onClose={() => { setMatModal(false); setEditMat(null) }} onSave={handleSaveMat} />}
-      {showWhModal  && <WarehouseModal onClose={() => setWhModal(false)} onSave={handleSaveWarehouse} />}
+      {showWhModal  && <WarehouseModal warehouse={editWh} onClose={() => { setWhModal(false); setEditWh(null) }} onSave={handleSaveWarehouse} />}
+      {showReturn   && <ReturnModal materials={materials} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn} />}
       {showImport   && <ImportModal warehouses={warehouses} onClose={() => setImport(false)} onImport={handleImport} />}
       {showReceive  && <ReceiveModal materials={materials} warehouses={warehouses} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive} />}
       {/* وصل الاستلام */}
