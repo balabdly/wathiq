@@ -198,14 +198,14 @@ export default function WarehouseDetailPage() {
     setLedgerLoaded(true)
   }
 
-  if (!warehouse) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-    </div>
-  )
-
   return (
     <div className="space-y-5 fade-in">
+      {!warehouse && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
+          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      )}
+      {warehouse && <>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={() => router.back()} className="btn btn-ghost btn-sm">
@@ -486,6 +486,7 @@ export default function WarehouseDetailPage() {
           onClose={() => setCheck(false)}
           onSave={handleInventoryCheck} />
       )}
+      </>}
     </div>
   )
 }
