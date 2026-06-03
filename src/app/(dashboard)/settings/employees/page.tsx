@@ -14,6 +14,7 @@ const ALL_PERMISSIONS = [
   { key: 'qhse',           label: 'السلامة والجودة' },
   { key: 'employees',      label: 'الموارد البشرية' },
   { key: 'reports',        label: 'التقارير' },
+  { key: 'finance',        label: 'المالية والمحاسبة' },
 ]
 
 type Emp = {
