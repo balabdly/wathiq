@@ -151,7 +151,7 @@ export default function InventoryPage() {
       if (existMat) {
         await supabase.from('materials').update({ qty: existMat.qty + row.qty }).eq('id', existMat.id)
       } else {
-        const { id, ...matWithoutId } = row.mat
+        const { id: _id, ...matWithoutId } = row.mat as any
         await supabase.from('materials').insert({ ...matWithoutId, warehouse_id: toWhId, qty: row.qty })
       }
     }
@@ -239,7 +239,7 @@ export default function InventoryPage() {
                       padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600,
                       background: exists ? wt.color + '15' : '#f3f4f6',
                       color: exists ? wt.color : '#9ca3af',
-                      border: `1px solid ${exists ? wt.color + '33' : '#e5e7eb'}`,
+                      border: '1px solid ' + (exists ? wt.color + '33' : '#e5e7eb'),
                     }}>
                       {wt.icon} {wt.label.replace(' (SEC)', '')}
                     </span>
@@ -281,10 +281,10 @@ export default function InventoryPage() {
 
       {/* Modals */}
       {showReceive  && <ReceiveModal   warehouses={warehouses as any} projects={projectsList} onClose={() => setReceive(false)} onSave={handleReceive as any} />}
-      {showReturn   && <ReturnModal    materials={[]} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn} />}
-      {showDispatch && <DispatchModal  materials={[]} projects={projectsList} warehouse={warehouses[0] as any} onClose={() => setDispatch(false)} onSave={handleDispatch} />}
+      {showReturn   && <ReturnModal    materials={[]} projects={projectsList} onClose={() => setReturn(false)} onSave={handleReturn as any} />}
+      {showDispatch && <DispatchModal  materials={[]} projects={projectsList} warehouse={(warehouses[0] || {}) as any} onClose={() => setDispatch(false)} onSave={handleDispatch as any} />}
       {showTransfer && <TransferModal  materials={[]} warehouses={warehouses as any} onClose={() => setTransfer(false)} onSave={handleTransfer as any} />}
-      {showCheck    && <InventoryCheckModal materials={[]} onClose={() => setCheck(false)} onSave={handleCheck} />}
+      {showCheck    && <InventoryCheckModal materials={[]} onClose={() => setCheck(false)} onSave={handleCheck as any} />}
     </div>
   )
 }
