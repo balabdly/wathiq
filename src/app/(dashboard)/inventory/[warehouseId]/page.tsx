@@ -186,6 +186,14 @@ export default function WarehouseDetailPage() {
     toast.success('تم تأكيد الجرد — ' + changed.length + ' مادة تم تسويتها ✅')
   }
 
+  if (!warehouse) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
+        <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const lowCount   = whMaterials.filter(m => m.qty <= m.reorder && m.qty > 0).length
 
@@ -196,14 +204,6 @@ export default function WarehouseDetailPage() {
       .order('created_at', { ascending: false }).limit(200)
     setLedger(data || [])
     setLedgerLoaded(true)
-  }
-
-  if (!warehouse) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-        <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-      </div>
-    )
   }
 
   return (
