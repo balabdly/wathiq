@@ -25,7 +25,7 @@ type PurchaseOrder = {
   vendor_id?: number; vendor_name: string; vendor_vat?: string
   project_id?: number; delivery_to: string; warehouse_id?: number
   subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
-  status: string; notes?: string
+  status: string; notes?: string; has_invoice?: boolean
   vendor?: Vendor; project?: { name: string }
 }
 
@@ -1257,7 +1257,13 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('warehouses').select('id, name, wh_type').eq('tenant_id', tenant.id),
     ])
-    setPurchaseOrders(poRes.data || [])
+    // نضيف has_invoice لكل PO بناءً على الفواتير المرتبطة
+    const invPoIds = new Set((invRes.data || []).map((i: any) => i.po_id).filter(Boolean))
+    const posWithFlag = (poRes.data || []).map((po: any) => ({
+      ...po,
+      has_invoice: invPoIds.has(po.id)
+    }))
+    setPurchaseOrders(posWithFlag)
     setVendorInvoices(invRes.data || [])
     setReturns(retRes.data || [])
     setVendors(venRes.data || [])
@@ -1399,15 +1405,33 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                       <td style={{ padding: '12px 12px' }}><span className={'badge ' + (PO_STATUS_COLOR[po.status] || 'badge-gray')}>{po.status}</span></td>
                       <td style={{ padding: '12px 8px' }}>
                         <div style={{ display: 'flex', gap: '4px' }}>
+                          {/* عرض */}
+                          <button onClick={() => handleViewPO(po)} title="عرض"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                            <Eye style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          {/* طباعة */}
+                          <button onClick={() => handlePrintPO(po)} title="طباعة"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
+                            <Printer style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          {/* تعديل — مسودة فقط */}
                           {po.status === 'مسودة' && (
                             <button onClick={() => { setEditPO(po); setShowPOModal(true) }} className="btn btn-ghost btn-xs">
                               <Pencil style={{ width: '13px', height: '13px' }} />
                             </button>
                           )}
-                          <button onClick={() => { setConvertPO(po); setEditInv(null); setShowInvModal(true) }} title="تحويل لفاتورة"
-                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                            📄
-                          </button>
+                          {/* تحويل لفاتورة — إذا لم يُحوَّل بعد */}
+                          {po.status !== 'ملغي' && !po.has_invoice && (
+                            <button onClick={() => { setConvertPO(po); setEditInv(null); setShowInvModal(true) }} title="تحويل لفاتورة"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                              📄
+                            </button>
+                          )}
+                          {po.has_invoice && (
+                            <span style={{ fontSize: '0.7rem', color: '#0ea77b', padding: '3px 6px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #bbf7d0' }}>✓ فاتورة</span>
+                          )}
+                          {/* حذف — مسودة فقط */}
                           {po.status === 'مسودة' && (
                             <button onClick={() => deletePO(po.id, po.status)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                               <Trash2 style={{ width: '13px', height: '13px' }} />
