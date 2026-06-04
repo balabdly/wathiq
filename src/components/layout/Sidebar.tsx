@@ -34,7 +34,6 @@ const IC = {
   branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
 }
 
-// ── ألوان الثيم الأبيض النظيف ──
 const C = {
   sidebarBg:     '#ffffff',
   headerBg:      '#ffffff',
@@ -119,8 +118,11 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
         transition: 'background 0.2s',
       }}>
         <span style={{
-          flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: isOpen ? 500 : 400,
-          color: C.textPrimary, transition: 'font-weight 0.15s',
+          flex: 1, textAlign: 'right',
+          fontSize: '0.95rem',
+          // ── التعديل: العنوان دائماً Bold ──
+          fontWeight: 700,
+          color: C.textPrimary,
         }}>
           {label}
         </span>
@@ -160,7 +162,8 @@ function StandaloneLink({ href, label, icon, active }: {
         padding: '12px 16px',
         background: active ? C.activeLight : 'transparent',
         color: active ? C.textPrimary : C.textSecondary,
-        fontSize: '0.95rem', fontWeight: active ? 500 : 400,
+        // ── التعديل: العنوان دائماً Bold ──
+        fontSize: '0.95rem', fontWeight: 700,
         cursor: 'pointer', transition: 'background 0.1s',
       }}
         onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg } }}
@@ -201,6 +204,7 @@ export default function Sidebar() {
   const inSettings = pathname.startsWith('/settings')
   const inFinance  = pathname.startsWith('/finance')
 
+  // ── التعديل: كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها ──
   const [projectsOpen, setProjectsOpen] = useState(inProjects)
   const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
   const [hrOpen,       setHrOpen]       = useState(inHR)
@@ -221,7 +225,6 @@ export default function Sidebar() {
         borderBottom: '1px solid ' + C.border,
         flexShrink: 0,
       }}>
-        {/* الشعار */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
           <div style={{
             width: '38px', height: '38px', borderRadius: '10px', flexShrink: 0,
@@ -238,7 +241,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* الفرع */}
         {branches.length > 1 ? (
           <select
             value={activeBranch?.id || ''}
@@ -306,12 +308,12 @@ export default function Sidebar() {
         {hasFinance && (
           <NavSection label="المالية والمحاسبة" icon={IC.finance}
             isActive={inFinance} isOpen={financeOpen} onToggle={() => setFinanceOpen(o => !o)}>
-            <SubLink href="/finance"           label="لوحة التحكم المالية" icon={IC.dashboard}  active={pathname === '/finance'} />
-            <SubLink href="/finance/invoices"  label="فواتير المبيعات"     icon={IC.invoice}    active={pathname.startsWith('/finance/invoices')} />
-            <SubLink href="/finance/purchases" label="المشتريات"           icon={IC.purchases}  active={pathname.startsWith('/finance/purchases')} />
-            <SubLink href="/finance/expenses"    label="المصروفات"           icon={IC.expense}      active={pathname.startsWith('/finance/expenses')} />
-            <SubLink href="/finance/treasury"    label="الخزينة"             icon={IC.treasury}     active={pathname.startsWith('/finance/treasury')} />
-            <SubLink href="/finance/accounting"  label="الحسابات العامة"    icon={IC.accounting}   active={pathname.startsWith('/finance/accounting')} />
+            <SubLink href="/finance"             label="لوحة التحكم المالية" icon={IC.dashboard}  active={pathname === '/finance'} />
+            <SubLink href="/finance/invoices"    label="فواتير المبيعات"     icon={IC.invoice}    active={pathname.startsWith('/finance/invoices')} />
+            <SubLink href="/finance/purchases"   label="المشتريات"           icon={IC.purchases}  active={pathname.startsWith('/finance/purchases')} />
+            <SubLink href="/finance/expenses"    label="المصروفات"           icon={IC.expense}    active={pathname.startsWith('/finance/expenses')} />
+            <SubLink href="/finance/treasury"    label="الخزينة"             icon={IC.treasury}   active={pathname.startsWith('/finance/treasury')} />
+            <SubLink href="/finance/accounting"  label="الحسابات العامة"     icon={IC.accounting} active={pathname.startsWith('/finance/accounting')} />
           </NavSection>
         )}
 
@@ -326,7 +328,7 @@ export default function Sidebar() {
             <NavSection label="الإعدادات" icon={IC.settings}
               isActive={inSettings} isOpen={settingsOpen} onToggle={() => setSettingsOpen(o => !o)}>
               <SubLink href="/settings/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/settings/employees')} />
-              <SubLink href="/settings"  label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'} />
+              <SubLink href="/settings"           label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'} />
             </NavSection>
           </>
         )}
@@ -334,7 +336,6 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div style={{ padding: '12px', borderTop: '1px solid ' + C.border, background: C.headerBg, flexShrink: 0 }}>
-        {/* بطاقة المستخدم */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '10px',
           padding: '10px 12px', borderRadius: '10px',
@@ -358,7 +359,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* تسجيل الخروج */}
         <button onClick={() => { reset(); router.push('/login') }} style={{
           width: '100%', background: 'transparent', color: C.textSecondary,
           border: '1px solid ' + C.border, borderRadius: '8px', padding: '8px 12px',
