@@ -1105,7 +1105,7 @@ export default function FinanceInvoicesPage() {
       return
     }
     if (!confirm('حذف هذه الفاتورة نهائياً؟')) return
-    await supabase.from('finance_invoices').delete().eq('id', id)
+    await supabase.from('finance_invoices').delete().eq('id', inv.id)
     setInvoices(p => p.filter(i => i.id !== inv.id)); toast.success('تم الحذف')
   }
 
