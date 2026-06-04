@@ -1,17 +1,17 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Save, Building2, MapPin, Phone, FileText, Shield, AlertCircle, CheckCircle } from 'lucide-react'
+import { Save, Building2, MapPin, Shield, AlertCircle, CheckCircle, Image, Upload, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type CompanyForm = {
-  name:        string; name_en:     string
-  cr_number:   string; vat_number:  string
-  phone:       string; email:       string; website: string
-  city:        string; district:    string; street:  string
-  postal_code: string; country:     string
-  iban:        string; ceo_name:    string
+  name: string; name_en: string
+  cr_number: string; vat_number: string
+  phone: string; email: string; website: string
+  city: string; district: string; street: string
+  postal_code: string; country: string
+  iban: string; ceo_name: string
 }
 
 const EMPTY: CompanyForm = {
@@ -24,10 +24,15 @@ const EMPTY: CompanyForm = {
 
 export default function SettingsCompanyPage() {
   const { tenant, setTenant } = useStore()
-  const [form, setForm]       = useState<CompanyForm>(EMPTY)
-  const [saving, setSaving]   = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [tab, setTab]         = useState<'basic' | 'address' | 'financial'>('basic')
+  const [form, setForm]         = useState<CompanyForm>(EMPTY)
+  const [saving, setSaving]     = useState(false)
+  const [loading, setLoading]   = useState(true)
+  const [tab, setTab]           = useState<'basic' | 'address' | 'financial' | 'logo'>('basic')
+  const [logoUrl, setLogoUrl]   = useState<string | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadData() }, [tenant?.id])
 
@@ -52,17 +57,72 @@ export default function SettingsCompanyPage() {
         iban:        data.iban        || '',
         ceo_name:    data.ceo_name    || '',
       })
+      setLogoUrl(data.logo_url || null)
     }
     setLoading(false)
   }
 
   const set = (k: keyof CompanyForm, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  // التحقق من اكتمال البيانات المطلوبة لـ ZATCA
   const zatcaFields = [form.name, form.cr_number, form.vat_number, form.city, form.district, form.street, form.postal_code]
   const zatcaComplete = zatcaFields.every(f => f.trim() !== '')
   const zatcaFilled   = zatcaFields.filter(f => f.trim() !== '').length
   const vatValid      = form.vat_number.length === 15 && /^\d+$/.test(form.vat_number)
+
+  // ── اختيار الشعار ──
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { toast.error('يرجى اختيار صورة'); return }
+    if (file.size > 2 * 1024 * 1024) { toast.error('حجم الصورة يجب أن يكون أقل من 2MB'); return }
+    setLogoFile(file)
+    const reader = new FileReader()
+    reader.onload = e => setLogoPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  // ── رفع الشعار ──
+  async function uploadLogo() {
+    if (!logoFile || !tenant) return
+    setUploadingLogo(true)
+    try {
+      const ext  = logoFile.name.split('.').pop()
+      const path = `logos/${tenant.id}/logo.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('company-assets')
+        .upload(path, logoFile, { upsert: true, contentType: logoFile.type })
+      if (upErr) throw upErr
+
+      const { data: urlData } = supabase.storage.from('company-assets').getPublicUrl(path)
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now()
+
+      const { error: dbErr } = await supabase.from('tenants')
+        .update({ logo_url: publicUrl })
+        .eq('id', tenant.id)
+      if (dbErr) throw dbErr
+
+      setLogoUrl(publicUrl)
+      setLogoPreview(null)
+      setLogoFile(null)
+      if (setTenant) setTenant({ ...tenant, logo_url: publicUrl } as any)
+      toast.success('✅ تم رفع الشعار بنجاح')
+    } catch (err: any) {
+      toast.error('خطأ في رفع الشعار: ' + err.message)
+    }
+    setUploadingLogo(false)
+  }
+
+  // ── حذف الشعار ──
+  async function deleteLogo() {
+    if (!tenant) return
+    const { error } = await supabase.from('tenants').update({ logo_url: null }).eq('id', tenant.id)
+    if (error) { toast.error('خطأ في حذف الشعار'); return }
+    setLogoUrl(null)
+    setLogoPreview(null)
+    setLogoFile(null)
+    if (setTenant) setTenant({ ...tenant, logo_url: null } as any)
+    toast.success('تم حذف الشعار')
+  }
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم الشركة مطلوب'); return }
@@ -86,8 +146,6 @@ export default function SettingsCompanyPage() {
     }).eq('id', tenant!.id)
 
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-
-    // تحديث اسم الشركة في الـ store
     if (setTenant) setTenant({ ...tenant!, name: form.name })
     toast.success('✅ تم حفظ بيانات الشركة')
     setSaving(false)
@@ -97,6 +155,7 @@ export default function SettingsCompanyPage() {
     { id: 'basic',     label: '🏢 البيانات الأساسية' },
     { id: 'address',   label: '📍 العنوان' },
     { id: 'financial', label: '💰 البيانات المالية' },
+    { id: 'logo',      label: '🖼️ الشعار' },
   ]
 
   if (loading) return (
@@ -119,28 +178,20 @@ export default function SettingsCompanyPage() {
         </p>
       </div>
 
-      {/* مؤشر اكتمال ZATCA */}
+      {/* مؤشر ZATCA */}
       <div style={{ padding: '14px 18px', borderRadius: '12px', border: '1px solid ' + (zatcaComplete ? '#bbf7d0' : '#fde68a'), background: zatcaComplete ? '#f0fdf4' : '#fffbeb' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '0.875rem', color: zatcaComplete ? '#065f46' : '#92400e' }}>
-            {zatcaComplete
-              ? <CheckCircle style={{ width: '16px', height: '16px' }} />
-              : <AlertCircle style={{ width: '16px', height: '16px' }} />}
+            {zatcaComplete ? <CheckCircle style={{ width: '16px', height: '16px' }} /> : <AlertCircle style={{ width: '16px', height: '16px' }} />}
             {zatcaComplete ? 'البيانات مكتملة لـ ZATCA ✅' : 'بيانات ZATCA غير مكتملة'}
           </div>
           <span style={{ fontSize: '0.78rem', fontWeight: 600, color: zatcaComplete ? '#065f46' : '#92400e' }}>
             {zatcaFilled} / {zatcaFields.length} حقل
           </span>
         </div>
-        {/* شريط التقدم */}
         <div style={{ height: '6px', background: zatcaComplete ? '#bbf7d0' : '#fde68a', borderRadius: '3px', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: (zatcaFilled / zatcaFields.length * 100) + '%', background: zatcaComplete ? '#0ea77b' : '#e6820a', borderRadius: '3px', transition: 'width 0.3s' }} />
         </div>
-        {!zatcaComplete && (
-          <p style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '6px' }}>
-            أكمل الحقول: اسم الشركة، السجل التجاري، الرقم الضريبي، المدينة، الحي، الشارع، الرمز البريدي
-          </p>
-        )}
       </div>
 
       {/* تابات */}
@@ -155,48 +206,40 @@ export default function SettingsCompanyPage() {
         ))}
       </div>
 
-      {/* البيانات الأساسية */}
+      {/* ══ البيانات الأساسية ══ */}
       {tab === 'basic' && (
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  اسم الشركة (عربي) <span className="text-red-500">*</span>
-                </label>
-                <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: شركة النور للمقاولات الكهربائية" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (عربي) <span className="text-red-500">*</span></label>
+                <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: شركة النور للمقاولات" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (إنجليزي)</label>
-                <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" placeholder="Al Noor Electrical Contracting" />
+                <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" placeholder="Al Noor Electrical" />
               </div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  رقم السجل التجاري (CR)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم السجل التجاري</label>
                 <input value={form.cr_number} onChange={e => set('cr_number', e.target.value)} className="input" dir="ltr" placeholder="1010XXXXXX" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  الرقم الضريبي (VAT) — 15 رقم
+                  الرقم الضريبي — 15 رقم
                   {form.vat_number && (
                     <span style={{ marginRight: '6px', fontSize: '0.72rem', color: vatValid ? '#0ea77b' : '#c81e1e' }}>
                       {vatValid ? '✓ صحيح' : '✗ يجب 15 رقم'}
                     </span>
                   )}
                 </label>
-                <input value={form.vat_number} onChange={e => set('vat_number', e.target.value.replace(/\D/g, '').slice(0, 15))} className="input" dir="ltr" placeholder="300XXXXXXXXXXX3" maxLength={15}
-                  style={{ borderColor: form.vat_number && !vatValid ? '#fca5a5' : undefined }} />
+                <input value={form.vat_number} onChange={e => set('vat_number', e.target.value.replace(/\D/g, '').slice(0, 15))} className="input" dir="ltr" placeholder="300XXXXXXXXXXX3" maxLength={15} />
               </div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الجوال / الهاتف</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الجوال</label>
                 <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" placeholder="0512345678" />
               </div>
               <div>
@@ -204,11 +247,10 @@ export default function SettingsCompanyPage() {
                 <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" placeholder="info@company.com" />
               </div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المدير التنفيذي</label>
-                <input value={form.ceo_name} onChange={e => set('ceo_name', e.target.value)} className="input" placeholder="اسم المدير / صاحب الشركة" />
+                <input value={form.ceo_name} onChange={e => set('ceo_name', e.target.value)} className="input" placeholder="اسم المدير" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">الموقع الإلكتروني</label>
@@ -219,7 +261,7 @@ export default function SettingsCompanyPage() {
         </div>
       )}
 
-      {/* العنوان */}
+      {/* ══ العنوان ══ */}
       {tab === 'address' && (
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, marginBottom: '16px', color: '#374151' }}>
@@ -251,8 +293,6 @@ export default function SettingsCompanyPage() {
                 <input value={form.country} onChange={e => set('country', e.target.value)} className="input" />
               </div>
             </div>
-
-            {/* معاينة العنوان */}
             {(form.city || form.district || form.street) && (
               <div style={{ padding: '12px 16px', background: '#f0f9ff', borderRadius: '10px', border: '1px solid #bae6fd' }}>
                 <div style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 600, marginBottom: '4px' }}>📍 معاينة العنوان</div>
@@ -265,7 +305,7 @@ export default function SettingsCompanyPage() {
         </div>
       )}
 
-      {/* البيانات المالية */}
+      {/* ══ البيانات المالية ══ */}
       {tab === 'financial' && (
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, marginBottom: '16px', color: '#374151' }}>
@@ -278,27 +318,21 @@ export default function SettingsCompanyPage() {
               <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" />
               <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '4px' }}>يُطبع على الفواتير لتسهيل عملية الدفع</p>
             </div>
-
-            {/* بطاقة ملخص ZATCA */}
             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '16px' }}>
-              <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '12px', fontSize: '0.875rem' }}>
-                🧾 ملخص بيانات ZATCA
-              </div>
+              <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '12px', fontSize: '0.875rem' }}>🧾 ملخص بيانات ZATCA</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.82rem' }}>
                 {[
-                  { label: 'اسم الشركة',     value: form.name,        required: true },
-                  { label: 'السجل التجاري',  value: form.cr_number,   required: false },
-                  { label: 'الرقم الضريبي',  value: form.vat_number,  required: true },
-                  { label: 'المدينة',         value: form.city,        required: true },
-                  { label: 'الحي',            value: form.district,    required: true },
-                  { label: 'الشارع',          value: form.street,      required: true },
-                  { label: 'الرمز البريدي',  value: form.postal_code, required: true },
+                  { label: 'اسم الشركة', value: form.name, required: true },
+                  { label: 'السجل التجاري', value: form.cr_number, required: false },
+                  { label: 'الرقم الضريبي', value: form.vat_number, required: true },
+                  { label: 'المدينة', value: form.city, required: true },
+                  { label: 'الحي', value: form.district, required: true },
+                  { label: 'الشارع', value: form.street, required: true },
+                  { label: 'الرمز البريدي', value: form.postal_code, required: true },
                 ].map(f => (
                   <div key={f.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', background: 'white', borderRadius: '8px' }}>
                     <span style={{ color: '#374151' }}>{f.label} {f.required && <span style={{ color: '#c81e1e' }}>*</span>}</span>
-                    {f.value
-                      ? <span style={{ color: '#0ea77b', fontWeight: 600 }}>✓ {f.value}</span>
-                      : <span style={{ color: '#c81e1e', fontSize: '0.75rem' }}>غير مُدخل</span>}
+                    {f.value ? <span style={{ color: '#0ea77b', fontWeight: 600 }}>✓ {f.value}</span> : <span style={{ color: '#c81e1e', fontSize: '0.75rem' }}>غير مُدخل</span>}
                   </div>
                 ))}
               </div>
@@ -307,14 +341,115 @@ export default function SettingsCompanyPage() {
         </div>
       )}
 
-      {/* زر الحفظ */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
-        <button onClick={handleSave} disabled={saving}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 28px', borderRadius: '10px', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.95rem', background: 'var(--primary)', color: 'white', opacity: saving ? 0.7 : 1 }}>
-          {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '16px', height: '16px' }} />}
-          حفظ البيانات
-        </button>
-      </div>
+      {/* ══ الشعار ══ */}
+      {tab === 'logo' && (
+        <div className="card" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, marginBottom: '6px', color: '#374151' }}>
+            <Image style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+            شعار الشركة
+          </div>
+          <p style={{ fontSize: '0.82rem', color: '#9ca3af', marginBottom: '20px' }}>
+            يظهر الشعار على الفواتير وعروض الأسعار وسندات القبض والصرف
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {/* الشعار الحالي */}
+            {logoUrl && !logoPreview && (
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: '10px' }}>الشعار الحالي</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #e9ecef' }}>
+                  <div style={{ width: '120px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: 'white', border: '1px solid #e9ecef', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img src={logoUrl} alt="شعار الشركة" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: '8px' }}>✅ الشعار محمّل ويظهر على المستندات</div>
+                    <button onClick={deleteLogo} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
+                      <X style={{ width: '14px', height: '14px' }} /> حذف الشعار
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* رفع شعار جديد */}
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: '10px' }}>
+                {logoUrl ? 'تغيير الشعار' : 'رفع الشعار'}
+              </div>
+
+              {/* منطقة السحب والإفلات */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: '2px dashed #d1d5db', borderRadius: '12px', padding: '32px',
+                  textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s',
+                  background: logoPreview ? '#f0f9ff' : '#fafafa',
+                  borderColor: logoPreview ? '#93c5fd' : '#d1d5db',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#1a56db'; (e.currentTarget as HTMLElement).style.background = '#f0f4ff' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = logoPreview ? '#93c5fd' : '#d1d5db'; (e.currentTarget as HTMLElement).style.background = logoPreview ? '#f0f9ff' : '#fafafa' }}
+              >
+                {logoPreview ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                    <img src={logoPreview} alt="معاينة" style={{ maxWidth: '200px', maxHeight: '120px', objectFit: 'contain', borderRadius: '8px' }} />
+                    <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>انقر لتغيير الصورة</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Upload style={{ width: '22px', height: '22px', color: '#1a56db' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#374151', fontSize: '0.9rem' }}>انقر لرفع الشعار</div>
+                      <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginTop: '4px' }}>PNG أو JPG أو SVG — بحد أقصى 2MB</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={onFileChange} style={{ display: 'none' }} />
+            </div>
+
+            {/* توصيات */}
+            <div style={{ padding: '14px 16px', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a' }}>
+              <div style={{ fontWeight: 600, color: '#92400e', fontSize: '0.82rem', marginBottom: '8px' }}>💡 توصيات للشعار</div>
+              <ul style={{ margin: 0, paddingRight: '16px', color: '#78350f', fontSize: '0.8rem', lineHeight: 1.8 }}>
+                <li>الأبعاد المثالية: 300×100 بكسل أو أكبر</li>
+                <li>خلفية شفافة (PNG) للحصول على أفضل نتيجة</li>
+                <li>تأكد أن الشعار واضح على الخلفيات البيضاء</li>
+                <li>حجم الملف: أقل من 2MB</li>
+              </ul>
+            </div>
+
+            {/* زر الرفع */}
+            {logoPreview && (
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={uploadLogo} disabled={uploadingLogo}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: uploadingLogo ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.9rem', background: '#1a56db', color: 'white', opacity: uploadingLogo ? 0.7 : 1 }}>
+                  {uploadingLogo ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload style={{ width: '16px', height: '16px' }} />}
+                  {uploadingLogo ? 'جارٍ الرفع...' : 'رفع الشعار'}
+                </button>
+                <button onClick={() => { setLogoPreview(null); setLogoFile(null) }}
+                  style={{ padding: '10px 20px', borderRadius: '10px', border: '1px solid #e5e7eb', cursor: 'pointer', fontWeight: 500, fontSize: '0.9rem', background: 'white', color: '#374151' }}>
+                  إلغاء
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* زر الحفظ — يظهر في كل التابات عدا الشعار */}
+      {tab !== 'logo' && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
+          <button onClick={handleSave} disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 28px', borderRadius: '10px', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.95rem', background: 'var(--primary)', color: 'white', opacity: saving ? 0.7 : 1 }}>
+            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '16px', height: '16px' }} />}
+            حفظ البيانات
+          </button>
+        </div>
+      )}
     </div>
   )
 }
