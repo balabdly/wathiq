@@ -940,7 +940,15 @@ function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPay
   function handleOpen() {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+      // نحسب: هل القائمة ستخرج من اليسار؟
+      const menuWidth = 170
+      const spaceOnLeft = rect.left
+      // إذا في مساحة كافية على اليسار نفتح لليسار، وإلا نفتح لليمين
+      if (spaceOnLeft >= menuWidth) {
+        setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+      } else {
+        setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right - menuWidth + rect.width })
+      }
     }
     setOpen(o => !o)
   }
@@ -954,7 +962,7 @@ function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPay
       {open && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setOpen(false)} />
-          <div style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 1000, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', minWidth: '170px', overflow: 'hidden' }}>
+          <div style={{ position: 'fixed', top: pos.top, right: Math.max(8, pos.right), zIndex: 1000, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', minWidth: '170px', overflow: 'hidden' }}>
             {actions.map((a, i) => (
               <button key={a.label}
                 onClick={() => { setOpen(false); a.action() }}
