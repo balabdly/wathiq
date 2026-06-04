@@ -466,6 +466,10 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
   const total     = subtotal + vatAmount
 
   async function handleSave() {
+    if (invoice && invoice.status !== 'مسودة') {
+      toast.error('لا يمكن تعديل الفاتورة — التعديل متاح للمسودات فقط')
+      return
+    }
     if (!form.invoice_number.trim()) { toast.error('رقم الفاتورة مطلوب'); return }
     if (!form.client_id) { toast.error('يجب اختيار عميل من القائمة'); return }
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
@@ -611,6 +615,16 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
   const [saving, setSaving] = useState(false)
   const [items, setItems]   = useState<InvoiceItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
   const today = new Date().toISOString().split('T')[0]
+
+  // نملأ بنود الفاتورة تلقائياً إن وجدت
+  useEffect(() => {
+    if (invoice?.id) loadInvoiceItems()
+  }, [invoice?.id])
+
+  async function loadInvoiceItems() {
+    const { data } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', invoice!.id).order('id')
+    if (data && data.length > 0) setItems(data)
+  }
 
   const [form, setForm] = useState({
     note_number:         '',
@@ -895,6 +909,137 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
   )
 }
 
+
+// ════════════════════════════════════════
+// مكوّن: قائمة إجراءات الفاتورة (...)
+// ════════════════════════════════════════
+function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPayment }: {
+  invoice: Invoice
+  onPrint: () => void
+  onEdit: () => void
+  onCredit: () => void
+  onDelete: () => void
+  onAddPayment: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const isDraft = invoice.status === 'مسودة'
+  const isPaid  = invoice.status === 'مدفوعة'
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', color: 'var(--text3)', lineHeight: 1 }}>
+        ···
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 100, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', border: '1px solid var(--border)', minWidth: '160px', overflow: 'hidden' }}>
+            {[
+              { label: 'طباعة',           icon: '🖨️',  action: onPrint,      show: true,     color: '#374151' },
+              { label: 'تعديل',           icon: '✏️',   action: onEdit,       show: isDraft,  color: '#1a56db' },
+              { label: 'إشعار دائن',      icon: '↩️',  action: onCredit,     show: !isDraft, color: '#c81e1e' },
+              { label: 'إضافة دفعة',      icon: '💵',  action: onAddPayment, show: !isPaid,  color: '#0ea77b' },
+              { label: 'حذف',             icon: '🗑️',  action: onDelete,     show: isDraft,  color: '#c81e1e' },
+            ].filter(a => a.show).map((a, i, arr) => (
+              <button key={a.label}
+                onClick={() => { setOpen(false); a.action() }}
+                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'right', fontSize: '0.875rem', color: a.color, display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500, borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <span style={{ fontSize: '1rem' }}>{a.icon}</span> {a.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: إضافة دفعة
+// ════════════════════════════════════════
+function PaymentModal({ invoice, tenantId, onClose, onSave }: {
+  invoice: Invoice; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    amount: String(invoice.total_amount),
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'تحويل بنكي',
+    reference: '',
+    notes: '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
+    setSaving(true)
+
+    // إضافة للخزينة
+    await supabase.from('finance_treasury').insert({
+      tenant_id: tenantId,
+      transaction_date: form.payment_date,
+      type: 'قبض',
+      amount: Number(form.amount),
+      description: 'تحصيل فاتورة ' + invoice.invoice_number + ' — ' + invoice.client_name,
+      reference_no: form.reference || null,
+      invoice_id: invoice.id,
+    })
+
+    // تحديث حالة الفاتورة للمدفوعة
+    await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
+
+    toast.success('✅ تم تسجيل الدفعة وتحديث حالة الفاتورة')
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            💵 تسجيل دفعة — {invoice.invoice_number}
+          </h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ padding: '12px 16px', background: '#ecfdf5', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.82rem', color: '#065f46' }}>إجمالي الفاتورة</span>
+            <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1.1rem' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ المدفوع *</label>
+            <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" min="0" dir="ltr" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الدفع *</label>
+            <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
+            <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
+              {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية', 'أخرى'].map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المرجع / التحويل</label>
+            <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr" placeholder="رقم التحويل أو الشيك" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '💵'}
+            تسجيل الدفعة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
@@ -916,7 +1061,9 @@ export default function FinanceInvoicesPage() {
   const [showCreditModal,   setShowCreditModal]   = useState(false)
   const [showQuoteModal,    setShowQuoteModal]     = useState(false)
   const [showClientModal,   setShowClientModal]   = useState(false)
+  const [showPaymentModal,  setShowPaymentModal]  = useState(false)
   const [editInvoice,  setEditInvoice]  = useState<Invoice | null>(null)
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
   const [editClient,   setEditClient]   = useState<Client | null>(null)
   const [creditInvoice, setCreditInvoice] = useState<Invoice | null>(null)
 
@@ -943,14 +1090,23 @@ export default function FinanceInvoicesPage() {
   }
 
   async function handlePrintInvoice(inv: Invoice) {
-    const { data: items } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
-    printInvoice(inv, items || [], company)
+    try {
+      const { data: items } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
+      const invWithRate = { ...inv, vat_rate: inv.vat_rate || 15 }
+      printInvoice(invWithRate as Invoice, items || [], company)
+    } catch (err) {
+      toast.error('خطأ في الطباعة')
+    }
   }
 
-  async function deleteInvoice(id: number) {
-    if (!confirm('تنبيه: لا يمكن حذف الفواتير المرسلة. هل تريد حذف هذه الفاتورة؟')) return
+  async function deleteInvoice(inv: Invoice) {
+    if (inv.status !== 'مسودة') {
+      toast.error('لا يمكن حذف الفاتورة — الحذف متاح للمسودات فقط. استخدم إشعار دائن للتصحيح')
+      return
+    }
+    if (!confirm('حذف هذه الفاتورة نهائياً؟')) return
     await supabase.from('finance_invoices').delete().eq('id', id)
-    setInvoices(p => p.filter(i => i.id !== id)); toast.success('تم الحذف')
+    setInvoices(p => p.filter(i => i.id !== inv.id)); toast.success('تم الحذف')
   }
 
   const today = new Date().toISOString().split('T')[0]
@@ -1084,22 +1240,14 @@ export default function FinanceInvoicesPage() {
                           <td style={{ padding: '12px 12px', fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>{Number(inv.total_amount).toLocaleString()} ر.س</td>
                           <td style={{ padding: '12px 12px' }}><span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span></td>
                           <td style={{ padding: '12px 12px' }}>
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button onClick={() => handlePrintInvoice(inv)} title="طباعة"
-                                style={{ padding: '5px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
-                                <Printer style={{ width: '13px', height: '13px' }} />
-                              </button>
-                              <button onClick={() => { setCreditInvoice(inv); setShowCreditModal(true) }} title="إشعار دائن"
-                                style={{ padding: '5px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}>
-                                <RotateCcw style={{ width: '13px', height: '13px' }} />
-                              </button>
-                              <button onClick={() => { setEditInvoice(inv); setShowInvoiceModal(true) }} className="btn btn-ghost btn-xs">
-                                <Pencil style={{ width: '13px', height: '13px' }} />
-                              </button>
-                              <button onClick={() => deleteInvoice(inv.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                                <Trash2 style={{ width: '13px', height: '13px' }} />
-                              </button>
-                            </div>
+                            <InvoiceActions
+                              invoice={inv}
+                              onPrint={() => handlePrintInvoice(inv)}
+                              onEdit={() => { setEditInvoice(inv); setShowInvoiceModal(true) }}
+                              onCredit={() => { setCreditInvoice(inv); setShowCreditModal(true) }}
+                              onDelete={() => deleteInvoice(inv)}
+                              onAddPayment={() => { setPaymentInvoice(inv); setShowPaymentModal(true) }}
+                            />
                           </td>
                         </tr>
                       )
@@ -1307,6 +1455,11 @@ export default function FinanceInvoicesPage() {
         <ClientModal client={editClient} tenantId={tenant!.id}
           onClose={() => { setShowClientModal(false); setEditClient(null) }}
           onSave={() => { setShowClientModal(false); setEditClient(null); loadAll() }} />
+      )}
+      {showPaymentModal && paymentInvoice && (
+        <PaymentModal invoice={paymentInvoice} tenantId={tenant!.id}
+          onClose={() => { setShowPaymentModal(false); setPaymentInvoice(null) }}
+          onSave={() => { setShowPaymentModal(false); setPaymentInvoice(null); loadAll() }} />
       )}
     </div>
   )
