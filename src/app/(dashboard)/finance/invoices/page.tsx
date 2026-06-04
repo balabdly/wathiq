@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye } from 'lucide-react'
+import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ════════════════════════════════════════
@@ -1275,7 +1275,8 @@ async function createJournalEntry(tenantId: string, params: {
 // ════════════════════════════════════════
 export default function FinanceInvoicesPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'invoices' | 'credits' | 'quotations' | 'clients'>( 'invoices')
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'invoices' | 'credits' | 'quotations' | 'clients'>('invoices')
   const [invoices,    setInvoices]    = useState<Invoice[]>([])
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([])
   const [quotations,  setQuotations]  = useState<Quotation[]>([])
@@ -1701,9 +1702,15 @@ export default function FinanceInvoicesPage() {
                         <span className={'badge ' + (c.is_active ? 'badge-green' : 'badge-gray')}>{c.is_active ? 'نشط' : 'موقوف'}</span>
                       </td>
                       <td style={{ padding: '12px 14px' }}>
-                        <button onClick={() => { setEditClient(c); setShowClientModal(true) }} className="btn btn-ghost btn-xs">
-                          <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button onClick={() => router.push(`/finance/invoices/clients/${c.id}`)} title="عرض الملف"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                            <Eye style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          <button onClick={() => { setEditClient(c); setShowClientModal(true) }} className="btn btn-ghost btn-xs">
+                            <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
