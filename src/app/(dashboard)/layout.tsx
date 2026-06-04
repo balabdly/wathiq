@@ -38,14 +38,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Mobile: Overlay */}
       {open && (
-        <div
-          onClick={() => setOpen(false)}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 99998,
-          }}
-        />
+        <div onClick={() => setOpen(false)} style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 99998,
+        }} />
       )}
 
       {/* Mobile: Drawer */}
@@ -53,9 +49,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div style={{
           position: 'fixed', top: 0, right: 0,
           height: '100vh', width: '260px',
-          zIndex: 99999,
-          overflowY: 'auto',
-          background: 'linear-gradient(#1240a8, #1a56db)',
+          zIndex: 99999, overflowY: 'auto',
+          background: 'white',
         }}>
           <Sidebar />
         </div>
@@ -63,7 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* المحتوى الرئيسي */}
       <main className="wq-main">
-        {children}
+        <div className="wq-content">
+          {children}
+        </div>
       </main>
 
       <Toaster
@@ -83,20 +80,70 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
 
       <style>{`
-        .wq-sidebar-desktop {
-          position: fixed; top: 0; right: 0;
-          height: 100vh; width: 240px; z-index: 30;
+        /* ══ متغير عرض السايدبار — غيّره من مكان واحد ══ */
+        :root {
+          --sidebar-width: 260px;
         }
+
+        /* ══ السايدبار ══ */
+        .wq-sidebar-desktop {
+          position: fixed;
+          top: 0; right: 0;
+          height: 100vh;
+          width: var(--sidebar-width);
+          z-index: 30;
+          overflow-y: auto;
+        }
+
+        /* ══ زر الموبايل ══ */
         .wq-menu-btn { display: none; }
+
+        /* ══ المنطقة الرئيسية ══ */
         .wq-main {
-          margin-right: 240px;
-          flex: 1; min-height: 100vh;
-          padding: 24px;
-          width: calc(100% - 240px);
+          margin-right: var(--sidebar-width);
+          flex: 1;
+          min-height: 100vh;
+          width: calc(100% - var(--sidebar-width));
+          box-sizing: border-box;
+          background: var(--bg);
+          /* يمنع تمدد المحتوى على شاشات 4K */
+          display: flex;
+          justify-content: center;
+        }
+
+        /* ══ المحتوى الداخلي — محدود العرض على الشاشات الكبيرة ══ */
+        .wq-content {
+          width: 100%;
+          max-width: 1400px;
+          padding: 28px 32px;
           box-sizing: border-box;
         }
+
+        /* ══ شاشات متوسطة 768px - 1280px ══ */
+        @media (min-width: 769px) and (max-width: 1280px) {
+          :root { --sidebar-width: 240px; }
+          .wq-content { padding: 24px; }
+        }
+
+        /* ══ شاشات كبيرة 1280px - 1600px ══ */
+        @media (min-width: 1281px) and (max-width: 1600px) {
+          :root { --sidebar-width: 260px; }
+          .wq-content { padding: 28px 36px; }
+        }
+
+        /* ══ شاشات كبيرة جداً 1600px+ ══ */
+        @media (min-width: 1601px) {
+          :root { --sidebar-width: 280px; }
+          .wq-content {
+            padding: 32px 40px;
+            max-width: 1600px;
+          }
+        }
+
+        /* ══ موبايل ══ */
         @media (max-width: 768px) {
           .wq-sidebar-desktop { display: none !important; }
+
           .wq-menu-btn {
             display: flex !important;
             position: fixed; top: 12px; right: 12px;
@@ -108,11 +155,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             cursor: pointer;
             box-shadow: 0 2px 10px rgba(26,86,219,0.3);
           }
+
           .wq-main {
             margin-right: 0 !important;
             width: 100% !important;
-            padding: 68px 16px 24px !important;
           }
+
+          .wq-content {
+            padding: 68px 16px 24px !important;
+            max-width: 100% !important;
+          }
+
           .sidebar {
             position: relative !important;
             width: 100% !important;
