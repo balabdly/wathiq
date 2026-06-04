@@ -328,6 +328,7 @@ export default function Sidebar() {
               isActive={inSettings} isOpen={settingsOpen} onToggle={() => setSettingsOpen(o => !o)}>
               <SubLink href="/settings/employees" label="المستخدمون والصلاحيات" icon={IC.employees} active={pathname.startsWith('/settings/employees')} />
               <SubLink href="/settings"           label="إعدادات النظام"         icon={IC.settings}  active={pathname === '/settings'} />
+              <SubLink href="/settings/print"     label="إعدادات الطباعة"        icon={IC.invoice}   active={pathname.startsWith('/settings/print')} />
             </NavSection>
           </>
         )}
