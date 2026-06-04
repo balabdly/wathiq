@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle } from 'lucide-react'
@@ -923,7 +923,7 @@ function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPay
 }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos]   = useState({ top: 0, right: 0 })
-  const btnRef = React.useRef<HTMLButtonElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const isDraft     = invoice.status === 'مسودة'
   const isPaid      = invoice.status === 'مدفوعة'
