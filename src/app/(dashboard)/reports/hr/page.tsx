@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -197,7 +197,7 @@ export default function HRReportsPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!tid || loaded) return
+    if (!tid) return
     setIsLoading(true)
     try {
       const [e, p, l, t, a] = await Promise.all([
@@ -215,7 +215,9 @@ export default function HRReportsPage() {
       setLoaded(true)
     } catch (err) { console.error(err) }
     setIsLoading(false)
-  }, [tid, loaded])
+  }, [tid])
+
+  useEffect(() => { loadData() }, [loadData])
 
   const fmt = (n: number) => (n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
@@ -386,7 +388,7 @@ export default function HRReportsPage() {
 
       {/* ══ 1. الموظفون ══ */}
       <ReportGroup title="👥 بيانات الموظفين" color="#7c3aed" defaultOpen>
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="قائمة الموظفين الكاملة" exportName="قائمة-الموظفين" company={company}
             loading={isLoading}
             headers={[
@@ -418,7 +420,7 @@ export default function HRReportsPage() {
 
       {/* ══ 2. الرواتب ══ */}
       <ReportGroup title="💰 مسير الرواتب" color="#059669">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="تفاصيل الرواتب" exportName="مسير-الرواتب" company={company}
             loading={isLoading}
             headers={[
@@ -454,7 +456,7 @@ export default function HRReportsPage() {
 
       {/* ══ 3. الإجازات ══ */}
       <ReportGroup title="🏖️ الإجازات" color="#0891b2">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="قائمة الإجازات" exportName="الإجازات" company={company}
             loading={isLoading}
             headers={[
@@ -485,7 +487,7 @@ export default function HRReportsPage() {
 
       {/* ══ 4. الحضور والغياب ══ */}
       <ReportGroup title="📅 الحضور والغياب" color="#d97706">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="سجل الحضور والغياب" exportName="سجل-الحضور" company={company}
             loading={isLoading}
             headers={[
@@ -516,7 +518,7 @@ export default function HRReportsPage() {
 
       {/* ══ 5. نهايات الخدمة ══ */}
       <ReportGroup title="📋 نهايات الخدمة" color="#dc2626">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="تقرير نهايات الخدمة" exportName="نهايات-الخدمة" company={company}
             loading={isLoading}
             emptyMsg="لا توجد سجلات نهاية خدمة"
