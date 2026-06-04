@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -106,7 +106,7 @@ export default function InventoryReportsPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!tid || loaded) return
+    if (!tid) return
     setIsLoading(true)
     try {
       const [m, l, w] = await Promise.all([
@@ -118,7 +118,9 @@ export default function InventoryReportsPage() {
       setLoaded(true)
     } catch(e){ console.error(e) }
     setIsLoading(false)
-  }, [tid, bid, loaded])
+  }, [tid, bid])
+
+  useEffect(() => { loadData() }, [loadData])
 
   const fmt = (n: number) => (n||0).toLocaleString('ar-SA', {minimumFractionDigits:2})
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
@@ -210,7 +212,7 @@ export default function InventoryReportsPage() {
       </div>
 
       <ReportGroup title="📦 قائمة المواد" color="#d97706" defaultOpen>
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="جميع المواد" exportName="قائمة-المواد" company={company} loading={isLoading}
             headers={[
               {key:'اسم المادة',label:'اسم المادة',sortable:true},
@@ -229,7 +231,7 @@ export default function InventoryReportsPage() {
       </ReportGroup>
 
       <ReportGroup title="⚠️ المواد تحت حد الأمان" color="#dc2626">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title={`المواد تحت حد الأمان (${lowStock.length})`} exportName="مواد-تحت-الحد" company={company} loading={isLoading}
             emptyMsg="✅ جميع المواد فوق حد الأمان"
             headers={[
@@ -247,7 +249,7 @@ export default function InventoryReportsPage() {
       </ReportGroup>
 
       <ReportGroup title="🔄 حركة المخزون" color="#0891b2">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="سجل حركة المخزون" exportName="حركة-المخزون" company={company} loading={isLoading}
             headers={[
               {key:'اسم المادة',label:'اسم المادة',sortable:true},
@@ -276,7 +278,7 @@ export default function InventoryReportsPage() {
       </ReportGroup>
 
       <ReportGroup title="📁 عهدة المشاريع" color="#7c3aed">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable title="المواد حسب المشروع" exportName="عهدة-المشاريع" company={company} loading={isLoading}
             emptyMsg="لا توجد حركات مرتبطة بمشاريع"
             headers={[
