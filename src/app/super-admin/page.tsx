@@ -24,7 +24,11 @@ const PLANS = {
     color: 'bg-gray-100 text-gray-700',
     badge: 'badge-gray',
     maxUsers: 3,
-    modules: { projects: true, inventory: true, purchases: false, employees: false, visits: false, qhse: false, reports: false },
+    modules: {
+      projects: true, inventory: true, purchases: false,
+      employees: false, visits: false, qhse: false,
+      finance: false, reports: false,
+    },
   },
   advanced: {
     label: 'متقدم',
@@ -32,7 +36,11 @@ const PLANS = {
     color: 'bg-blue-100 text-blue-700',
     badge: 'badge-blue',
     maxUsers: 10,
-    modules: { projects: true, inventory: true, purchases: true, employees: true, visits: false, qhse: false, reports: true },
+    modules: {
+      projects: true, inventory: true, purchases: true,
+      employees: true, visits: false, qhse: false,
+      finance: true, reports: true,
+    },
   },
   complete: {
     label: 'متكامل',
@@ -40,7 +48,11 @@ const PLANS = {
     color: 'bg-purple-100 text-purple-700',
     badge: 'badge-purple',
     maxUsers: 999,
-    modules: { projects: true, inventory: true, purchases: true, employees: true, visits: true, qhse: true, reports: true },
+    modules: {
+      projects: true, inventory: true, purchases: true,
+      employees: true, visits: true, qhse: true,
+      finance: true, reports: true,
+    },
   },
 }
 
@@ -51,6 +63,7 @@ const MODULE_LABELS: Record<string, string> = {
   employees: '👥 الموظفون',
   visits:    '✅ الزيارات',
   qhse:      '🛡️ السلامة والجودة',
+  finance:   '💰 المالية والمحاسبة',
   reports:   '📊 التقارير',
 }
 
@@ -104,7 +117,9 @@ function CompanyModal({ company, onClose, onSave }: {
             <Building2 className="w-5 h-5 text-primary-500" />
             {company ? 'تعديل بيانات الشركة' : 'إضافة شركة جديدة'}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
@@ -113,7 +128,9 @@ function CompanyModal({ company, onClose, onSave }: {
             <div className="font-semibold text-gray-700 text-sm mb-2">بيانات الشركة</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (عربي) <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  اسم الشركة (عربي) <span className="text-red-500">*</span>
+                </label>
                 <input value={form.name} onChange={e => set('name', e.target.value)} className="input" required />
               </div>
               <div>
@@ -136,11 +153,19 @@ function CompanyModal({ company, onClose, onSave }: {
               <div className="grid grid-cols-3 gap-2">
                 {Object.entries(PLANS).map(([key, plan]) => (
                   <button key={key} type="button" onClick={() => applyPlan(key)}
-                    className={`p-3 rounded-xl border-2 text-center transition-all ${form.plan === key ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                    <div className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold mb-1 ${plan.color}`}>{plan.label}</div>
+                    className={`p-3 rounded-xl border-2 text-center transition-all ${
+                      form.plan === key
+                        ? 'border-primary-500 bg-primary-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                    <div className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold mb-1 ${plan.color}`}>
+                      {plan.label}
+                    </div>
                     <div className="text-lg font-bold text-gray-800">{plan.price}</div>
                     <div className="text-xs text-gray-400">ر.س / شهر</div>
-                    <div className="text-xs text-gray-500 mt-1">{plan.maxUsers === 999 ? 'غير محدود' : plan.maxUsers} مستخدم</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {plan.maxUsers === 999 ? 'غير محدود' : plan.maxUsers} مستخدم
+                    </div>
                   </button>
                 ))}
               </div>
@@ -154,9 +179,13 @@ function CompanyModal({ company, onClose, onSave }: {
                   <button key={key} type="button"
                     onClick={() => setModules(m => ({ ...m, [key]: !m[key] }))}
                     className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
-                      modules[key] ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-400'
+                      modules[key]
+                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 text-gray-400'
                     }`}>
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${modules[key] ? 'bg-emerald-500' : 'bg-gray-200'}`}>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      modules[key] ? 'bg-emerald-500' : 'bg-gray-200'
+                    }`}>
                       {modules[key] && <CheckCircle2 className="w-3 h-3 text-white" />}
                     </div>
                     {label}
@@ -173,10 +202,16 @@ function CompanyModal({ company, onClose, onSave }: {
               </div>
               <div className="flex items-center gap-3 pt-6">
                 <button type="button" onClick={() => set('is_active', !form.is_active)}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${form.is_active ? 'bg-emerald-500' : 'bg-gray-300'}`}>
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${form.is_active ? 'right-1' : 'left-1'}`} />
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    form.is_active ? 'bg-emerald-500' : 'bg-gray-300'
+                  }`}>
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+                    form.is_active ? 'right-1' : 'left-1'
+                  }`} />
                 </button>
-                <span className="text-sm font-medium text-gray-700">{form.is_active ? '✅ نشط' : '⏸ موقوف'}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {form.is_active ? '✅ نشط' : '⏸ موقوف'}
+                </span>
               </div>
             </div>
 
@@ -189,16 +224,25 @@ function CompanyModal({ company, onClose, onSave }: {
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
-                    <input value={form.admin_name} onChange={e => set('admin_name', e.target.value)} className="input" placeholder="اسم المدير" required={!company} />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      الاسم <span className="text-red-500">*</span>
+                    </label>
+                    <input value={form.admin_name} onChange={e => set('admin_name', e.target.value)}
+                      className="input" placeholder="اسم المدير" required={!company} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المستخدم <span className="text-red-500">*</span></label>
-                    <input value={form.admin_username} onChange={e => set('admin_username', e.target.value)} className="input" dir="ltr" placeholder="admin" required={!company} />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      اسم المستخدم <span className="text-red-500">*</span>
+                    </label>
+                    <input value={form.admin_username} onChange={e => set('admin_username', e.target.value)}
+                      className="input" dir="ltr" placeholder="admin" required={!company} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">كلمة المرور <span className="text-red-500">*</span></label>
-                    <input value={form.admin_password} onChange={e => set('admin_password', e.target.value)} className="input" dir="ltr" placeholder="••••••" required={!company} />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      كلمة المرور <span className="text-red-500">*</span>
+                    </label>
+                    <input value={form.admin_password} onChange={e => set('admin_password', e.target.value)}
+                      className="input" dir="ltr" placeholder="••••••" required={!company} />
                   </div>
                 </div>
               </div>
@@ -208,7 +252,9 @@ function CompanyModal({ company, onClose, onSave }: {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Save className="w-4 h-4" />}
               {company ? 'حفظ التعديلات' : 'إضافة الشركة'}
             </button>
           </div>
@@ -278,7 +324,9 @@ export default function SuperAdminPage() {
         // إنشاء فرع رئيسي
         const { data: branch, error: branchError } = await supabase
           .from('branches').insert({
-            tenant_id: tenant.id, name: 'الفرع الرئيسي', color: '#1a56db',
+            tenant_id: tenant.id,
+            name: 'الفرع الرئيسي',
+            color: '#1a56db',
           }).select().single()
         if (branchError) throw branchError
 
@@ -289,9 +337,14 @@ export default function SuperAdminPage() {
           name:        data.admin_name,
           username:    data.admin_username,
           role:        'مدير عام',
-          permissions: ['dashboard','projects_view','projects_edit','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','employees','reports','qhse'],
-          is_active:   true,
-          password:    data.admin_password,
+          permissions: [
+            'dashboard', 'projects_view', 'projects_edit',
+            'visits_quality', 'visits_safety', 'visits_electrical', 'visits_field',
+            'inventory', 'purchases', 'employees',
+            'finance', 'reports', 'qhse',
+          ],
+          is_active: true,
+          password:  data.admin_password,
         })
         if (empError) throw empError
 
@@ -314,8 +367,7 @@ export default function SuperAdminPage() {
 
   function daysLeft(expiresAt: string | null) {
     if (!expiresAt) return null
-    const diff = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000)
-    return diff
+    return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000)
   }
 
   // ── شاشة تسجيل الدخول ──
@@ -370,10 +422,10 @@ export default function SuperAdminPage() {
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { label: 'إجمالي الشركات',    value: companies.length,   color: 'text-blue-600',    bg: 'bg-blue-50'    },
-            { label: 'شركات نشطة',        value: activeCount,         color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'تنتهي قريباً',      value: expiringSoon,        color: expiringSoon > 0 ? 'text-amber-600' : 'text-gray-600', bg: expiringSoon > 0 ? 'bg-amber-50' : 'bg-gray-50' },
-            { label: 'الإيراد الشهري',    value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { label: 'إجمالي الشركات', value: companies.length,   color: 'text-blue-600',    bg: 'bg-blue-50'    },
+            { label: 'شركات نشطة',     value: activeCount,         color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'تنتهي قريباً',   value: expiringSoon,        color: expiringSoon > 0 ? 'text-amber-600' : 'text-gray-600', bg: expiringSoon > 0 ? 'bg-amber-50' : 'bg-gray-50' },
+            { label: 'الإيراد الشهري', value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: 'text-purple-600', bg: 'bg-purple-50' },
           ].map(k => (
             <div key={k.label} className="card p-5">
               <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
@@ -402,11 +454,13 @@ export default function SuperAdminPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {companies.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-12 text-gray-400">لا توجد شركات مضافة</td></tr>
+                  <tr>
+                    <td colSpan={6} className="text-center py-12 text-gray-400">لا توجد شركات مضافة</td>
+                  </tr>
                 ) : companies.map(c => {
-                  const plan   = PLANS[c.plan as keyof typeof PLANS]
-                  const days   = daysLeft(c.expires_at)
-                  const mods   = c.modules || {}
+                  const plan = PLANS[c.plan as keyof typeof PLANS]
+                  const days = daysLeft(c.expires_at)
+                  const mods = c.modules || {}
                   const activeModules = Object.entries(mods).filter(([, v]) => v).length
                   return (
                     <tr key={c.id} className={`hover:bg-gray-50/50 ${!c.is_active ? 'opacity-60' : ''}`}>
@@ -422,7 +476,9 @@ export default function SuperAdminPage() {
                         <div className="text-xs text-gray-400 mt-1">{plan?.price} ر.س/شهر</div>
                       </td>
                       <td className="px-4 py-4 text-center">
-                        <div className="text-sm font-bold text-gray-700">{activeModules} / {Object.keys(MODULE_LABELS).length}</div>
+                        <div className="text-sm font-bold text-gray-700">
+                          {activeModules} / {Object.keys(MODULE_LABELS).length}
+                        </div>
                         <div className="flex gap-0.5 justify-center mt-1 flex-wrap">
                           {Object.entries(MODULE_LABELS).map(([key, label]) => (
                             <div key={key} title={label}
@@ -433,9 +489,13 @@ export default function SuperAdminPage() {
                       <td className="px-4 py-4 text-center">
                         {c.expires_at ? (
                           <div>
-                            <div className="text-xs text-gray-600">{new Date(c.expires_at).toLocaleDateString('ar-EG')}</div>
+                            <div className="text-xs text-gray-600">
+                              {new Date(c.expires_at).toLocaleDateString('ar-EG')}
+                            </div>
                             {days !== null && (
-                              <div className={`text-xs font-semibold mt-0.5 ${days <= 0 ? 'text-red-600' : days <= 14 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                              <div className={`text-xs font-semibold mt-0.5 ${
+                                days <= 0 ? 'text-red-600' : days <= 14 ? 'text-amber-600' : 'text-emerald-600'
+                              }`}>
                                 {days <= 0 ? '⛔ منتهي' : days <= 14 ? `⚠ ${days} يوم` : `✓ ${days} يوم`}
                               </div>
                             )}
@@ -446,7 +506,11 @@ export default function SuperAdminPage() {
                       </td>
                       <td className="px-4 py-4 text-center">
                         <button onClick={() => toggleActive(c)}
-                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${c.is_active ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}>
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                            c.is_active
+                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                              : 'bg-red-100 text-red-600 hover:bg-red-200'
+                          }`}>
                           {c.is_active ? '✅ نشط' : '⏸ موقوف'}
                         </button>
                       </td>
@@ -472,12 +536,14 @@ export default function SuperAdminPage() {
               <span className="font-semibold text-amber-700">اشتراكات تنتهي قريباً</span>
             </div>
             <div className="space-y-2">
-              {companies.filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 14 && d > 0 }).map(c => (
-                <div key={c.id} className="flex items-center justify-between text-sm">
-                  <span className="text-gray-700">{c.name}</span>
-                  <span className="text-amber-600 font-semibold">{daysLeft(c.expires_at)} يوم متبقي</span>
-                </div>
-              ))}
+              {companies
+                .filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 14 && d > 0 })
+                .map(c => (
+                  <div key={c.id} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-700">{c.name}</span>
+                    <span className="text-amber-600 font-semibold">{daysLeft(c.expires_at)} يوم متبقي</span>
+                  </div>
+                ))}
             </div>
           </div>
         )}
@@ -485,9 +551,11 @@ export default function SuperAdminPage() {
       </div>
 
       {showModal && (
-        <CompanyModal company={editCompany}
+        <CompanyModal
+          company={editCompany}
           onClose={() => { setShowModal(false); setEdit(null) }}
-          onSave={handleSave} />
+          onSave={handleSave}
+        />
       )}
     </div>
   )
