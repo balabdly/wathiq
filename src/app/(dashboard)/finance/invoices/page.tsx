@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle } from 'lucide-react'
+import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ════════════════════════════════════════
@@ -995,6 +995,154 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
   )
 }
 
+
+// ════════════════════════════════════════
+// مودال: عرض الفاتورة
+// ════════════════════════════════════════
+function InvoiceViewModal({ invoice, items, company, onClose, onPrint }: {
+  invoice: Invoice; items: InvoiceItem[]; company: Company
+  onClose: () => void; onPrint: () => void
+}) {
+  const qr = generateZATCAQR(company, invoice)
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '720px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Eye style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
+            معاينة الفاتورة — {invoice.invoice_number}
+          </h3>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={onPrint}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              <Printer style={{ width: '15px', height: '15px' }} /> طباعة / PDF
+            </button>
+            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          </div>
+        </div>
+
+        <div className="modal-body" style={{ padding: '0' }}>
+          {/* الفاتورة المعاينة */}
+          <div style={{ padding: '24px', fontFamily: "'Segoe UI', Tahoma, Arial, sans-serif", direction: 'rtl' }}>
+
+            {/* هيدر الفاتورة */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '16px', borderBottom: '3px solid #1a56db' }}>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#1a56db', marginBottom: '4px' }}>{company.name || 'الشركة'}</div>
+                {company.name_en && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>{company.name_en}</div>}
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.7 }}>
+                  {company.vat_number && <div>الرقم الضريبي: {company.vat_number}</div>}
+                  {company.cr_number  && <div>السجل التجاري: {company.cr_number}</div>}
+                  {[company.street, company.district, company.city].filter(Boolean).join('، ')}
+                  {company.phone && <div>هاتف: {company.phone}</div>}
+                </div>
+              </div>
+              <div style={{ background: '#1a56db', color: 'white', padding: '12px 20px', borderRadius: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', opacity: 0.85 }}>فاتورة ضريبية</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, marginTop: '2px' }}>{invoice.invoice_number}</div>
+                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.85 }}>{invoice.invoice_date}</div>
+              </div>
+            </div>
+
+            {/* بيانات العميل والفاتورة */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>العميل</div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>{invoice.client_name}</div>
+                {invoice.client_vat && <div style={{ fontSize: '11px', color: '#64748b' }}>رقم ضريبي: {invoice.client_vat}</div>}
+                {invoice.client_address && <div style={{ fontSize: '11px', color: '#64748b' }}>{invoice.client_address}</div>}
+              </div>
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>تفاصيل الفاتورة</div>
+                <div style={{ fontSize: '12px', lineHeight: 1.8 }}>
+                  <div>تاريخ الإصدار: <strong>{invoice.invoice_date}</strong></div>
+                  {invoice.due_date && <div>تاريخ الاستحقاق: <strong>{invoice.due_date}</strong></div>}
+                  {invoice.extract_ref && <div>المستخلص: <strong>{invoice.extract_ref}</strong></div>}
+                </div>
+              </div>
+            </div>
+
+            {/* البنود */}
+            {items.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#1a56db', color: 'white' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, width: '40%' }}>الوصف</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700 }}>الكمية</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700 }}>الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700 }}>سعر الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left', fontWeight: 700 }}>الإجمالي</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700 }}>ض.ق.م</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
+                        <td style={{ padding: '9px 12px' }}>{item.description}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.unit}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr' }}>{Number(item.unit_price).toLocaleString('ar-SA')}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr', fontWeight: 600 }}>{Number(item.total).toLocaleString('ar-SA')}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{invoice.vat_rate}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* الإجماليات */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+              <div style={{ width: '260px', background: '#f8fafc', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>المجموع قبل الضريبة</span>
+                  <span style={{ fontWeight: 600 }}>{Number(invoice.subtotal).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>ضريبة القيمة المضافة ({invoice.vat_rate}%)</span>
+                  <span style={{ fontWeight: 600, color: '#e6820a' }}>{Number(invoice.vat_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ borderTop: '2px solid #1a56db', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '16px', color: '#1a56db' }}>
+                  <span>الإجمالي المستحق</span>
+                  <span>{Number(invoice.total_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+              </div>
+            </div>
+
+            {/* IBAN + ملاحظات */}
+            {company.iban && (
+              <div style={{ padding: '8px 14px', background: '#f0fdf4', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+                <strong>للدفع عبر التحويل البنكي:</strong> IBAN: {company.iban}
+              </div>
+            )}
+            {invoice.notes && (
+              <div style={{ padding: '8px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '12px', marginBottom: '16px' }}>
+                <strong>ملاحظات:</strong> {invoice.notes}
+              </div>
+            )}
+
+            {/* QR Code + توقيع */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+              <div style={{ textAlign: 'center' }}>
+                <img src={'https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=' + encodeURIComponent(qr)} alt="QR ZATCA" style={{ width: '90px', height: '90px' }} />
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>رمز ZATCA — المرحلة الأولى</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ borderBottom: '2px solid #1a56db', width: '160px', margin: '30px auto 6px' }} />
+                <div style={{ fontSize: '11px', color: '#94a3b8' }}>التوقيع والختم</div>
+                <div style={{ fontSize: '12px', marginTop: '4px' }}>{company.ceo_name || company.name || ''}</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
@@ -1017,6 +1165,9 @@ export default function FinanceInvoicesPage() {
   const [showQuoteModal,    setShowQuoteModal]     = useState(false)
   const [showClientModal,   setShowClientModal]   = useState(false)
   const [showPaymentModal,  setShowPaymentModal]  = useState(false)
+  const [showViewModal,     setShowViewModal]     = useState(false)
+  const [viewInvoice,       setViewInvoice]       = useState<Invoice | null>(null)
+  const [viewItems,         setViewItems]         = useState<InvoiceItem[]>([])
   const [editInvoice,  setEditInvoice]  = useState<Invoice | null>(null)
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
   const [editClient,   setEditClient]   = useState<Client | null>(null)
@@ -1044,11 +1195,25 @@ export default function FinanceInvoicesPage() {
     setLoading(false)
   }
 
+  async function handleViewInvoice(inv: Invoice) {
+    try {
+      const { data: items } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
+      setViewItems(items || [])
+      setViewInvoice(inv)
+      setShowViewModal(true)
+    } catch (err) {
+      toast.error('خطأ في تحميل الفاتورة')
+    }
+  }
+
   async function handlePrintInvoice(inv: Invoice) {
     try {
       const { data: items } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
       const invWithRate = { ...inv, vat_rate: inv.vat_rate || 15 }
-      printInvoice(invWithRate as Invoice, items || [], company)
+      // نفتح نافذة الطباعة مباشرة (يجب استدعاؤها من حدث مباشر)
+      setTimeout(() => {
+        printInvoice(invWithRate as Invoice, items || [], company)
+      }, 0)
     } catch (err) {
       toast.error('خطأ في الطباعة')
     }
@@ -1196,6 +1361,11 @@ export default function FinanceInvoicesPage() {
                           <td style={{ padding: '12px 12px' }}><span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span></td>
                           <td style={{ padding: '12px 8px' }}>
                             <div style={{ display: 'flex', gap: '4px', flexWrap: 'nowrap' }}>
+                              {/* عرض — دائماً */}
+                              <button onClick={() => handleViewInvoice(inv)} title="عرض الفاتورة"
+                                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+                                <Eye style={{ width: '13px', height: '13px' }} />
+                              </button>
                               {/* طباعة — دائماً */}
                               <button onClick={() => handlePrintInvoice(inv)} title="طباعة"
                                 style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
@@ -1442,6 +1612,15 @@ export default function FinanceInvoicesPage() {
         <PaymentModal invoice={paymentInvoice} tenantId={tenant!.id}
           onClose={() => { setShowPaymentModal(false); setPaymentInvoice(null) }}
           onSave={() => { setShowPaymentModal(false); setPaymentInvoice(null); loadAll() }} />
+      )}
+      {showViewModal && viewInvoice && (
+        <InvoiceViewModal
+          invoice={viewInvoice}
+          items={viewItems}
+          company={company}
+          onClose={() => { setShowViewModal(false); setViewInvoice(null) }}
+          onPrint={() => handlePrintInvoice(viewInvoice)}
+        />
       )}
     </div>
   )
