@@ -67,8 +67,8 @@ function buildTree(accounts: Account[]): Account[] {
 // ════════════════════════════════════════
 // مودال: إضافة / تعديل حساب
 // ════════════════════════════════════════
-function AccountModal({ account, accounts, tenantId, onClose, onSave }: {
-  account: Account | null; accounts: Account[]
+function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onSave }: {
+  account: Account | null; accounts: Account[]; defaultParent?: Account | null
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -78,7 +78,7 @@ function AccountModal({ account, accounts, tenantId, onClose, onSave }: {
     name_en:        account?.name_en        || '',
     account_type:   account?.account_type   || 'مصروفات',
     account_class:  account?.account_class  || 'دخل',
-    parent_id:      account?.parent_id      ? String(account.parent_id) : '',
+    parent_id:      account?.parent_id ? String(account.parent_id) : defaultParent?.id ? String(defaultParent.id) : '',
     is_parent:      account?.is_parent      ?? false,
     normal_balance: account?.normal_balance || 'مدين',
     is_active:      account?.is_active      ?? true,
@@ -219,157 +219,67 @@ function AccountModal({ account, accounts, tenantId, onClose, onSave }: {
 }
 
 // ════════════════════════════════════════
-// مكوّن: صف في شجرة الحسابات
-// ════════════════════════════════════════
-function AccountRow({ account, level, onEdit, onAddChild, onDelete }: {
-  account: Account; level: number
-  onEdit: (a: Account) => void
-  onAddChild: (a: Account) => void
-  onDelete: (a: Account) => void
-}) {
-  const [expanded, setExpanded] = useState(level <= 2)
-  const hasChildren = account.children && account.children.length > 0
-  const indent = level * 20
-
-  return (
-    <>
-      <tr style={{ borderBottom: '1px solid var(--bg2)', background: level === 1 ? '#f8fafc' : level === 2 ? '#fafbfc' : 'transparent' }}
-        onMouseEnter={e => level > 2 && (e.currentTarget.style.background = 'var(--bg2)')}
-        onMouseLeave={e => level > 2 && (e.currentTarget.style.background = 'transparent')}>
-
-        {/* الرمز */}
-        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingRight: indent + 'px' }}>
-            {hasChildren ? (
-              <button type="button" onClick={() => setExpanded(e => !e)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', display: 'flex', padding: '2px' }}>
-                {expanded
-                  ? <ChevronDown style={{ width: '14px', height: '14px' }} />
-                  : <ChevronLeft style={{ width: '14px', height: '14px' }} />}
-              </button>
-            ) : (
-              <span style={{ width: '18px', display: 'inline-block' }} />
-            )}
-            <span style={{ fontFamily: 'monospace', fontWeight: level <= 2 ? 700 : 500, fontSize: level === 1 ? '0.95rem' : '0.875rem', color: ACCOUNT_TYPE_COLOR[account.account_type] || 'var(--text)' }}>
-              {account.code}
-            </span>
-          </div>
-        </td>
-
-        {/* الاسم */}
-        <td style={{ padding: '10px 14px' }}>
-          <div style={{ fontWeight: level <= 2 ? 700 : 500, fontSize: level === 1 ? '0.95rem' : '0.875rem', color: account.is_active ? 'var(--text)' : 'var(--text3)' }}>
-            {account.name}
-            {account.is_parent && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>تجميعي</span>}
-            {!account.is_active && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#c81e1e', background: '#fef2f2', padding: '1px 5px', borderRadius: '4px' }}>موقوف</span>}
-          </div>
-          {account.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '1px' }}>{account.name_en}</div>}
-        </td>
-
-        {/* النوع */}
-        <td style={{ padding: '10px 14px' }}>
-          <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
-            background: (ACCOUNT_TYPE_COLOR[account.account_type] || '#6b7280') + '15',
-            color: ACCOUNT_TYPE_COLOR[account.account_type] || '#6b7280' }}>
-            {account.account_type}
-          </span>
-        </td>
-
-        {/* الرصيد الطبيعي */}
-        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: account.normal_balance === 'مدين' ? '#1a56db' : '#c81e1e', fontWeight: 600 }}>
-          {account.normal_balance === 'مدين' ? 'مدين (Dr)' : 'دائن (Cr)'}
-        </td>
-
-        {/* التصنيف */}
-        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>
-          {account.account_class}
-        </td>
-
-        {/* الإجراءات */}
-        <td style={{ padding: '10px 14px' }}>
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button onClick={() => onAddChild(account)} title="إضافة حساب فرعي"
-              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-              + فرعي
-            </button>
-            <button onClick={() => onEdit(account)} className="btn btn-ghost btn-xs">
-              <Pencil style={{ width: '12px', height: '12px' }} />
-            </button>
-            {!hasChildren && (
-              <button onClick={() => onDelete(account)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                <Trash2 style={{ width: '12px', height: '12px' }} />
-              </button>
-            )}
-          </div>
-        </td>
-      </tr>
-
-      {/* الأبناء */}
-      {expanded && hasChildren && account.children!.map(child => (
-        <AccountRow key={child.id} account={child} level={level + 1}
-          onEdit={onEdit} onAddChild={onAddChild} onDelete={onDelete} />
-      ))}
-    </>
-  )
-}
-
-// ════════════════════════════════════════
-// تاب شجرة الحسابات
+// تاب شجرة الحسابات — Drill-Down
 // ════════════════════════════════════════
 function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   const [accounts, setAccounts]   = useState<Account[]>([])
-  const [tree, setTree]           = useState<Account[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
+  const [loading,  setLoading]    = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [editAccount, setEditAccount] = useState<Account | null>(null)
-  const [parentAccount, setParentAccount] = useState<Account | null>(null)
-  const [filterType, setFilterType] = useState('الكل')
+  const [editAccount, setEditAccount]   = useState<Account | null>(null)
+  const [parentForNew, setParentForNew] = useState<Account | null>(null)
+
+  // مسار التنقل (breadcrumb)
+  const [path, setPath] = useState<Account[]>([])
 
   useEffect(() => { loadAccounts() }, [])
 
   async function loadAccounts() {
     setLoading(true)
     const { data } = await supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code')
-    const list = data || []
-    setAccounts(list)
-    setTree(buildTree(list))
+    setAccounts(data || [])
     setLoading(false)
   }
 
+  // الحسابات الظاهرة حالياً (أبناء الحساب المحدد أو الجذور)
+  const currentParentId = path.length > 0 ? path[path.length - 1].id : null
+  const currentAccounts = accounts
+    .filter(a => currentParentId ? a.parent_id === currentParentId : !a.parent_id)
+    .sort((a, b) => a.code.localeCompare(b.code))
+
+  function drillDown(account: Account) {
+    const hasChildren = accounts.some(a => a.parent_id === account.id)
+    if (hasChildren) setPath(p => [...p, account])
+  }
+
+  function goTo(idx: number) {
+    setPath(p => p.slice(0, idx))
+  }
+
   async function handleDelete(account: Account) {
+    const hasChildren = accounts.some(a => a.parent_id === account.id)
+    if (hasChildren) { toast.error('لا يمكن حذف حساب له فروع'); return }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
-    const { error } = await supabase.from('finance_accounts').delete().eq('id', account.id)
-    if (error) { toast.error('خطأ: ' + error.message); return }
+    await supabase.from('finance_accounts').delete().eq('id', account.id)
     await loadAccounts(); toast.success('تم الحذف')
   }
 
-  function handleAddChild(parent: Account) {
-    setParentAccount(parent)
-    setEditAccount(null)
-    setShowModal(true)
-  }
-
-  // فلترة الشجرة بالبحث
-  const filteredTree = search || filterType !== 'الكل'
-    ? accounts.filter(a => {
-        const matchSearch = !search || a.name.includes(search) || a.code.includes(search)
-        const matchType   = filterType === 'الكل' || a.account_type === filterType
-        return matchSearch && matchType
-      })
-    : null
-
   // إحصائيات
   const stats = {
-    total:    accounts.length,
-    active:   accounts.filter(a => a.is_active).length,
-    parents:  accounts.filter(a => a.is_parent).length,
-    leaves:   accounts.filter(a => !a.is_parent).length,
+    total:   accounts.length,
+    active:  accounts.filter(a => a.is_active).length,
+    parents: accounts.filter(a => a.is_parent).length,
+    leaves:  accounts.filter(a => !a.is_parent).length,
+  }
+
+  const MAIN_COLORS: Record<string, string> = {
+    'أصول': '#1a56db', 'خصوم': '#c81e1e', 'حقوق ملكية': '#0ea77b',
+    'إيرادات': '#0ea77b', 'مصروفات': '#e6820a'
   }
 
   return (
     <div className="space-y-4">
-      {/* الإحصائيات */}
+
+      {/* إحصائيات */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
         {[
           { label: 'إجمالي الحسابات', value: stats.total,   color: '#1a56db', bg: '#eff6ff' },
@@ -386,26 +296,36 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
 
       {/* شريط الأدوات */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px', width: '200px' }} placeholder="بحث..." />
-          </div>
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="select" style={{ width: 'auto' }}>
-            <option value="الكل">كل الأنواع</option>
-            {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات'].map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <button onClick={() => setPath([])}
+            style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: path.length === 0 ? 'var(--primary)' : 'white', color: path.length === 0 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+            🏠 الحسابات الرئيسية
+          </button>
+          {path.map((p, i) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ color: 'var(--text3)', fontSize: '0.82rem' }}>›</span>
+              <button onClick={() => goTo(i + 1)}
+                style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: i === path.length - 1 ? 'var(--primary)' : 'white', color: i === path.length - 1 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                {p.code} — {p.name}
+              </button>
+            </div>
+          ))}
         </div>
-        <button onClick={() => { setEditAccount(null); setParentAccount(null); setShowModal(true) }} className="btn btn-primary">
-          <Plus style={{ width: '16px', height: '16px' }} /> إضافة حساب
+        <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
+          <Plus style={{ width: '16px', height: '16px' }} />
+          {path.length > 0 ? 'إضافة حساب فرعي' : 'إضافة حساب'}
         </button>
       </div>
 
-      {/* الجدول */}
+      {/* الشجرة */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+      ) : currentAccounts.length === 0 ? (
+        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+          <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text3)' }}>لا توجد حسابات في هذا المستوى</p>
+        </div>
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
@@ -418,37 +338,84 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredTree ? (
-                  filteredTree.map(a => (
-                    <tr key={a.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                {currentAccounts.map(account => {
+                  const hasChildren = accounts.some(a => a.parent_id === account.id)
+                  const color = MAIN_COLORS[account.account_type] || '#6b7280'
+                  return (
+                    <tr key={account.id}
+                      style={{ borderBottom: '1px solid var(--bg2)', cursor: hasChildren ? 'pointer' : 'default' }}
+                      onClick={() => hasChildren && drillDown(account)}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 600, color: ACCOUNT_TYPE_COLOR[a.account_type] || 'var(--text)' }}>{a.code}</td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontWeight: 500 }}>{'—'.repeat(a.level - 1)} {a.name}</div>
-                        {a.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{a.name_en}</div>}
+
+                      {/* الرمز */}
+                      <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {/* أيقونة المستوى */}
+                          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.82rem', color }}>{account.code}</span>
+                          </div>
+                        </div>
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, background: (ACCOUNT_TYPE_COLOR[a.account_type]||'#6b7280') + '15', color: ACCOUNT_TYPE_COLOR[a.account_type]||'#6b7280' }}>{a.account_type}</span>
+
+                      {/* الاسم */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: account.is_active ? 'var(--text)' : 'var(--text3)' }}>
+                              {account.name}
+                              {account.is_parent && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>تجميعي</span>}
+                              {!account.is_active && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#c81e1e', background: '#fef2f2', padding: '1px 5px', borderRadius: '4px' }}>موقوف</span>}
+                            </div>
+                            {account.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{account.name_en}</div>}
+                          </div>
+                          {hasChildren && (
+                            <span style={{ marginRight: 'auto', color: 'var(--text3)', fontSize: '0.75rem', background: 'var(--bg2)', padding: '2px 8px', borderRadius: '6px' }}>
+                              {accounts.filter(a => a.parent_id === account.id).length} حساب ›
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: a.normal_balance === 'مدين' ? '#1a56db' : '#c81e1e', fontWeight: 600 }}>{a.normal_balance === 'مدين' ? 'مدين (Dr)' : 'دائن (Cr)'}</td>
-                      <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{a.account_class}</td>
-                      <td style={{ padding: '10px 14px' }}>
+
+                      {/* النوع */}
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 600, background: color + '15', color }}>
+                          {account.account_type}
+                        </span>
+                      </td>
+
+                      {/* الرصيد الطبيعي */}
+                      <td style={{ padding: '14px 16px', fontSize: '0.82rem', color: account.normal_balance === 'مدين' ? '#1a56db' : '#c81e1e', fontWeight: 600 }}>
+                        {account.normal_balance === 'مدين' ? 'مدين (Dr)' : 'دائن (Cr)'}
+                      </td>
+
+                      {/* التصنيف */}
+                      <td style={{ padding: '14px 16px', fontSize: '0.78rem', color: 'var(--text3)' }}>
+                        {account.account_class}
+                      </td>
+
+                      {/* الإجراءات */}
+                      <td style={{ padding: '14px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          <button onClick={() => { setEditAccount(a); setParentAccount(null); setShowModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '12px', height: '12px' }} /></button>
-                          <button onClick={() => handleDelete(a)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '12px', height: '12px' }} /></button>
+                          {hasChildren && (
+                            <button onClick={() => { setEditAccount(null); setParentForNew(account); setShowModal(true) }}
+                              style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                              + فرعي
+                            </button>
+                          )}
+                          <button onClick={() => { setEditAccount(account); setParentForNew(null); setShowModal(true) }} className="btn btn-ghost btn-xs">
+                            <Pencil style={{ width: '12px', height: '12px' }} />
+                          </button>
+                          {!hasChildren && (
+                            <button onClick={() => handleDelete(account)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                              <Trash2 style={{ width: '12px', height: '12px' }} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  tree.map(a => (
-                    <AccountRow key={a.id} account={a} level={1}
-                      onEdit={a => { setEditAccount(a); setParentAccount(null); setShowModal(true) }}
-                      onAddChild={handleAddChild}
-                      onDelete={handleDelete} />
-                  ))
-                )}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -459,9 +426,10 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
         <AccountModal
           account={editAccount}
           accounts={accounts}
+          defaultParent={parentForNew}
           tenantId={tenantId}
-          onClose={() => { setShowModal(false); setEditAccount(null); setParentAccount(null) }}
-          onSave={() => { setShowModal(false); setEditAccount(null); setParentAccount(null); loadAccounts() }}
+          onClose={() => { setShowModal(false); setEditAccount(null); setParentForNew(null) }}
+          onSave={() => { setShowModal(false); setEditAccount(null); setParentForNew(null); loadAccounts() }}
         />
       )}
     </div>
