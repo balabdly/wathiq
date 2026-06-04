@@ -626,6 +626,30 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         validItems.map(i => ({ invoice_id: invId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
       )
     }
+    // ══ قيد محاسبي تلقائي عند اعتماد فاتورة المورد ══
+    if (payload.status === 'معتمدة' && invId) {
+      // تحديد الحساب المدين حسب وجهة التسليم
+      const debitAccountCode =
+        payload.delivery_to === 'مستودع'    ? '1130' :  // المخزون
+        payload.delivery_to === 'أصل ثابت'  ? '1220' :  // المعدات والأجهزة
+        '5012'                                           // تكلفة المواد المباشرة (موقع العمل)
+
+      await createJournalEntry(tenantId, {
+        date:          payload.invoice_date,
+        description:   `فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`,
+        referenceType: 'فاتورة مورد',
+        referenceId:   invId,
+        lines: [
+          // مدين: المخزون / الأصل / تكلفة المشروع (قبل الضريبة)
+          { accountCode: debitAccountCode, debit: payload.subtotal,   credit: 0,              description: `فاتورة ${payload.invoice_number}` },
+          // مدين: ضريبة المدخلات (إذا وجدت)
+          ...(payload.vat_amount > 0 ? [{ accountCode: '2140', debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
+          // دائن: الذمم الدائنة (إجمالي الفاتورة)
+          { accountCode: '2110', debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
+        ]
+      })
+    }
+
     toast.success(invoice ? 'تم التعديل ✅' : '✅ تم حفظ فاتورة المورد')
     onSave(); setSaving(false)
   }
@@ -805,7 +829,23 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
         validItems.map(i => ({ return_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
       )
     }
-    toast.success('✅ تم إنشاء مرتجع المشتريات')
+    // ══ قيد محاسبي عكسي للمرتجع ══
+    await createJournalEntry(tenantId, {
+      date:          form.return_date,
+      description:   `${form.return_type} ${form.return_number} — ${selectedVendor!.name}`,
+      referenceType: form.return_type,
+      referenceId:   data.id,
+      lines: [
+        // مدين: الذمم الدائنة (تخفيض المديونية للمورد)
+        { accountCode: '2110', debit: total,    credit: 0,        description: `${form.return_type} ${form.return_number}` },
+        // دائن: المخزون (إرجاع البضاعة)
+        { accountCode: '1130', debit: 0,        credit: subtotal, description: `إرجاع بضاعة — ${form.reason}` },
+        // دائن: ضريبة المدخلات (إذا وجدت)
+        ...(vatAmount > 0 ? [{ accountCode: '2140', debit: 0, credit: vatAmount, description: 'تعديل ضريبة المدخلات' }] : []),
+      ]
+    })
+
+    toast.success('✅ تم إنشاء مرتجع المشتريات والقيد المحاسبي')
     onSave(); setSaving(false)
   }
 
@@ -1096,6 +1136,129 @@ function VInvViewModal({ inv, items, onClose, onPrint }: {
   )
 }
 
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({
+    ...l, account_id: await getAccountId(tenantId, l.accountCode)
+  })))
+  if (lineIds.some(l => !l.account_id)) {
+    console.warn('بعض الحسابات غير موجودة — تم تخطي القيد')
+    return null
+  }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
+  }).select('id').single()
+  if (error || !entry) { console.error('خطأ في إنشاء القيد:', error); return null }
+  await supabase.from('finance_journal_lines').insert(
+    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
+  )
+  return entry.id
+}
+
+
+// ════════════════════════════════════════
+// مودال: دفع فاتورة مورد
+// ════════════════════════════════════════
+function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
+  invoice: VendorInvoice; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    amount:       String(invoice.total_amount),
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'تحويل بنكي',
+    reference:    '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
+    setSaving(true)
+
+    // تحديث حالة الفاتورة
+    await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
+
+    // قيد الدفع
+    await createJournalEntry(tenantId, {
+      date:          form.payment_date,
+      description:   `سداد فاتورة مورد ${invoice.invoice_number} — ${invoice.vendor_name}`,
+      referenceType: 'سداد فاتورة مورد',
+      referenceId:   invoice.id,
+      lines: [
+        // مدين: الذمم الدائنة (تقفيل المديونية)
+        { accountCode: '2110', debit: Number(form.amount), credit: 0,                   description: `سداد ${invoice.invoice_number}` },
+        // دائن: الصندوق/البنك
+        { accountCode: '1111', debit: 0,                   credit: Number(form.amount), description: `دفع للمورد ${invoice.vendor_name}` },
+      ]
+    })
+
+    toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '420px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            💸 سداد فاتورة — {invoice.invoice_number}
+          </h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: '10px', display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.82rem', color: '#991b1b' }}>إجمالي الفاتورة</span>
+            <span style={{ fontWeight: 700, color: '#c81e1e' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ المدفوع *</label>
+            <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الدفع *</label>
+            <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
+            <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
+              {['تحويل بنكي', 'نقداً', 'شيك'].map(m => <option key={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المرجع</label>
+            <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '💸'}
+            تسجيل الدفعة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
@@ -1120,6 +1283,8 @@ export default function FinancePurchasesPage() {
   const [editInv,    setEditInv]    = useState<VendorInvoice | null>(null)
   const [editVendor, setEditVendor] = useState<Vendor | null>(null)
   const [returnInvoice,  setReturnInvoice]  = useState<VendorInvoice | null>(null)
+  const [payInvoice,     setPayInvoice]      = useState<VendorInvoice | null>(null)
+  const [showPayModal,   setShowPayModal]    = useState(false)
   const [viewPO,         setViewPO]         = useState<PurchaseOrder | null>(null)
   const [viewPOItems,    setViewPOItems]     = useState<POItem[]>([])
   const [showViewPO,     setShowViewPO]      = useState(false)
@@ -1520,6 +1685,13 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                                 <Pencil style={{ width: '13px', height: '13px' }} />
                               </button>
                             )}
+                            {/* دفع — معتمدة فقط */}
+                            {inv.status === 'معتمدة' && (
+                              <button onClick={() => { setPayInvoice(inv); setShowPayModal(true) }} title="تسجيل دفعة"
+                                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                                💸
+                              </button>
+                            )}
                             {/* مرتجع — غير مسودة */}
                             {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
                               <button onClick={() => { setReturnInvoice(inv); setShowReturnModal(true) }} title="مرتجع"
@@ -1679,6 +1851,11 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
         <VendorModal vendor={editVendor} tenantId={tenant!.id}
           onClose={() => { setShowVendorModal(false); setEditVendor(null) }}
           onSave={() => { setShowVendorModal(false); setEditVendor(null); loadAll() }} />
+      )}
+      {showPayModal && payInvoice && (
+        <VendorPaymentModal invoice={payInvoice} tenantId={tenant!.id}
+          onClose={() => { setShowPayModal(false); setPayInvoice(null) }}
+          onSave={() => { setShowPayModal(false); setPayInvoice(null); loadAll() }} />
       )}
       {showViewPO && viewPO && (
         <POViewModal po={viewPO} items={viewPOItems}
