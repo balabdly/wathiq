@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle } from 'lucide-react'
@@ -911,82 +911,7 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
 
 
 // ════════════════════════════════════════
-// مكوّن: قائمة إجراءات الفاتورة (...)
-// ════════════════════════════════════════
-function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPayment }: {
-  invoice: Invoice
-  onPrint: () => void
-  onEdit: () => void
-  onCredit: () => void
-  onDelete: () => void
-  onAddPayment: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [pos, setPos]   = useState({ top: 0, right: 0 })
-  const btnRef = useRef<HTMLButtonElement>(null)
-
-  const isDraft     = invoice.status === 'مسودة'
-  const isPaid      = invoice.status === 'مدفوعة'
-  const isCancelled = invoice.status === 'ملغاة'
-
-  const actions = [
-    { label: 'طباعة',      icon: '🖨️', action: onPrint,      show: true,                               color: '#374151' },
-    { label: 'تعديل',      icon: '✏️',  action: onEdit,       show: isDraft,                            color: '#1a56db' },
-    { label: 'إشعار دائن', icon: '↩️', action: onCredit,     show: !isDraft && !isCancelled,           color: '#c81e1e' },
-    { label: 'إضافة دفعة', icon: '💵', action: onAddPayment, show: !isPaid && !isDraft && !isCancelled, color: '#0ea77b' },
-    { label: 'حذف',        icon: '🗑️', action: onDelete,     show: isDraft,                            color: '#c81e1e' },
-  ].filter(a => a.show)
-
-  function handleOpen() {
-    if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect()
-      const menuWidth  = 170
-      const menuHeight = actions.length * 43 + 8
-      const spaceBelow = window.innerHeight - rect.bottom
-      const spaceRight = window.innerWidth - rect.left
-
-      // الأعلى أو الأسفل
-      const top = spaceBelow >= menuHeight
-        ? rect.bottom + 4
-        : rect.top - menuHeight - 4
-
-      // اليمين: نضمن أن القائمة لا تخرج من اليسار
-      const right = spaceRight >= menuWidth
-        ? window.innerWidth - rect.right
-        : Math.max(8, window.innerWidth - rect.left - menuWidth)
-
-      setPos({ top: Math.max(8, top), right: Math.max(8, right) })
-    }
-    setOpen(o => !o)
-  }
-
-  return (
-    <div style={{ display: 'inline-block' }}>
-      <button ref={btnRef} onClick={handleOpen}
-        style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: open ? 'var(--bg2)' : 'white', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text3)', lineHeight: 1 }}>
-        ···
-      </button>
-      {open && (
-        <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setOpen(false)} />
-          <div style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 1000, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', minWidth: '170px', overflow: 'hidden' }}>
-            {actions.map((a, i) => (
-              <button key={a.label}
-                onClick={() => { setOpen(false); a.action() }}
-                style={{ width: '100%', padding: '11px 16px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'right', fontSize: '0.875rem', color: a.color, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500, borderBottom: i < actions.length - 1 ? '1px solid #f3f4f6' : 'none' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                <span style={{ fontSize: '1rem', flexShrink: 0 }}>{a.icon}</span>
-                <span>{a.label}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
+// مودال: إضافة دفعة
 // ════════════════════════════════════════
 // مودال: إضافة دفعة
 // ════════════════════════════════════════
@@ -1269,15 +1194,42 @@ export default function FinanceInvoicesPage() {
                           <td style={{ padding: '12px 12px', fontSize: '0.82rem', color: '#e6820a' }}>{Number(inv.vat_amount).toLocaleString()} ر.س</td>
                           <td style={{ padding: '12px 12px', fontWeight: 700, color: 'var(--primary)', whiteSpace: 'nowrap' }}>{Number(inv.total_amount).toLocaleString()} ر.س</td>
                           <td style={{ padding: '12px 12px' }}><span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span></td>
-                          <td style={{ padding: '12px 12px' }}>
-                            <InvoiceActions
-                              invoice={inv}
-                              onPrint={() => handlePrintInvoice(inv)}
-                              onEdit={() => { setEditInvoice(inv); setShowInvoiceModal(true) }}
-                              onCredit={() => { setCreditInvoice(inv); setShowCreditModal(true) }}
-                              onDelete={() => deleteInvoice(inv)}
-                              onAddPayment={() => { setPaymentInvoice(inv); setShowPaymentModal(true) }}
-                            />
+                          <td style={{ padding: '12px 8px' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'nowrap' }}>
+                              {/* طباعة — دائماً */}
+                              <button onClick={() => handlePrintInvoice(inv)} title="طباعة"
+                                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+                                🖨️
+                              </button>
+                              {/* تعديل — مسودة فقط */}
+                              {inv.status === 'مسودة' && (
+                                <button onClick={() => { setEditInvoice(inv); setShowInvoiceModal(true) }} title="تعديل"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  ✏️
+                                </button>
+                              )}
+                              {/* إشعار دائن — غير مسودة */}
+                              {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
+                                <button onClick={() => { setCreditInvoice(inv); setShowCreditModal(true) }} title="إشعار دائن"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  ↩️
+                                </button>
+                              )}
+                              {/* إضافة دفعة — غير مدفوعة وغير مسودة */}
+                              {inv.status !== 'مدفوعة' && inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
+                                <button onClick={() => { setPaymentInvoice(inv); setShowPaymentModal(true) }} title="تسجيل دفعة"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  💵
+                                </button>
+                              )}
+                              {/* حذف — مسودة فقط */}
+                              {inv.status === 'مسودة' && (
+                                <button onClick={() => deleteInvoice(inv)} title="حذف"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem' }}>
+                                  🗑️
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )
