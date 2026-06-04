@@ -137,13 +137,14 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     if (form.project_id)     payload.project_id     = Number(form.project_id)
     if (form.vendor_id)      payload.vendor_id      = Number(form.vendor_id)
 
+    let newExpenseId: number | undefined
     if (expense) {
       const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     } else {
       const { data: newExp, error } = await supabase.from('finance_expenses').insert(payload).select('id').single()
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-      const newExpenseId = newExp?.id
+      newExpenseId = newExp?.id
     }
 
     // ══ قيد محاسبي تلقائي للمصروف المدفوع ══
