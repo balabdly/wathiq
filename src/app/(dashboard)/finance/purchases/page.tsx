@@ -162,19 +162,21 @@ function DeliveryField({ value, warehouseId, projects, warehouses, onChange }: {
   return (
     <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 14px' }}>
       <label style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0369a1', display: 'block', marginBottom: '10px' }}>
-        📦 وجهة التسليم
+        📦 وجهة التسليم / تصنيف الشراء
       </label>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
         {[
-          { val: 'مستودع', icon: '🏪', label: 'مستودع' },
-          { val: 'موقع العمل', icon: '🏗️', label: 'موقع العمل مباشرة' },
+          { val: 'مستودع',      icon: '🏪', label: 'مستودع',            desc: 'يُضاف للمخزون' },
+          { val: 'موقع العمل',  icon: '🏗️', label: 'موقع العمل',        desc: 'مباشرة للمشروع' },
+          { val: 'أصل ثابت',   icon: '🏭', label: 'أصل ثابت',          desc: 'سيارة / معدة / جهاز' },
         ].map(opt => (
           <button key={opt.val} type="button" onClick={() => onChange(opt.val, undefined)}
-            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+            style={{ flex: 1, minWidth: '100px', padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center',
               borderColor: value === opt.val ? '#0369a1' : 'var(--border)',
               background: value === opt.val ? '#e0f2fe' : 'white',
               color: value === opt.val ? '#0369a1' : 'var(--text3)' }}>
-            {opt.icon} {opt.label}
+            <div>{opt.icon} {opt.label}</div>
+            <div style={{ fontSize: '0.68rem', marginTop: '2px', opacity: 0.7 }}>{opt.desc}</div>
           </button>
         ))}
       </div>
@@ -190,6 +192,11 @@ function DeliveryField({ value, warehouseId, projects, warehouses, onChange }: {
       {value === 'موقع العمل' && (
         <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
           ⚠️ البضاعة ستُرسل مباشرة لموقع العمل ولن تُضاف للمخزون
+        </div>
+      )}
+      {value === 'أصل ثابت' && (
+        <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', fontSize: '0.78rem', color: '#065f46', border: '1px solid #bbf7d0' }}>
+          ✅ سيُسجَّل كأصل ثابت — يمكن إدارة الأصول الثابتة لاحقاً من قسم مخصص
         </div>
       )}
     </div>
@@ -1284,10 +1291,10 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
   const filteredInvs = vendorInvoices.filter(i => !search || i.invoice_number.includes(search) || i.vendor_name.includes(search))
 
   const TABS = [
-    { id: 'orders',   label: '📋 أوامر الشراء',    color: '#e6820a', count: purchaseOrders.length },
-    { id: 'invoices', label: '🧾 فواتير الموردين',  color: '#c81e1e', count: vendorInvoices.length },
-    { id: 'returns',  label: '↩️ المرتجعات',       color: '#6b7280', count: returns.length },
-    { id: 'vendors',  label: '🏭 الموردون',         color: '#1a56db', count: vendors.length },
+    { id: 'orders',   label: '📋 أوامر الشراء',    color: '#e6820a' },
+    { id: 'invoices', label: '🧾 فواتير الموردين',  color: '#c81e1e' },
+    { id: 'returns',  label: '↩️ المرتجعات',       color: '#6b7280' },
+    { id: 'vendors',  label: '🏭 الموردون',         color: '#1a56db' },
   ]
 
   return (
@@ -1329,12 +1336,11 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setActiveTab(t.id as any); setSearch('') }}
-            style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px',
+            style={{ padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? t.color : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
               boxShadow: activeTab === t.id ? '0 2px 8px ' + t.color + '44' : 'none' }}>
             {t.label}
-            <span style={{ fontSize: '0.72rem', padding: '1px 6px', borderRadius: '10px', background: activeTab === t.id ? 'rgba(255,255,255,0.25)' : '#d1d5db', color: activeTab === t.id ? 'white' : '#6b7280' }}>{t.count}</span>
           </button>
         ))}
       </div>
@@ -1383,8 +1389,10 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                       <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{po.po_date}</td>
                       <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{po.expected_date || '—'}</td>
                       <td style={{ padding: '12px 12px', fontSize: '0.78rem' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', background: po.delivery_to === 'مستودع' ? '#eff6ff' : '#fffbeb', color: po.delivery_to === 'مستودع' ? '#1a56db' : '#e6820a', fontWeight: 600 }}>
-                          {po.delivery_to === 'مستودع' ? '🏪' : '🏗️'} {po.delivery_to}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
+                          background: po.delivery_to === 'مستودع' ? '#eff6ff' : po.delivery_to === 'أصل ثابت' ? '#ecfdf5' : '#fffbeb',
+                          color: po.delivery_to === 'مستودع' ? '#1a56db' : po.delivery_to === 'أصل ثابت' ? '#065f46' : '#e6820a' }}>
+                          {po.delivery_to === 'مستودع' ? '🏪' : po.delivery_to === 'أصل ثابت' ? '🏭' : '🏗️'} {po.delivery_to}
                         </span>
                       </td>
                       <td style={{ padding: '12px 12px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>{Number(po.total_amount).toLocaleString()} ر.س</td>
@@ -1462,8 +1470,10 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                         <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{inv.invoice_date}</td>
                         <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap', color: isOverdue ? '#c81e1e' : 'inherit' }}>{inv.due_date || '—'}</td>
                         <td style={{ padding: '12px 12px', fontSize: '0.78rem' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', background: inv.delivery_to === 'مستودع' ? '#eff6ff' : '#fffbeb', color: inv.delivery_to === 'مستودع' ? '#1a56db' : '#e6820a', fontWeight: 600 }}>
-                            {inv.delivery_to === 'مستودع' ? '🏪' : '🏗️'} {inv.delivery_to}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
+                            background: inv.delivery_to === 'مستودع' ? '#eff6ff' : inv.delivery_to === 'أصل ثابت' ? '#ecfdf5' : '#fffbeb',
+                            color: inv.delivery_to === 'مستودع' ? '#1a56db' : inv.delivery_to === 'أصل ثابت' ? '#065f46' : '#e6820a' }}>
+                            {inv.delivery_to === 'مستودع' ? '🏪' : inv.delivery_to === 'أصل ثابت' ? '🏭' : '🏗️'} {inv.delivery_to}
                           </span>
                         </td>
                         <td style={{ padding: '12px 12px', fontWeight: 700, color: '#c81e1e', whiteSpace: 'nowrap' }}>{Number(inv.total_amount).toLocaleString()} ر.س</td>
