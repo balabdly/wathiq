@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, CheckCircle, Warehouse, MapPin } from 'lucide-react'
+import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, CheckCircle, Warehouse, MapPin, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ════════════════════════════════════════
@@ -874,6 +874,221 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
   )
 }
 
+
+// ════════════════════════════════════════
+// مودال: عرض أمر الشراء
+// ════════════════════════════════════════
+function POViewModal({ po, items, onClose, onPrint }: {
+  po: PurchaseOrder; items: POItem[]; onClose: () => void; onPrint: () => void
+}) {
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Eye style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+            معاينة أمر الشراء — {po.po_number}
+          </h3>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={onPrint}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              <Printer style={{ width: '15px', height: '15px' }} /> طباعة
+            </button>
+            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          </div>
+        </div>
+        <div className="modal-body" style={{ padding: '0' }}>
+          <div style={{ padding: '24px', direction: 'rtl' }}>
+
+            {/* هيدر */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '16px', borderBottom: '3px solid #e6820a' }}>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#e6820a', marginBottom: '4px' }}>{po.vendor_name}</div>
+                {po.vendor_vat && <div style={{ fontSize: '12px', color: '#64748b' }}>الرقم الضريبي: {po.vendor_vat}</div>}
+              </div>
+              <div style={{ background: '#e6820a', color: 'white', padding: '10px 20px', borderRadius: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', opacity: 0.85 }}>أمر شراء</div>
+                <div style={{ fontSize: '16px', fontWeight: 800 }}>{po.po_number}</div>
+                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.85 }}>{po.po_date}</div>
+              </div>
+            </div>
+
+            {/* التفاصيل */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+              {[
+                { label: 'تاريخ الطلب', value: po.po_date },
+                { label: 'تاريخ التسليم المتوقع', value: po.expected_date || '—' },
+                { label: 'وجهة التسليم', value: po.delivery_to },
+                { label: 'الحالة', value: po.status },
+                { label: 'المشروع', value: po.project?.name || 'مشتريات عامة' },
+              ].map(f => (
+                <div key={f.label} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '3px' }}>{f.label}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{f.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* البنود */}
+            {items.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#e6820a', color: 'white' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'right', width: '40%' }}>الوصف</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الكمية</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>سعر الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
+                        <td style={{ padding: '9px 12px' }}>{item.description}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.unit}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr' }}>{Number(item.unit_price).toLocaleString('ar-SA')}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr', fontWeight: 600 }}>{Number(item.total).toLocaleString('ar-SA')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* الإجماليات */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ width: '260px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>قبل الضريبة</span>
+                  <span style={{ fontWeight: 600 }}>{Number(po.subtotal).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>ضريبة ({po.vat_rate}%)</span>
+                  <span style={{ fontWeight: 600, color: '#e6820a' }}>{Number(po.vat_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ borderTop: '2px solid #e6820a', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '15px', color: '#e6820a' }}>
+                  <span>الإجمالي</span>
+                  <span>{Number(po.total_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: عرض فاتورة المورد
+// ════════════════════════════════════════
+function VInvViewModal({ inv, items, onClose, onPrint }: {
+  inv: VendorInvoice; items: POItem[]; onClose: () => void; onPrint: () => void
+}) {
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Eye style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
+            معاينة فاتورة المورد — {inv.invoice_number}
+          </h3>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={onPrint}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              <Printer style={{ width: '15px', height: '15px' }} /> طباعة
+            </button>
+            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          </div>
+        </div>
+        <div className="modal-body" style={{ padding: '0' }}>
+          <div style={{ padding: '24px', direction: 'rtl' }}>
+
+            {/* هيدر */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '16px', borderBottom: '3px solid #c81e1e' }}>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#c81e1e', marginBottom: '4px' }}>{inv.vendor_name}</div>
+                {inv.vendor_vat && <div style={{ fontSize: '12px', color: '#64748b' }}>الرقم الضريبي: {inv.vendor_vat}</div>}
+                {inv.vendor?.iban && <div style={{ fontSize: '12px', color: '#64748b', fontFamily: 'monospace' }}>IBAN: {inv.vendor.iban}</div>}
+              </div>
+              <div style={{ background: '#c81e1e', color: 'white', padding: '10px 20px', borderRadius: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '11px', opacity: 0.85 }}>فاتورة مورد</div>
+                <div style={{ fontSize: '16px', fontWeight: 800 }}>{inv.invoice_number}</div>
+                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.85 }}>{inv.invoice_date}</div>
+              </div>
+            </div>
+
+            {/* التفاصيل */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+              {[
+                { label: 'تاريخ الفاتورة', value: inv.invoice_date },
+                { label: 'تاريخ الاستحقاق', value: inv.due_date || '—' },
+                { label: 'أمر الشراء المرتبط', value: inv.po?.po_number || '—' },
+                { label: 'وجهة التسليم', value: inv.delivery_to },
+                { label: 'المشروع', value: inv.project?.name || 'مشتريات عامة' },
+                { label: 'الحالة', value: inv.status },
+              ].map(f => (
+                <div key={f.label} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '3px' }}>{f.label}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{f.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* البنود */}
+            {items.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ background: '#c81e1e', color: 'white' }}>
+                      <th style={{ padding: '9px 12px', textAlign: 'right', width: '40%' }}>الوصف</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الكمية</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>سعر الوحدة</th>
+                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
+                        <td style={{ padding: '9px 12px' }}>{item.description}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.unit}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr' }}>{Number(item.unit_price).toLocaleString('ar-SA')}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr', fontWeight: 600 }}>{Number(item.total).toLocaleString('ar-SA')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* الإجماليات */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ width: '260px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>قبل الضريبة</span>
+                  <span style={{ fontWeight: 600 }}>{Number(inv.subtotal).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
+                  <span style={{ color: '#64748b' }}>ضريبة ({inv.vat_rate}%)</span>
+                  <span style={{ fontWeight: 600, color: '#e6820a' }}>{Number(inv.vat_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+                <div style={{ borderTop: '2px solid #c81e1e', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '15px', color: '#c81e1e' }}>
+                  <span>الإجمالي</span>
+                  <span>{Number(inv.total_amount).toLocaleString('ar-SA')} ر.س</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
@@ -897,10 +1112,132 @@ export default function FinancePurchasesPage() {
   const [editPO,     setEditPO]     = useState<PurchaseOrder | null>(null)
   const [editInv,    setEditInv]    = useState<VendorInvoice | null>(null)
   const [editVendor, setEditVendor] = useState<Vendor | null>(null)
-  const [returnInvoice, setReturnInvoice] = useState<VendorInvoice | null>(null)
+  const [returnInvoice,  setReturnInvoice]  = useState<VendorInvoice | null>(null)
+  const [viewPO,         setViewPO]         = useState<PurchaseOrder | null>(null)
+  const [viewPOItems,    setViewPOItems]     = useState<POItem[]>([])
+  const [showViewPO,     setShowViewPO]      = useState(false)
+  const [viewVInv,       setViewVInv]        = useState<VendorInvoice | null>(null)
+  const [viewVInvItems,  setViewVInvItems]   = useState<POItem[]>([])
+  const [showViewVInv,   setShowViewVInv]    = useState(false)
   const [convertPO,     setConvertPO]     = useState<PurchaseOrder | null>(null)
 
   useEffect(() => { loadAll() }, [tenant?.id])
+
+  async function handleViewPO(po: PurchaseOrder) {
+    const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
+    setViewPOItems(data || [])
+    setViewPO(po)
+    setShowViewPO(true)
+  }
+
+  async function handleViewVInv(inv: VendorInvoice) {
+    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
+    setViewVInvItems(data || [])
+    setViewVInv(inv)
+    setShowViewVInv(true)
+  }
+
+  function printPO(po: PurchaseOrder, items: POItem[]) {
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>أمر شراء ${po.po_number}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;font-size:14px}.page{max-width:794px;margin:0 auto;padding:30px 40px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #e6820a}.badge{background:#e6820a;color:white;padding:10px 20px;border-radius:10px;text-align:center}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}.info-item{background:#f8fafc;border-radius:8px;padding:10px 14px}.info-label{font-size:10px;color:#94a3b8;margin-bottom:3px}.info-value{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:#e6820a;color:white}th{padding:10px 12px;text-align:right;font-size:12px}tbody tr{border-bottom:1px solid #f1f5f9}td{padding:9px 12px;font-size:13px}.totals-box{width:260px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-right:auto}.total-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}.total-final{border-top:2px solid #e6820a;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px;color:#e6820a}@media print{.no-print{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+<div class="page">
+<div class="header">
+  <div>
+    <div style="font-size:20px;font-weight:800;color:#e6820a;margin-bottom:4px">${po.vendor_name}</div>
+    ${po.vendor_vat ? '<div style="font-size:12px;color:#64748b">الرقم الضريبي: ' + po.vendor_vat + '</div>' : ''}
+  </div>
+  <div class="badge">
+    <div style="font-size:11px;opacity:0.85">أمر شراء</div>
+    <div style="font-size:18px;font-weight:800">${po.po_number}</div>
+    <div style="font-size:11px;margin-top:4px;opacity:0.85">${po.po_date}</div>
+  </div>
+</div>
+<div class="info-grid">
+  <div class="info-item"><div class="info-label">تاريخ الطلب</div><div class="info-value">${po.po_date}</div></div>
+  ${po.expected_date ? '<div class="info-item"><div class="info-label">تاريخ التسليم المتوقع</div><div class="info-value">' + po.expected_date + '</div></div>' : ''}
+  <div class="info-item"><div class="info-label">وجهة التسليم</div><div class="info-value">${po.delivery_to}</div></div>
+  <div class="info-item"><div class="info-label">الحالة</div><div class="info-value">${po.status}</div></div>
+</div>
+<table>
+  <thead><tr><th style="width:40%">الوصف</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th style="text-align:left">سعر الوحدة</th><th style="text-align:left">الإجمالي</th></tr></thead>
+  <tbody>${items.map(i => '<tr><td>' + i.description + '</td><td style="text-align:center">' + i.quantity + '</td><td style="text-align:center">' + i.unit + '</td><td style="text-align:left;direction:ltr">' + Number(i.unit_price).toLocaleString('ar-SA') + '</td><td style="text-align:left;direction:ltr;font-weight:600">' + Number(i.total).toLocaleString('ar-SA') + '</td></tr>').join('')}</tbody>
+</table>
+<div style="display:flex;justify-content:flex-end">
+  <div class="totals-box">
+    <div class="total-row"><span>المجموع قبل الضريبة</span><span>${Number(po.subtotal).toLocaleString('ar-SA')} ر.س</span></div>
+    <div class="total-row"><span>ضريبة القيمة المضافة (${po.vat_rate}%)</span><span style="color:#e6820a">${Number(po.vat_amount).toLocaleString('ar-SA')} ر.س</span></div>
+    <div class="total-final"><span>الإجمالي</span><span>${Number(po.total_amount).toLocaleString('ar-SA')} ر.س</span></div>
+  </div>
+</div>
+${po.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border-radius:8px;font-size:12px"><strong>ملاحظات:</strong> ' + po.notes + '</div>' : ''}
+<div style="margin-top:40px;display:flex;justify-content:flex-end;padding-top:20px;border-top:1px solid #e2e8f0">
+  <div style="text-align:center"><div style="border-bottom:2px solid #e6820a;width:160px;margin:30px auto 6px"></div><div style="font-size:11px;color:#94a3b8">التوقيع والختم</div></div>
+</div>
+</div>
+<div class="no-print" style="text-align:center;padding:16px;background:#f9fafb">
+  <button onclick="window.print()" style="padding:10px 28px;background:#e6820a;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة / PDF</button>
+  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
+</div>
+</body></html>`)
+    win.document.close()
+  }
+
+  function printVendorInvoice(inv: VendorInvoice, items: POItem[]) {
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>فاتورة مورد ${inv.invoice_number}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;font-size:14px}.page{max-width:794px;margin:0 auto;padding:30px 40px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #c81e1e}.badge{background:#c81e1e;color:white;padding:10px 20px;border-radius:10px;text-align:center}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}.info-item{background:#f8fafc;border-radius:8px;padding:10px 14px}.info-label{font-size:10px;color:#94a3b8;margin-bottom:3px}.info-value{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:#c81e1e;color:white}th{padding:10px 12px;text-align:right;font-size:12px}tbody tr{border-bottom:1px solid #f1f5f9}td{padding:9px 12px;font-size:13px}.totals-box{width:260px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;margin-right:auto}.total-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}.total-final{border-top:2px solid #c81e1e;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px;color:#c81e1e}@media print{.no-print{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
+<div class="page">
+<div class="header">
+  <div>
+    <div style="font-size:20px;font-weight:800;color:#c81e1e;margin-bottom:4px">${inv.vendor_name}</div>
+    ${inv.vendor_vat ? '<div style="font-size:12px;color:#64748b">الرقم الضريبي: ' + inv.vendor_vat + '</div>' : ''}
+  </div>
+  <div class="badge">
+    <div style="font-size:11px;opacity:0.85">فاتورة مورد</div>
+    <div style="font-size:18px;font-weight:800">${inv.invoice_number}</div>
+    <div style="font-size:11px;margin-top:4px;opacity:0.85">${inv.invoice_date}</div>
+  </div>
+</div>
+<div class="info-grid">
+  <div class="info-item"><div class="info-label">تاريخ الفاتورة</div><div class="info-value">${inv.invoice_date}</div></div>
+  ${inv.due_date ? '<div class="info-item"><div class="info-label">تاريخ الاستحقاق</div><div class="info-value">' + inv.due_date + '</div></div>' : ''}
+  ${inv.po ? '<div class="info-item"><div class="info-label">أمر الشراء</div><div class="info-value">' + inv.po.po_number + '</div></div>' : ''}
+  <div class="info-item"><div class="info-label">وجهة التسليم</div><div class="info-value">${inv.delivery_to}</div></div>
+  <div class="info-item"><div class="info-label">الحالة</div><div class="info-value">${inv.status}</div></div>
+</div>
+<table>
+  <thead><tr><th style="width:40%">الوصف</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th style="text-align:left">سعر الوحدة</th><th style="text-align:left">الإجمالي</th></tr></thead>
+  <tbody>${items.map(i => '<tr><td>' + i.description + '</td><td style="text-align:center">' + i.quantity + '</td><td style="text-align:center">' + i.unit + '</td><td style="text-align:left;direction:ltr">' + Number(i.unit_price).toLocaleString('ar-SA') + '</td><td style="text-align:left;direction:ltr;font-weight:600">' + Number(i.total).toLocaleString('ar-SA') + '</td></tr>').join('')}</tbody>
+</table>
+<div style="display:flex;justify-content:flex-end">
+  <div class="totals-box">
+    <div class="total-row"><span>المجموع قبل الضريبة</span><span>${Number(inv.subtotal).toLocaleString('ar-SA')} ر.س</span></div>
+    <div class="total-row"><span>ضريبة القيمة المضافة (${inv.vat_rate}%)</span><span style="color:#e6820a">${Number(inv.vat_amount).toLocaleString('ar-SA')} ر.س</span></div>
+    <div class="total-final"><span>الإجمالي</span><span>${Number(inv.total_amount).toLocaleString('ar-SA')} ر.س</span></div>
+  </div>
+</div>
+${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border-radius:8px;font-size:12px"><strong>ملاحظات:</strong> ' + inv.notes + '</div>' : ''}
+</div>
+<div class="no-print" style="text-align:center;padding:16px;background:#f9fafb">
+  <button onclick="window.print()" style="padding:10px 28px;background:#c81e1e;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة / PDF</button>
+  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
+</div>
+</body></html>`)
+    win.document.close()
+  }
+
+  async function handlePrintPO(po: PurchaseOrder) {
+    const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
+    setTimeout(() => printPO(po, data || []), 0)
+  }
+
+  async function handlePrintVInv(inv: VendorInvoice) {
+    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
+    setTimeout(() => printVendorInvoice(inv, data || []), 0)
+  }
 
   async function loadAll() {
     if (!tenant) return
@@ -1295,6 +1632,16 @@ export default function FinancePurchasesPage() {
         <VendorModal vendor={editVendor} tenantId={tenant!.id}
           onClose={() => { setShowVendorModal(false); setEditVendor(null) }}
           onSave={() => { setShowVendorModal(false); setEditVendor(null); loadAll() }} />
+      )}
+      {showViewPO && viewPO && (
+        <POViewModal po={viewPO} items={viewPOItems}
+          onClose={() => { setShowViewPO(false); setViewPO(null) }}
+          onPrint={() => handlePrintPO(viewPO)} />
+      )}
+      {showViewVInv && viewVInv && (
+        <VInvViewModal inv={viewVInv} items={viewVInvItems}
+          onClose={() => { setShowViewVInv(false); setViewVInv(null) }}
+          onPrint={() => handlePrintVInv(viewVInv)} />
       )}
     </div>
   )
