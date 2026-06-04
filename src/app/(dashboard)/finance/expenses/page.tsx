@@ -141,8 +141,34 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     } else {
-      const { error } = await supabase.from('finance_expenses').insert(payload)
+      const { data: newExp, error } = await supabase.from('finance_expenses').insert(payload).select('id').single()
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+      const newExpenseId = newExp?.id
+    }
+
+    // ══ قيد محاسبي تلقائي للمصروف المدفوع ══
+    if (payload.status === 'مدفوع' && !expense) {
+      // تحديد الحساب المدين حسب نوع المصروف
+      const expAccountCode = payload.account_id
+        ? null  // إذا اختار المستخدم حساباً محدداً نستخدمه
+        : payload.expense_type === 'مشاريع' ? '5012'   // تكلفة المواد المباشرة
+        : payload.expense_type === 'تشغيلي' ? '5100'   // رواتب وأجور (افتراضي)
+        : '5300'                                        // مصروفات إدارية
+
+      if (expAccountCode && newExpenseId) {
+        await createJournalEntry(tenantId, {
+          date:          payload.expense_date,
+          description:   `مصروف ${payload.category} — ${payload.description}`,
+          referenceType: 'مصروف',
+          referenceId:   newExpenseId,
+          lines: [
+            // مدين: حساب المصروف
+            { accountCode: expAccountCode, debit: payload.total_amount, credit: 0,                    description: payload.description },
+            // دائن: الصندوق/البنك
+            { accountCode: '1111',         debit: 0,                    credit: payload.total_amount, description: `صرف مصروف ${payload.category}` },
+          ]
+        })
+      }
     }
 
     toast.success(expense ? 'تم التعديل ✅' : '✅ تم تسجيل المصروف')
@@ -307,6 +333,36 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       </div>
     </div>
   )
+}
+
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
+  }).select('id').single()
+  if (error || !entry) return null
+  await supabase.from('finance_journal_lines').insert(lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null })))
+  return entry.id
 }
 
 // ════════════════════════════════════════
