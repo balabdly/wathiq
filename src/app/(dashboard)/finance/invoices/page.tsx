@@ -922,32 +922,47 @@ function InvoiceActions({ invoice, onPrint, onEdit, onCredit, onDelete, onAddPay
   onAddPayment: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const isDraft = invoice.status === 'مسودة'
-  const isPaid  = invoice.status === 'مدفوعة'
+  const [pos, setPos]   = useState({ top: 0, right: 0 })
+  const btnRef = React.useRef<HTMLButtonElement>(null)
+
+  const isDraft     = invoice.status === 'مسودة'
+  const isPaid      = invoice.status === 'مدفوعة'
+  const isCancelled = invoice.status === 'ملغاة'
+
+  const actions = [
+    { label: 'طباعة',      icon: '🖨️', action: onPrint,      show: true,                               color: '#374151' },
+    { label: 'تعديل',      icon: '✏️',  action: onEdit,       show: isDraft,                            color: '#1a56db' },
+    { label: 'إشعار دائن', icon: '↩️', action: onCredit,     show: !isDraft && !isCancelled,           color: '#c81e1e' },
+    { label: 'إضافة دفعة', icon: '💵', action: onAddPayment, show: !isPaid && !isDraft && !isCancelled, color: '#0ea77b' },
+    { label: 'حذف',        icon: '🗑️', action: onDelete,     show: isDraft,                            color: '#c81e1e' },
+  ].filter(a => a.show)
+
+  function handleOpen() {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    }
+    setOpen(o => !o)
+  }
 
   return (
-    <div style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)}
-        style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '1rem', color: 'var(--text3)', lineHeight: 1 }}>
+    <div style={{ display: 'inline-block' }}>
+      <button ref={btnRef} onClick={handleOpen}
+        style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: open ? 'var(--bg2)' : 'white', cursor: 'pointer', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text3)', lineHeight: 1 }}>
         ···
       </button>
       {open && (
         <>
-          <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 100, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', border: '1px solid var(--border)', minWidth: '160px', overflow: 'hidden' }}>
-            {[
-              { label: 'طباعة',           icon: '🖨️',  action: onPrint,      show: true,     color: '#374151' },
-              { label: 'تعديل',           icon: '✏️',   action: onEdit,       show: isDraft,  color: '#1a56db' },
-              { label: 'إشعار دائن',      icon: '↩️',  action: onCredit,     show: !isDraft, color: '#c81e1e' },
-              { label: 'إضافة دفعة',      icon: '💵',  action: onAddPayment, show: !isPaid,  color: '#0ea77b' },
-              { label: 'حذف',             icon: '🗑️',  action: onDelete,     show: isDraft,  color: '#c81e1e' },
-            ].filter(a => a.show).map((a, i, arr) => (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 1000, background: 'white', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.18)', border: '1px solid var(--border)', minWidth: '170px', overflow: 'hidden' }}>
+            {actions.map((a, i) => (
               <button key={a.label}
                 onClick={() => { setOpen(false); a.action() }}
-                style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'right', fontSize: '0.875rem', color: a.color, display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500, borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none' }}
+                style={{ width: '100%', padding: '11px 16px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'right', fontSize: '0.875rem', color: a.color, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500, borderBottom: i < actions.length - 1 ? '1px solid #f3f4f6' : 'none' }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                <span style={{ fontSize: '1rem' }}>{a.icon}</span> {a.label}
+                <span style={{ fontSize: '1rem', flexShrink: 0 }}>{a.icon}</span>
+                <span>{a.label}</span>
               </button>
             ))}
           </div>
