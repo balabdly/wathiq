@@ -18,18 +18,75 @@ export default function LoginPage() {
     if (!username || !password) return toast.error('يرجى إدخال بيانات الدخول')
     setLoading(true)
     try {
-      const { data, error } = await supabase.from('employees').select('*').ilike('username', username.trim())
-      if (error || !data || data.length === 0) { toast.error('اسم المستخدم غير موجود'); return }
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .ilike('username', username.trim())
+
+      if (error || !data || data.length === 0) {
+        toast.error('اسم المستخدم غير موجود'); return
+      }
+
       const emp = data.find((e: any) => e.password === password)
       if (!emp) { toast.error('كلمة المرور غير صحيحة'); return }
-      const { data: tenant } = await supabase.from('tenants').select('*').eq('id', emp.tenant_id).single()
-      const { data: branches } = await supabase.from('branches').select('*').eq('tenant_id', emp.tenant_id).order('id')
-      setCurrentUser(emp); setTenant(tenant); setBranches(branches || [])
+
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', emp.tenant_id)
+        .single()
+
+      const { data: branches } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('tenant_id', emp.tenant_id)
+        .order('id')
+
+      // ── مزامنة الصلاحيات مع موديولات الـ tenant ──────────────────
+      // إذا كان موديول مفعّل في الـ tenant لكن غير موجود في permissions
+      // المستخدم (لأنه أُنشئ قبل إضافة الموديول) — نضيفه تلقائياً
+      const modules = (tenant as any)?.modules || {}
+      let perms: string[] = emp.permissions || []
+
+      const modulePermMap: Record<string, string> = {
+        finance:   'finance',
+        purchases: 'purchases',
+        employees: 'employees',
+        qhse:      'qhse',
+        reports:   'reports',
+        visits:    'visits_field',
+      }
+
+      let permsUpdated = false
+      Object.entries(modulePermMap).forEach(([module, perm]) => {
+        if (modules[module] === true && !perms.includes(perm)) {
+          perms = [...perms, perm]
+          permsUpdated = true
+        }
+      })
+
+      // إذا تغيرت الصلاحيات — حدّثها في قاعدة البيانات
+      if (permsUpdated) {
+        await supabase
+          .from('employees')
+          .update({ permissions: perms })
+          .eq('id', emp.id)
+      }
+
+      const updatedEmp = { ...emp, permissions: perms }
+
+      setCurrentUser(updatedEmp)
+      setTenant(tenant)
+      setBranches(branches || [])
+
       const userBranch = branches?.find((b: any) => b.id === emp.branch_id) || branches?.[0]
       if (userBranch) setActiveBranch(userBranch)
+
       toast.success(`أهلاً ${emp.name} 👋`)
       router.push('/dashboard')
-    } catch { toast.error('حدث خطأ') } finally { setLoading(false) }
+
+    } catch { toast.error('حدث خطأ') }
+    finally { setLoading(false) }
   }
 
   return (
@@ -54,34 +111,64 @@ export default function LoginPage() {
           <form onSubmit={handleLogin}>
             <div className="form-group">
               <label>اسم المستخدم</label>
-              <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                placeholder="أدخل اسم المستخدم" autoComplete="username" autoFocus />
+              <input
+                type="text"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="أدخل اسم المستخدم"
+                autoComplete="username"
+                autoFocus
+              />
             </div>
             <div className="form-group">
               <label>كلمة المرور</label>
               <div className="relative">
-                <input type={showPass ? 'text' : 'password'} value={password}
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="أدخل كلمة المرور" autoComplete="current-password"
-                  style={{ paddingLeft: '40px' }} />
+                  placeholder="أدخل كلمة المرور"
+                  autoComplete="current-password"
+                  style={{ paddingLeft: '40px' }}
+                />
                 <button type="button" onClick={() => setShowPass(!showPass)}
-                  style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', padding: '4px', color: '#9ca3af' }}>
+                  style={{
+                    position: 'absolute', left: '10px', top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', padding: '4px', color: '#9ca3af',
+                  }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                    {showPass
-                      ? <><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>
-                      : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>
-                    }
+                    {showPass ? (
+                      <>
+                        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </>
+                    ) : (
+                      <>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </>
+                    )}
                   </svg>
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full"
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary w-full"
               style={{ justifyContent: 'center', padding: '12px', fontSize: '1rem', marginTop: '8px' }}>
-              {loading
-                ? <><span style={{ width:18, height:18, border:'2px solid rgba(255,255,255,0.3)', borderTopColor:'white', borderRadius:'50%' }} className="animate-spin" /> جاري الدخول...</>
-                : 'دخول'
-              }
+              {loading ? (
+                <>
+                  <span style={{
+                    width: 18, height: 18,
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: 'white', borderRadius: '50%',
+                  }} className="animate-spin" />
+                  جاري الدخول...
+                </>
+              ) : 'دخول'}
             </button>
           </form>
         </div>
