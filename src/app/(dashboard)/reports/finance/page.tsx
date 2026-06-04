@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -264,7 +264,7 @@ export default function FinanceReportsPage() {
 
     setLoaded(p => ({ ...p, [group]: true }))
     setLoading(p => ({ ...p, [group]: false }))
-  }, [tid, loaded])
+  }, [tid])
 
   // ── حسابات ميزان المراجعة ──
   const trialBalance = (() => {
@@ -388,7 +388,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 1. الحسابات العامة ══ */}
       <ReportGroup title="📊 الحسابات العامة" icon={BookOpen} color="#1a56db" defaultOpen={true}>
-        <div onMouseEnter={() => loadGroup('general')}>
+        <div>
           <ReportTable title="ميزان المراجعة" exportName="ميزان-المراجعة" company={company}
             loading={loading['general']}
             headers={[
@@ -441,7 +441,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 2. القيود اليومية ══ */}
       <ReportGroup title="📒 القيود اليومية" icon={FileText} color="#7c3aed">
-        <div onMouseEnter={() => loadGroup('journal')}>
+        <div>
           <ReportTable title="سجل القيود اليومية" exportName="القيود-اليومية" company={company}
             loading={loading['journal']}
             headers={[
@@ -506,7 +506,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 3. الفواتير ══ */}
       <ReportGroup title="🧾 فواتير المبيعات والإشعارات" icon={FileText} color="#059669">
-        <div onMouseEnter={() => loadGroup('invoices')}>
+        <div>
           <ReportTable title="قائمة الفواتير" exportName="الفواتير" company={company}
             loading={loading['invoices']}
             headers={[
@@ -578,7 +578,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 4. المصروفات ══ */}
       <ReportGroup title="💸 تقارير المصروفات" icon={TrendingUp} color="#dc2626">
-        <div onMouseEnter={() => loadGroup('expenses')}>
+        <div>
           <ReportTable title="قائمة المصروفات" exportName="المصروفات" company={company}
             loading={loading['expenses']}
             headers={[
@@ -635,7 +635,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 5. سندات القبض والصرف ══ */}
       <ReportGroup title="🏦 الخزينة وسندات القبض والصرف" icon={Wallet} color="#0891b2">
-        <div onMouseEnter={() => loadGroup('treasury')}>
+        <div>
           <ReportTable title="سندات القبض" exportName="سندات-القبض" company={company}
             loading={loading['treasury']}
             headers={[
@@ -709,7 +709,7 @@ export default function FinanceReportsPage() {
 
       {/* ══ 6. المشتريات والموردون ══ */}
       <ReportGroup title="🛒 تقارير المشتريات والموردين" icon={CreditCard} color="#d97706">
-        <div onMouseEnter={() => loadGroup('purchases')}>
+        <div>
           <ReportTable title="أوامر الشراء" exportName="أوامر-الشراء" company={company}
             loading={loading['purchases']}
             headers={[
