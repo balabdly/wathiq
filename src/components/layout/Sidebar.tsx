@@ -204,8 +204,8 @@ export default function Sidebar() {
   const inSettings = pathname.startsWith('/settings')
   const inFinance  = pathname.startsWith('/finance')
 
-  // ── التعديل: كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها ──
-  const [projectsOpen, setProjectsOpen] = useState(inProjects)
+  // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
+  const [projectsOpen, setProjectsOpen] = useState(false)
   const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
   const [hrOpen,       setHrOpen]       = useState(inHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
@@ -319,8 +319,7 @@ export default function Sidebar() {
 
         <Divider />
 
-        {hasPurchases && <StandaloneLink href="/purchases" label="المشتريات" icon={IC.purchases} active={pathname.startsWith('/purchases')} />}
-        {hasReports   && <StandaloneLink href="/reports"   label="التقارير"  icon={IC.reports}   active={pathname.startsWith('/reports')} />}
+        {hasReports && <StandaloneLink href="/reports" label="التقارير" icon={IC.reports} active={pathname.startsWith('/reports')} />}
 
         {isAdmin && (
           <>
