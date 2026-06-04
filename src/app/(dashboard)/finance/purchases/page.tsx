@@ -1480,17 +1480,30 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                         <td style={{ padding: '12px 12px' }}><span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span></td>
                         <td style={{ padding: '12px 8px' }}>
                           <div style={{ display: 'flex', gap: '4px' }}>
+                            {/* عرض */}
+                            <button onClick={() => handleViewVInv(inv)} title="عرض"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                              <Eye style={{ width: '13px', height: '13px' }} />
+                            </button>
+                            {/* طباعة */}
+                            <button onClick={() => handlePrintVInv(inv)} title="طباعة"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
+                              <Printer style={{ width: '13px', height: '13px' }} />
+                            </button>
+                            {/* تعديل — مسودة فقط */}
                             {inv.status === 'مسودة' && (
                               <button onClick={() => { setEditInv(inv); setShowInvModal(true) }} className="btn btn-ghost btn-xs">
                                 <Pencil style={{ width: '13px', height: '13px' }} />
                               </button>
                             )}
+                            {/* مرتجع — غير مسودة */}
                             {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
                               <button onClick={() => { setReturnInvoice(inv); setShowReturnModal(true) }} title="مرتجع"
                                 style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer', fontSize: '0.75rem' }}>
                                 ↩️
                               </button>
                             )}
+                            {/* حذف — مسودة فقط */}
                             {inv.status === 'مسودة' && (
                               <button onClick={() => deleteInv(inv.id, inv.status)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                                 <Trash2 style={{ width: '13px', height: '13px' }} />
