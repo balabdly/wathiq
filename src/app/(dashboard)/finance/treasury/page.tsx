@@ -196,9 +196,36 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
     if (form.account_id)      payload.account_id      = Number(form.account_id)
     if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
 
-    const { error } = await supabase.from('finance_treasury').insert(payload)
+    const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success(type === 'قبض' ? '✅ تم تسجيل المقبوض' : '✅ تم تسجيل المدفوع')
+    // ══ قيد محاسبي تلقائي للحركة ══
+    if (trxData) {
+      const cashAccountCode = '1111' // الصندوق الرئيسي (افتراضي)
+      const otherAccountCode = form.account_id
+        ? null // المستخدم اختار الحساب
+        : type === 'قبض' ? '1120'  // ذمم مدينة (افتراضي للقبض)
+        : '2110'                    // ذمم دائنة (افتراضي للصرف)
+
+      if (otherAccountCode) {
+        await createJournalEntry(tenantId, {
+          date:          form.transaction_date,
+          description:   `${type} — ${form.description}`,
+          referenceType: type,
+          referenceId:   trxData.id,
+          lines: type === 'قبض' ? [
+            // قبض: مدين الصندوق، دائن الحساب الآخر
+            { accountCode: cashAccountCode,  debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: otherAccountCode, debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ] : [
+            // صرف: مدين الحساب الآخر، دائن الصندوق
+            { accountCode: otherAccountCode, debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: cashAccountCode,  debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ]
+        })
+      }
+    }
+
+    toast.success(type === 'قبض' ? '✅ تم تسجيل المقبوض والقيد' : '✅ تم تسجيل المدفوع والقيد')
     onSave(); setSaving(false)
   }
 
@@ -590,6 +617,36 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
       </div>
     </div>
   )
+}
+
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
+  }).select('id').single()
+  if (error || !entry) return null
+  await supabase.from('finance_journal_lines').insert(lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null })))
+  return entry.id
 }
 
 // ════════════════════════════════════════
