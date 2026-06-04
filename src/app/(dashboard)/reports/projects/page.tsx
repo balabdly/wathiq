@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -196,7 +196,7 @@ export default function ProjectReportsPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!tid || loaded) return
+    if (!tid) return
     setIsLoading(true)
     try {
       const [p, pc, e] = await Promise.all([
@@ -210,7 +210,9 @@ export default function ProjectReportsPage() {
       setLoaded(true)
     } catch (e) { console.error(e) }
     setIsLoading(false)
-  }, [tid, bid, loaded])
+  }, [tid, bid])
+
+  useEffect(() => { loadData() }, [loadData])
 
   const fmt = (n: number) => (n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2 })
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
@@ -365,7 +367,7 @@ export default function ProjectReportsPage() {
 
       {/* ══ 1. قائمة المشاريع ══ */}
       <ReportGroup title="📋 قائمة المشاريع الكاملة" icon={FolderOpen} color="#0891b2" defaultOpen>
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable
             title="جميع المشاريع"
             exportName="قائمة-المشاريع"
@@ -390,7 +392,7 @@ export default function ProjectReportsPage() {
 
       {/* ══ 2. المشاريع المتأخرة ══ */}
       <ReportGroup title="⚠️ المشاريع المتأخرة" icon={FolderOpen} color="#dc2626">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable
             title={`المشاريع المتأخرة (${lateProjects.length})`}
             exportName="مشاريع-متأخرة"
@@ -414,7 +416,7 @@ export default function ProjectReportsPage() {
 
       {/* ══ 3. الملخصات ══ */}
       <ReportGroup title="📊 ملخصات وإحصاءات" icon={FolderOpen} color="#7c3aed">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable
             title="ملخص حسب الحالة"
             exportName="مشاريع-حسب-الحالة"
@@ -449,7 +451,7 @@ export default function ProjectReportsPage() {
 
       {/* ══ 4. أداء المهندسين ══ */}
       <ReportGroup title="👷 أداء المهندسين" icon={FolderOpen} color="#059669">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable
             title="تقرير أداء المهندسين"
             exportName="أداء-المهندسين"
@@ -472,7 +474,7 @@ export default function ProjectReportsPage() {
 
       {/* ══ 5. تكاليف المشاريع ══ */}
       <ReportGroup title="💰 تكاليف المشاريع" icon={FolderOpen} color="#d97706">
-        <div onMouseEnter={loadData}>
+        <div>
           <ReportTable
             title="ملخص تكاليف المشاريع"
             exportName="تكاليف-المشاريع"
