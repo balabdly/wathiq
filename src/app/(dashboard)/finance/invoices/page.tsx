@@ -503,6 +503,25 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
     if (validItems.length > 0) {
       await supabase.from('finance_invoice_items').insert(validItems.map(i => ({ invoice_id: invoiceId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
+    // ══ قيد محاسبي تلقائي عند الإرسال ══
+    const finalStatus = payload.status
+    if (finalStatus === 'مرسلة' && invoiceId) {
+      await createJournalEntry(tenantId, {
+        date:          payload.invoice_date,
+        description:   `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
+        referenceType: 'فاتورة مبيعات',
+        referenceId:   invoiceId,
+        lines: [
+          // مدين: الذمم المدينة (إجمالي الفاتورة)
+          { accountCode: '1120', debit: payload.total_amount, credit: 0, description: `فاتورة ${payload.invoice_number}` },
+          // دائن: إيرادات المشاريع (قبل الضريبة)
+          { accountCode: '4100', debit: 0, credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
+          // دائن: ضريبة القيمة المضافة (إذا وجدت)
+          ...(payload.vat_amount > 0 ? [{ accountCode: '2130', debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
+        ]
+      })
+    }
+
     toast.success(invoice ? 'تم التعديل ✅' : '✅ تم إنشاء الفاتورة')
     onSave(); setSaving(false)
   }
@@ -946,7 +965,21 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
     // تحديث حالة الفاتورة للمدفوعة
     await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
 
-    toast.success('✅ تم تسجيل الدفعة وتحديث حالة الفاتورة')
+    // ══ قيد محاسبي تلقائي للتحصيل ══
+    await createJournalEntry(tenantId, {
+      date:          form.payment_date,
+      description:   `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name}`,
+      referenceType: 'تحصيل فاتورة',
+      referenceId:   invoice.id,
+      lines: [
+        // مدين: الصندوق/البنك (المبلغ المحصّل)
+        { accountCode: '1111', debit: Number(form.amount), credit: 0, description: `تحصيل ${invoice.invoice_number}` },
+        // دائن: الذمم المدينة (تقفيل المديونية)
+        { accountCode: '1120', debit: 0, credit: Number(form.amount), description: `تسوية ${invoice.invoice_number}` },
+      ]
+    })
+
+    toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
     onSave(); setSaving(false)
   }
 
@@ -1141,6 +1174,66 @@ function InvoiceViewModal({ invoice, items, company, onClose, onPrint }: {
       </div>
     </div>
   )
+}
+
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  // جلب أرقام الحسابات
+  const lineIds = await Promise.all(params.lines.map(async l => ({
+    ...l,
+    account_id: await getAccountId(tenantId, l.accountCode)
+  })))
+
+  // تحقق أن كل الحسابات موجودة
+  if (lineIds.some(l => !l.account_id)) {
+    console.warn('بعض الحسابات غير موجودة في الشجرة — تم تخطي القيد')
+    return null
+  }
+
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+
+  // رقم القيد
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id:      tenantId,
+    entry_number:   entryNumber,
+    entry_date:     params.date,
+    description:    params.description,
+    reference_type: params.referenceType,
+    reference_id:   params.referenceId,
+    total_debit:    totalDebit,
+    total_credit:   totalCredit,
+    status:         'معتمد',
+  }).select('id').single()
+
+  if (error || !entry) { console.error('خطأ في إنشاء القيد:', error); return null }
+
+  await supabase.from('finance_journal_lines').insert(
+    lineIds.map(l => ({
+      entry_id:    entry.id,
+      account_id:  l.account_id,
+      debit:       l.debit,
+      credit:      l.credit,
+      description: l.description || null,
+    }))
+  )
+
+  return entry.id
 }
 
 // ════════════════════════════════════════
