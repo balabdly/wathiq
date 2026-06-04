@@ -55,7 +55,7 @@ type Project = { id: number; name: string }
 
 const INV_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'مرسلة': 'badge-blue', 'مدفوعة': 'badge-green',
-  'ملغاة': 'badge-red', 'متأخرة': 'badge-red'
+  'ملغاة': 'badge-red', 'متأخرة': 'badge-red', 'إشعار جزئي': 'badge-amber'
 }
 const QUOTE_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'مرسلة': 'badge-blue', 'مقبولة': 'badge-green',
@@ -695,7 +695,41 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
     if (validItems.length > 0) {
       await supabase.from('finance_credit_note_items').insert(validItems.map(i => ({ note_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
-    toast.success('✅ تم إنشاء الإشعار الدائن')
+    // ══ قيد محاسبي عكسي تلقائي ══
+    await createJournalEntry(tenantId, {
+      date:          form.note_date,
+      description:   `${form.note_type} ${form.note_number} — ${selectedClient!.name}`,
+      referenceType: form.note_type,
+      referenceId:   data.id,
+      lines: [
+        // مدين: إيرادات المشاريع (عكس الإيراد)
+        { accountCode: '4100', debit: subtotal,    credit: 0,          description: `${form.note_type} ${form.note_number}` },
+        // مدين: ضريبة القيمة المضافة (إذا وجدت)
+        ...(vatAmount > 0 ? [{ accountCode: '2130', debit: vatAmount, credit: 0, description: 'ضريبة القيمة المضافة' }] : []),
+        // دائن: الذمم المدينة (تخفيض المديونية)
+        { accountCode: '1120', debit: 0, credit: total, description: `تخفيض فاتورة ${form.original_invoice_id || ''}` },
+      ]
+    })
+
+    // ══ تحديث الفاتورة الأصلية (credited_amount + الحالة) ══
+    if (form.original_invoice_id) {
+      const { data: origInv } = await supabase
+        .from('finance_invoices')
+        .select('total_amount, credited_amount')
+        .eq('id', Number(form.original_invoice_id))
+        .single()
+
+      if (origInv) {
+        const newCredited = Number(origInv.credited_amount || 0) + total
+        const newStatus   = newCredited >= Number(origInv.total_amount) ? 'ملغاة' : 'إشعار جزئي'
+        await supabase.from('finance_invoices').update({
+          credited_amount: newCredited,
+          status:          newStatus,
+        }).eq('id', Number(form.original_invoice_id))
+      }
+    }
+
+    toast.success('✅ تم إنشاء الإشعار الدائن والقيد المحاسبي')
     onSave(); setSaving(false)
   }
 
@@ -1471,8 +1505,8 @@ export default function FinanceInvoicesPage() {
                                   ✏️
                                 </button>
                               )}
-                              {/* إشعار دائن — غير مسودة */}
-                              {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
+                              {/* إشعار دائن — غير مسودة وغير ملغاة كاملاً */}
+                              {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && inv.status !== 'مدفوعة' && (
                                 <button onClick={() => { setCreditInvoice(inv); setShowCreditModal(true) }} title="إشعار دائن"
                                   style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                   ↩️
