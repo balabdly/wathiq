@@ -499,8 +499,9 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
 // ════════════════════════════════════════
 // مودال: فاتورة مورد
 // ════════════════════════════════════════
-function VendorInvoiceModal({ invoice, vendors, projects, warehouses, purchaseOrders, tenantId, onClose, onSave }: {
-  invoice: VendorInvoice | null; vendors: Vendor[]; projects: Project[]
+function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehouses, purchaseOrders, tenantId, onClose, onSave }: {
+  invoice: VendorInvoice | null; convertFromPO?: PurchaseOrder | null
+  vendors: Vendor[]; projects: Project[]
   warehouses: Warehouse[]; purchaseOrders: PurchaseOrder[]
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
@@ -524,8 +525,31 @@ function VendorInvoiceModal({ invoice, vendors, projects, warehouses, purchaseOr
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    if (invoice) loadItems()
-    else generateNumber()
+    if (invoice) {
+      loadItems()
+    } else {
+      generateNumber()
+      // إذا تحويل من PO — نملأ البيانات تلقائياً
+      if (convertFromPO) {
+        setForm(f => ({
+          ...f,
+          vendor_id:    convertFromPO.vendor_id    ? String(convertFromPO.vendor_id) : '',
+          po_id:        String(convertFromPO.id),
+          project_id:   convertFromPO.project_id   ? String(convertFromPO.project_id) : '',
+          delivery_to:  convertFromPO.delivery_to  || 'مستودع',
+          warehouse_id: convertFromPO.warehouse_id ? String(convertFromPO.warehouse_id) : '',
+          vat_rate:     convertFromPO.vat_rate      ?? 15,
+        }))
+        // نجلب بنود الـ PO
+        supabase.from('finance_purchase_order_items')
+          .select('*').eq('po_id', convertFromPO.id).order('id')
+          .then(({ data }) => {
+            if (data && data.length > 0) {
+              setItems(data.map(i => ({ description: i.description, quantity: i.quantity, unit: i.unit, unit_price: i.unit_price, total: i.total })))
+            }
+          })
+      }
+    }
   }, [])
 
   async function loadItems() {
@@ -874,6 +898,7 @@ export default function FinancePurchasesPage() {
   const [editInv,    setEditInv]    = useState<VendorInvoice | null>(null)
   const [editVendor, setEditVendor] = useState<Vendor | null>(null)
   const [returnInvoice, setReturnInvoice] = useState<VendorInvoice | null>(null)
+  const [convertPO,     setConvertPO]     = useState<PurchaseOrder | null>(null)
 
   useEffect(() => { loadAll() }, [tenant?.id])
 
@@ -1034,7 +1059,7 @@ export default function FinancePurchasesPage() {
                               <Pencil style={{ width: '13px', height: '13px' }} />
                             </button>
                           )}
-                          <button onClick={() => { setEditInv(null); setShowInvModal(true) }} title="تحويل لفاتورة"
+                          <button onClick={() => { setConvertPO(po); setEditInv(null); setShowInvModal(true) }} title="تحويل لفاتورة"
                             style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
                             📄
                           </button>
@@ -1255,10 +1280,11 @@ export default function FinancePurchasesPage() {
           onSave={() => { setShowPOModal(false); setEditPO(null); loadAll() }} />
       )}
       {showInvModal && (
-        <VendorInvoiceModal invoice={editInv} vendors={vendors} projects={projects}
+        <VendorInvoiceModal invoice={editInv} convertFromPO={convertPO} vendors={vendors} projects={projects}
           warehouses={warehouses} purchaseOrders={purchaseOrders}
-          tenantId={tenant!.id} onClose={() => { setShowInvModal(false); setEditInv(null) }}
-          onSave={() => { setShowInvModal(false); setEditInv(null); loadAll() }} />
+          tenantId={tenant!.id}
+          onClose={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null) }}
+          onSave={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null); loadAll() }} />
       )}
       {showReturnModal && (
         <PurchaseReturnModal invoice={returnInvoice} vendors={vendors}
