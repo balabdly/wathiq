@@ -218,7 +218,7 @@ export default function FinanceReportsPage() {
 
   // تحميل البيانات حسب المجموعة
   const loadGroup = useCallback(async (group: string) => {
-    if (!tid || loaded[group]) return
+    if (!tid) return
     setLoading(p => ({ ...p, [group]: true }))
 
     try {
@@ -229,7 +229,7 @@ export default function FinanceReportsPage() {
         }
         const { data: entries } = await supabase.from('finance_journal_entries').select('*').eq('tenant_id', tid).order('entry_date', { ascending: false })
         setJournalEntries(entries || [])
-        const { data: lines } = await supabase.from('finance_journal_lines').select('*, finance_accounts(code,name)').eq('finance_journal_entries.tenant_id', tid)
+        const { data: lines } = await supabase.from('finance_journal_lines').select('*, finance_accounts(code,name), finance_journal_entries!inner(tenant_id)').eq('finance_journal_entries.tenant_id', tid)
         setJournalLines(lines || [])
       }
       if (group === 'invoices') {
@@ -265,6 +265,16 @@ export default function FinanceReportsPage() {
     setLoaded(p => ({ ...p, [group]: true }))
     setLoading(p => ({ ...p, [group]: false }))
   }, [tid])
+
+  // تحميل كل المجموعات تلقائياً عند فتح الصفحة
+  useEffect(() => {
+    if (!tid) return
+    loadGroup('general')
+    loadGroup('invoices')
+    loadGroup('expenses')
+    loadGroup('treasury')
+    loadGroup('purchases')
+  }, [tid, loadGroup])
 
   // ── حسابات ميزان المراجعة ──
   const trialBalance = (() => {
@@ -521,6 +531,7 @@ export default function FinanceReportsPage() {
             ]}
             rows={invoices.map(inv => ({
               ...inv,
+              client_name: inv.finance_clients?.name || inv.client_name || '—',
               invoice_date: fmtDate(inv.invoice_date),
               due_date: fmtDate(inv.due_date),
               subtotal: fmt(inv.subtotal),
