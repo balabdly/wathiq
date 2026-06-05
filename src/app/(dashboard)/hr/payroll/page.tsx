@@ -433,7 +433,9 @@ export default function PayrollPage() {
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => {
-    if (tenant?.id) load()
+    if (!tenant?.id) return
+    const timer = setTimeout(() => load(), 100)
+    return () => clearTimeout(timer)
   }, [tenant?.id])
 
   async function load() {
