@@ -208,9 +208,9 @@ export default function HRReportsPage() {
         supabase.from('hr_attendance').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }).limit(500),
       ])
       const empData = e.data || []
-      // نربط بيانات الموظفين يدوياً
+      // نبني map بـ employee_id
       const empMap: Record<number, any> = {}
-      empData.forEach((emp: any) => { empMap[emp.id] = emp })
+      empData.forEach((emp: any) => { empMap[emp.employee_id] = emp })
       setEmployees(empData)
       setPayroll((p.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—', emp_title: empMap[r.employee_id]?.job_title || '—' })))
       setLeaves((l.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—' })))
