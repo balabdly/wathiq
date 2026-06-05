@@ -74,10 +74,32 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
       is_active: form.is_active,
       notes: form.notes || null,
     }
-    if (account) await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
-    else await supabase.from('finance_cash_accounts').insert(payload)
-    toast.success(account ? 'تم التعديل ✅' : '✅ تمت الإضافة')
-    onSave(); setSaving(false)
+    if (account) {
+  await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
+} else {
+  const { data: newAcc } = await supabase.from('finance_cash_accounts').insert(payload).select('id').single()
+  if (newAcc) {
+    const { data: parent } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', '1110').single()
+    if (parent) {
+      const { count } = await supabase.from('finance_accounts').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('parent_id', parent.id)
+      await supabase.from('finance_accounts').insert({
+        tenant_id: tenantId,
+        code: `111${(count || 0) + 1}`,
+        name: form.name.trim(),
+        name_en: form.bank_name || form.name.trim(),
+        account_type: 'أصول',
+        account_class: 'ميزانية',
+        parent_id: parent.id,
+        level: 4,
+        is_parent: false,
+        normal_balance: 'مدين',
+        is_active: true,
+      })
+    }
+  }
+}
+toast.success(account ? 'تم التعديل ✅' : '✅ تمت الإضافة وأُنشئ الحساب في الشجرة')
+onSave(); setSaving(false)
   }
 
   return (
