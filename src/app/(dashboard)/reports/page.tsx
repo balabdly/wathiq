@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import {
   BarChart3, DollarSign, Users, FolderOpen,
-  Package, ShoppingCart, Shield, ClipboardCheck
+  Package, Shield, ClipboardCheck
 } from 'lucide-react'
 
 const REPORT_SECTIONS = [
@@ -47,16 +47,7 @@ const REPORT_SECTIONS = [
     border: '#fde68a',
     count: 4,
   },
-  {
-    id: 'purchases',
-    label: 'المشتريات',
-    description: 'طلبات الشراء، فواتير الموردين، المرتجعات، أداء الموردين',
-    icon: ShoppingCart,
-    color: '#059669',
-    bg: '#f0fdf4',
-    border: '#bbf7d0',
-    count: 4,
-  },
+
   {
     id: 'qhse',
     label: 'السلامة والجودة',
