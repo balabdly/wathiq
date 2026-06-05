@@ -187,7 +187,7 @@ export default function ProjectsPage() {
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [detailProject, setDetail]    = useState<Project | null>(null)
 
-  const canEdit = currentUser?.permissions?.includes('projects_edit')
+  const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
   useEffect(() => { loadProjects() }, [tenant?.id, activeBranch?.id])
 
