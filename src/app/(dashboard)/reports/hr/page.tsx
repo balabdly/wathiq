@@ -202,16 +202,20 @@ export default function HRReportsPage() {
     try {
       const [e, p, l, t, a] = await Promise.all([
         supabase.from('hr_employees').select('*').eq('tenant_id', tid).order('name'),
-        supabase.from('hr_payroll').select('*, hr_employees(name, department, job_title)').eq('tenant_id', tid).order('year', { ascending: false }).order('month', { ascending: false }),
-        supabase.from('hr_leaves').select('*, hr_employees(name, department)').eq('tenant_id', tid).order('start_date', { ascending: false }),
-        supabase.from('hr_terminations').select('*, hr_employees(name, department, job_title)').eq('tenant_id', tid).order('created_at', { ascending: false }),
-        supabase.from('hr_attendance').select('*, hr_employees(name, department)').eq('tenant_id', tid).order('created_at', { ascending: false }).limit(500),
+        supabase.from('hr_payroll').select('*').eq('tenant_id', tid).order('year', { ascending: false }).order('month', { ascending: false }),
+        supabase.from('hr_leaves').select('*').eq('tenant_id', tid).order('start_date', { ascending: false }),
+        supabase.from('hr_terminations').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
+        supabase.from('hr_attendance').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }).limit(500),
       ])
-      setEmployees(e.data || [])
-      setPayroll(p.data || [])
-      setLeaves(l.data || [])
-      setTerminations(t.data || [])
-      setAttendance(a.data || [])
+      const empData = e.data || []
+      // نربط بيانات الموظفين يدوياً
+      const empMap: Record<number, any> = {}
+      empData.forEach((emp: any) => { empMap[emp.id] = emp })
+      setEmployees(empData)
+      setPayroll((p.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—', emp_title: empMap[r.employee_id]?.job_title || '—' })))
+      setLeaves((l.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—' })))
+      setTerminations((t.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—' })))
+      setAttendance((a.data || []).map((r: any) => ({ ...r, emp_name: empMap[r.employee_id]?.name || '—', emp_dept: empMap[r.employee_id]?.department || '—' })))
       setLoaded(true)
     } catch (err) { console.error(err) }
     setIsLoading(false)
