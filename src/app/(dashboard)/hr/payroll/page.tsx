@@ -453,8 +453,27 @@ export default function PayrollPage() {
 
   const activeHREmployees = hrEmployees.filter(e => e.is_active !== false)
 
+  function canCreatePayroll(month: number, year: number): { allowed: boolean; reason?: string } {
+    const today = new Date()
+    const todayYear = today.getFullYear()
+    const todayMonth = today.getMonth() + 1
+    const todayDay = today.getDate()
+    if (year > todayYear || (year === todayYear && month > todayMonth)) {
+      return { allowed: false, reason: `لا يمكن إنشاء مسير لشهر مستقبلي` }
+    }
+    if (year === todayYear && month === todayMonth && todayDay < 20) {
+      return { allowed: false, reason: `يمكن إنشاء مسير ${ARABIC_MONTHS[month-1]} بعد يوم 20 من الشهر (اليوم الحالي: ${todayDay})` }
+    }
+    return { allowed: true }
+  }
+
   function enterCreateMode() {
+    const check = canCreatePayroll(filterMonth, filterYear)
+    if (!check.allowed) { toast.error(check.reason || 'غير مسموح بإنشاء مسير لهذا الشهر'); return }
     const existing = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
+    if (existing.length > 0 && existing.every(p => p.status === 'مدفوع')) {
+      toast.error('لا يمكن تعديل مسير مدفوع'); return
+    }
     const built: PayrollRow[] = activeHREmployees.map(emp => {
       const ex = existing.find(p => p.employee_id === emp.employee_id)
       const gosiAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100)) : 0
@@ -562,7 +581,17 @@ export default function PayrollPage() {
               {mode === 'view' && <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>{filteredPayrolls.length} موظف</span>}
             </div>
             {mode === 'view' ? (
-              isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}</button>
+              isAdmin && (() => {
+                const check = canCreatePayroll(filterMonth, filterYear)
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                    <button onClick={enterCreateMode} disabled={!check.allowed} className="btn btn-primary" style={{ opacity: check.allowed ? 1 : 0.5 }}>
+                      <Banknote style={{ width: '16px', height: '16px' }} /> {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}
+                    </button>
+                    {!check.allowed && <span style={{ fontSize: '0.72rem', color: '#c81e1e' }}>{check.reason}</span>}
+                  </div>
+                )
+              })()
             ) : (
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="button" onClick={() => setMode('view')} className="btn btn-ghost"><X style={{ width: '15px', height: '15px' }} /> إلغاء</button>
