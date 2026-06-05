@@ -340,7 +340,6 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payrol
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i)
   const groups: Record<string, Payroll[]> = {}
   payrolls.forEach(p => {
-    if (p.year === currentYear && p.month === currentMonth) return
     if (p.year !== archiveYear) return
     const key = p.year + '-' + p.month
     if (!groups[key]) groups[key] = []
@@ -433,7 +432,9 @@ export default function PayrollPage() {
   const [expandedPayrollKey, setExpandedPayrollKey] = useState<string | null>(null)
   const isAdmin = currentUser?.role === 'مدير عام'
 
-  useEffect(() => { load() }, [tenant?.id])
+  useEffect(() => {
+    if (tenant?.id) load()
+  }, [tenant?.id])
 
   async function load() {
     if (!tenant) return
