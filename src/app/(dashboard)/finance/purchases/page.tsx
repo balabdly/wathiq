@@ -659,7 +659,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
       const debitAccountCode =
         payload.delivery_to === 'مستودع'   ? '1130' :
         payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') :
-        '5012'
+        '5120'  // موقع العمل → مواد مباشرة
 
       await createJournalEntry(tenantId, {
         date:          payload.invoice_date,
@@ -1830,7 +1830,7 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                                   const debitCode =
                                     inv.delivery_to === 'مستودع'   ? '1130' :
                                     inv.delivery_to === 'أصل ثابت' ? '1220' :
-                                    '5012'
+                                    '5120'  // موقع العمل → مواد مباشرة
                                   await createJournalEntry(tenant!.id, {
                                     date: inv.invoice_date,
                                     description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
