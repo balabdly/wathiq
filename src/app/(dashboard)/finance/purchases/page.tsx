@@ -1177,36 +1177,64 @@ async function createJournalEntry(tenantId: string, params: {
 // ════════════════════════════════════════
 // مودال: دفع فاتورة مورد
 // ════════════════════════════════════════
+type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: string }
+
 function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
   invoice: VendorInvoice; tenantId: string; onClose: () => void; onSave: () => void
 }) {
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
   const [form, setForm] = useState({
-    amount:       String(invoice.total_amount),
-    payment_date: new Date().toISOString().split('T')[0],
+    amount:         String(invoice.total_amount),
+    payment_date:   new Date().toISOString().split('T')[0],
     payment_method: 'تحويل بنكي',
-    reference:    '',
+    cash_account_id: '',
+    reference:      '',
+    notes:          '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  useEffect(() => {
+    supabase.from('finance_cash_accounts')
+      .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
+      .then(({ data }) => setCashAccounts(data || []))
+  }, [])
+
+  const bankAccounts = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
+  const cashBoxes    = cashAccounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
+  const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+
+  // الحساب المحاسبي المقابل حسب وسيلة الدفع
+  function getCreditAccountCode() {
+    if (selectedAccount?.account_id) return selectedAccount.account_id
+    if (form.payment_method === 'نقداً') return '1111'  // الصندوق
+    return '1120'  // البنك
+  }
+
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
+    if ((form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && !form.cash_account_id) {
+      toast.error('يجب تحديد الحساب البنكي'); return
+    }
+    if (form.payment_method === 'نقداً' && !form.cash_account_id) {
+      toast.error('يجب تحديد الصندوق'); return
+    }
     setSaving(true)
 
-    // تحديث حالة الفاتورة
     await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
 
-    // قيد الدفع
+    const accountLabel = selectedAccount
+      ? `${selectedAccount.name}${selectedAccount.bank_name ? ' — ' + selectedAccount.bank_name : ''}`
+      : form.payment_method
+
     await createJournalEntry(tenantId, {
       date:          form.payment_date,
-      description:   `سداد فاتورة مورد ${invoice.invoice_number} — ${invoice.vendor_name}`,
+      description:   `سداد فاتورة مورد ${invoice.invoice_number} — ${invoice.vendor_name} (${form.payment_method})`,
       referenceType: 'سداد فاتورة مورد',
       referenceId:   invoice.id,
       lines: [
-        // مدين: الذمم الدائنة (تقفيل المديونية)
-        { accountCode: '2110', debit: Number(form.amount), credit: 0,                   description: `سداد ${invoice.invoice_number}` },
-        // دائن: الصندوق/البنك
-        { accountCode: '1111', debit: 0,                   credit: Number(form.amount), description: `دفع للمورد ${invoice.vendor_name}` },
+        { accountCode: '2110',                  debit: Number(form.amount), credit: 0,                   description: `سداد ${invoice.invoice_number}` },
+        { accountCode: getCreditAccountCode(),   debit: 0,                   credit: Number(form.amount), description: `${form.payment_method} — ${accountLabel}` },
       ]
     })
 
@@ -1214,43 +1242,131 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
     onSave(); setSaving(false)
   }
 
+  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
+
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '420px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             💸 سداد فاتورة — {invoice.invoice_number}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: '10px', display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '0.82rem', color: '#991b1b' }}>إجمالي الفاتورة</span>
-            <span style={{ fontWeight: 700, color: '#c81e1e' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
+
+          {/* ملخص الفاتورة */}
+          <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>إجمالي الفاتورة</div>
+              <div style={{ fontSize: '0.75rem', color: '#991b1b', marginTop: '2px' }}>{invoice.vendor_name}</div>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#c81e1e' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ المدفوع *</label>
-            <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
+
+          {/* المبلغ والتاريخ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>المبلغ المدفوع <span style={{ color: '#c81e1e' }}>*</span></label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
+            </div>
+            <div>
+              <label style={lbl}>تاريخ الدفع <span style={{ color: '#c81e1e' }}>*</span></label>
+              <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+            </div>
           </div>
+
+          {/* طريقة الدفع */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الدفع *</label>
-            <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+            <label style={lbl}>طريقة الدفع</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[
+                { val: 'تحويل بنكي', icon: '🏦' },
+                { val: 'نقداً',       icon: '💵' },
+                { val: 'شيك',        icon: '📝' },
+              ].map(m => (
+                <button key={m.val} type="button"
+                  onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
+                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, textAlign: 'center',
+                    borderColor: form.payment_method === m.val ? '#c81e1e' : 'var(--border)',
+                    background:  form.payment_method === m.val ? '#fef2f2' : 'white',
+                    color:       form.payment_method === m.val ? '#c81e1e' : 'var(--text3)' }}>
+                  <div>{m.icon}</div>
+                  <div style={{ marginTop: '3px' }}>{m.val}</div>
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* اختيار الحساب البنكي / الصندوق */}
+          {(form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && (
+            <div>
+              <label style={lbl}>الحساب البنكي <span style={{ color: '#c81e1e' }}>*</span></label>
+              {bankAccounts.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ⚠️ لا توجد حسابات بنكية — أضفها من إعدادات الخزينة
+                </div>
+              ) : (
+                <>
+                  <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                    <option value="">— اختر الحساب البنكي —</option>
+                    {bankAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}{a.bank_name ? ` — ${a.bank_name}` : ''}{a.account_no ? ` (${a.account_no})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedAccount?.iban && (
+                    <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'monospace' }}>
+                      IBAN: {selectedAccount.iban}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {form.payment_method === 'نقداً' && (
+            <div>
+              <label style={lbl}>الصندوق <span style={{ color: '#c81e1e' }}>*</span></label>
+              {cashBoxes.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ⚠️ لا توجد صناديق — أضفها من إعدادات الخزينة
+                </div>
+              ) : (
+                <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                  <option value="">— اختر الصندوق —</option>
+                  {cashBoxes.map(a => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* رقم المرجع */}
+          {(form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && (
+            <div>
+              <label style={lbl}>{form.payment_method === 'شيك' ? 'رقم الشيك' : 'رقم التحويل / المرجع'}</label>
+              <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr"
+                placeholder={form.payment_method === 'شيك' ? 'رقم الشيك...' : 'رقم التحويل...'} />
+            </div>
+          )}
+
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
-            <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
-              {['تحويل بنكي', 'نقداً', 'شيك'].map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
-            <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr" />
+            <label style={lbl}>ملاحظات</label>
+            <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" placeholder="اختياري..." />
           </div>
         </div>
+
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '💸'}
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : '💸'}
             تسجيل الدفعة
           </button>
         </div>
