@@ -2,944 +2,563 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, CheckCircle, Warehouse, MapPin, Eye } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, Search, Wallet, ArrowUpRight, ArrowDownRight, Building2, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ════════════════════════════════════════
-// Types
-// ════════════════════════════════════════
-type Vendor = {
-  id: number; tenant_id: string; name: string; name_en?: string
-  vat_number?: string; cr_number?: string; vendor_type: string
-  city?: string; district?: string; street?: string; postal_code?: string
-  country: string; phone?: string; email?: string
-  contact_person?: string; iban?: string; is_active: boolean; notes?: string
+type CashAccount = {
+  id: number; name: string; account_type: string
+  bank_name?: string; account_no?: string; iban?: string
+  opening_balance: number; is_active: boolean; notes?: string
+  balance?: number; account_id?: number
 }
 
-type POItem = {
-  id?: number; description: string; quantity: number; unit: string; unit_price: number; total: number
+type Transaction = {
+  id: number; transaction_no: string; transaction_date: string
+  type: string; amount: number; description: string
+  cash_account_id?: number; payment_method: string
+  reference_type?: string; reference_no?: string
+  account_id?: number; cost_center_id?: number
+  party_name?: string; status: string; notes?: string
+  cash_account?: { name: string }
+  account?: { code: string; name: string }
 }
 
-type PurchaseOrder = {
-  id: number; po_number: string; po_date: string; expected_date?: string
-  vendor_id?: number; vendor_name: string; vendor_vat?: string
-  project_id?: number; delivery_to: string; warehouse_id?: number
-  subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
-  status: string; notes?: string; has_invoice?: boolean
-  vendor?: Vendor; project?: { name: string }
-}
-
-type VendorInvoice = {
-  id: number; invoice_number: string; invoice_date: string; due_date?: string
-  vendor_id?: number; vendor_name: string; vendor_vat?: string
-  po_id?: number; project_id?: number; delivery_to: string; warehouse_id?: number
-  subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
+type Custody = {
+  id: number; custody_no: string; custody_date: string
+  employee_id?: number; employee_name: string
+  custody_type: string; amount: number; purpose: string
+  project_id?: number; due_date?: string
+  settled_amount: number; settled_date?: string
   status: string; notes?: string
-  vendor?: Vendor; project?: { name: string }
-  po?: { po_number: string }
+  project?: { name: string }
+  employee?: { name: string }
 }
 
-type PurchaseReturn = {
-  id: number; return_number: string; return_date: string; return_type: string
-  original_invoice_id?: number; vendor_id?: number; vendor_name: string
-  subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
-  reason?: string; status: string; notes?: string
-}
-
-type Project = { id: number; name: string }
-type Warehouse = { id: number; name: string; wh_type: string }
-
-const PO_STATUS_COLOR: Record<string, string> = {
-  'مسودة': 'badge-gray', 'مرسل': 'badge-blue', 'مستلم جزئياً': 'badge-amber',
-  'مستلم': 'badge-green', 'ملغي': 'badge-red'
-}
-const INV_STATUS_COLOR: Record<string, string> = {
-  'مسودة': 'badge-gray', 'معتمدة': 'badge-blue', 'مدفوعة': 'badge-green',
-  'متأخرة': 'badge-red', 'ملغاة': 'badge-red'
-}
+type Account    = { id: number; code: string; name: string }
+type CostCenter = { id: number; name: string }
+type Project    = { id: number; name: string }
+type Employee   = { id: number; name: string }
 
 // ════════════════════════════════════════
-// مكوّن: بنود الطلب
+// مودال: إضافة حساب نقدي
 // ════════════════════════════════════════
-function ItemsTable({ items, onChange }: { items: POItem[]; onChange: (items: POItem[]) => void }) {
-  function update(idx: number, k: keyof POItem, v: any) {
-    const next = [...items]
-    next[idx] = { ...next[idx], [k]: v }
-    if (k === 'quantity' || k === 'unit_price') {
-      next[idx].total = Number(next[idx].quantity) * Number(next[idx].unit_price)
-    }
-    onChange(next)
-  }
-  function add() { onChange([...items, { description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }]) }
-  function remove(idx: number) { if (items.length > 1) onChange(items.filter((_, i) => i !== idx)) }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-        <label style={{ fontWeight: 700, fontSize: '0.875rem', color: '#374151' }}>البنود</label>
-        <button type="button" onClick={add} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '5px 12px', borderRadius: '7px', border: '1px solid var(--primary)', background: 'var(--primary-light)', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
-          <Plus style={{ width: '13px', height: '13px' }} /> إضافة بند
-        </button>
-      </div>
-      <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-          <thead>
-            <tr style={{ background: 'var(--bg2)' }}>
-              {['الوصف', 'الكمية', 'الوحدة', 'سعر الوحدة', 'الإجمالي', ''].map(h => (
-                <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <tr key={idx} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '6px 8px' }}>
-                  <input value={item.description} onChange={e => update(idx, 'description', e.target.value)}
-                    style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }} placeholder="وصف المادة أو الخدمة" />
-                </td>
-                <td style={{ padding: '6px 8px' }}>
-                  <input type="number" value={item.quantity} onChange={e => update(idx, 'quantity', e.target.value)}
-                    style={{ width: '70px', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr' }} min="0" />
-                </td>
-                <td style={{ padding: '6px 8px' }}>
-                  <select value={item.unit} onChange={e => update(idx, 'unit', e.target.value)}
-                    style={{ padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }}>
-                    {['وحدة', 'م²', 'م طولي', 'طن', 'كجم', 'لتر', 'يوم', 'ساعة', 'مقطوعة', 'كرتون', 'رول'].map(u => <option key={u}>{u}</option>)}
-                  </select>
-                </td>
-                <td style={{ padding: '6px 8px' }}>
-                  <input type="number" value={item.unit_price} onChange={e => update(idx, 'unit_price', e.target.value)}
-                    style={{ width: '100px', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr' }} min="0" />
-                </td>
-                <td style={{ padding: '6px 8px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>
-                  {Number(item.total).toLocaleString()} ر.س
-                </td>
-                <td style={{ padding: '6px 8px' }}>
-                  <button type="button" onClick={() => remove(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
-                    <Trash2 style={{ width: '14px', height: '14px' }} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مكوّن: ملخص الإجماليات
-// ════════════════════════════════════════
-function TotalsBox({ subtotal, vatRate, vatAmount, total }: { subtotal: number; vatRate: number; vatAmount: number; total: number }) {
-  return (
-    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.875rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#64748b' }}>المجموع قبل الضريبة</span>
-          <span style={{ fontWeight: 600 }}>{subtotal.toLocaleString()} ر.س</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#64748b' }}>ضريبة القيمة المضافة ({vatRate}%)</span>
-          <span style={{ fontWeight: 600, color: '#e6820a' }}>{vatAmount.toLocaleString()} ر.س</span>
-        </div>
-        <div style={{ borderTop: '2px solid #fde68a', paddingTop: '10px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: '1rem' }}>الإجمالي</span>
-          <span style={{ fontWeight: 700, fontSize: '1.3rem', color: '#e6820a' }}>{total.toLocaleString()} ر.س</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مكوّن: حقل اختيار وجهة التسليم
-// ════════════════════════════════════════
-function DeliveryField({ value, warehouseId, assetType, projects, warehouses, onChange, onAssetTypeChange }: {
-  value: string; warehouseId?: string; assetType?: string; projects: Project[]; warehouses: Warehouse[]
-  onChange: (delivery: string, warehouseId?: string) => void
-  onAssetTypeChange?: (t: string) => void
-}) {
-  return (
-    <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 14px' }}>
-      <label style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0369a1', display: 'block', marginBottom: '10px' }}>
-        📦 وجهة التسليم / تصنيف الشراء
-      </label>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-        {[
-          { val: 'مستودع',      icon: '🏪', label: 'مستودع',     desc: 'يُضاف للمخزون' },
-          { val: 'موقع العمل',  icon: '🏗️', label: 'موقع العمل', desc: 'مباشرة للمشروع' },
-          { val: 'أصل ثابت',   icon: '🏭', label: 'أصل ثابت',   desc: 'سيارة / معدة / جهاز' },
-        ].map(opt => (
-          <button key={opt.val} type="button" onClick={() => onChange(opt.val, undefined)}
-            style={{ flex: 1, minWidth: '100px', padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center',
-              borderColor: value === opt.val ? '#0369a1' : 'var(--border)',
-              background:  value === opt.val ? '#e0f2fe' : 'white',
-              color:       value === opt.val ? '#0369a1' : 'var(--text3)' }}>
-            <div>{opt.icon} {opt.label}</div>
-            <div style={{ fontSize: '0.68rem', marginTop: '2px', opacity: 0.7 }}>{opt.desc}</div>
-          </button>
-        ))}
-      </div>
-
-      {value === 'مستودع' && (
-        <div>
-          <label style={{ fontSize: '0.78rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>اختر المستودع</label>
-          <select value={warehouseId || ''} onChange={e => onChange(value, e.target.value)} className="select">
-            <option value="">— اختر المستودع —</option>
-            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        </div>
-      )}
-
-      {value === 'موقع العمل' && (
-        <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
-          ⚠️ البضاعة ستُرسل مباشرة لموقع العمل ولن تُضاف للمخزون
-        </div>
-      )}
-
-      {value === 'أصل ثابت' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={{ fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>نوع الأصل الثابت <span style={{ color: '#c81e1e' }}>*</span></label>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {[
-              { val: 'مركبات',  icon: '🚗', account: '1210' },
-              { val: 'معدات',   icon: '⚙️', account: '1220' },
-              { val: 'أثاث',    icon: '🪑', account: '1230' },
-            ].map(t => (
-              <button key={t.val} type="button"
-                onClick={() => onAssetTypeChange?.(t.val)}
-                style={{ flex: 1, minWidth: '80px', padding: '7px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
-                  borderColor: assetType === t.val ? '#065f46' : 'var(--border)',
-                  background:  assetType === t.val ? '#f0fdf4' : 'white',
-                  color:       assetType === t.val ? '#065f46' : 'var(--text3)' }}>
-                <div>{t.icon}</div>
-                <div style={{ marginTop: '2px' }}>{t.val}</div>
-                <div style={{ fontSize: '0.62rem', opacity: 0.7, marginTop: '1px' }}>{t.account}</div>
-              </button>
-            ))}
-          </div>
-          {assetType && (
-            <div style={{ padding: '6px 10px', background: '#f0fdf4', borderRadius: '6px', fontSize: '0.75rem', color: '#065f46', border: '1px solid #bbf7d0' }}>
-              ✅ سيُسجَّل في حساب {assetType === 'مركبات' ? '1210 — المركبات' : assetType === 'أثاث' ? '1230 — الأثاث والمفروشات' : '1220 — الأجهزة والمعدات'}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: إضافة / تعديل مورد
-// ════════════════════════════════════════
-function VendorModal({ vendor, tenantId, onClose, onSave }: {
-  vendor: Vendor | null; tenantId: string; onClose: () => void; onSave: () => void
+function CashAccountModal({ account, tenantId, onClose, onSave }: {
+  account: CashAccount | null; tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    name: vendor?.name || '', name_en: vendor?.name_en || '',
-    vendor_type: vendor?.vendor_type || 'مورد',
-    vat_number: vendor?.vat_number || '', cr_number: vendor?.cr_number || '',
-    phone: vendor?.phone || '', email: vendor?.email || '',
-    contact_person: vendor?.contact_person || '',
-    city: vendor?.city || '', district: vendor?.district || '',
-    street: vendor?.street || '', postal_code: vendor?.postal_code || '',
-    country: vendor?.country || 'المملكة العربية السعودية',
-    iban: vendor?.iban || '', notes: vendor?.notes || '',
-    is_active: vendor?.is_active ?? true,
+    name:            account?.name            || '',
+    account_type:    account?.account_type    || 'بنك',
+    bank_name:       account?.bank_name       || '',
+    account_no:      account?.account_no      || '',
+    iban:            account?.iban            || '',
+    opening_balance: account?.opening_balance ? String(account.opening_balance) : '0',
+    is_active:       account?.is_active       ?? true,
+    notes:           account?.notes           || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  const vatValid = !form.vat_number || (form.vat_number.length === 15 && /^\d+$/.test(form.vat_number))
 
   async function handleSave() {
-    if (!form.name.trim()) { toast.error('اسم المورد مطلوب'); return }
-    if (!vatValid) { toast.error('الرقم الضريبي يجب أن يكون 15 رقماً'); return }
+    if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
-    const payload = {
-      tenant_id: tenantId, name: form.name.trim(), name_en: form.name_en || null,
-      vendor_type: form.vendor_type, vat_number: form.vat_number || null,
-      cr_number: form.cr_number || null, phone: form.phone || null,
-      email: form.email || null, contact_person: form.contact_person || null,
-      city: form.city || null, district: form.district || null,
-      street: form.street || null, postal_code: form.postal_code || null,
-      country: form.country, iban: form.iban || null,
-      notes: form.notes || null, is_active: form.is_active,
+    try {
+      const payload: Record<string, any> = {
+        tenant_id:       tenantId,
+        name:            form.name.trim(),
+        account_type:    form.account_type,
+        bank_name:       form.bank_name   || null,
+        account_no:      form.account_no  || null,
+        iban:            form.iban        || null,
+        opening_balance: Number(form.opening_balance) || 0,
+        is_active:       form.is_active,
+        notes:           form.notes       || null,
+      }
+
+      if (account) {
+        // ── تعديل حساب موجود ──
+        await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
+
+        // تعديل الاسم في شجرة الحسابات إذا كان مربوطاً
+        if (account.account_id) {
+          await supabase.from('finance_accounts')
+            .update({ name: form.name.trim(), notes: form.iban || form.account_no || null })
+            .eq('id', account.account_id)
+        }
+        toast.success('✅ تم التعديل')
+
+      } else {
+        // ── إضافة حساب جديد ──
+
+        // 1. نجيب id حساب 1110 (الصندوق والبنوك)
+        const { data: parent } = await supabase
+          .from('finance_accounts')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('code', '1110')
+          .single()
+
+        let newAccountId: number | null = null
+
+        if (parent) {
+          // 2. نحسب عدد الحسابات الفرعية تحت 1110 لتوليد كود جديد
+          // نجلب أكبر كود فرعي موجود تحت 1110 ونضيف 1
+          const { data: siblings } = await supabase
+            .from('finance_accounts')
+            .select('code')
+            .eq('tenant_id', tenantId)
+            .eq('parent_id', parent.id)
+            .order('code', { ascending: false })
+            .limit(1)
+
+          const lastCode = siblings?.[0]?.code ? parseInt(siblings[0].code) : 1110
+          const newCode = String(lastCode + 1)
+
+          // 3. نضيف الحساب في شجرة الحسابات
+          const { data: newAcc, error: accErr } = await supabase
+            .from('finance_accounts')
+            .insert({
+              tenant_id:      tenantId,
+              code:           newCode,
+              name:           form.name.trim(),
+              name_en:        form.bank_name || form.name.trim(),
+              account_type:   'أصول',
+              account_class:  'ميزانية',
+              parent_id:      parent.id,
+              level:          4,
+              is_parent:      false,
+              normal_balance: 'مدين',
+              is_active:      true,
+              notes:          form.iban || form.account_no || null,
+            })
+            .select('id')
+            .single()
+
+          if (!accErr && newAcc) {
+            newAccountId = newAcc.id
+          }
+        }
+
+        // 4. نضيف في finance_cash_accounts مع ربط account_id
+        if (newAccountId) payload.account_id = newAccountId
+
+        await supabase.from('finance_cash_accounts').insert(payload)
+
+        toast.success(newAccountId
+          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات تحت 1110'
+          : '✅ تمت الإضافة (تعذر إنشاء الحساب في الشجرة — تأكد من وجود حساب 1110)'
+        )
+      }
+
+      onSave()
+    } catch (err: any) {
+      toast.error('خطأ: ' + err.message)
     }
-    if (vendor) await supabase.from('finance_vendors').update(payload).eq('id', vendor.id)
-    else await supabase.from('finance_vendors').insert(payload)
-    toast.success(vendor ? 'تم التعديل ✅' : '✅ تمت إضافة المورد')
-    onSave(); setSaving(false)
+    setSaving(false)
   }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '600px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            {vendor ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
+            <Building2 style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
+            {account ? 'تعديل حساب نقدي' : 'إضافة حساب نقدي'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            {['مورد', 'مقاول', 'مقدم خدمة'].map(t => (
-              <button key={t} type="button" onClick={() => set('vendor_type', t)}
-                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                  borderColor: form.vendor_type === t ? '#e6820a' : 'var(--border)',
-                  background: form.vendor_type === t ? '#fffbeb' : 'white',
-                  color: form.vendor_type === t ? '#e6820a' : 'var(--text3)' }}>
-                {t}
+            {['صندوق', 'بنك'].map(t => (
+              <button key={t} type="button" onClick={() => set('account_type', t)}
+                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700,
+                  borderColor: form.account_type === t ? 'var(--primary)' : 'var(--border)',
+                  background: form.account_type === t ? 'var(--primary-light)' : 'white',
+                  color: form.account_type === t ? 'var(--primary)' : 'var(--text3)' }}>
+                {t === 'صندوق' ? '💰 صندوق نقدي' : '🏦 حساب بنكي'}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الاسم *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: بنك الراجحي" />
+          </div>
+          {form.account_type === 'بنك' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم البنك</label>
+                  <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="بنك الراجحي" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الحساب</label>
+                  <input value={form.account_no} onChange={e => set('account_no', e.target.value)} className="input" dir="ltr" />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم IBAN</label>
+                <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA..." />
+              </div>
+            </>
+          )}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرصيد الافتتاحي</label>
+            <input type="number" value={form.opening_balance} onChange={e => set('opening_balance', e.target.value)} className="input" dir="ltr" min="0" />
+          </div>
+          {!account && (
+            <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1e40af' }}>
+              ℹ️ سيُضاف الحساب تلقائياً في شجرة الحسابات تحت <strong>1110 — الصندوق والبنوك</strong>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {account ? 'حفظ' : 'إضافة'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: إضافة حركة (قبض / صرف)
+// ════════════════════════════════════════
+function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId, onClose, onSave }: {
+  type: 'قبض' | 'صرف'; cashAccounts: CashAccount[]
+  accounts: Account[]; costCenters: CostCenter[]
+  tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    transaction_date: today,
+    amount:           '',
+    description:      '',
+    cash_account_id:  cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    payment_method:   'تحويل بنكي',
+    reference_no:     '',
+    account_id:       '',
+    cost_center_id:   '',
+    party_name:       '',
+    status:           'معتمد',
+    notes:            '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => { generateNumber() }, [])
+
+  async function generateNumber() {
+    const { count } = await supabase.from('finance_treasury').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const prefix = type === 'قبض' ? 'RCV' : 'PAY'
+    set('reference_no', `${prefix}-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`)
+  }
+
+  async function handleSave() {
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
+    setSaving(true)
+
+    const payload: Record<string, any> = {
+      tenant_id: tenantId,
+      transaction_no: form.reference_no,
+      transaction_date: form.transaction_date,
+      type, amount: Number(form.amount),
+      description: form.description.trim(),
+      payment_method: form.payment_method,
+      reference_no: form.reference_no,
+      party_name: form.party_name || null,
+      status: form.status,
+      notes: form.notes || null,
+    }
+    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+    if (form.account_id)      payload.account_id      = Number(form.account_id)
+    if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
+
+    const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+
+    // ── قيد محاسبي تلقائي ──
+    if (trxData) {
+      // نجيب كود الحساب النقدي المختار
+      const selectedCashAccount = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
+      const cashAccountCode = selectedCashAccount?.account_id
+        ? await getCashAccountCode(tenantId, selectedCashAccount.account_id)
+        : '1111'
+
+      const otherAccountCode = form.account_id
+        ? null
+        : type === 'قبض' ? '1120' : '2110'
+
+      if (otherAccountCode && cashAccountCode) {
+        await createJournalEntry(tenantId, {
+          date: form.transaction_date,
+          description: `${type} — ${form.description}`,
+          referenceType: type,
+          referenceId: trxData.id,
+          lines: type === 'قبض' ? [
+            { accountCode: cashAccountCode,  debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: otherAccountCode, debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ] : [
+            { accountCode: otherAccountCode, debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: cashAccountCode,  debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ]
+        })
+      }
+    }
+
+    toast.success(type === 'قبض' ? '✅ تم تسجيل المقبوض والقيد' : '✅ تم تسجيل المدفوع والقيد')
+    onSave(); setSaving(false)
+  }
+
+  const isReceipt = type === 'قبض'
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isReceipt
+              ? <ArrowUpRight style={{ width: '18px', height: '18px', color: '#0ea77b' }} />
+              : <ArrowDownRight style={{ width: '18px', height: '18px', color: '#c81e1e' }} />}
+            {isReceipt ? 'إضافة مقبوض' : 'إضافة مدفوع'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
+              <input type="date" value={form.transaction_date} onChange={e => set('transaction_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
+              <input value={form.reference_no} onChange={e => set('reference_no', e.target.value)} className="input" dir="ltr" />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البيان *</label>
+            <input value={form.description} onChange={e => set('description', e.target.value)} className="input"
+              placeholder={isReceipt ? 'مثال: تحصيل فاتورة' : 'مثال: سداد فاتورة مورد'} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: isReceipt ? '#ecfdf5' : '#fef2f2', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00"
+                style={{ borderColor: isReceipt ? '#bbf7d0' : '#fecaca', background: 'white' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب النقدي</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
+              <input value={form.party_name} onChange={e => set('party_name', e.target.value)} className="input"
+                placeholder={isReceipt ? 'اسم العميل' : 'اسم المورد'} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
+              <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
+                {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية'].map(m => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
+              <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
+                <option value="">— اختياري —</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
+              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
+                <option value="">— اختياري —</option>
+                {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['معتمد', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
+              <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary"
+            style={{ background: isReceipt ? '#0ea77b' : '#c81e1e' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : (isReceipt ? '💵' : '💸')}
+            {isReceipt ? 'تسجيل المقبوض' : 'تسجيل المدفوع'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: عهدة موظف
+// ════════════════════════════════════════
+function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, onClose, onSave }: {
+  custody: Custody | null; employees: Employee[]; projects: Project[]
+  cashAccounts: CashAccount[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    custody_date:    custody?.custody_date   || today,
+    employee_id:     custody?.employee_id    ? String(custody.employee_id) : '',
+    employee_name:   custody?.employee_name  || '',
+    custody_type:    custody?.custody_type   || 'عهدة نقدية',
+    amount:          custody?.amount         ? String(custody.amount) : '',
+    purpose:         custody?.purpose        || '',
+    project_id:      custody?.project_id     ? String(custody.project_id) : '',
+    due_date:        custody?.due_date       || '',
+    cash_account_id: cashAccounts[0]?.id     ? String(cashAccounts[0].id) : '',
+    notes:           custody?.notes          || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  function handleEmployeeSelect(empId: string) {
+    set('employee_id', empId)
+    const emp = employees.find(e => e.id === Number(empId))
+    if (emp) set('employee_name', emp.name)
+  }
+
+  async function handleSave() {
+    if (!form.employee_name.trim()) { toast.error('اسم الموظف مطلوب'); return }
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (!form.purpose.trim()) { toast.error('الغرض مطلوب'); return }
+    setSaving(true)
+
+    const { count } = await supabase.from('finance_employee_custody').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const custodyNo = `CUS-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+    const payload: Record<string, any> = {
+      tenant_id: tenantId, custody_no: custodyNo,
+      custody_date: form.custody_date,
+      employee_name: form.employee_name.trim(),
+      custody_type: form.custody_type,
+      amount: Number(form.amount),
+      purpose: form.purpose.trim(),
+      due_date: form.due_date || null,
+      settled_amount: 0, status: 'مفتوحة',
+      notes: form.notes || null,
+    }
+    if (form.employee_id) payload.employee_id = Number(form.employee_id)
+    if (form.project_id)  payload.project_id  = Number(form.project_id)
+
+    const { error } = await supabase.from('finance_employee_custody').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+
+    if (form.cash_account_id) {
+      await supabase.from('finance_treasury').insert({
+        tenant_id: tenantId,
+        transaction_no: `PAY-CUS-${custodyNo}`,
+        transaction_date: form.custody_date,
+        type: 'صرف',
+        amount: Number(form.amount),
+        description: `عهدة نقدية — ${form.employee_name} — ${form.purpose}`,
+        cash_account_id: Number(form.cash_account_id),
+        payment_method: 'نقداً',
+        reference_type: 'عهدة',
+        party_name: form.employee_name,
+        status: 'معتمد',
+      })
+    }
+
+    toast.success('✅ تم إصدار العهدة وتسجيل حركة الصرف')
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '560px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+            {custody ? 'تعديل عهدة' : 'إصدار عهدة موظف'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['عهدة نقدية', 'سلفة راتب'].map(t => (
+              <button key={t} type="button" onClick={() => set('custody_type', t)}
+                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
+                  borderColor: form.custody_type === t ? '#e6820a' : 'var(--border)',
+                  background: form.custody_type === t ? '#fffbeb' : 'white',
+                  color: form.custody_type === t ? '#e6820a' : 'var(--text3)' }}>
+                {t === 'عهدة نقدية' ? '💼 عهدة نقدية' : '💳 سلفة راتب'}
               </button>
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم المورد *</label>
-              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" />
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الموظف *</label>
+              <select value={form.employee_id} onChange={e => handleEmployeeSelect(e.target.value)} className="select">
+                <option value="">— اختر الموظف —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-                الرقم الضريبي
-                {form.vat_number && <span style={{ marginRight: '6px', fontSize: '0.72rem', color: vatValid ? '#0ea77b' : '#c81e1e' }}>{vatValid ? '✓' : '✗ 15 رقم'}</span>}
-              </label>
-              <input value={form.vat_number} onChange={e => set('vat_number', e.target.value.replace(/\D/g, '').slice(0, 15))} className="input" dir="ltr" maxLength={15} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>السجل التجاري</label>
-              <input value={form.cr_number} onChange={e => set('cr_number', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الهاتف</label>
-              <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البريد الإلكتروني</label>
-              <input value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>شخص التواصل</label>
-              <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم IBAN</label>
-              <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA..." />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المدينة</label>
-              <input value={form.city} onChange={e => set('city', e.target.value)} className="input" />
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
+              <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" />
             </div>
           </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
-            {vendor ? 'حفظ التعديل' : 'إضافة المورد'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: أمر شراء
-// ════════════════════════════════════════
-function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave }: {
-  po: PurchaseOrder | null; vendors: Vendor[]; projects: Project[]
-  warehouses: Warehouse[]; tenantId: string; onClose: () => void; onSave: () => void
-}) {
-  const [saving, setSaving] = useState(false)
-  const [items, setItems]   = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
-  const today = new Date().toISOString().split('T')[0]
-
-  const [form, setForm] = useState({
-    po_number:     po?.po_number     || '',
-    po_date:       po?.po_date       || today,
-    expected_date: po?.expected_date || '',
-    vendor_id:     po?.vendor_id     ? String(po.vendor_id) : '',
-    project_id:    po?.project_id    ? String(po.project_id) : '',
-    delivery_to:   po?.delivery_to   || 'مستودع',
-    warehouse_id:  po?.warehouse_id  ? String(po.warehouse_id) : '',
-    vat_rate:      po?.vat_rate      ?? 15,
-    status:        po?.status        || 'مسودة',
-    notes:         po?.notes         || '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  useEffect(() => {
-    if (po) loadItems()
-    else generateNumber()
-  }, [])
-
-  async function loadItems() {
-    const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po!.id).order('id')
-    if (data && data.length > 0) setItems(data)
-  }
-
-  async function generateNumber() {
-    const { count } = await supabase.from('finance_purchase_orders').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const num = String((count || 0) + 1).padStart(4, '0')
-    set('po_number', `PO-${new Date().getFullYear()}-${num}`)
-  }
-
-  const selectedVendor = vendors.find(v => v.id === Number(form.vendor_id))
-  const subtotal  = items.reduce((s, i) => s + Number(i.total), 0)
-  const vatAmount = Math.round(subtotal * (Number(form.vat_rate) / 100) * 100) / 100
-  const total     = subtotal + vatAmount
-
-  async function handleSave() {
-    if (!form.po_number.trim()) { toast.error('رقم الطلب مطلوب'); return }
-    if (!form.vendor_id) { toast.error('يجب اختيار مورد'); return }
-    if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
-    if (po && po.status !== 'مسودة') { toast.error('لا يمكن تعديل الطلب بعد الإرسال'); return }
-    setSaving(true)
-
-    const payload = {
-      tenant_id: tenantId, po_number: form.po_number.trim(),
-      po_date: form.po_date, expected_date: form.expected_date || null,
-      vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name,
-      vendor_vat: selectedVendor!.vat_number || null,
-      project_id: form.project_id ? Number(form.project_id) : null,
-      delivery_to: form.delivery_to,
-      warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
-      subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: form.status, notes: form.notes || null,
-    }
-
-    let poId = po?.id
-    if (po) {
-      await supabase.from('finance_purchase_orders').update(payload).eq('id', po.id)
-      await supabase.from('finance_purchase_order_items').delete().eq('po_id', po.id)
-    } else {
-      const { data, error } = await supabase.from('finance_purchase_orders').insert(payload).select('id').single()
-      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-      poId = data.id
-    }
-
-    const validItems = items.filter(i => i.description.trim())
-    if (validItems.length > 0) {
-      await supabase.from('finance_purchase_order_items').insert(
-        validItems.map(i => ({ po_id: poId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
-      )
-    }
-    toast.success(po ? 'تم التعديل ✅' : '✅ تم إنشاء أمر الشراء')
-    onSave(); setSaving(false)
-  }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '780px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShoppingCart style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            {po ? 'تعديل أمر الشراء' : 'أمر شراء جديد'}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الطلب *</label>
-              <input value={form.po_number} onChange={e => set('po_number', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الطلب *</label>
-              <input type="date" value={form.po_date} onChange={e => set('po_date', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ التسليم المتوقع</label>
-              <input type="date" value={form.expected_date} onChange={e => set('expected_date', e.target.value)} className="input" />
-            </div>
-          </div>
-
-          {/* المورد */}
-          <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '14px', border: '1px solid #fde68a' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد * — يجب اختيار مورد مضاف مسبقاً</label>
-            <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
-              <option value="">— اختر المورد —</option>
-              {vendors.filter(v => v.is_active).map(v => (
-                <option key={v.id} value={v.id}>{v.name} {v.vendor_type !== 'مورد' ? '(' + v.vendor_type + ')' : ''}</option>
-              ))}
-            </select>
-            {selectedVendor && (
-              <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#92400e', display: 'flex', gap: '16px' }}>
-                {selectedVendor.vat_number && <span>رقم ضريبي: {selectedVendor.vat_number}</span>}
-                {selectedVendor.phone && <span>📞 {selectedVendor.phone}</span>}
-                {selectedVendor.city && <span>📍 {selectedVendor.city}</span>}
-              </div>
-            )}
-          </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
-              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                <option value="">— مشتريات عامة —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                {['مسودة', 'مرسل', 'مستلم جزئياً', 'مستلم', 'ملغي'].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* وجهة التسليم */}
-          <DeliveryField
-            value={form.delivery_to}
-            warehouseId={form.warehouse_id}
-            projects={projects}
-            warehouses={warehouses}
-            onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || '') }}
-          />
-
-          <ItemsTable items={items} onChange={setItems} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
-                <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
-                  <option value={15}>15% — المعيارية</option>
-                  <option value={0}>0% — معفي</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
-                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
-              </div>
-            </div>
-            <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
-            {po ? 'حفظ التعديل' : 'إنشاء أمر الشراء'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: فاتورة مورد
-// ════════════════════════════════════════
-function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehouses, purchaseOrders, tenantId, onClose, onSave }: {
-  invoice: VendorInvoice | null; convertFromPO?: PurchaseOrder | null
-  vendors: Vendor[]; projects: Project[]
-  warehouses: Warehouse[]; purchaseOrders: PurchaseOrder[]
-  tenantId: string; onClose: () => void; onSave: () => void
-}) {
-  const [saving, setSaving] = useState(false)
-  const [items, setItems]   = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
-  const today = new Date().toISOString().split('T')[0]
-
-  const [form, setForm] = useState({
-    invoice_number: invoice?.invoice_number || '',
-    invoice_date:   invoice?.invoice_date   || today,
-    due_date:       invoice?.due_date       || '',
-    vendor_id:      invoice?.vendor_id      ? String(invoice.vendor_id) : '',
-    po_id:          invoice?.po_id          ? String(invoice.po_id) : '',
-    project_id:     invoice?.project_id     ? String(invoice.project_id) : '',
-    delivery_to:    invoice?.delivery_to    || 'مستودع',
-    warehouse_id:   invoice?.warehouse_id   ? String(invoice.warehouse_id) : '',
-    asset_type:     '',
-    vat_rate:       invoice?.vat_rate       ?? 15,
-    status:         invoice?.status         || 'مسودة',
-    notes:          invoice?.notes          || '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  useEffect(() => {
-    if (invoice) {
-      loadItems()
-    } else {
-      generateNumber()
-      // إذا تحويل من PO — نملأ البيانات تلقائياً
-      if (convertFromPO) {
-        setForm(f => ({
-          ...f,
-          vendor_id:    convertFromPO.vendor_id    ? String(convertFromPO.vendor_id) : '',
-          po_id:        String(convertFromPO.id),
-          project_id:   convertFromPO.project_id   ? String(convertFromPO.project_id) : '',
-          delivery_to:  convertFromPO.delivery_to  || 'مستودع',
-          warehouse_id: convertFromPO.warehouse_id ? String(convertFromPO.warehouse_id) : '',
-          vat_rate:     convertFromPO.vat_rate      ?? 15,
-        }))
-        // نجلب بنود الـ PO
-        supabase.from('finance_purchase_order_items')
-          .select('*').eq('po_id', convertFromPO.id).order('id')
-          .then(({ data }) => {
-            if (data && data.length > 0) {
-              setItems(data.map(i => ({ description: i.description, quantity: i.quantity, unit: i.unit, unit_price: i.unit_price, total: i.total })))
-            }
-          })
-      }
-    }
-  }, [])
-
-  async function loadItems() {
-    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', invoice!.id).order('id')
-    if (data && data.length > 0) setItems(data)
-  }
-
-  async function generateNumber() {
-    const { count } = await supabase.from('finance_vendor_invoices').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const num = String((count || 0) + 1).padStart(4, '0')
-    set('invoice_number', `VINV-${new Date().getFullYear()}-${num}`)
-  }
-
-  // عند اختيار PO — نملأ البيانات تلقائياً
-  async function handlePOSelect(poId: string) {
-    set('po_id', poId)
-    if (!poId) return
-    const po = purchaseOrders.find(p => p.id === Number(poId))
-    if (po) {
-      set('vendor_id', String(po.vendor_id || ''))
-      set('project_id', String(po.project_id || ''))
-      set('delivery_to', po.delivery_to)
-      set('warehouse_id', String(po.warehouse_id || ''))
-      // نجلب بنود الـ PO
-      const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
-      if (data && data.length > 0) setItems(data.map(i => ({ ...i, id: undefined })))
-    }
-  }
-
-  const selectedVendor = vendors.find(v => v.id === Number(form.vendor_id))
-  const subtotal  = items.reduce((s, i) => s + Number(i.total), 0)
-  const vatAmount = Math.round(subtotal * (Number(form.vat_rate) / 100) * 100) / 100
-  const total     = subtotal + vatAmount
-
-  async function handleSave() {
-    if (!form.invoice_number.trim()) { toast.error('رقم الفاتورة مطلوب'); return }
-    if (!form.vendor_id) { toast.error('يجب اختيار مورد'); return }
-    if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
-    setSaving(true)
-
-    const payload = {
-      tenant_id: tenantId, invoice_number: form.invoice_number.trim(),
-      invoice_date: form.invoice_date, due_date: form.due_date || null,
-      vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name,
-      vendor_vat: selectedVendor!.vat_number || null,
-      po_id: form.po_id ? Number(form.po_id) : null,
-      project_id: form.project_id ? Number(form.project_id) : null,
-      delivery_to: form.delivery_to,
-      warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
-      subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: form.status, notes: form.notes || null,
-    }
-
-    let invId = invoice?.id
-    if (invoice) {
-      await supabase.from('finance_vendor_invoices').update(payload).eq('id', invoice.id)
-      await supabase.from('finance_vendor_invoice_items').delete().eq('invoice_id', invoice.id)
-    } else {
-      const { data, error } = await supabase.from('finance_vendor_invoices').insert(payload).select('id').single()
-      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-      invId = data.id
-    }
-
-    const validItems = items.filter(i => i.description.trim())
-    if (validItems.length > 0) {
-      await supabase.from('finance_vendor_invoice_items').insert(
-        validItems.map(i => ({ invoice_id: invId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
-      )
-    }
-    // ══ قيد محاسبي تلقائي عند اعتماد فاتورة المورد ══
-    if (payload.status === 'معتمدة' && invId) {
-      const debitAccountCode =
-        payload.delivery_to === 'مستودع'   ? '1130' :
-        payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') :
-        '5120'  // موقع العمل → مواد مباشرة
-
-      await createJournalEntry(tenantId, {
-        date:          payload.invoice_date,
-        description:   `فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`,
-        referenceType: 'فاتورة مورد',
-        referenceId:   invId,
-        lines: [
-          { accountCode: debitAccountCode, debit: payload.subtotal,    credit: 0,                   description: `فاتورة ${payload.invoice_number}` },
-          ...(payload.vat_amount > 0 ? [{ accountCode: '2140', debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
-          { accountCode: '2110',           debit: 0,                   credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
-        ]
-      })
-    }
-
-    toast.success(invoice ? 'تم التعديل ✅' : '✅ تم حفظ فاتورة المورد')
-    onSave(); setSaving(false)
-  }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '780px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileText style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
-            {invoice ? 'تعديل فاتورة المورد' : 'فاتورة مورد جديدة'}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الفاتورة *</label>
-              <input value={form.invoice_number} onChange={e => set('invoice_number', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الفاتورة *</label>
-              <input type="date" value={form.invoice_date} onChange={e => set('invoice_date', e.target.value)} className="input" />
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإصدار *</label>
+              <input type="date" value={form.custody_date} onChange={e => set('custody_date', e.target.value)} className="input" />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
             </div>
           </div>
-
-          {/* ربط بأمر شراء */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصرف من</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ربط بأمر شراء (اختياري — يملأ البيانات تلقائياً)</label>
-            <select value={form.po_id} onChange={e => handlePOSelect(e.target.value)} className="select">
-              <option value="">— بدون ربط —</option>
-              {purchaseOrders.filter(p => p.status !== 'ملغي').map(p => (
-                <option key={p.id} value={p.id}>{p.po_number} — {p.vendor_name}</option>
-              ))}
-            </select>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الغرض *</label>
+            <input value={form.purpose} onChange={e => set('purpose', e.target.value)} className="input" />
           </div>
-
-          {/* المورد */}
-          <div style={{ background: '#fef2f2', borderRadius: '12px', padding: '14px', border: '1px solid #fecaca' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد *</label>
-            <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
-              <option value="">— اختر المورد —</option>
-              {vendors.filter(v => v.is_active).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </select>
-            {selectedVendor?.iban && (
-              <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#991b1b' }}>
-                IBAN: <strong>{selectedVendor.iban}</strong>
-              </div>
-            )}
-          </div>
-
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
             <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-              <option value="">— مشتريات عامة —</option>
+              <option value="">— اختياري —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </div>
-
-          {/* وجهة التسليم */}
-          <DeliveryField
-            value={form.delivery_to}
-            warehouseId={form.warehouse_id}
-            assetType={form.asset_type}
-            projects={projects}
-            warehouses={warehouses}
-            onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || ''); set('asset_type', '') }}
-            onAssetTypeChange={t => set('asset_type', t)}
-          />
-
-          <ItemsTable items={items} onChange={setItems} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ضريبة القيمة المضافة</label>
-                <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
-                  <option value={15}>15%</option><option value={0}>0% — معفي</option>
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['مسودة', 'معتمدة', 'مدفوعة', 'ملغاة'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
-                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
-              </div>
-            </div>
-            <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
-            {invoice ? 'حفظ التعديل' : 'حفظ الفاتورة'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: مرتجع مشتريات
-// ════════════════════════════════════════
-function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
-  invoice: VendorInvoice | null; vendors: Vendor[]
-  tenantId: string; onClose: () => void; onSave: () => void
-}) {
-  const [saving, setSaving] = useState(false)
-  const [items, setItems]   = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
-  const today = new Date().toISOString().split('T')[0]
-
-  const [form, setForm] = useState({
-    return_number:       '',
-    return_date:         today,
-    return_type:         'مرتجع مشتريات',
-    original_invoice_id: invoice?.id ? String(invoice.id) : '',
-    vendor_id:           invoice?.vendor_id ? String(invoice.vendor_id) : '',
-    vat_rate:            invoice?.vat_rate ?? 15,
-    reason:              '',
-    status:              'مسودة',
-    notes:               '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  useEffect(() => {
-    generateNumber()
-    if (invoice?.id) loadInvoiceItems()
-  }, [])
-
-  async function generateNumber() {
-    const { count } = await supabase.from('finance_purchase_returns').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const num = String((count || 0) + 1).padStart(4, '0')
-    set('return_number', `PR-${new Date().getFullYear()}-${num}`)
-  }
-
-  async function loadInvoiceItems() {
-    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', invoice!.id).order('id')
-    if (data && data.length > 0) setItems(data.map(i => ({ ...i, id: undefined })))
-  }
-
-  const selectedVendor = vendors.find(v => v.id === Number(form.vendor_id))
-  const subtotal  = items.reduce((s, i) => s + Number(i.total), 0)
-  const vatAmount = Math.round(subtotal * (Number(form.vat_rate) / 100) * 100) / 100
-  const total     = subtotal + vatAmount
-
-  async function handleSave() {
-    if (!form.return_number.trim()) { toast.error('رقم المرتجع مطلوب'); return }
-    if (!form.vendor_id) { toast.error('اختر المورد'); return }
-    if (!form.reason.trim()) { toast.error('سبب الإرجاع مطلوب'); return }
-    setSaving(true)
-
-    const payload = {
-      tenant_id: tenantId, return_number: form.return_number.trim(),
-      return_date: form.return_date, return_type: form.return_type,
-      original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null,
-      vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name,
-      subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), reason: form.reason,
-      status: form.status, notes: form.notes || null,
-    }
-
-    const { data, error } = await supabase.from('finance_purchase_returns').insert(payload).select('id').single()
-    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-
-    const validItems = items.filter(i => i.description.trim())
-    if (validItems.length > 0) {
-      await supabase.from('finance_purchase_return_items').insert(
-        validItems.map(i => ({ return_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
-      )
-    }
-    // ══ قيد محاسبي عكسي للمرتجع ══
-    await createJournalEntry(tenantId, {
-      date:          form.return_date,
-      description:   `${form.return_type} ${form.return_number} — ${selectedVendor!.name}`,
-      referenceType: form.return_type,
-      referenceId:   data.id,
-      lines: [
-        // مدين: الذمم الدائنة (تخفيض المديونية للمورد)
-        { accountCode: '2110', debit: total,    credit: 0,        description: `${form.return_type} ${form.return_number}` },
-        // دائن: المخزون (إرجاع البضاعة)
-        { accountCode: '1130', debit: 0,        credit: subtotal, description: `إرجاع بضاعة — ${form.reason}` },
-        // دائن: ضريبة المدخلات (إذا وجدت)
-        ...(vatAmount > 0 ? [{ accountCode: '2140', debit: 0, credit: vatAmount, description: 'تعديل ضريبة المدخلات' }] : []),
-      ]
-    })
-
-    toast.success('✅ تم إنشاء مرتجع المشتريات والقيد المحاسبي')
-    onSave(); setSaving(false)
-  }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <RotateCcw style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            مرتجع مشتريات / إشعار مدين
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {['مرتجع مشتريات', 'إشعار مدين'].map(t => (
-              <button key={t} type="button" onClick={() => set('return_type', t)}
-                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700,
-                  borderColor: form.return_type === t ? '#e6820a' : 'var(--border)',
-                  background: form.return_type === t ? '#fffbeb' : 'white',
-                  color: form.return_type === t ? '#e6820a' : 'var(--text3)' }}>
-                {t === 'مرتجع مشتريات' ? '↩️ مرتجع مشتريات' : '📄 إشعار مدين'}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرقم المرجعي *</label>
-              <input value={form.return_number} onChange={e => set('return_number', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
-              <input type="date" value={form.return_date} onChange={e => set('return_date', e.target.value)} className="input" />
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد *</label>
-            <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
-              <option value="">— اختر المورد —</option>
-              {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>سبب الإرجاع *</label>
-            <input value={form.reason} onChange={e => set('reason', e.target.value)} className="input" placeholder="مثال: بضاعة تالفة، مواصفات مختلفة..." />
-          </div>
-          <ItemsTable items={items} onChange={setItems} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['مسودة', 'معتمد', 'مُطبَّق'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
-                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
-              </div>
-            </div>
-            <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
           </div>
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
-            إنشاء المرتجع
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            إصدار العهدة
           </button>
         </div>
       </div>
@@ -947,225 +566,120 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
   )
 }
 
-
 // ════════════════════════════════════════
-// مودال: عرض أمر الشراء
+// مودال: تسوية عهدة
 // ════════════════════════════════════════
-function POViewModal({ po, items, onClose, onPrint }: {
-  po: PurchaseOrder; items: POItem[]; onClose: () => void; onPrint: () => void
+function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }: {
+  custody: Custody; cashAccounts: CashAccount[]
+  tenantId: string; onClose: () => void; onSave: () => void
 }) {
+  const [saving, setSaving] = useState(false)
+  const remaining = custody.amount - custody.settled_amount
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    settled_amount:  String(remaining),
+    settled_date:    today,
+    cash_account_id: cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    notes:           '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const settledAmt = Number(form.settled_amount) || 0
+  const returnAmt  = remaining - settledAmt
+
+  async function handleSettle() {
+    if (settledAmt <= 0) { toast.error('أدخل المبلغ المُسوَّى'); return }
+    setSaving(true)
+
+    await supabase.from('finance_employee_custody').update({
+      settled_amount: custody.settled_amount + settledAmt,
+      settled_date:   form.settled_date,
+      status:         settledAmt >= remaining ? 'مُسوَّاة' : 'جزئية',
+      notes:          form.notes || null,
+    }).eq('id', custody.id)
+
+    if (returnAmt > 0 && form.cash_account_id) {
+      await supabase.from('finance_treasury').insert({
+        tenant_id: tenantId,
+        transaction_no: `RCV-CUS-${custody.custody_no}`,
+        transaction_date: form.settled_date,
+        type: 'قبض',
+        amount: returnAmt,
+        description: `إرجاع فائض عهدة — ${custody.employee_name}`,
+        cash_account_id: Number(form.cash_account_id),
+        payment_method: 'نقداً',
+        reference_type: 'عهدة',
+        party_name: custody.employee_name,
+        status: 'معتمد',
+      })
+    }
+
+    toast.success('✅ تمت التسوية' + (returnAmt > 0 ? ` — تم إرجاع ${returnAmt.toLocaleString()} ر.س للصندوق` : ''))
+    onSave(); setSaving(false)
+  }
+
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Eye style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            معاينة أمر الشراء — {po.po_number}
-          </h3>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button onClick={onPrint}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              <Printer style={{ width: '15px', height: '15px' }} /> طباعة
-            </button>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <h3 style={{ fontWeight: 700 }}>✅ تسوية عهدة — {custody.employee_name}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
+            {[
+              { label: 'إجمالي العهدة',  value: custody.amount,          color: '#374151', bg: '#f3f4f6' },
+              { label: 'تم تسويته',      value: custody.settled_amount,  color: '#0ea77b', bg: '#ecfdf5' },
+              { label: 'المتبقي',        value: remaining,               color: '#c81e1e', bg: '#fef2f2' },
+            ].map(s => (
+              <div key={s.label} style={{ padding: '10px', background: s.bg, borderRadius: '8px' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: s.color }}>{s.value.toLocaleString()}</div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>{s.label} ر.س</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ المُسوَّى</label>
+            <input type="number" value={form.settled_amount} onChange={e => set('settled_amount', e.target.value)} className="input" dir="ltr" max={remaining} />
+          </div>
+          {returnAmt > 0 && (
+            <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRadius: '8px', fontSize: '0.82rem', color: '#065f46', fontWeight: 600 }}>
+              💰 سيُرجَع للصندوق: {returnAmt.toLocaleString()} ر.س
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ التسوية</label>
+              <input type="date" value={form.settled_date} onChange={e => set('settled_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصندوق</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
           </div>
         </div>
-        <div className="modal-body" style={{ padding: '0' }}>
-          <div style={{ padding: '24px', direction: 'rtl' }}>
-
-            {/* هيدر */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '16px', borderBottom: '3px solid #e6820a' }}>
-              <div>
-                <div style={{ fontSize: '18px', fontWeight: 800, color: '#e6820a', marginBottom: '4px' }}>{po.vendor_name}</div>
-                {po.vendor_vat && <div style={{ fontSize: '12px', color: '#64748b' }}>الرقم الضريبي: {po.vendor_vat}</div>}
-              </div>
-              <div style={{ background: '#e6820a', color: 'white', padding: '10px 20px', borderRadius: '10px', textAlign: 'center' }}>
-                <div style={{ fontSize: '11px', opacity: 0.85 }}>أمر شراء</div>
-                <div style={{ fontSize: '16px', fontWeight: 800 }}>{po.po_number}</div>
-                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.85 }}>{po.po_date}</div>
-              </div>
-            </div>
-
-            {/* التفاصيل */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-              {[
-                { label: 'تاريخ الطلب', value: po.po_date },
-                { label: 'تاريخ التسليم المتوقع', value: po.expected_date || '—' },
-                { label: 'وجهة التسليم', value: po.delivery_to },
-                { label: 'الحالة', value: po.status },
-                { label: 'المشروع', value: po.project?.name || 'مشتريات عامة' },
-              ].map(f => (
-                <div key={f.label} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '3px' }}>{f.label}</div>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{f.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* البنود */}
-            {items.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: '#e6820a', color: 'white' }}>
-                      <th style={{ padding: '9px 12px', textAlign: 'right', width: '40%' }}>الوصف</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الكمية</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الوحدة</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>سعر الوحدة</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
-                        <td style={{ padding: '9px 12px' }}>{item.description}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.quantity}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.unit}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr' }}>{Number(item.unit_price).toLocaleString('ar-SA')}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr', fontWeight: 600 }}>{Number(item.total).toLocaleString('ar-SA')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* الإجماليات */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ width: '260px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#64748b' }}>قبل الضريبة</span>
-                  <span style={{ fontWeight: 600 }}>{Number(po.subtotal).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#64748b' }}>ضريبة ({po.vat_rate}%)</span>
-                  <span style={{ fontWeight: 600, color: '#e6820a' }}>{Number(po.vat_amount).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-                <div style={{ borderTop: '2px solid #e6820a', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '15px', color: '#e6820a' }}>
-                  <span>الإجمالي</span>
-                  <span>{Number(po.total_amount).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSettle} disabled={saving || returnAmt < 0} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '✅'}
+            تسوية العهدة
+          </button>
         </div>
       </div>
     </div>
   )
 }
-
-// ════════════════════════════════════════
-// مودال: عرض فاتورة المورد
-// ════════════════════════════════════════
-function VInvViewModal({ inv, items, onClose, onPrint }: {
-  inv: VendorInvoice; items: POItem[]; onClose: () => void; onPrint: () => void
-}) {
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Eye style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
-            معاينة فاتورة المورد — {inv.invoice_number}
-          </h3>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button onClick={onPrint}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-              <Printer style={{ width: '15px', height: '15px' }} /> طباعة
-            </button>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
-          </div>
-        </div>
-        <div className="modal-body" style={{ padding: '0' }}>
-          <div style={{ padding: '24px', direction: 'rtl' }}>
-
-            {/* هيدر */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '16px', borderBottom: '3px solid #c81e1e' }}>
-              <div>
-                <div style={{ fontSize: '18px', fontWeight: 800, color: '#c81e1e', marginBottom: '4px' }}>{inv.vendor_name}</div>
-                {inv.vendor_vat && <div style={{ fontSize: '12px', color: '#64748b' }}>الرقم الضريبي: {inv.vendor_vat}</div>}
-                {inv.vendor?.iban && <div style={{ fontSize: '12px', color: '#64748b', fontFamily: 'monospace' }}>IBAN: {inv.vendor.iban}</div>}
-              </div>
-              <div style={{ background: '#c81e1e', color: 'white', padding: '10px 20px', borderRadius: '10px', textAlign: 'center' }}>
-                <div style={{ fontSize: '11px', opacity: 0.85 }}>فاتورة مورد</div>
-                <div style={{ fontSize: '16px', fontWeight: 800 }}>{inv.invoice_number}</div>
-                <div style={{ fontSize: '11px', marginTop: '4px', opacity: 0.85 }}>{inv.invoice_date}</div>
-              </div>
-            </div>
-
-            {/* التفاصيل */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
-              {[
-                { label: 'تاريخ الفاتورة', value: inv.invoice_date },
-                { label: 'تاريخ الاستحقاق', value: inv.due_date || '—' },
-                { label: 'أمر الشراء المرتبط', value: inv.po?.po_number || '—' },
-                { label: 'وجهة التسليم', value: inv.delivery_to },
-                { label: 'المشروع', value: inv.project?.name || 'مشتريات عامة' },
-                { label: 'الحالة', value: inv.status },
-              ].map(f => (
-                <div key={f.label} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 14px' }}>
-                  <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '3px' }}>{f.label}</div>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{f.value}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* البنود */}
-            {items.length > 0 && (
-              <div style={{ marginBottom: '16px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ background: '#c81e1e', color: 'white' }}>
-                      <th style={{ padding: '9px 12px', textAlign: 'right', width: '40%' }}>الوصف</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الكمية</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'center' }}>الوحدة</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>سعر الوحدة</th>
-                      <th style={{ padding: '9px 12px', textAlign: 'left' }}>الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? 'white' : '#f8fafc' }}>
-                        <td style={{ padding: '9px 12px' }}>{item.description}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.quantity}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'center' }}>{item.unit}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr' }}>{Number(item.unit_price).toLocaleString('ar-SA')}</td>
-                        <td style={{ padding: '9px 12px', textAlign: 'left', direction: 'ltr', fontWeight: 600 }}>{Number(item.total).toLocaleString('ar-SA')}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* الإجماليات */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <div style={{ width: '260px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#64748b' }}>قبل الضريبة</span>
-                  <span style={{ fontWeight: 600 }}>{Number(inv.subtotal).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '13px' }}>
-                  <span style={{ color: '#64748b' }}>ضريبة ({inv.vat_rate}%)</span>
-                  <span style={{ fontWeight: 600, color: '#e6820a' }}>{Number(inv.vat_amount).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-                <div style={{ borderTop: '2px solid #c81e1e', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '15px', color: '#c81e1e' }}>
-                  <span>الإجمالي</span>
-                  <span>{Number(inv.total_amount).toLocaleString('ar-SA')} ر.س</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 
 // ════════════════════════════════════════
 // دوال مساعدة للقيود المحاسبية
 // ════════════════════════════════════════
+async function getCashAccountCode(tenantId: string, accountId: number): Promise<string | null> {
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  return data?.code || null
+}
+
 async function getAccountId(tenantId: string, code: string): Promise<number | null> {
   const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
   return data?.id || null
@@ -1176,14 +690,9 @@ async function createJournalEntry(tenantId: string, params: {
   referenceType: string; referenceId: number
   lines: { accountCode: string; debit: number; credit: number; description?: string }[]
 }) {
-  const lineIds = await Promise.all(params.lines.map(async l => ({
-    ...l, account_id: await getAccountId(tenantId, l.accountCode)
-  })))
-  if (lineIds.some(l => !l.account_id)) {
-    console.warn('بعض الحسابات غير موجودة — تم تخطي القيد')
-    return null
-  }
-  const totalDebit  = lineIds.reduce((s, l) => s + l.debit,  0)
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
   const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
   const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
   const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
@@ -1192,422 +701,89 @@ async function createJournalEntry(tenantId: string, params: {
     description: params.description, reference_type: params.referenceType,
     reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
   }).select('id').single()
-  if (error || !entry) { console.error('خطأ في إنشاء القيد:', error); return null }
+  if (error || !entry) return null
   await supabase.from('finance_journal_lines').insert(
     lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
   )
   return entry.id
 }
 
-
-// ════════════════════════════════════════
-// مودال: دفع فاتورة مورد
-// ════════════════════════════════════════
-type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: string }
-
-function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
-  invoice: VendorInvoice; tenantId: string; onClose: () => void; onSave: () => void
-}) {
-  const [saving, setSaving]           = useState(false)
-  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
-  const [form, setForm] = useState({
-    amount:         String(invoice.total_amount),
-    payment_date:   new Date().toISOString().split('T')[0],
-    payment_method: 'تحويل بنكي',
-    cash_account_id: '',
-    reference:      '',
-    notes:          '',
-  })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-
-  useEffect(() => {
-    supabase.from('finance_cash_accounts')
-      .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
-      .then(({ data }) => setCashAccounts(data || []))
-  }, [])
-
-  const bankAccounts = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
-  const cashBoxes    = cashAccounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
-  const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-
-  // الحساب المحاسبي المقابل حسب وسيلة الدفع
-  function getCreditAccountCode() {
-    if (selectedAccount?.account_id) return selectedAccount.account_id
-    if (form.payment_method === 'نقداً') return '1111'  // الصندوق
-    return '1120'  // البنك
-  }
-
-  async function handleSave() {
-    if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
-    if ((form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && !form.cash_account_id) {
-      toast.error('يجب تحديد الحساب البنكي'); return
-    }
-    if (form.payment_method === 'نقداً' && !form.cash_account_id) {
-      toast.error('يجب تحديد الصندوق'); return
-    }
-    setSaving(true)
-
-    await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
-
-    const accountLabel = selectedAccount
-      ? `${selectedAccount.name}${selectedAccount.bank_name ? ' — ' + selectedAccount.bank_name : ''}`
-      : form.payment_method
-
-    await createJournalEntry(tenantId, {
-      date:          form.payment_date,
-      description:   `سداد فاتورة مورد ${invoice.invoice_number} — ${invoice.vendor_name} (${form.payment_method})`,
-      referenceType: 'سداد فاتورة مورد',
-      referenceId:   invoice.id,
-      lines: [
-        { accountCode: '2110',                  debit: Number(form.amount), credit: 0,                   description: `سداد ${invoice.invoice_number}` },
-        { accountCode: getCreditAccountCode(),   debit: 0,                   credit: Number(form.amount), description: `${form.payment_method} — ${accountLabel}` },
-      ]
-    })
-
-    toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
-    onSave(); setSaving(false)
-  }
-
-  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            💸 سداد فاتورة — {invoice.invoice_number}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
-            <X style={{ width: '18px', height: '18px' }} />
-          </button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* ملخص الفاتورة */}
-          <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '0.75rem', color: '#991b1b' }}>إجمالي الفاتورة</div>
-              <div style={{ fontSize: '0.75rem', color: '#991b1b', marginTop: '2px' }}>{invoice.vendor_name}</div>
-            </div>
-            <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#c81e1e' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
-          </div>
-
-          {/* المبلغ والتاريخ */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>المبلغ المدفوع <span style={{ color: '#c81e1e' }}>*</span></label>
-              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={lbl}>تاريخ الدفع <span style={{ color: '#c81e1e' }}>*</span></label>
-              <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
-            </div>
-          </div>
-
-          {/* طريقة الدفع */}
-          <div>
-            <label style={lbl}>طريقة الدفع</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[
-                { val: 'تحويل بنكي', icon: '🏦' },
-                { val: 'نقداً',       icon: '💵' },
-                { val: 'شيك',        icon: '📝' },
-              ].map(m => (
-                <button key={m.val} type="button"
-                  onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
-                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, textAlign: 'center',
-                    borderColor: form.payment_method === m.val ? '#c81e1e' : 'var(--border)',
-                    background:  form.payment_method === m.val ? '#fef2f2' : 'white',
-                    color:       form.payment_method === m.val ? '#c81e1e' : 'var(--text3)' }}>
-                  <div>{m.icon}</div>
-                  <div style={{ marginTop: '3px' }}>{m.val}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* اختيار الحساب البنكي / الصندوق */}
-          {(form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && (
-            <div>
-              <label style={lbl}>الحساب البنكي <span style={{ color: '#c81e1e' }}>*</span></label>
-              {bankAccounts.length === 0 ? (
-                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
-                  ⚠️ لا توجد حسابات بنكية — أضفها من إعدادات الخزينة
-                </div>
-              ) : (
-                <>
-                  <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                    <option value="">— اختر الحساب البنكي —</option>
-                    {bankAccounts.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}{a.bank_name ? ` — ${a.bank_name}` : ''}{a.account_no ? ` (${a.account_no})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedAccount?.iban && (
-                    <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'monospace' }}>
-                      IBAN: {selectedAccount.iban}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {form.payment_method === 'نقداً' && (
-            <div>
-              <label style={lbl}>الصندوق <span style={{ color: '#c81e1e' }}>*</span></label>
-              {cashBoxes.length === 0 ? (
-                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
-                  ⚠️ لا توجد صناديق — أضفها من إعدادات الخزينة
-                </div>
-              ) : (
-                <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                  <option value="">— اختر الصندوق —</option>
-                  {cashBoxes.map(a => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          )}
-
-          {/* رقم المرجع */}
-          {(form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && (
-            <div>
-              <label style={lbl}>{form.payment_method === 'شيك' ? 'رقم الشيك' : 'رقم التحويل / المرجع'}</label>
-              <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr"
-                placeholder={form.payment_method === 'شيك' ? 'رقم الشيك...' : 'رقم التحويل...'} />
-            </div>
-          )}
-
-          <div>
-            <label style={lbl}>ملاحظات</label>
-            <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" placeholder="اختياري..." />
-          </div>
-        </div>
-
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving
-              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-              : '💸'}
-            تسجيل الدفعة
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
-export default function FinancePurchasesPage() {
+export default function FinanceTreasuryPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'orders' | 'invoices' | 'returns' | 'vendors'>('orders')
+  const [activeTab, setActiveTab] = useState<'transactions' | 'receipts' | 'payments' | 'custody' | 'accounts'>('transactions')
 
-  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
-  const [vendorInvoices, setVendorInvoices] = useState<VendorInvoice[]>([])
-  const [returns,        setReturns]        = useState<PurchaseReturn[]>([])
-  const [vendors,        setVendors]        = useState<Vendor[]>([])
-  const [projects,       setProjects]       = useState<Project[]>([])
-  const [warehouses,     setWarehouses]     = useState<Warehouse[]>([])
-  const [loading,        setLoading]        = useState(true)
-  const [search,         setSearch]         = useState('')
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [custodies,    setCustodies]    = useState<Custody[]>([])
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
+  const [projects,     setProjects]     = useState<Project[]>([])
+  const [employees,    setEmployees]    = useState<Employee[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [search,       setSearch]       = useState('')
 
-  const [showPOModal,      setShowPOModal]      = useState(false)
-  const [showInvModal,     setShowInvModal]     = useState(false)
-  const [showReturnModal,  setShowReturnModal]  = useState(false)
-  const [showVendorModal,  setShowVendorModal]  = useState(false)
-  const [editPO,     setEditPO]     = useState<PurchaseOrder | null>(null)
-  const [editInv,    setEditInv]    = useState<VendorInvoice | null>(null)
-  const [editVendor, setEditVendor] = useState<Vendor | null>(null)
-  const [returnInvoice,  setReturnInvoice]  = useState<VendorInvoice | null>(null)
-  const [payInvoice,     setPayInvoice]      = useState<VendorInvoice | null>(null)
-  const [showPayModal,   setShowPayModal]    = useState(false)
-  const [viewPO,         setViewPO]         = useState<PurchaseOrder | null>(null)
-  const [viewPOItems,    setViewPOItems]     = useState<POItem[]>([])
-  const [showViewPO,     setShowViewPO]      = useState(false)
-  const [viewVInv,       setViewVInv]        = useState<VendorInvoice | null>(null)
-  const [viewVInvItems,  setViewVInvItems]   = useState<POItem[]>([])
-  const [showViewVInv,   setShowViewVInv]    = useState(false)
-  const [convertPO,     setConvertPO]     = useState<PurchaseOrder | null>(null)
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showCustodyModal, setShowCustodyModal] = useState(false)
+  const [showAccountModal, setShowAccountModal] = useState(false)
+  const [showSettleModal,  setShowSettleModal]  = useState(false)
+  const [editAccount,      setEditAccount]      = useState<CashAccount | null>(null)
+  const [settleCustody,    setSettleCustody]    = useState<Custody | null>(null)
 
   useEffect(() => { loadAll() }, [tenant?.id])
-
-  async function handleViewPO(po: PurchaseOrder) {
-    const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
-    setViewPOItems(data || [])
-    setViewPO(po)
-    setShowViewPO(true)
-  }
-
-  async function handleViewVInv(inv: VendorInvoice) {
-    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
-    setViewVInvItems(data || [])
-    setViewVInv(inv)
-    setShowViewVInv(true)
-  }
-
-  function printPO(po: PurchaseOrder, items: POItem[]) {
-    const win = window.open('', '_blank', 'width=900,height=700')
-    if (!win) return
-    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>أمر شراء ${po.po_number}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;font-size:14px}.page{max-width:794px;margin:0 auto;padding:30px 40px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #e6820a}.badge{background:#e6820a;color:white;padding:10px 20px;border-radius:10px;text-align:center}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}.info-item{background:#f8fafc;border-radius:8px;padding:10px 14px}.info-label{font-size:10px;color:#94a3b8;margin-bottom:3px}.info-value{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:#e6820a;color:white}th{padding:10px 12px;text-align:right;font-size:12px}tbody tr{border-bottom:1px solid #f1f5f9}td{padding:9px 12px;font-size:13px}.totals-box{width:260px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-right:auto}.total-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}.total-final{border-top:2px solid #e6820a;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px;color:#e6820a}@media print{.no-print{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
-<div class="page">
-<div class="header">
-  <div>
-    <div style="font-size:20px;font-weight:800;color:#e6820a;margin-bottom:4px">${po.vendor_name}</div>
-    ${po.vendor_vat ? '<div style="font-size:12px;color:#64748b">الرقم الضريبي: ' + po.vendor_vat + '</div>' : ''}
-  </div>
-  <div class="badge">
-    <div style="font-size:11px;opacity:0.85">أمر شراء</div>
-    <div style="font-size:18px;font-weight:800">${po.po_number}</div>
-    <div style="font-size:11px;margin-top:4px;opacity:0.85">${po.po_date}</div>
-  </div>
-</div>
-<div class="info-grid">
-  <div class="info-item"><div class="info-label">تاريخ الطلب</div><div class="info-value">${po.po_date}</div></div>
-  ${po.expected_date ? '<div class="info-item"><div class="info-label">تاريخ التسليم المتوقع</div><div class="info-value">' + po.expected_date + '</div></div>' : ''}
-  <div class="info-item"><div class="info-label">وجهة التسليم</div><div class="info-value">${po.delivery_to}</div></div>
-  <div class="info-item"><div class="info-label">الحالة</div><div class="info-value">${po.status}</div></div>
-</div>
-<table>
-  <thead><tr><th style="width:40%">الوصف</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th style="text-align:left">سعر الوحدة</th><th style="text-align:left">الإجمالي</th></tr></thead>
-  <tbody>${items.map(i => '<tr><td>' + i.description + '</td><td style="text-align:center">' + i.quantity + '</td><td style="text-align:center">' + i.unit + '</td><td style="text-align:left;direction:ltr">' + Number(i.unit_price).toLocaleString('ar-SA') + '</td><td style="text-align:left;direction:ltr;font-weight:600">' + Number(i.total).toLocaleString('ar-SA') + '</td></tr>').join('')}</tbody>
-</table>
-<div style="display:flex;justify-content:flex-end">
-  <div class="totals-box">
-    <div class="total-row"><span>المجموع قبل الضريبة</span><span>${Number(po.subtotal).toLocaleString('ar-SA')} ر.س</span></div>
-    <div class="total-row"><span>ضريبة القيمة المضافة (${po.vat_rate}%)</span><span style="color:#e6820a">${Number(po.vat_amount).toLocaleString('ar-SA')} ر.س</span></div>
-    <div class="total-final"><span>الإجمالي</span><span>${Number(po.total_amount).toLocaleString('ar-SA')} ر.س</span></div>
-  </div>
-</div>
-${po.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border-radius:8px;font-size:12px"><strong>ملاحظات:</strong> ' + po.notes + '</div>' : ''}
-<div style="margin-top:40px;display:flex;justify-content:flex-end;padding-top:20px;border-top:1px solid #e2e8f0">
-  <div style="text-align:center"><div style="border-bottom:2px solid #e6820a;width:160px;margin:30px auto 6px"></div><div style="font-size:11px;color:#94a3b8">التوقيع والختم</div></div>
-</div>
-</div>
-<div class="no-print" style="text-align:center;padding:16px;background:#f9fafb">
-  <button onclick="window.print()" style="padding:10px 28px;background:#e6820a;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة / PDF</button>
-  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
-</div>
-</body></html>`)
-    win.document.close()
-  }
-
-  function printVendorInvoice(inv: VendorInvoice, items: POItem[]) {
-    const win = window.open('', '_blank', 'width=900,height=700')
-    if (!win) return
-    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>فاتورة مورد ${inv.invoice_number}</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;font-size:14px}.page{max-width:794px;margin:0 auto;padding:30px 40px}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #c81e1e}.badge{background:#c81e1e;color:white;padding:10px 20px;border-radius:10px;text-align:center}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}.info-item{background:#f8fafc;border-radius:8px;padding:10px 14px}.info-label{font-size:10px;color:#94a3b8;margin-bottom:3px}.info-value{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:#c81e1e;color:white}th{padding:10px 12px;text-align:right;font-size:12px}tbody tr{border-bottom:1px solid #f1f5f9}td{padding:9px 12px;font-size:13px}.totals-box{width:260px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px;margin-right:auto}.total-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}.total-final{border-top:2px solid #c81e1e;margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;font-weight:800;font-size:15px;color:#c81e1e}@media print{.no-print{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>
-<div class="page">
-<div class="header">
-  <div>
-    <div style="font-size:20px;font-weight:800;color:#c81e1e;margin-bottom:4px">${inv.vendor_name}</div>
-    ${inv.vendor_vat ? '<div style="font-size:12px;color:#64748b">الرقم الضريبي: ' + inv.vendor_vat + '</div>' : ''}
-  </div>
-  <div class="badge">
-    <div style="font-size:11px;opacity:0.85">فاتورة مورد</div>
-    <div style="font-size:18px;font-weight:800">${inv.invoice_number}</div>
-    <div style="font-size:11px;margin-top:4px;opacity:0.85">${inv.invoice_date}</div>
-  </div>
-</div>
-<div class="info-grid">
-  <div class="info-item"><div class="info-label">تاريخ الفاتورة</div><div class="info-value">${inv.invoice_date}</div></div>
-  ${inv.due_date ? '<div class="info-item"><div class="info-label">تاريخ الاستحقاق</div><div class="info-value">' + inv.due_date + '</div></div>' : ''}
-  ${inv.po ? '<div class="info-item"><div class="info-label">أمر الشراء</div><div class="info-value">' + inv.po.po_number + '</div></div>' : ''}
-  <div class="info-item"><div class="info-label">وجهة التسليم</div><div class="info-value">${inv.delivery_to}</div></div>
-  <div class="info-item"><div class="info-label">الحالة</div><div class="info-value">${inv.status}</div></div>
-</div>
-<table>
-  <thead><tr><th style="width:40%">الوصف</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th style="text-align:left">سعر الوحدة</th><th style="text-align:left">الإجمالي</th></tr></thead>
-  <tbody>${items.map(i => '<tr><td>' + i.description + '</td><td style="text-align:center">' + i.quantity + '</td><td style="text-align:center">' + i.unit + '</td><td style="text-align:left;direction:ltr">' + Number(i.unit_price).toLocaleString('ar-SA') + '</td><td style="text-align:left;direction:ltr;font-weight:600">' + Number(i.total).toLocaleString('ar-SA') + '</td></tr>').join('')}</tbody>
-</table>
-<div style="display:flex;justify-content:flex-end">
-  <div class="totals-box">
-    <div class="total-row"><span>المجموع قبل الضريبة</span><span>${Number(inv.subtotal).toLocaleString('ar-SA')} ر.س</span></div>
-    <div class="total-row"><span>ضريبة القيمة المضافة (${inv.vat_rate}%)</span><span style="color:#e6820a">${Number(inv.vat_amount).toLocaleString('ar-SA')} ر.س</span></div>
-    <div class="total-final"><span>الإجمالي</span><span>${Number(inv.total_amount).toLocaleString('ar-SA')} ر.س</span></div>
-  </div>
-</div>
-${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border-radius:8px;font-size:12px"><strong>ملاحظات:</strong> ' + inv.notes + '</div>' : ''}
-</div>
-<div class="no-print" style="text-align:center;padding:16px;background:#f9fafb">
-  <button onclick="window.print()" style="padding:10px 28px;background:#c81e1e;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة / PDF</button>
-  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
-</div>
-</body></html>`)
-    win.document.close()
-  }
-
-  async function handlePrintPO(po: PurchaseOrder) {
-    const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
-    setTimeout(() => printPO(po, data || []), 0)
-  }
-
-  async function handlePrintVInv(inv: VendorInvoice) {
-    const { data } = await supabase.from('finance_vendor_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
-    setTimeout(() => printVendorInvoice(inv, data || []), 0)
-  }
 
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [poRes, invRes, retRes, venRes, projRes, whRes] = await Promise.all([
-      supabase.from('finance_purchase_orders').select('*, vendor:finance_vendors(name,phone), project:projects(name)').eq('tenant_id', tenant.id).order('po_date', { ascending: false }),
-      supabase.from('finance_vendor_invoices').select('*, vendor:finance_vendors(name,iban), project:projects(name), po:finance_purchase_orders(po_number)').eq('tenant_id', tenant.id).order('invoice_date', { ascending: false }),
-      supabase.from('finance_purchase_returns').select('*').eq('tenant_id', tenant.id).order('return_date', { ascending: false }),
-      supabase.from('finance_vendors').select('*').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('warehouses').select('id, name, wh_type').eq('tenant_id', tenant.id),
+    const [trRes, cusRes, caRes, accRes, ccRes, projRes, empRes] = await Promise.all([
+      supabase.from('finance_treasury').select('*, cash_account:finance_cash_accounts(name), account:finance_accounts(code,name)').eq('tenant_id', tenant.id).order('transaction_date', { ascending: false }).limit(200),
+      supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
+      supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('finance_accounts').select('id,code,name').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
+      supabase.from('finance_cost_centers').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true),
+      supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('hr_employees').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
-    // نضيف has_invoice لكل PO بناءً على الفواتير المرتبطة
-    const invPoIds = new Set((invRes.data || []).map((i: any) => i.po_id).filter(Boolean))
-    const posWithFlag = (poRes.data || []).map((po: any) => ({
-      ...po,
-      has_invoice: invPoIds.has(po.id)
-    }))
-    setPurchaseOrders(posWithFlag)
-    setVendorInvoices(invRes.data || [])
-    setReturns(retRes.data || [])
-    setVendors(venRes.data || [])
+    setTransactions(trRes.data || [])
+    setCustodies(cusRes.data || [])
+
+    const trData = trRes.data || []
+    const caData = (caRes.data || []).map((ca: CashAccount) => {
+      const cashIn  = trData.filter((t: Transaction) => t.type === 'قبض' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
+      const cashOut = trData.filter((t: Transaction) => t.type === 'صرف' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
+      return { ...ca, balance: Number(ca.opening_balance) + cashIn - cashOut }
+    })
+    setCashAccounts(caData)
+    setAccounts(accRes.data || [])
+    setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
-    setWarehouses(whRes.data || [])
+    setEmployees(empRes.data || [])
     setLoading(false)
   }
 
-  async function deletePO(id: number, status: string) {
-    if (status !== 'مسودة') { toast.error('لا يمكن حذف طلب مرسل'); return }
-    if (!confirm('حذف هذا الطلب؟')) return
-    await supabase.from('finance_purchase_orders').delete().eq('id', id)
-    setPurchaseOrders(p => p.filter(x => x.id !== id)); toast.success('تم الحذف')
-  }
+  const totalIn      = transactions.filter(t => t.type === 'قبض').reduce((s, t) => s + Number(t.amount), 0)
+  const totalOut     = transactions.filter(t => t.type === 'صرف').reduce((s, t) => s + Number(t.amount), 0)
+  const netBalance   = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0)
+  const openCustodies = custodies.filter(c => c.status === 'مفتوحة').reduce((s, c) => s + Number(c.amount) - Number(c.settled_amount), 0)
 
-  async function deleteInv(id: number, status: string) {
-    if (status !== 'مسودة') { toast.error('لا يمكن حذف فاتورة معتمدة — استخدم المرتجع'); return }
-    if (!confirm('حذف هذه الفاتورة؟')) return
-    await supabase.from('finance_vendor_invoices').delete().eq('id', id)
-    setVendorInvoices(p => p.filter(x => x.id !== id)); toast.success('تم الحذف')
-  }
+  const receipts = transactions.filter(t => t.type === 'قبض')
+  const payments = transactions.filter(t => t.type === 'صرف')
 
-  // إحصائيات
-  const today = new Date().toISOString().split('T')[0]
-  const totalPO   = purchaseOrders.reduce((s, p) => s + Number(p.total_amount), 0)
-  const totalInv  = vendorInvoices.reduce((s, i) => s + Number(i.total_amount), 0)
-  const totalPaid = vendorInvoices.filter(i => i.status === 'مدفوعة').reduce((s, i) => s + Number(i.total_amount), 0)
-  const totalDue  = vendorInvoices.filter(i => i.status !== 'مدفوعة' && i.status !== 'ملغاة').reduce((s, i) => s + Number(i.total_amount), 0)
-
-  const filteredPOs  = purchaseOrders.filter(p => !search || p.po_number.includes(search) || p.vendor_name.includes(search))
-  const filteredInvs = vendorInvoices.filter(i => !search || i.invoice_number.includes(search) || i.vendor_name.includes(search))
+  const filtered = (activeTab === 'receipts' ? receipts
+    : activeTab === 'payments' ? payments
+    : transactions).filter(t =>
+      !search || t.description.includes(search) || (t.party_name || '').includes(search) || t.transaction_no.includes(search)
+  )
 
   const TABS = [
-    { id: 'orders',   label: '📋 أوامر الشراء',    color: '#e6820a' },
-    { id: 'invoices', label: '🧾 فواتير الموردين',  color: '#c81e1e' },
-    { id: 'returns',  label: '↩️ المرتجعات',       color: '#6b7280' },
-    { id: 'vendors',  label: '🏭 الموردون',         color: '#1a56db' },
+    { id: 'transactions', label: '📋 كل الحركات',      color: '#374151' },
+    { id: 'receipts',     label: '💵 المقبوضات',        color: '#0ea77b' },
+    { id: 'payments',     label: '💸 المدفوعات',        color: '#c81e1e' },
+    { id: 'custody',      label: '👤 عهد الموظفين',     color: '#e6820a' },
+    { id: 'accounts',     label: '🏦 الحسابات النقدية', color: '#1a56db' },
   ]
 
   return (
@@ -1617,30 +793,46 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ShoppingCart style={{ width: '20px', height: '20px', color: '#e6820a' }} />
-            المشتريات
+            <Wallet style={{ width: '20px', height: '20px', color: '#1a56db' }} />
+            الخزينة
           </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>أوامر الشراء — فواتير الموردين — المرتجعات</p>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>المقبوضات والمدفوعات — عهد الموظفين — الحسابات النقدية</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {activeTab === 'orders'   && <button onClick={() => { setEditPO(null); setShowPOModal(true) }} className="btn btn-primary" style={{ background: '#e6820a' }}><Plus style={{ width: '16px', height: '16px' }} /> أمر شراء</button>}
-          {activeTab === 'invoices' && <button onClick={() => { setEditInv(null); setShowInvModal(true) }} className="btn btn-primary" style={{ background: '#c81e1e' }}><Plus style={{ width: '16px', height: '16px' }} /> فاتورة مورد</button>}
-          {activeTab === 'returns'  && <button onClick={() => { setReturnInvoice(null); setShowReturnModal(true) }} className="btn btn-primary" style={{ background: '#6b7280' }}><Plus style={{ width: '16px', height: '16px' }} /> مرتجع</button>}
-          {activeTab === 'vendors'  && <button onClick={() => { setEditVendor(null); setShowVendorModal(true) }} className="btn btn-primary" style={{ background: '#1a56db' }}><Plus style={{ width: '16px', height: '16px' }} /> مورد جديد</button>}
+          {(activeTab === 'transactions' || activeTab === 'receipts') && (
+            <button onClick={() => setShowReceiptModal(true)} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> قبض
+            </button>
+          )}
+          {(activeTab === 'transactions' || activeTab === 'payments') && (
+            <button onClick={() => setShowPaymentModal(true)} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> صرف
+            </button>
+          )}
+          {activeTab === 'custody' && (
+            <button onClick={() => setShowCustodyModal(true)} className="btn btn-primary" style={{ background: '#e6820a' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> إصدار عهدة
+            </button>
+          )}
+          {activeTab === 'accounts' && (
+            <button onClick={() => { setEditAccount(null); setShowAccountModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> إضافة حساب
+            </button>
+          )}
         </div>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
-          { label: 'إجمالي الطلبات',  value: totalPO,   color: '#e6820a', bg: '#fffbeb' },
-          { label: 'فواتير الموردين', value: totalInv,  color: '#c81e1e', bg: '#fef2f2' },
-          { label: 'المدفوع',          value: totalPaid, color: '#0ea77b', bg: '#ecfdf5' },
-          { label: 'المستحق الدفع',   value: totalDue,  color: '#1a56db', bg: '#eff6ff' },
+          { label: 'الرصيد الإجمالي',  value: netBalance,    color: '#1a56db', bg: 'linear-gradient(135deg, #1a56db, #3b82f6)', white: true },
+          { label: 'إجمالي المقبوضات', value: totalIn,        color: '#0ea77b', bg: '#ecfdf5', white: false },
+          { label: 'إجمالي المدفوعات', value: totalOut,       color: '#c81e1e', bg: '#fef2f2', white: false },
+          { label: 'عهد مفتوحة',       value: openCustodies, color: '#e6820a', bg: '#fffbeb', white: false },
         ].map(kpi => (
-          <div key={kpi.label} className="card" style={{ padding: '16px', textAlign: 'center', background: kpi.bg }}>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value.toLocaleString()}</div>
-            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '4px' }}>{kpi.label} — ريال</div>
+          <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.white ? 'white' : kpi.color }}>{kpi.value.toLocaleString()}</div>
+            <div style={{ fontSize: '0.72rem', color: kpi.white ? 'rgba(255,255,255,0.8)' : '#9ca3af', marginTop: '3px' }}>{kpi.label} — ريال</div>
           </div>
         ))}
       </div>
@@ -1649,7 +841,7 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => { setActiveTab(t.id as any); setSearch('') }}
-            style={{ padding: '8px 18px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+            style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? t.color : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
               boxShadow: activeTab === t.id ? '0 2px 8px ' + t.color + '44' : 'none' }}>
@@ -1659,384 +851,194 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
       </div>
 
       {/* بحث */}
-      {(activeTab === 'orders' || activeTab === 'invoices') && (
+      {activeTab !== 'accounts' && activeTab !== 'custody' && (
         <div style={{ position: 'relative', width: '240px' }}>
-          <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '34px' }} placeholder="بحث..." />
+          <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px' }} placeholder="بحث..." />
         </div>
       )}
 
-      {/* ══ تاب أوامر الشراء ══ */}
-      {activeTab === 'orders' && (
-        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
-        : filteredPOs.length === 0 ? (
-          <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-            <ShoppingCart style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-            <p style={{ color: '#9ca3af' }}>لا توجد أوامر شراء</p>
-            <button onClick={() => { setEditPO(null); setShowPOModal(true) }} className="btn btn-primary" style={{ marginTop: '16px', background: '#e6820a' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> إنشاء أول طلب
-            </button>
-          </div>
-        ) : (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم الطلب', 'المورد', 'المشروع', 'التاريخ', 'التسليم المتوقع', 'وجهة التسليم', 'الإجمالي', 'الحالة', ''].map(h => (
-                      <th key={h} style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPOs.map(po => (
-                    <tr key={po.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '12px 12px', fontWeight: 700, color: '#e6820a', fontFamily: 'monospace', fontSize: '0.82rem' }}>{po.po_number}</td>
-                      <td style={{ padding: '12px 12px' }}>
-                        <div style={{ fontWeight: 600 }}>{po.vendor_name}</div>
-                        {po.vendor?.phone && <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{po.vendor.phone}</div>}
-                      </td>
-                      <td style={{ padding: '12px 12px', fontSize: '0.82rem', color: 'var(--text3)' }}>{po.project?.name || '—'}</td>
-                      <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{po.po_date}</td>
-                      <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{po.expected_date || '—'}</td>
-                      <td style={{ padding: '12px 12px', fontSize: '0.78rem' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
-                          background: po.delivery_to === 'مستودع' ? '#eff6ff' : po.delivery_to === 'أصل ثابت' ? '#ecfdf5' : '#fffbeb',
-                          color: po.delivery_to === 'مستودع' ? '#1a56db' : po.delivery_to === 'أصل ثابت' ? '#065f46' : '#e6820a' }}>
-                          {po.delivery_to === 'مستودع' ? '🏪' : po.delivery_to === 'أصل ثابت' ? '🏭' : '🏗️'} {po.delivery_to}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 12px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>{Number(po.total_amount).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '12px 12px' }}><span className={'badge ' + (PO_STATUS_COLOR[po.status] || 'badge-gray')}>{po.status}</span></td>
-                      <td style={{ padding: '12px 8px' }}>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {/* عرض */}
-                          <button onClick={() => handleViewPO(po)} title="عرض"
-                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
-                            <Eye style={{ width: '13px', height: '13px' }} />
-                          </button>
-                          {/* طباعة */}
-                          <button onClick={() => handlePrintPO(po)} title="طباعة"
-                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
-                            <Printer style={{ width: '13px', height: '13px' }} />
-                          </button>
-                          {/* تعديل — مسودة فقط */}
-                          {po.status === 'مسودة' && (
-                            <button onClick={() => { setEditPO(po); setShowPOModal(true) }} className="btn btn-ghost btn-xs">
-                              <Pencil style={{ width: '13px', height: '13px' }} />
-                            </button>
-                          )}
-                          {/* تحويل لفاتورة — إذا لم يُحوَّل بعد */}
-                          {po.status !== 'ملغي' && !po.has_invoice && (
-                            <button onClick={() => { setConvertPO(po); setEditInv(null); setShowInvModal(true) }} title="تحويل لفاتورة"
-                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                              📄
-                            </button>
-                          )}
-                          {po.has_invoice && (
-                            <span style={{ fontSize: '0.7rem', color: '#0ea77b', padding: '3px 6px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #bbf7d0' }}>✓ فاتورة</span>
-                          )}
-                          {/* حذف — مسودة فقط */}
-                          {po.status === 'مسودة' && (
-                            <button onClick={() => deletePO(po.id, po.status)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+      {/* ══ الحركات ══ */}
+      {(activeTab === 'transactions' || activeTab === 'receipts' || activeTab === 'payments') && (
+        loading
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
+          : filtered.length === 0
+            ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <Wallet style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                <p style={{ color: '#9ca3af' }}>لا توجد حركات بعد</p>
+              </div>
+            : <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['التاريخ','النوع','البيان','الجهة','الحساب النقدي','طريقة الدفع','المبلغ','الحالة',''].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(t => (
+                        <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{t.transaction_date}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
+                              background: t.type === 'قبض' ? '#ecfdf5' : '#fef2f2',
+                              color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
+                              {t.type === 'قبض' ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                              {t.type}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 12px', maxWidth: '200px' }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{t.transaction_no}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{t.party_name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.cash_account?.name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.payment_method}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, whiteSpace: 'nowrap', color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
+                            {t.type === 'قبض' ? '+' : '-'}{Number(t.amount).toLocaleString()} ر.س
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span className={'badge ' + (t.status === 'معتمد' ? 'badge-green' : t.status === 'معلق' ? 'badge-amber' : 'badge-gray')}>{t.status}</span>
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>
+                            <button onClick={async () => { if (!confirm('حذف هذه الحركة؟')) return; await supabase.from('finance_treasury').delete().eq('id', t.id); loadAll(); toast.success('تم الحذف') }}
+                              className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                               <Trash2 style={{ width: '13px', height: '13px' }} />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                    <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filteredPOs.length})</td>
-                    <td style={{ padding: '10px 12px', color: '#e6820a' }}>{filteredPOs.reduce((s,p)=>s+Number(p.total_amount),0).toLocaleString()} ر.س</td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )
-      )}
-
-      {/* ══ تاب فواتير الموردين ══ */}
-      {activeTab === 'invoices' && (
-        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
-        : filteredInvs.length === 0 ? (
-          <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-            <FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-            <p style={{ color: '#9ca3af' }}>لا توجد فواتير موردين</p>
-            <button onClick={() => { setEditInv(null); setShowInvModal(true) }} className="btn btn-primary" style={{ marginTop: '16px', background: '#c81e1e' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> إضافة فاتورة
-            </button>
-          </div>
-        ) : (
-          <div className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم الفاتورة', 'المورد', 'أمر الشراء', 'التاريخ', 'الاستحقاق', 'وجهة التسليم', 'الإجمالي', 'الحالة', ''].map(h => (
-                      <th key={h} style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvs.map(inv => {
-                    const isOverdue = inv.status !== 'مدفوعة' && inv.status !== 'ملغاة' && inv.due_date && inv.due_date < today
-                    const displayStatus = isOverdue ? 'متأخرة' : inv.status
-                    return (
-                      <tr key={inv.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '12px 12px', fontWeight: 700, color: '#c81e1e', fontFamily: 'monospace', fontSize: '0.82rem' }}>{inv.invoice_number}</td>
-                        <td style={{ padding: '12px 12px' }}>
-                          <div style={{ fontWeight: 600 }}>{inv.vendor_name}</div>
-                          {inv.vendor?.iban && <div style={{ fontSize: '0.7rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{inv.vendor.iban}</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                        <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length})</td>
+                        <td style={{ padding: '10px 12px', color: activeTab === 'receipts' ? '#0ea77b' : activeTab === 'payments' ? '#c81e1e' : 'var(--text)' }}>
+                          {filtered.reduce((s, t) => s + Number(t.amount), 0).toLocaleString()} ر.س
                         </td>
-                        <td style={{ padding: '12px 12px', fontSize: '0.78rem', color: '#e6820a', fontFamily: 'monospace' }}>{inv.po?.po_number || '—'}</td>
-                        <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{inv.invoice_date}</td>
-                        <td style={{ padding: '12px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap', color: isOverdue ? '#c81e1e' : 'inherit' }}>{inv.due_date || '—'}</td>
-                        <td style={{ padding: '12px 12px', fontSize: '0.78rem' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
-                            background: inv.delivery_to === 'مستودع' ? '#eff6ff' : inv.delivery_to === 'أصل ثابت' ? '#ecfdf5' : '#fffbeb',
-                            color: inv.delivery_to === 'مستودع' ? '#1a56db' : inv.delivery_to === 'أصل ثابت' ? '#065f46' : '#e6820a' }}>
-                            {inv.delivery_to === 'مستودع' ? '🏪' : inv.delivery_to === 'أصل ثابت' ? '🏭' : '🏗️'} {inv.delivery_to}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px 12px', fontWeight: 700, color: '#c81e1e', whiteSpace: 'nowrap' }}>{Number(inv.total_amount).toLocaleString()} ر.س</td>
-                        <td style={{ padding: '12px 12px' }}><span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span></td>
-                        <td style={{ padding: '12px 8px' }}>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            {/* عرض */}
-                            <button onClick={() => handleViewVInv(inv)} title="عرض"
-                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
-                              <Eye style={{ width: '13px', height: '13px' }} />
-                            </button>
-                            {/* طباعة */}
-                            <button onClick={() => handlePrintVInv(inv)} title="طباعة"
-                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
-                              <Printer style={{ width: '13px', height: '13px' }} />
-                            </button>
-                            {/* اعتماد — مسودة فقط */}
-                            {inv.status === 'مسودة' && (
-                              <button
-                                onClick={async () => {
-                                  await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-                                  // قيد محاسبي عند الاعتماد
-                                  const debitCode =
-                                    inv.delivery_to === 'مستودع'   ? '1130' :
-                                    inv.delivery_to === 'أصل ثابت' ? '1220' :
-                                    '5120'  // موقع العمل → مواد مباشرة
-                                  await createJournalEntry(tenant!.id, {
-                                    date: inv.invoice_date,
-                                    description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
-                                    referenceType: 'فاتورة مورد',
-                                    referenceId: inv.id,
-                                    lines: [
-                                      { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
-                                      ...(Number(inv.vat_amount) > 0 ? [{ accountCode: '2140', debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
-                                      { accountCode: '2110', debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
-                                    ]
-                                  })
-                                  toast.success('✅ تم اعتماد الفاتورة وتسجيل القيد')
-                                  loadAll()
-                                }}
-                                title="اعتماد الفاتورة"
-                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                ✓ اعتماد
-                              </button>
-                            )}
-                            {/* تعديل — مسودة فقط */}
-                            {inv.status === 'مسودة' && (
-                              <button onClick={() => { setEditInv(inv); setShowInvModal(true) }} className="btn btn-ghost btn-xs">
-                                <Pencil style={{ width: '13px', height: '13px' }} />
-                              </button>
-                            )}
-                            {/* دفع — معتمدة فقط */}
-                            {inv.status === 'معتمدة' && (
-                              <button onClick={() => { setPayInvoice(inv); setShowPayModal(true) }} title="تسجيل دفعة"
-                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                                💸 دفع
-                              </button>
-                            )}
-                            {/* مرتجع — غير مسودة */}
-                            {inv.status !== 'مسودة' && inv.status !== 'ملغاة' && (
-                              <button onClick={() => { setReturnInvoice(inv); setShowReturnModal(true) }} title="مرتجع"
-                                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer', fontSize: '0.75rem' }}>
-                                ↩️
-                              </button>
-                            )}
-                            {/* حذف — مسودة فقط */}
-                            {inv.status === 'مسودة' && (
-                              <button onClick={() => deleteInv(inv.id, inv.status)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                                <Trash2 style={{ width: '13px', height: '13px' }} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                        <td colSpan={2}></td>
                       </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                    <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filteredInvs.length})</td>
-                    <td style={{ padding: '10px 12px', color: '#c81e1e' }}>{filteredInvs.reduce((s,i)=>s+Number(i.total_amount),0).toLocaleString()} ر.س</td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
       )}
 
-      {/* ══ تاب المرتجعات ══ */}
-      {activeTab === 'returns' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', fontSize: '0.82rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            ⚠️ لا يمكن حذف فواتير الموردين المعتمدة — استخدم مرتجع مشتريات أو إشعار مدين للتصحيح
-          </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
-          : returns.length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-              <RotateCcw style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ color: '#9ca3af' }}>لا توجد مرتجعات بعد</p>
-              <button onClick={() => setShowReturnModal(true)} className="btn btn-primary" style={{ marginTop: '16px', background: '#6b7280' }}>
-                <Plus style={{ width: '16px', height: '16px' }} /> إنشاء مرتجع
-              </button>
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['الرقم المرجعي', 'النوع', 'المورد', 'التاريخ', 'السبب', 'الإجمالي', 'الحالة'].map(h => (
-                      <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {returns.map(r => (
-                    <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '12px 14px', fontWeight: 700, color: '#e6820a', fontFamily: 'monospace' }}>{r.return_number}</td>
-                      <td style={{ padding: '12px 14px' }}><span className="badge badge-amber" style={{ fontSize: '0.72rem' }}>{r.return_type}</span></td>
-                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>{r.vendor_name}</td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.82rem' }}>{r.return_date}</td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{r.reason || '—'}</td>
-                      <td style={{ padding: '12px 14px', fontWeight: 700, color: '#e6820a' }}>{Number(r.total_amount).toLocaleString()} ر.س</td>
-                      <td style={{ padding: '12px 14px' }}><span className="badge badge-gray">{r.status}</span></td>
+      {/* ══ عهد الموظفين ══ */}
+      {activeTab === 'custody' && (
+        loading
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
+          : custodies.length === 0
+            ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                <p style={{ color: '#9ca3af' }}>لا توجد عهد مفتوحة</p>
+              </div>
+            : <div className="card" style={{ overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['رقم العهدة','الموظف','النوع','الغرض','المشروع','التاريخ','الاستحقاق','العهدة','المُسوَّى','المتبقي','الحالة',''].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody>
+                    {custodies.map(c => {
+                      const remaining = Number(c.amount) - Number(c.settled_amount)
+                      const isOverdue = c.due_date && c.due_date < new Date().toISOString().split('T')[0] && c.status === 'مفتوحة'
+                      return (
+                        <tr key={c.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: '#e6820a', fontSize: '0.8rem' }}>{c.custody_no}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>{c.employee_name}</td>
+                          <td style={{ padding: '10px 12px' }}><span className="badge badge-amber" style={{ fontSize: '0.72rem' }}>{c.custody_type}</span></td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.purpose}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(c as any).project?.name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{c.custody_date}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', color: isOverdue ? '#c81e1e' : 'inherit' }}>
+                            {c.due_date || '—'} {isOverdue && '⚠️'}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: '#e6820a' }}>{Number(c.amount).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px', color: '#0ea77b' }}>{Number(c.settled_amount).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: remaining > 0 ? '#c81e1e' : '#0ea77b' }}>{remaining.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span className={'badge ' + (c.status === 'مُسوَّاة' ? 'badge-green' : c.status === 'جزئية' ? 'badge-amber' : 'badge-blue')}>{c.status}</span>
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>
+                            {c.status !== 'مُسوَّاة' && (
+                              <button onClick={() => { setSettleCustody(c); setShowSettleModal(true) }}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                                تسوية
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
       )}
 
-      {/* ══ تاب الموردون ══ */}
-      {activeTab === 'vendors' && (
+      {/* ══ الحسابات النقدية ══ */}
+      {activeTab === 'accounts' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ position: 'relative', width: '240px' }}>
-            <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '34px' }} placeholder="بحث باسم المورد..." />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+            {cashAccounts.map(ca => (
+              <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>
+                      {ca.account_type === 'صندوق' ? '💰' : '🏦'} {ca.name}
+                    </div>
+                    {ca.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{ca.bank_name}</div>}
+                    {ca.iban && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{ca.iban.substring(0, 14)}...</div>}
+                    {ca.account_id && (
+                      <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
+                    )}
+                  </div>
+                  <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs">
+                    <Pencil style={{ width: '13px', height: '13px' }} />
+                  </button>
+                </div>
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>الرصيد الحالي</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: (ca.balance || 0) >= 0 ? '#1a56db' : '#c81e1e' }}>
+                    {(ca.balance || 0).toLocaleString()} <span style={{ fontSize: '0.875rem', fontWeight: 400 }}>ر.س</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
-          : vendors.filter(v => !search || v.name.includes(search)).length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-              <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ color: '#9ca3af' }}>لا يوجد موردون بعد</p>
-              <button onClick={() => { setEditVendor(null); setShowVendorModal(true) }} className="btn btn-primary" style={{ marginTop: '16px', background: '#1a56db' }}>
-                <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول مورد
-              </button>
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['المورد', 'النوع', 'الرقم الضريبي', 'الهاتف', 'المدينة', 'IBAN', 'الحالة', ''].map(h => (
-                      <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendors.filter(v => !search || v.name.includes(search)).map(v => (
-                    <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ fontWeight: 700 }}>{v.name}</div>
-                        {v.contact_person && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{v.contact_person}</div>}
-                      </td>
-                      <td style={{ padding: '12px 14px' }}><span className="badge badge-amber" style={{ fontSize: '0.72rem' }}>{v.vendor_type}</span></td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.78rem', fontFamily: 'monospace' }}>
-                        {v.vat_number
-                          ? <span style={{ color: '#0ea77b' }}>✓ {v.vat_number}</span>
-                          : <span style={{ color: '#e6820a' }}>⚠️ غير مُدخل</span>}
-                      </td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.82rem' }}>{v.phone || '—'}</td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{v.city || '—'}</td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.72rem', fontFamily: 'monospace', color: 'var(--text3)' }}>{v.iban ? v.iban.substring(0, 10) + '...' : '—'}</td>
-                      <td style={{ padding: '12px 14px' }}><span className={'badge ' + (v.is_active ? 'badge-green' : 'badge-gray')}>{v.is_active ? 'نشط' : 'موقوف'}</span></td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <button onClick={() => { setEditVendor(v); setShowVendorModal(true) }} className="btn btn-ghost btn-xs">
-                          <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
 
       {/* المودالات */}
-      {showPOModal && (
-        <POModal po={editPO} vendors={vendors} projects={projects} warehouses={warehouses}
-          tenantId={tenant!.id} onClose={() => { setShowPOModal(false); setEditPO(null) }}
-          onSave={() => { setShowPOModal(false); setEditPO(null); loadAll() }} />
+      {showReceiptModal && (
+        <TransactionModal type="قبض" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+          tenantId={tenant!.id} onClose={() => setShowReceiptModal(false)} onSave={() => { setShowReceiptModal(false); loadAll() }} />
       )}
-      {showInvModal && (
-        <VendorInvoiceModal invoice={editInv} convertFromPO={convertPO} vendors={vendors} projects={projects}
-          warehouses={warehouses} purchaseOrders={purchaseOrders}
-          tenantId={tenant!.id}
-          onClose={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null) }}
-          onSave={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null); loadAll() }} />
+      {showPaymentModal && (
+        <TransactionModal type="صرف" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+          tenantId={tenant!.id} onClose={() => setShowPaymentModal(false)} onSave={() => { setShowPaymentModal(false); loadAll() }} />
       )}
-      {showReturnModal && (
-        <PurchaseReturnModal invoice={returnInvoice} vendors={vendors}
-          tenantId={tenant!.id} onClose={() => { setShowReturnModal(false); setReturnInvoice(null) }}
-          onSave={() => { setShowReturnModal(false); setReturnInvoice(null); loadAll() }} />
+      {showCustodyModal && (
+        <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts}
+          tenantId={tenant!.id} onClose={() => setShowCustodyModal(false)} onSave={() => { setShowCustodyModal(false); loadAll() }} />
       )}
-      {showVendorModal && (
-        <VendorModal vendor={editVendor} tenantId={tenant!.id}
-          onClose={() => { setShowVendorModal(false); setEditVendor(null) }}
-          onSave={() => { setShowVendorModal(false); setEditVendor(null); loadAll() }} />
+      {showAccountModal && (
+        <CashAccountModal account={editAccount} tenantId={tenant!.id}
+          onClose={() => { setShowAccountModal(false); setEditAccount(null) }}
+          onSave={() => { setShowAccountModal(false); setEditAccount(null); loadAll() }} />
       )}
-      {showPayModal && payInvoice && (
-        <VendorPaymentModal invoice={payInvoice} tenantId={tenant!.id}
-          onClose={() => { setShowPayModal(false); setPayInvoice(null) }}
-          onSave={() => { setShowPayModal(false); setPayInvoice(null); loadAll() }} />
-      )}
-      {showViewPO && viewPO && (
-        <POViewModal po={viewPO} items={viewPOItems}
-          onClose={() => { setShowViewPO(false); setViewPO(null) }}
-          onPrint={() => handlePrintPO(viewPO)} />
-      )}
-      {showViewVInv && viewVInv && (
-        <VInvViewModal inv={viewVInv} items={viewVInvItems}
-          onClose={() => { setShowViewVInv(false); setViewVInv(null) }}
-          onPrint={() => handlePrintVInv(viewVInv)} />
+      {showSettleModal && settleCustody && (
+        <SettleCustodyModal custody={settleCustody} cashAccounts={cashAccounts}
+          tenantId={tenant!.id} onClose={() => { setShowSettleModal(false); setSettleCustody(null) }}
+          onSave={() => { setShowSettleModal(false); setSettleCustody(null); loadAll() }} />
       )}
     </div>
   )
