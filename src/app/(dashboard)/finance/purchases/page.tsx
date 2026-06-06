@@ -155,9 +155,10 @@ function TotalsBox({ subtotal, vatRate, vatAmount, total }: { subtotal: number; 
 // ════════════════════════════════════════
 // مكوّن: حقل اختيار وجهة التسليم
 // ════════════════════════════════════════
-function DeliveryField({ value, warehouseId, projects, warehouses, onChange }: {
-  value: string; warehouseId?: string; projects: Project[]; warehouses: Warehouse[]
+function DeliveryField({ value, warehouseId, assetType, projects, warehouses, onChange, onAssetTypeChange }: {
+  value: string; warehouseId?: string; assetType?: string; projects: Project[]; warehouses: Warehouse[]
   onChange: (delivery: string, warehouseId?: string) => void
+  onAssetTypeChange?: (t: string) => void
 }) {
   return (
     <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 14px' }}>
@@ -166,20 +167,21 @@ function DeliveryField({ value, warehouseId, projects, warehouses, onChange }: {
       </label>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
         {[
-          { val: 'مستودع',      icon: '🏪', label: 'مستودع',            desc: 'يُضاف للمخزون' },
-          { val: 'موقع العمل',  icon: '🏗️', label: 'موقع العمل',        desc: 'مباشرة للمشروع' },
-          { val: 'أصل ثابت',   icon: '🏭', label: 'أصل ثابت',          desc: 'سيارة / معدة / جهاز' },
+          { val: 'مستودع',      icon: '🏪', label: 'مستودع',     desc: 'يُضاف للمخزون' },
+          { val: 'موقع العمل',  icon: '🏗️', label: 'موقع العمل', desc: 'مباشرة للمشروع' },
+          { val: 'أصل ثابت',   icon: '🏭', label: 'أصل ثابت',   desc: 'سيارة / معدة / جهاز' },
         ].map(opt => (
           <button key={opt.val} type="button" onClick={() => onChange(opt.val, undefined)}
             style={{ flex: 1, minWidth: '100px', padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, textAlign: 'center',
               borderColor: value === opt.val ? '#0369a1' : 'var(--border)',
-              background: value === opt.val ? '#e0f2fe' : 'white',
-              color: value === opt.val ? '#0369a1' : 'var(--text3)' }}>
+              background:  value === opt.val ? '#e0f2fe' : 'white',
+              color:       value === opt.val ? '#0369a1' : 'var(--text3)' }}>
             <div>{opt.icon} {opt.label}</div>
             <div style={{ fontSize: '0.68rem', marginTop: '2px', opacity: 0.7 }}>{opt.desc}</div>
           </button>
         ))}
       </div>
+
       {value === 'مستودع' && (
         <div>
           <label style={{ fontSize: '0.78rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>اختر المستودع</label>
@@ -189,14 +191,39 @@ function DeliveryField({ value, warehouseId, projects, warehouses, onChange }: {
           </select>
         </div>
       )}
+
       {value === 'موقع العمل' && (
         <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
           ⚠️ البضاعة ستُرسل مباشرة لموقع العمل ولن تُضاف للمخزون
         </div>
       )}
+
       {value === 'أصل ثابت' && (
-        <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', fontSize: '0.78rem', color: '#065f46', border: '1px solid #bbf7d0' }}>
-          ✅ سيُسجَّل كأصل ثابت — يمكن إدارة الأصول الثابتة لاحقاً من قسم مخصص
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label style={{ fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>نوع الأصل الثابت <span style={{ color: '#c81e1e' }}>*</span></label>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {[
+              { val: 'مركبات',  icon: '🚗', account: '1210' },
+              { val: 'معدات',   icon: '⚙️', account: '1220' },
+              { val: 'أثاث',    icon: '🪑', account: '1230' },
+            ].map(t => (
+              <button key={t.val} type="button"
+                onClick={() => onAssetTypeChange?.(t.val)}
+                style={{ flex: 1, minWidth: '80px', padding: '7px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
+                  borderColor: assetType === t.val ? '#065f46' : 'var(--border)',
+                  background:  assetType === t.val ? '#f0fdf4' : 'white',
+                  color:       assetType === t.val ? '#065f46' : 'var(--text3)' }}>
+                <div>{t.icon}</div>
+                <div style={{ marginTop: '2px' }}>{t.val}</div>
+                <div style={{ fontSize: '0.62rem', opacity: 0.7, marginTop: '1px' }}>{t.account}</div>
+              </button>
+            ))}
+          </div>
+          {assetType && (
+            <div style={{ padding: '6px 10px', background: '#f0fdf4', borderRadius: '6px', fontSize: '0.75rem', color: '#065f46', border: '1px solid #bbf7d0' }}>
+              ✅ سيُسجَّل في حساب {assetType === 'مركبات' ? '1210 — المركبات' : assetType === 'أثاث' ? '1230 — الأثاث والمفروشات' : '1220 — الأجهزة والمعدات'}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -525,6 +552,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     project_id:     invoice?.project_id     ? String(invoice.project_id) : '',
     delivery_to:    invoice?.delivery_to    || 'مستودع',
     warehouse_id:   invoice?.warehouse_id   ? String(invoice.warehouse_id) : '',
+    asset_type:     '',
     vat_rate:       invoice?.vat_rate       ?? 15,
     status:         invoice?.status         || 'مسودة',
     notes:          invoice?.notes          || '',
@@ -628,11 +656,10 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     }
     // ══ قيد محاسبي تلقائي عند اعتماد فاتورة المورد ══
     if (payload.status === 'معتمدة' && invId) {
-      // تحديد الحساب المدين حسب وجهة التسليم
       const debitAccountCode =
-        payload.delivery_to === 'مستودع'    ? '1130' :  // المخزون
-        payload.delivery_to === 'أصل ثابت'  ? '1220' :  // المعدات والأجهزة
-        '5012'                                           // تكلفة المواد المباشرة (موقع العمل)
+        payload.delivery_to === 'مستودع'   ? '1130' :
+        payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') :
+        '5012'
 
       await createJournalEntry(tenantId, {
         date:          payload.invoice_date,
@@ -640,12 +667,9 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         referenceType: 'فاتورة مورد',
         referenceId:   invId,
         lines: [
-          // مدين: المخزون / الأصل / تكلفة المشروع (قبل الضريبة)
-          { accountCode: debitAccountCode, debit: payload.subtotal,   credit: 0,              description: `فاتورة ${payload.invoice_number}` },
-          // مدين: ضريبة المدخلات (إذا وجدت)
+          { accountCode: debitAccountCode, debit: payload.subtotal,    credit: 0,                   description: `فاتورة ${payload.invoice_number}` },
           ...(payload.vat_amount > 0 ? [{ accountCode: '2140', debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
-          // دائن: الذمم الدائنة (إجمالي الفاتورة)
-          { accountCode: '2110', debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
+          { accountCode: '2110',           debit: 0,                   credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
         ]
       })
     }
@@ -718,9 +742,11 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           <DeliveryField
             value={form.delivery_to}
             warehouseId={form.warehouse_id}
+            assetType={form.asset_type}
             projects={projects}
             warehouses={warehouses}
-            onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || '') }}
+            onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || ''); set('asset_type', '') }}
+            onAssetTypeChange={t => set('asset_type', t)}
           />
 
           <ItemsTable items={items} onChange={setItems} />
@@ -1800,7 +1826,23 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                               <button
                                 onClick={async () => {
                                   await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-                                  toast.success('✅ تم اعتماد الفاتورة')
+                                  // قيد محاسبي عند الاعتماد
+                                  const debitCode =
+                                    inv.delivery_to === 'مستودع'   ? '1130' :
+                                    inv.delivery_to === 'أصل ثابت' ? '1220' :
+                                    '5012'
+                                  await createJournalEntry(tenant!.id, {
+                                    date: inv.invoice_date,
+                                    description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
+                                    referenceType: 'فاتورة مورد',
+                                    referenceId: inv.id,
+                                    lines: [
+                                      { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
+                                      ...(Number(inv.vat_amount) > 0 ? [{ accountCode: '2140', debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
+                                      { accountCode: '2110', debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
+                                    ]
+                                  })
+                                  toast.success('✅ تم اعتماد الفاتورة وتسجيل القيد')
                                   loadAll()
                                 }}
                                 title="اعتماد الفاتورة"
