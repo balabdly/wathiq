@@ -484,7 +484,7 @@ export default function FinanceExpensesPage() {
     setLoading(true)
     const [expRes, accRes, ccRes, projRes, venRes] = await Promise.all([
       supabase.from('finance_expenses')
-        .select('*, project:projects(name), vendor:finance_vendors(name)')
+        .select('*, project:projects(name), vendor:finance_vendors!finance_expenses_vendor_id_fkey(name)')
         .eq('tenant_id', tenant.id)
         .order('expense_date', { ascending: false }),
       supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
