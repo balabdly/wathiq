@@ -14,7 +14,7 @@ type Expense = {
   amount: number; vat_amount: number; total_amount: number; vat_rate: number
   expense_type: string; account_id?: number; cost_center_id?: number
   project_id?: number; vendor_id?: number; vendor_name?: string
-  receipt_no?: string; payment_method: string; status: string; notes?: string
+  receipt_no?: string; payment_method: string; cash_account_id?: number; status: string; notes?: string
   account?: { code: string; name: string }
   cost_center?: { name: string }
   project?: { name: string }
