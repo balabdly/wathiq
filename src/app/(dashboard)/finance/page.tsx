@@ -229,7 +229,7 @@ export default function FinanceReportsPage() {
         }
         const { data: entries } = await supabase.from('finance_journal_entries').select('*').eq('tenant_id', tid).order('entry_date', { ascending: false })
         setJournalEntries(entries || [])
-        const { data: lines } = await supabase.from('finance_journal_lines').select('*, finance_accounts(code,name), finance_journal_entries!inner(tenant_id)').eq('finance_journal_entries.tenant_id', tid)
+        const { data: lines } = await supabase.from('finance_journal_lines').select('*, finance_accounts(code,name), finance_journal_entries!inner(tenant_id)').eq('finance_journal_entries.tenant_[...]
         setJournalLines(lines || [])
       }
       if (group === 'invoices') {
@@ -288,24 +288,43 @@ export default function FinanceReportsPage() {
       .filter(a => !a.is_parent && balMap[a.id])
       .map(a => {
         const b = balMap[a.id] || { debit: 0, credit: 0 }
+        const balance = b.debit - b.credit
+        let balanceNature = 'مدين'
+        
+        // تحديد طبيعة الرصيد بناءً على الرصيد الطبيعي للحساب
+        if (a.normal_balance === 'مدين') {
+          balanceNature = balance >= 0 ? 'مدين' : 'دائن'
+        } else {
+          balanceNature = balance <= 0 ? 'دائن' : 'مدين'
+        }
+        
         return {
           'الكود': a.code,
           'اسم الحساب': a.name,
           'النوع': a.account_type,
           'مدين': fmt(b.debit),
           'دائن': fmt(b.credit),
-          'الرصيد': fmt(Math.abs(b.debit - b.credit)),
-          'طبيعة الرصيد': b.debit >= b.credit ? 'مدين' : 'دائن',
+          'الرصيد': fmt(Math.abs(balance)),
+          'طبيعة الرصيد': balanceNature,
         }
       })
   })()
 
   // ── قائمة الدخل ──
+  // ✅ تم تصحيح المعادلة
   const incomeStatement = (() => {
     const balMap: Record<number, number> = {}
     journalLines.forEach((l: any) => {
       if (!balMap[l.account_id]) balMap[l.account_id] = 0
-      balMap[l.account_id] += Number(l.credit || 0) - Number(l.debit || 0)
+      const account = accounts.find(a => a.id === l.account_id)
+      
+      // للإيرادات: credit - debit
+      // للمصروفات: debit - credit
+      if (account?.account_type === 'إيرادات') {
+        balMap[l.account_id] += Number(l.credit || 0) - Number(l.debit || 0)
+      } else {
+        balMap[l.account_id] += Number(l.debit || 0) - Number(l.credit || 0)
+      }
     })
     return accounts
       .filter(a => !a.is_parent && (a.account_type === 'إيرادات' || a.account_type === 'مصروفات'))
@@ -318,21 +337,39 @@ export default function FinanceReportsPage() {
   })()
 
   // ── الميزانية العمومية ──
+  // ✅ تم تصحيح المعادلة
   const balanceSheet = (() => {
     const balMap: Record<number, number> = {}
     journalLines.forEach((l: any) => {
       if (!balMap[l.account_id]) balMap[l.account_id] = 0
-      balMap[l.account_id] += Number(l.debit || 0) - Number(l.credit || 0)
+      const account = accounts.find(a => a.id === l.account_id)
+      
+      if (account?.normal_balance === 'مدين') {
+        balMap[l.account_id] += Number(l.debit || 0) - Number(l.credit || 0)
+      } else {
+        balMap[l.account_id] += Number(l.credit || 0) - Number(l.debit || 0)
+      }
     })
     return accounts
       .filter(a => !a.is_parent && (a.account_type === 'أصول' || a.account_type === 'خصوم' || a.account_type === 'حقوق ملكية'))
-      .map(a => ({
-        'الكود': a.code,
-        'اسم الحساب': a.name,
-        'التصنيف': a.account_type,
-        'الرصيد': fmt(Math.abs(balMap[a.id] || 0)),
-        'طبيعة الرصيد': (balMap[a.id] || 0) >= 0 ? 'مدين' : 'دائن',
-      }))
+      .map(a => {
+        const balance = balMap[a.id] || 0
+        let balanceNature = 'مدين'
+        
+        if (a.normal_balance === 'مدين') {
+          balanceNature = balance >= 0 ? 'مدين' : 'دائن'
+        } else {
+          balanceNature = balance <= 0 ? 'دائن' : 'مدين'
+        }
+        
+        return {
+          'الكود': a.code,
+          'اسم الحساب': a.name,
+          'التصنيف': a.account_type,
+          'الرصيد': fmt(Math.abs(balance)),
+          'طبيعة الرصيد': balanceNature,
+        }
+      })
   })()
 
   // ── المصروفات حسب التصنيف ──
