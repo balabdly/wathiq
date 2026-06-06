@@ -8,6 +8,9 @@ const IC = {
   dashboard:   'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   projects:    'M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z',
   visits:      'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+  tasks:       'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+  lessons:     'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
+  risks:       'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01',
   inventory:   'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
   shield:      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   safety:      'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01',
@@ -189,6 +192,9 @@ export default function Sidebar() {
   const isAdmin           = currentUser?.role === 'مدير عام'
 
   const hasProjects  = perms.includes('projects_view')                   && tenantModules.projects  !== false
+  const hasTasks     = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
+  const hasLessons   = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
+  const hasRisks     = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
   const hasVisits    = perms.some((p: string) => p.startsWith('visits')) && tenantModules.visits    !== false
   const hasInventory = perms.includes('inventory')                       && tenantModules.inventory !== false
   const hasQHSE      = perms.includes('qhse')                           && tenantModules.qhse      !== false
@@ -198,7 +204,7 @@ export default function Sidebar() {
   const hasHR        = perms.includes('employees')
   const hasDashboard = perms.includes('dashboard')
 
-  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory'].some(p => pathname === p || pathname.startsWith(p+'/'))
+  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings')
@@ -274,7 +280,10 @@ export default function Sidebar() {
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
             {hasDashboard  && <SubLink href="/dashboard"  label="لوحة التحكم"    icon={IC.dashboard}  active={pathname === '/dashboard'} />}
             {hasProjects   && <SubLink href="/projects"   label="المشاريع"        icon={IC.projects}   active={pathname.startsWith('/projects')} />}
-            {hasVisits     && <SubLink href="/visits"     label="الزيارات الفنية" icon={IC.visits}     active={pathname.startsWith('/visits')} />}
+            {hasVisits     && <SubLink href="/visits"              label="الزيارات الفنية" icon={IC.visits}   active={pathname.startsWith('/visits')} />}
+            {hasTasks      && <SubLink href="/projects/tasks"    label="المهام"          icon={IC.tasks}   active={pathname.startsWith('/projects/tasks')} />}
+            {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons} active={pathname.startsWith('/projects/lessons')} />}
+            {hasRisks      && <SubLink href="/projects/risks"    label="سجل المخاطر"    icon={IC.risks}   active={pathname.startsWith('/projects/risks')} />}
             {hasInventory  && <SubLink href="/inventory"  label="المخزون"         icon={IC.inventory}  active={pathname.startsWith('/inventory')} />}
           </NavSection>
         )}
