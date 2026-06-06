@@ -55,6 +55,59 @@ const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 // ════════════════════════════════════════
+// مكوّن مشترك: اختيار حساب الدفع
+// ════════════════════════════════════════
+function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
+  paymentMethod: string; value: string; tenantId: string; onChange: (v: string) => void
+}) {
+  const [accounts, setAccounts] = useState<any[]>([])
+  useEffect(() => {
+    supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
+      .then(({ data }) => setAccounts(data || []))
+  }, [tenantId])
+
+  const banks   = accounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
+  const boxes   = accounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
+  const selected = accounts.find(a => a.id === Number(value))
+
+  if (paymentMethod === 'آجل') return (
+    <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
+      📅 سيُسجَّل كالتزام في الذمم الدائنة
+    </div>
+  )
+
+  const list   = (paymentMethod === 'نقداً') ? boxes : banks
+  const label  = (paymentMethod === 'نقداً') ? 'الصندوق' : 'الحساب البنكي'
+
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '5px' }}>
+        {label} <span style={{ color: '#c81e1e' }}>*</span>
+      </label>
+      {list.length === 0 ? (
+        <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
+          ⚠️ لا توجد {label === 'الصندوق' ? 'صناديق' : 'حسابات بنكية'} — أضفها من إعدادات الخزينة
+        </div>
+      ) : (
+        <>
+          <select value={value} onChange={e => onChange(e.target.value)} className="select">
+            <option value="">— اختر {label} —</option>
+            {list.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.name}{a.bank_name ? ` — ${a.bank_name}` : ''}{a.account_no ? ` (${a.account_no})` : ''}
+              </option>
+            ))}
+          </select>
+          {selected?.iban && (
+            <div style={{ marginTop: '4px', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>IBAN: {selected.iban}</div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
 // مودال: إضافة / تعديل مصروف
 // ════════════════════════════════════════
 function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenantId, onClose, onSave }: {
@@ -80,8 +133,9 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     vendor_id:      expense?.vendor_id      ? String(expense.vendor_id) : '',
     vendor_name:    expense?.vendor_name    || '',
     receipt_no:     expense?.receipt_no     || '',
-    payment_method: expense?.payment_method || 'نقداً',
-    status:         expense?.status         || 'مدفوع',
+    payment_method:  expense?.payment_method  || 'نقداً',
+    cash_account_id: expense?.cash_account_id ? String(expense.cash_account_id) : '',
+    status:          expense?.status          || 'مدفوع',
     notes:          expense?.notes          || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
@@ -132,10 +186,11 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       vendor_name:    form.vendor_name || null,
     }
 
-    if (form.account_id)     payload.account_id     = Number(form.account_id)
-    if (form.cost_center_id) payload.cost_center_id = Number(form.cost_center_id)
-    if (form.project_id)     payload.project_id     = Number(form.project_id)
-    if (form.vendor_id)      payload.vendor_id      = Number(form.vendor_id)
+    // account_id غير موجود في جدول finance_expenses
+    if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
+    if (form.project_id)      payload.project_id      = Number(form.project_id)
+    if (form.vendor_id)       payload.vendor_id       = Number(form.vendor_id)
+    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
 
     let newExpenseId: number | undefined
     if (expense) {
@@ -148,28 +203,30 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     }
 
     // ══ قيد محاسبي تلقائي للمصروف المدفوع ══
-    if (payload.status === 'مدفوع' && !expense) {
-      // تحديد الحساب المدين حسب نوع المصروف
-      const expAccountCode = payload.account_id
-        ? null  // إذا اختار المستخدم حساباً محدداً نستخدمه
-        : payload.expense_type === 'مشاريع' ? '5012'   // تكلفة المواد المباشرة
-        : payload.expense_type === 'تشغيلي' ? '5100'   // رواتب وأجور (افتراضي)
-        : '5300'                                        // مصروفات إدارية
+    if (payload.status === 'مدفوع' && !expense && newExpenseId) {
+      // الحساب المدين: حسب نوع المصروف
+      const expAccountCode =
+        payload.expense_type === 'مشاريع' ? '5012'
+        : payload.expense_type === 'تشغيلي' ? '5300'
+        : '5300'
 
-      if (expAccountCode && newExpenseId) {
-        await createJournalEntry(tenantId, {
-          date:          payload.expense_date,
-          description:   `مصروف ${payload.category} — ${payload.description}`,
-          referenceType: 'مصروف',
-          referenceId:   newExpenseId,
-          lines: [
-            // مدين: حساب المصروف
-            { accountCode: expAccountCode, debit: payload.total_amount, credit: 0,                    description: payload.description },
-            // دائن: الصندوق/البنك
-            { accountCode: '1111',         debit: 0,                    credit: payload.total_amount, description: `صرف مصروف ${payload.category}` },
-          ]
-        })
+      // الحساب الدائن: الحساب البنكي / الصندوق المختار
+      let creditAccountCode = '1111' // الصندوق افتراضي
+      if (form.cash_account_id) {
+        const { data: ca } = await supabase.from('finance_cash_accounts').select('account_id').eq('id', Number(form.cash_account_id)).single()
+        if (ca?.account_id) creditAccountCode = ca.account_id
       }
+
+      await createJournalEntry(tenantId, {
+        date:          payload.expense_date,
+        description:   `مصروف ${payload.category} — ${payload.description}`,
+        referenceType: 'مصروف',
+        referenceId:   newExpenseId,
+        lines: [
+          { accountCode: expAccountCode,    debit: payload.total_amount, credit: 0,                    description: payload.description },
+          { accountCode: creditAccountCode, debit: 0,                    credit: payload.total_amount, description: `صرف مصروف ${payload.category} (${form.payment_method})` },
+        ]
+      })
     }
 
     toast.success(expense ? 'تم التعديل ✅' : '✅ تم تسجيل المصروف')
@@ -190,14 +247,14 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
             <Receipt style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             {expense ? 'تعديل مصروف' : 'تسجيل مصروف جديد'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
 
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           {/* نوع المصروف */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع المصروف *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نوع المصروف *</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {Object.keys(CATEGORIES).map(type => (
                 <button key={type} type="button" onClick={() => { set('expense_type', type); set('category', '') }}
@@ -213,29 +270,29 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المصروف</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المصروف</label>
               <input value={form.expense_number} onChange={e => set('expense_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">التاريخ *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
               <input type="date" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الإيصال</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الإيصال</label>
               <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" placeholder="اختياري" />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الفئة *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الفئة *</label>
               <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
                 <option value="">— اختر الفئة —</option>
                 {CATEGORIES[form.expense_type]?.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحساب المحاسبي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
               <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
                 <option value="">— اختر الحساب —</option>
                 {relevantAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
@@ -244,25 +301,25 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الوصف / البيان *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الوصف / البيان *</label>
             <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="مثال: فاتورة كهرباء مكتب شهر يناير" />
           </div>
 
           {/* المبلغ والضريبة */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ (قبل الضريبة) *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ (قبل الضريبة) *</label>
               <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">نسبة ضريبة القيمة المضافة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
               <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select">
                 <option value={0}>0% — بدون ضريبة</option>
                 <option value={15}>15% — خاضع للضريبة</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الإجمالي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الإجمالي</label>
               <div style={{ padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontWeight: 700, color: '#e6820a', fontSize: '1rem' }}>
                 {total.toLocaleString()} ر.س
               </div>
@@ -273,7 +330,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {form.expense_type === 'مشاريع' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
                 <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
                   <option value="">— اختر المشروع —</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -281,7 +338,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">مركز التكلفة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
               <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
                 <option value="">— اختياري —</option>
                 {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -290,35 +347,60 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           </div>
 
           {/* المورد وطريقة الدفع */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المورد / الجهة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد / الجهة</label>
               <select value={form.vendor_id} onChange={e => handleVendorSelect(e.target.value)} className="select">
                 <option value="">— اختياري —</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">أو أدخل الاسم يدوياً</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
               <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} className="input" placeholder="اسم الجهة" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
-              <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
-                {['نقداً', 'تحويل بنكي', 'شيك', 'بطاقة ائتمانية', 'آجل'].map(m => <option key={m}>{m}</option>)}
-              </select>
+          </div>
+
+          {/* طريقة الدفع */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>طريقة الدفع</label>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+              {[
+                { val: 'نقداً',          icon: '💵' },
+                { val: 'تحويل بنكي',    icon: '🏦' },
+                { val: 'شيك',           icon: '📝' },
+                { val: 'بطاقة ائتمانية', icon: '💳' },
+                { val: 'آجل',           icon: '📅' },
+              ].map(m => (
+                <button key={m.val} type="button"
+                  onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
+                  style={{ flex: 1, minWidth: '80px', padding: '7px 6px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
+                    borderColor: form.payment_method === m.val ? '#e6820a' : 'var(--border)',
+                    background:  form.payment_method === m.val ? '#fffbeb' : 'white',
+                    color:       form.payment_method === m.val ? '#e6820a' : 'var(--text3)' }}>
+                  <div>{m.icon}</div>
+                  <div style={{ marginTop: '2px' }}>{m.val}</div>
+                </button>
+              ))}
             </div>
+            {/* اختيار الحساب البنكي / الصندوق */}
+            <CashAccountSelector
+              paymentMethod={form.payment_method}
+              value={form.cash_account_id}
+              tenantId={tenantId}
+              onChange={v => set('cash_account_id', v)}
+            />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 {['مدفوع', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
               <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
             </div>
           </div>
@@ -327,7 +409,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {expense ? 'حفظ التعديل' : 'تسجيل المصروف'}
           </button>
         </div>
@@ -435,7 +517,7 @@ export default function FinanceExpensesPage() {
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -501,7 +583,7 @@ export default function FinanceExpensesPage() {
       {/* الجدول */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
