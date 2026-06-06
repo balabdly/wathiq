@@ -226,11 +226,25 @@ export default function FinanceReportsPage() {
         if (!loaded['accounts']) {
           const { data } = await supabase.from('finance_accounts').select('*').eq('tenant_id', tid).order('code')
           setAccounts(data || [])
-        }
-        const { data: entries } = await supabase.from('finance_journal_entries').select('*').eq('tenant_id', tid).order('entry_date', { ascending: false })
-        setJournalEntries(entries || [])
-        const { data: lines } = await supabase.from('finance_journal_lines').select('*, finance_accounts(code,name), finance_journal_entries!inner(tenant_id)').eq('finance_journal_entries.tenant_[...]
-        setJournalLines(lines || [])
+        }const { data: entries } = await supabase
+  .from('finance_journal_entries')
+  .select('*')
+  .eq('tenant_id', tid)
+  .order('entry_date', { ascending: false })
+
+setJournalEntries(entries || [])
+
+const { data: lines } = await supabase
+  .from('finance_journal_lines')
+  .select(`
+    *,
+    finance_accounts(code,name),
+    finance_journal_entries!inner(tenant_id)
+  `)
+  .eq('finance_journal_entries.tenant_id', tid)
+
+setJournalLines(lines || [])
+
       }
       if (group === 'invoices') {
         const [inv, cn] = await Promise.all([
