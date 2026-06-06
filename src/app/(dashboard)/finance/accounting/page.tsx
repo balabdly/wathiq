@@ -921,7 +921,7 @@ function StandardsGuide() {
 // ════════════════════════════════════════
 export default function FinanceAccountingPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'chart' | 'journal' | 'costcenters'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart' | 'journal' | 'costcenters' | 'standards'>('chart')
 
   const TABS = [
     { id: 'chart',       label: '📊 شجرة الحسابات',  color: '#1a56db' },
