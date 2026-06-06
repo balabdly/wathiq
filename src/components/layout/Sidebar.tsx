@@ -204,7 +204,7 @@ export default function Sidebar() {
   const hasHR        = perms.includes('employees')
   const hasDashboard = perms.includes('dashboard')
 
-  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/inventory','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
+  const inProjects = pathname === '/dashboard' || ['/projects','/visits','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings')
@@ -275,7 +275,7 @@ export default function Sidebar() {
       {/* Nav */}
       <nav style={{ flex: 1, padding: '0', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
 
-        {(hasDashboard || hasProjects || hasVisits || hasInventory) && (
+        {(hasDashboard || hasProjects || hasVisits || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
             {hasDashboard  && <SubLink href="/dashboard"  label="لوحة التحكم"    icon={IC.dashboard}  active={pathname === '/dashboard'} />}
@@ -284,8 +284,11 @@ export default function Sidebar() {
             {hasTasks      && <SubLink href="/projects/tasks"    label="المهام"          icon={IC.tasks}   active={pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons} active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="سجل المخاطر"    icon={IC.risks}   active={pathname.startsWith('/projects/risks')} />}
-            {hasInventory  && <SubLink href="/inventory"  label="المخزون"         icon={IC.inventory}  active={pathname.startsWith('/inventory')} />}
           </NavSection>
+        )}
+
+        {hasInventory && (
+          <SubLink href="/inventory" label="🏗️ المخزون" icon={IC.inventory} active={pathname.startsWith('/inventory')} />
         )}
 
         {hasQHSE && (
