@@ -206,31 +206,66 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
 }
 
 // ════════════════════════════════════════
-// تاب شجرة الحسابات — Drill-Down
+// تاب شجرة الحسابات — مع الأرصدة
 // ════════════════════════════════════════
 function ChartOfAccounts({ tenantId }: { tenantId: string }) {
-  const [accounts, setAccounts]         = useState<Account[]>([])
-  const [loading,  setLoading]          = useState(true)
-  const [showModal, setShowModal]       = useState(false)
-  const [editAccount, setEditAccount]   = useState<Account | null>(null)
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [balances,     setBalances]     = useState<Record<number, number>>({})
+  const [loading,      setLoading]      = useState(true)
+  const [showModal,    setShowModal]    = useState(false)
+  const [editAccount,  setEditAccount]  = useState<Account | null>(null)
   const [parentForNew, setParentForNew] = useState<Account | null>(null)
-  const [path, setPath]                 = useState<Account[]>([])
+  const [path,         setPath]         = useState<Account[]>([])
+  const [search,       setSearch]       = useState('')
 
-  useEffect(() => { loadAccounts() }, [])
+  useEffect(() => { loadAll() }, [])
 
-  async function loadAccounts() {
+  async function loadAll() {
     setLoading(true)
-    const { data } = await supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code')
-    setAccounts(data || [])
+    const [accRes, linesRes] = await Promise.all([
+      supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code'),
+      supabase.from('finance_journal_lines').select('account_id, debit, credit'),
+    ])
+    const accs = accRes.data || []
+
+    // حساب رصيد كل حساب من القيود
+    const raw: Record<number, { debit: number; credit: number }> = {}
+    ;(linesRes.data || []).forEach((l: any) => {
+      if (!raw[l.account_id]) raw[l.account_id] = { debit: 0, credit: 0 }
+      raw[l.account_id].debit  += Number(l.debit  || 0)
+      raw[l.account_id].credit += Number(l.credit || 0)
+    })
+
+    // الرصيد = مدين - دائن (موجب = مدين، سالب = دائن)
+    const bal: Record<number, number> = {}
+    accs.forEach((a: Account) => {
+      const r = raw[a.id] || { debit: 0, credit: 0 }
+      bal[a.id] = r.debit - r.credit
+    })
+
+    // تجميع أرصدة الحسابات الأب من أبنائها
+    function sumBalance(id: number): number {
+      const children = accs.filter((a: Account) => a.parent_id === id)
+      if (children.length === 0) return bal[id] || 0
+      return children.reduce((s: number, c: Account) => s + sumBalance(c.id), 0)
+    }
+    accs.forEach((a: Account) => { bal[a.id] = sumBalance(a.id) })
+
+    setAccounts(accs)
+    setBalances(bal)
     setLoading(false)
   }
 
   const currentParentId = path.length > 0 ? path[path.length - 1].id : null
   const currentAccounts = accounts
-    .filter(a => currentParentId ? a.parent_id === currentParentId : !a.parent_id)
+    .filter(a => {
+      if (search) return a.name.includes(search) || a.code.includes(search)
+      return currentParentId ? a.parent_id === currentParentId : !a.parent_id
+    })
     .sort((a, b) => a.code.localeCompare(b.code))
 
   function drillDown(account: Account) {
+    if (search) return
     const hasChildren = accounts.some(a => a.parent_id === account.id)
     if (hasChildren) setPath(p => [...p, account])
   }
@@ -242,7 +277,12 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     if (hasChildren) { toast.error('لا يمكن حذف حساب له فروع'); return }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
     await supabase.from('finance_accounts').delete().eq('id', account.id)
-    await loadAccounts(); toast.success('تم الحذف')
+    await loadAll(); toast.success('تم الحذف')
+  }
+
+  const TYPE_COLOR: Record<string, string> = {
+    'أصول': '#1a56db', 'خصوم': '#c81e1e', 'حقوق ملكية': '#0ea77b',
+    'إيرادات': '#0ea77b', 'تكلفة': '#e6820a', 'مصروفات': '#6b7280'
   }
 
   const stats = {
@@ -250,11 +290,6 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     active:  accounts.filter(a => a.is_active).length,
     parents: accounts.filter(a => a.is_parent).length,
     leaves:  accounts.filter(a => !a.is_parent).length,
-  }
-
-  const MAIN_COLORS: Record<string, string> = {
-    'أصول': '#1a56db', 'خصوم': '#c81e1e', 'حقوق ملكية': '#0ea77b',
-    'إيرادات': '#0ea77b', 'مصروفات': '#e6820a'
   }
 
   return (
@@ -277,24 +312,45 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
 
       {/* شريط الأدوات */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-          <button onClick={() => setPath([])}
-            style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: path.length === 0 ? 'var(--primary)' : 'white', color: path.length === 0 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
-            🏠 الحسابات الرئيسية
-          </button>
-          {path.map((p, i) => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ color: 'var(--text3)', fontSize: '0.82rem' }}>›</span>
-              <button onClick={() => goTo(i + 1)}
-                style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: i === path.length - 1 ? 'var(--primary)' : 'white', color: i === path.length - 1 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
-                {p.code} — {p.name}
+        {/* Breadcrumb + بحث */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1 }}>
+          {!search && (
+            <>
+              <button onClick={() => setPath([])}
+                style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: path.length === 0 ? 'var(--primary)' : 'white', color: path.length === 0 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                🏠 الكل
               </button>
-            </div>
-          ))}
+              {path.map((p, i) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: 'var(--text3)' }}>›</span>
+                  <button onClick={() => goTo(i + 1)}
+                    style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: i === path.length - 1 ? 'var(--primary)' : 'white', color: i === path.length - 1 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                    {p.code} — {p.name}
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+          {/* بحث */}
+          <div style={{ position: 'relative', marginRight: 'auto' }}>
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPath([]) }}
+              placeholder="🔍 بحث عن حساب..."
+              className="input"
+              style={{ paddingRight: '14px', width: '220px', fontSize: '0.82rem' }}
+            />
+            {search && (
+              <button onClick={() => setSearch('')}
+                style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: '1rem' }}>
+                ×
+              </button>
+            )}
+          </div>
         </div>
         <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
           <Plus style={{ width: '16px', height: '16px' }} />
-          {path.length > 0 ? 'إضافة حساب فرعي' : 'إضافة حساب'}
+          إضافة حساب
         </button>
       </div>
 
@@ -303,7 +359,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
       : currentAccounts.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-          <p style={{ color: 'var(--text3)' }}>لا توجد حسابات في هذا المستوى</p>
+          <p style={{ color: 'var(--text3)' }}>{search ? 'لا توجد نتائج للبحث' : 'لا توجد حسابات في هذا المستوى'}</p>
         </div>
       ) : (
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -311,54 +367,88 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['الرمز', 'اسم الحساب', 'النوع', 'الرصيد الطبيعي', 'التصنيف', ''].map(h => (
-                    <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['الرمز', 'اسم الحساب', 'النوع', 'الرصيد', 'طبيعة الرصيد', ''].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: h === 'الرصيد' ? 'left' : 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {currentAccounts.map(account => {
                   const hasChildren = accounts.some(a => a.parent_id === account.id)
-                  const color = MAIN_COLORS[account.account_type] || '#6b7280'
+                  const color = TYPE_COLOR[account.account_type] || '#6b7280'
+                  const bal = balances[account.id] || 0
+                  const isDebit = bal >= 0
+                  const absbal = Math.abs(bal)
+
                   return (
                     <tr key={account.id}
-                      style={{ borderBottom: '1px solid var(--bg2)', cursor: hasChildren ? 'pointer' : 'default' }}
-                      onClick={() => hasChildren && drillDown(account)}
+                      style={{ borderBottom: '1px solid var(--bg2)', cursor: hasChildren && !search ? 'pointer' : 'default' }}
+                      onClick={() => hasChildren && !search && drillDown(account)}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+
+                      {/* الرمز */}
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.82rem', color }}>{account.code}</span>
+                        <div style={{ width: '42px', height: '36px', borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.78rem', color }}>{account.code}</span>
                         </div>
                       </td>
+
+                      {/* الاسم */}
                       <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '1rem' }}>{hasChildren ? '📁' : '📄'}</span>
                           <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: account.is_active ? 'var(--text)' : 'var(--text3)' }}>
+                            <div style={{ fontWeight: hasChildren ? 700 : 500, fontSize: '0.9rem', color: account.is_active ? 'var(--text)' : 'var(--text3)' }}>
                               {account.name}
-                              {account.is_parent && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>تجميعي</span>}
-                              {!account.is_active && <span style={{ fontSize: '0.68rem', marginRight: '6px', color: '#c81e1e', background: '#fef2f2', padding: '1px 5px', borderRadius: '4px' }}>موقوف</span>}
+                              {account.is_parent && <span style={{ fontSize: '0.65rem', marginRight: '6px', color: '#94a3b8', background: '#f1f5f9', padding: '1px 5px', borderRadius: '4px' }}>تجميعي</span>}
+                              {!account.is_active && <span style={{ fontSize: '0.65rem', marginRight: '6px', color: '#c81e1e', background: '#fef2f2', padding: '1px 5px', borderRadius: '4px' }}>موقوف</span>}
                             </div>
-                            {account.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{account.name_en}</div>}
+                            {account.name_en && <div style={{ fontSize: '0.7rem', color: 'var(--text3)', marginTop: '1px' }}>{account.name_en}</div>}
                           </div>
-                          {hasChildren && (
-                            <span style={{ marginRight: 'auto', color: 'var(--text3)', fontSize: '0.75rem', background: 'var(--bg2)', padding: '2px 8px', borderRadius: '6px' }}>
-                              {accounts.filter(a => a.parent_id === account.id).length} حساب ›
+                          {hasChildren && !search && (
+                            <span style={{ marginRight: 'auto', color: 'var(--primary)', fontSize: '0.72rem', background: '#eff6ff', padding: '2px 8px', borderRadius: '6px' }}>
+                              {accounts.filter(a => a.parent_id === account.id).length} ›
                             </span>
                           )}
                         </div>
                       </td>
+
+                      {/* النوع */}
                       <td style={{ padding: '14px 16px' }}>
-                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 600, background: color + '15', color }}>
+                        <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 600, background: color + '15', color, whiteSpace: 'nowrap' }}>
                           {account.account_type}
                         </span>
                       </td>
-                      <td style={{ padding: '14px 16px', fontSize: '0.82rem', color: account.normal_balance === 'مدين' ? '#1a56db' : '#c81e1e', fontWeight: 600 }}>
-                        {account.normal_balance === 'مدين' ? 'مدين (Dr)' : 'دائن (Cr)'}
+
+                      {/* الرصيد */}
+                      <td style={{ padding: '14px 16px', textAlign: 'left', direction: 'ltr' }}>
+                        {absbal === 0 ? (
+                          <span style={{ color: 'var(--text3)', fontSize: '0.82rem' }}>—</span>
+                        ) : (
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: isDebit ? '#1a56db' : '#c81e1e', fontFamily: 'monospace' }}>
+                              {absbal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>ر.س</div>
+                          </div>
+                        )}
                       </td>
-                      <td style={{ padding: '14px 16px', fontSize: '0.78rem', color: 'var(--text3)' }}>
-                        {account.account_class}
+
+                      {/* طبيعة الرصيد */}
+                      <td style={{ padding: '14px 16px' }}>
+                        {absbal > 0 && (
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',
+                            background: isDebit ? '#eff6ff' : '#fef2f2',
+                            color: isDebit ? '#1a56db' : '#c81e1e'
+                          }}>
+                            {isDebit ? 'مدين' : 'دائن'}
+                          </span>
+                        )}
                       </td>
+
+                      {/* الإجراءات */}
                       <td style={{ padding: '14px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           {hasChildren && (
@@ -393,7 +483,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
           defaultParent={parentForNew}
           tenantId={tenantId}
           onClose={() => { setShowModal(false); setEditAccount(null); setParentForNew(null) }}
-          onSave={() => { setShowModal(false); setEditAccount(null); setParentForNew(null); loadAccounts() }}
+          onSave={() => { setShowModal(false); setEditAccount(null); setParentForNew(null); loadAll() }}
         />
       )}
     </div>
