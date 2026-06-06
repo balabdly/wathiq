@@ -253,7 +253,7 @@ function VendorModal({ vendor, tenantId, onClose, onSave }: {
             <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             {vendor ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -269,38 +269,38 @@ function VendorModal({ vendor, tenantId, onClose, onSave }: {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المورد *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم المورد *</label>
               <input value={form.name} onChange={e => set('name', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
                 الرقم الضريبي
                 {form.vat_number && <span style={{ marginRight: '6px', fontSize: '0.72rem', color: vatValid ? '#0ea77b' : '#c81e1e' }}>{vatValid ? '✓' : '✗ 15 رقم'}</span>}
               </label>
               <input value={form.vat_number} onChange={e => set('vat_number', e.target.value.replace(/\D/g, '').slice(0, 15))} className="input" dir="ltr" maxLength={15} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">السجل التجاري</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>السجل التجاري</label>
               <input value={form.cr_number} onChange={e => set('cr_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الهاتف</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الهاتف</label>
               <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">البريد الإلكتروني</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البريد الإلكتروني</label>
               <input value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">شخص التواصل</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>شخص التواصل</label>
               <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم IBAN</label>
               <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA..." />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المدينة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المدينة</label>
               <input value={form.city} onChange={e => set('city', e.target.value)} className="input" />
             </div>
           </div>
@@ -308,7 +308,7 @@ function VendorModal({ vendor, tenantId, onClose, onSave }: {
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {vendor ? 'حفظ التعديل' : 'إضافة المورد'}
           </button>
         </div>
@@ -410,28 +410,28 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
             <ShoppingCart style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             {po ? 'تعديل أمر الشراء' : 'أمر شراء جديد'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الطلب *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الطلب *</label>
               <input value={form.po_number} onChange={e => set('po_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الطلب *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الطلب *</label>
               <input type="date" value={form.po_date} onChange={e => set('po_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ التسليم المتوقع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ التسليم المتوقع</label>
               <input type="date" value={form.expected_date} onChange={e => set('expected_date', e.target.value)} className="input" />
             </div>
           </div>
 
           {/* المورد */}
           <div style={{ background: '#fffbeb', borderRadius: '12px', padding: '14px', border: '1px solid #fde68a' }}>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المورد * — يجب اختيار مورد مضاف مسبقاً</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد * — يجب اختيار مورد مضاف مسبقاً</label>
             <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
               <option value="">— اختر المورد —</option>
               {vendors.filter(v => v.is_active).map(v => (
@@ -449,14 +449,14 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
               <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
                 <option value="">— مشتريات عامة —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 {['مسودة', 'مرسل', 'مستلم جزئياً', 'مستلم', 'ملغي'].map(s => <option key={s}>{s}</option>)}
               </select>
@@ -477,14 +477,14 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">نسبة ضريبة القيمة المضافة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
                   <option value={15}>15% — المعيارية</option>
                   <option value={0}>0% — معفي</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
               </div>
             </div>
@@ -494,7 +494,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {po ? 'حفظ التعديل' : 'إنشاء أمر الشراء'}
           </button>
         </div>
@@ -662,28 +662,28 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
             <FileText style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
             {invoice ? 'تعديل فاتورة المورد' : 'فاتورة مورد جديدة'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الفاتورة *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الفاتورة *</label>
               <input value={form.invoice_number} onChange={e => set('invoice_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الفاتورة *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الفاتورة *</label>
               <input type="date" value={form.invoice_date} onChange={e => set('invoice_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الاستحقاق</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
             </div>
           </div>
 
           {/* ربط بأمر شراء */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">ربط بأمر شراء (اختياري — يملأ البيانات تلقائياً)</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ربط بأمر شراء (اختياري — يملأ البيانات تلقائياً)</label>
             <select value={form.po_id} onChange={e => handlePOSelect(e.target.value)} className="select">
               <option value="">— بدون ربط —</option>
               {purchaseOrders.filter(p => p.status !== 'ملغي').map(p => (
@@ -694,7 +694,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
 
           {/* المورد */}
           <div style={{ background: '#fef2f2', borderRadius: '12px', padding: '14px', border: '1px solid #fecaca' }}>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المورد *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد *</label>
             <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
               <option value="">— اختر المورد —</option>
               {vendors.filter(v => v.is_active).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
@@ -707,7 +707,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
             <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
               <option value="">— مشتريات عامة —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -728,19 +728,19 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ضريبة القيمة المضافة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
                   <option value={15}>15%</option><option value={0}>0% — معفي</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['مسودة', 'معتمدة', 'مدفوعة', 'ملغاة'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
               </div>
             </div>
@@ -750,7 +750,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {invoice ? 'حفظ التعديل' : 'حفظ الفاتورة'}
           </button>
         </div>
@@ -857,7 +857,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
             <RotateCcw style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             مرتجع مشتريات / إشعار مدين
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -873,36 +873,36 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الرقم المرجعي *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرقم المرجعي *</label>
               <input value={form.return_number} onChange={e => set('return_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">التاريخ *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
               <input type="date" value={form.return_date} onChange={e => set('return_date', e.target.value)} className="input" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المورد *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد *</label>
             <select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select">
               <option value="">— اختر المورد —</option>
               {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">سبب الإرجاع *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>سبب الإرجاع *</label>
             <input value={form.reason} onChange={e => set('reason', e.target.value)} className="input" placeholder="مثال: بضاعة تالفة، مواصفات مختلفة..." />
           </div>
           <ItemsTable items={items} onChange={setItems} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['مسودة', 'معتمد', 'مُطبَّق'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
               </div>
             </div>
@@ -912,7 +912,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
             إنشاء المرتجع
           </button>
         </div>
@@ -941,7 +941,7 @@ function POViewModal({ po, items, onClose, onPrint }: {
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
               <Printer style={{ width: '15px', height: '15px' }} /> طباعة
             </button>
-            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
           </div>
         </div>
         <div className="modal-body" style={{ padding: '0' }}>
@@ -1047,7 +1047,7 @@ function VInvViewModal({ inv, items, onClose, onPrint }: {
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
               <Printer style={{ width: '15px', height: '15px' }} /> طباعة
             </button>
-            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
           </div>
         </div>
         <div className="modal-body" style={{ padding: '0' }}>
@@ -1221,7 +1221,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             💸 سداد فاتورة — {invoice.invoice_number}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: '10px', display: 'flex', justifyContent: 'space-between' }}>
@@ -1229,28 +1229,28 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
             <span style={{ fontWeight: 700, color: '#c81e1e' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ المدفوع *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ المدفوع *</label>
             <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الدفع *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الدفع *</label>
             <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
             <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
               {['تحويل بنكي', 'نقداً', 'شيك'].map(m => <option key={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المرجع</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
             <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr" />
           </div>
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '💸'}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '💸'}
             تسجيل الدفعة
           </button>
         </div>
@@ -1469,7 +1469,7 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -1526,7 +1526,7 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
 
       {/* ══ تاب أوامر الشراء ══ */}
       {activeTab === 'orders' && (
-        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
         : filteredPOs.length === 0 ? (
           <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
             <ShoppingCart style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1622,7 +1622,7 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
 
       {/* ══ تاب فواتير الموردين ══ */}
       {activeTab === 'invoices' && (
-        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+        loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
         : filteredInvs.length === 0 ? (
           <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
             <FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1726,11 +1726,11 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
 
       {/* ══ تاب المرتجعات ══ */}
       {activeTab === 'returns' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', fontSize: '0.82rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
             ⚠️ لا يمكن حذف فواتير الموردين المعتمدة — استخدم مرتجع مشتريات أو إشعار مدين للتصحيح
           </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : returns.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <RotateCcw style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1772,12 +1772,12 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
 
       {/* ══ تاب الموردون ══ */}
       {activeTab === 'vendors' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ position: 'relative', width: '240px' }}>
             <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
             <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '34px' }} placeholder="بحث باسم المورد..." />
           </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : vendors.filter(v => !search || v.name.includes(search)).length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
