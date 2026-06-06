@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, Pencil, Trash2, X, Save, Download, ZoomIn, ZoomOut, Maximize2, Building2, Briefcase } from 'lucide-react'
@@ -33,7 +33,6 @@ type JobDescription = {
   job_title?: { name: string }; grade?: { grade_code: string; grade_name: string }
 }
 type Employee = { id: number; name: string; role: string }
-type Tenant = { id: string; name: string; ceo_id?: number; ceo_name?: string }
 
 const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#0891b2','#be185d']
 
@@ -42,7 +41,8 @@ const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#089
 // ══════════════════════════════════════
 function OrgChart({ divisions, ceoId, allEmployees }: {
   divisions: Division[]
-  ceoId: number | null; allEmployees: Employee[]
+  ceoId: number | null
+  allEmployees: Employee[]
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
@@ -50,61 +50,56 @@ function OrgChart({ divisions, ceoId, allEmployees }: {
   const [dragging, setDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
-  // ── حسابات الرسم ──
   const NODE_W = 160; const NODE_H = 54
   const H_GAP = 30;  const V_GAP = 70
 
   type OrgNode = {
     id: string; label: string; sublabel?: string; color: string
-    x: number; y: number; w: number; h: number; type: 'company'|'branch'|'division'|'dept'|'title'
+    x: number; y: number; w: number; h: number
+    type: 'company'|'branch'|'division'|'dept'|'title'
   }
   type OrgEdge = { x1: number; y1: number; x2: number; y2: number; color: string }
 
   const nodes: OrgNode[] = []
   const edges: OrgEdge[] = []
 
-  // شركة + CEO
   const companyX = 400
   const ceoEmp = allEmployees.find(e => e.id === ceoId)
-  const companyLabel = 'الشركة'
   const companySubLabel = ceoEmp ? `👑 ${ceoEmp.name}` : 'المقر الرئيسي'
-  nodes.push({ id: 'company', label: companyLabel, sublabel: companySubLabel, color: '#1a1a2e', x: companyX, y: 20, w: 200, h: 62, type: 'company' })
+  nodes.push({ id: 'company', label: 'الشركة', sublabel: companySubLabel, color: '#1a1a2e', x: companyX, y: 20, w: 200, h: 62, type: 'company' })
 
-  // مباشر بدون فروع: شركة ← إدارات ← أقسام
   const spacing = Math.max(NODE_W + H_GAP, divisions.length > 1 ? 900 / divisions.length : NODE_W + H_GAP)
   const totalW = (divisions.length - 1) * spacing
   const startX = companyX + 90 - totalW / 2
 
   divisions.forEach((div, di) => {
-    const divX = startX + di * spacing - NODE_W/2
+    const divX = startX + di * spacing - NODE_W / 2
     const divY = 20 + 62 + V_GAP
     nodes.push({ id: `div-${div.id}`, label: div.name, sublabel: div.manager?.name || '—', color: div.color || '#1a56db', x: divX, y: divY, w: NODE_W, h: NODE_H, type: 'division' })
-    edges.push({ x1: companyX + 100, y1: 20 + 62, x2: divX + NODE_W/2, y2: divY, color: div.color || '#1a56db' })
+    edges.push({ x1: companyX + 100, y1: 20 + 62, x2: divX + NODE_W / 2, y2: divY, color: div.color || '#1a56db' })
     renderDepts(div, divX, divY, div.color || '#1a56db')
   })
 
   function renderDepts(div: Division, divX: number, divY: number, color: string) {
     const depts = div.departments || []
     if (depts.length === 0) return
-    const spacing = Math.max(NODE_W + H_GAP - 20, 140)
-    const totalW = (depts.length - 1) * spacing
-    const startX = divX + NODE_W/2 - totalW/2
-
+    const sp = Math.max(NODE_W + H_GAP - 20, 140)
+    const tw = (depts.length - 1) * sp
+    const sx = divX + NODE_W / 2 - tw / 2
     depts.forEach((dept, di) => {
-      const dX = startX + di * spacing - (NODE_W - 20)/2
+      const dX = sx + di * sp - (NODE_W - 20) / 2
       const dY = divY + NODE_H + V_GAP - 10
       nodes.push({ id: `dept-${dept.id}`, label: dept.name, sublabel: dept.manager?.name || '—', color, x: dX, y: dY, w: NODE_W - 20, h: NODE_H - 6, type: 'dept' })
-      edges.push({ x1: divX + NODE_W/2, y1: divY + NODE_H, x2: dX + (NODE_W-20)/2, y2: dY, color })
-
+      edges.push({ x1: divX + NODE_W / 2, y1: divY + NODE_H, x2: dX + (NODE_W - 20) / 2, y2: dY, color })
       const titles = dept.job_titles || []
       const tSpacing = 110
       const tTotalW = (titles.length - 1) * tSpacing
-      const tStartX = dX + (NODE_W-20)/2 - tTotalW/2
+      const tStartX = dX + (NODE_W - 20) / 2 - tTotalW / 2
       titles.forEach((t, ti) => {
         const tX = tStartX + ti * tSpacing - 55
-        const tY = dY + (NODE_H-6) + V_GAP - 20
+        const tY = dY + (NODE_H - 6) + V_GAP - 20
         nodes.push({ id: `title-${t.id}`, label: t.name, sublabel: t.grade?.grade_code || '', color: color + 'bb', x: tX, y: tY, w: 110, h: 44, type: 'title' })
-        edges.push({ x1: dX + (NODE_W-20)/2, y1: dY + (NODE_H-6), x2: tX + 55, y2: tY, color: color + '88' })
+        edges.push({ x1: dX + (NODE_W - 20) / 2, y1: dY + (NODE_H - 6), x2: tX + 55, y2: tY, color: color + '88' })
       })
     })
   }
@@ -112,7 +107,6 @@ function OrgChart({ divisions, ceoId, allEmployees }: {
   const svgW = Math.max(1000, ...nodes.map(n => n.x + n.w + 40))
   const svgH = Math.max(500, ...nodes.map(n => n.y + n.h + 60))
 
-  // Pan/Zoom
   const onMouseDown = (e: React.MouseEvent) => { setDragging(true); setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y }) }
   const onMouseMove = (e: React.MouseEvent) => { if (dragging) setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }) }
   const onMouseUp = () => setDragging(false)
@@ -126,26 +120,22 @@ function OrgChart({ divisions, ceoId, allEmployees }: {
     URL.revokeObjectURL(url)
   }
 
+  const btnStyle: React.CSSProperties = {
+    padding: '6px 10px', background: 'white', border: '1px solid var(--border)',
+    borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+    gap: '4px', fontSize: '0.78rem', fontWeight: 600,
+  }
+
   return (
     <div style={{ position: 'relative', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: '#f8fafc' }}>
-      {/* أدوات التحكم */}
       <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 10, display: 'flex', gap: '6px' }}>
-        <button onClick={() => setZoom(z => Math.min(z + 0.15, 2))} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
-          <ZoomIn style={{ width: '14px', height: '14px' }} />
-        </button>
-        <button onClick={() => setZoom(z => Math.max(z - 0.15, 0.4))} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
-          <ZoomOut style={{ width: '14px', height: '14px' }} />
-        </button>
-        <button onClick={() => { setZoom(0.8); setPan({ x: 0, y: 0 }) }} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
-          <Maximize2 style={{ width: '14px', height: '14px' }} /> إعادة ضبط
-        </button>
-        <button onClick={exportSVG} style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}>
-          <Download style={{ width: '14px', height: '14px' }} /> تصدير
-        </button>
+        <button onClick={() => setZoom(z => Math.min(z + 0.15, 2))} style={btnStyle}><ZoomIn style={{ width: '14px', height: '14px' }} /></button>
+        <button onClick={() => setZoom(z => Math.max(z - 0.15, 0.4))} style={btnStyle}><ZoomOut style={{ width: '14px', height: '14px' }} /></button>
+        <button onClick={() => { setZoom(0.8); setPan({ x: 0, y: 0 }) }} style={btnStyle}><Maximize2 style={{ width: '14px', height: '14px' }} /> إعادة ضبط</button>
+        <button onClick={exportSVG} style={btnStyle}><Download style={{ width: '14px', height: '14px' }} /> تصدير</button>
         <span style={{ padding: '6px 10px', background: 'white', border: '1px solid var(--border)', borderRadius: '7px', fontSize: '0.78rem', color: 'var(--text3)' }}>{Math.round(zoom * 100)}%</span>
       </div>
 
-      {/* SVG */}
       <div style={{ overflow: 'hidden', height: '520px', cursor: dragging ? 'grabbing' : 'grab' }}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
         <svg ref={svgRef} width={svgW} height={svgH}
@@ -156,29 +146,19 @@ function OrgChart({ divisions, ceoId, allEmployees }: {
               <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
             </filter>
           </defs>
-
-          {/* الخطوط */}
           {edges.map((e, i) => (
             <path key={i}
               d={`M ${e.x1} ${e.y1} C ${e.x1} ${(e.y1 + e.y2) / 2}, ${e.x2} ${(e.y1 + e.y2) / 2}, ${e.x2} ${e.y2}`}
               fill="none" stroke={e.color} strokeWidth="1.5" opacity="0.6" />
           ))}
-
-          {/* العقد */}
           {nodes.map(n => (
             <g key={n.id} filter="url(#shadow)">
               <rect x={n.x} y={n.y} width={n.w} height={n.h} rx="8"
-                fill={n.type === 'company' ? '#1a1a2e' : n.type === 'title' ? 'white' : 'white'}
-                stroke={n.type === 'title' ? n.color : n.color}
-                strokeWidth={n.type === 'company' ? 0 : n.type === 'title' ? 1 : 2} />
-
-              {/* شريط لوني أعلى */}
+                fill={n.type === 'company' ? '#1a1a2e' : 'white'}
+                stroke={n.color} strokeWidth={n.type === 'company' ? 0 : n.type === 'title' ? 1 : 2} />
               {n.type !== 'company' && n.type !== 'title' && (
-                <rect x={n.x} y={n.y} width={n.w} height="4" rx="8"
-                  fill={n.color} />
+                <rect x={n.x} y={n.y} width={n.w} height="4" rx="8" fill={n.color} />
               )}
-
-              {/* النص الرئيسي */}
               <text x={n.x + n.w / 2} y={n.y + n.h / 2 - (n.sublabel ? 8 : 0)}
                 textAnchor="middle" dominantBaseline="central"
                 fontSize={n.type === 'company' ? 14 : n.type === 'title' ? 11 : 12}
@@ -187,8 +167,6 @@ function OrgChart({ divisions, ceoId, allEmployees }: {
                 fontFamily="'Segoe UI', Tahoma, sans-serif">
                 {n.label.length > 16 ? n.label.substring(0, 15) + '…' : n.label}
               </text>
-
-              {/* النص الفرعي */}
               {n.sublabel && (
                 <text x={n.x + n.w / 2} y={n.y + n.h / 2 + 10}
                   textAnchor="middle" dominantBaseline="central"
@@ -231,10 +209,6 @@ export default function OrgStructurePage() {
   const [managers, setManagers] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
 
-
-  // ── Modal states ──
-  const [branchModal, setBranchModal] = useState(false)
-  const [editBranch, setEditBranch]   = useState<any>(null)
   const [divModal, setDivModal]   = useState(false)
   const [editDiv, setEditDiv]     = useState<Division | null>(null)
   const [gradeModal, setGradeModal] = useState(false)
@@ -247,8 +221,7 @@ export default function OrgStructurePage() {
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [brRes, divRes, deptRes, titleRes, gradeRes, descRes, empRes] = await Promise.all([
-      supabase.from('branches').select('id, name, manager_id, manager:employees!branches_manager_id_fkey(name)'),
+    const [divRes, deptRes, titleRes, gradeRes, descRes, empRes] = await Promise.all([
       supabase.from('org_divisions').select('*, manager:employees!org_divisions_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_departments').select('*, manager:employees!hr_departments_manager_id_fkey(name)').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_job_titles').select('*, grade:org_job_grades(grade_code, grade_name)').eq('tenant_id', tenant.id).order('name'),
@@ -257,17 +230,14 @@ export default function OrgStructurePage() {
       supabase.from('employees').select('id, name, role').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
 
-    const brs = brRes.data || []
     const divs = divRes.data || []
     const depts = deptRes.data || []
     const titles = titleRes.data || []
 
-    // جلب عدد الموظفين لكل مسمى
     const { data: hrEmps } = await supabase.from('hr_employees').select('job_title').eq('tenant_id', tenant.id).eq('is_active', true)
     const countMap: Record<string, number> = {}
     ;(hrEmps || []).forEach((e: any) => { if (e.job_title) countMap[e.job_title] = (countMap[e.job_title] || 0) + 1 })
 
-    // ربط الأقسام بالإدارات
     const divsWithDepts = divs.map((div: any) => ({
       ...div,
       departments: depts
@@ -278,56 +248,20 @@ export default function OrgStructurePage() {
         })),
     }))
 
-    // normalize manager (Supabase returns array for foreign key joins)
-    const normalizedBrs = brs.map((b: any) => ({
-      ...b,
-      manager: Array.isArray(b.manager) ? b.manager[0] : b.manager
-    }))
-    setBranches(normalizedBrs as any[]); setDivisions(divsWithDepts); setDepartments(depts)
+    setDivisions(divsWithDepts)
+    setDepartments(depts)
     setJobTitles(titles.map((t: any) => ({ ...t, employee_count: countMap[t.name] || 0 })))
-    setGrades(gradeRes.data || []); setDescriptions(descRes.data || [])
+    setGrades(gradeRes.data || [])
+    setDescriptions(descRes.data || [])
     setEmployees(empRes.data || [])
     setManagers((empRes.data || []).filter((e: any) => ['مدير عام','مدير مشروع','مدير قسم'].includes(e.role)))
-    // جلب CEO من tenant
-    if (tenant) {
-      const { data: tenantData } = await supabase.from('tenants').select('ceo_id').eq('id', tenant.id).single()
-      if (tenantData?.ceo_id) setCeoId(tenantData.ceo_id)
-    }
+
+    const { data: tenantData } = await supabase.from('tenants').select('ceo_id').eq('id', tenant.id).single()
+    if (tenantData?.ceo_id) setCeoId(tenantData.ceo_id)
+
     setLoading(false)
   }
 
-
-  // ══ CRUD: الفروع ══
-  async function saveBranch(form: any) {
-    const payload: any = { name: form.name }
-    if (form.manager_id) payload.manager_id = Number(form.manager_id)
-    // بعض الجداول تحتوي tenant_id وبعضها لا
-    try {
-      if (form.id) {
-        const { error } = await supabase.from('branches').update(payload).eq('id', form.id)
-        if (error) throw error
-      } else {
-        // جرب مع tenant_id أولاً
-        const payloadWithTenant = { ...payload, tenant_id: tenant?.id }
-        const { error } = await supabase.from('branches').insert(payloadWithTenant)
-        if (error) {
-          // إذا فشل، جرب بدون tenant_id
-          const { error: err2 } = await supabase.from('branches').insert(payload)
-          if (err2) throw err2
-        }
-      }
-      await loadAll(); toast.success('تم الحفظ ✅')
-    } catch (err: any) {
-      toast.error('خطأ: ' + err.message)
-    }
-  }
-  async function deleteBranch(id: number) {
-    if (!confirm('حذف هذا الفرع؟ سيؤثر على الإدارات والموظفين المرتبطين به')) return
-    await supabase.from('branches').delete().eq('id', id)
-    await loadAll(); toast.success('تم الحذف')
-  }
-
-  // ══ CRUD: الإدارات ══
   async function saveDivision(form: any) {
     const payload = { tenant_id: tenant?.id, name: form.name, manager_id: form.manager_id || null, color: form.color }
     if (editDiv) await supabase.from('org_divisions').update(payload).eq('id', editDiv.id)
@@ -340,7 +274,6 @@ export default function OrgStructurePage() {
     await loadAll(); toast.success('تم الحذف')
   }
 
-  // ══ CRUD: الدرجات ══
   async function saveGrade(form: any) {
     const payload = { tenant_id: tenant?.id, grade_code: form.grade_code, grade_name: form.grade_name, salary_min: Number(form.salary_min), salary_mid: Number(form.salary_mid), salary_max: Number(form.salary_max) }
     if (editGrade) await supabase.from('org_job_grades').update(payload).eq('id', editGrade.id)
@@ -353,7 +286,6 @@ export default function OrgStructurePage() {
     await loadAll(); toast.success('تم الحذف')
   }
 
-  // ══ CRUD: الأوصاف ══
   async function saveDesc(form: any) {
     const payload = { tenant_id: tenant?.id, job_title_id: Number(form.job_title_id), grade_id: form.grade_id || null, description: form.description, responsibilities: form.responsibilities, qualifications: form.qualifications }
     if (editDesc) await supabase.from('org_job_descriptions').update(payload).eq('id', editDesc.id)
@@ -366,34 +298,28 @@ export default function OrgStructurePage() {
     { id: 'ceo',          label: '👑 المدير التنفيذي' },
     { id: 'divisions',    label: '🏗️ الإدارات' },
     { id: 'departments',  label: '🏢 الأقسام' },
-    { id: 'jobtitles',   label: '💼 المسميات' },
+    { id: 'jobtitles',    label: '💼 المسميات' },
     { id: 'grades',       label: '📊 الدرجات الوظيفية' },
     { id: 'descriptions', label: '📄 الأوصاف الوظيفية' },
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
       {/* العنوان */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
             🏛️ الهيكل التنظيمي
           </h1>
-          <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>
+          <p style={{ color: 'var(--text3)', fontSize: '0.85rem', marginTop: '4px' }}>
             {divisions.length} إدارة · {departments.length} قسم · {jobTitles.length} مسمى وظيفي
           </p>
         </div>
-
         {activeTab === 'divisions' && (
           <button onClick={() => { setEditDiv(null); setDivModal(true) }} className="btn btn-primary">
             <Plus style={{ width: '16px', height: '16px' }} /> إضافة إدارة
           </button>
-        )}
-        {activeTab === 'departments' && (
-          <div /> 
-        )}
-        {activeTab === 'jobtitles' && (
-          <div />
         )}
         {activeTab === 'grades' && (
           <button onClick={() => { setEditGrade(null); setGradeModal(true) }} className="btn btn-primary">
@@ -411,10 +337,13 @@ export default function OrgStructurePage() {
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '5px', borderRadius: '12px', width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id as any)}
-            style={{ padding: '7px 16px', borderRadius: '9px', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+            style={{
+              padding: '7px 16px', borderRadius: '9px', fontSize: '0.85rem', fontWeight: 600,
+              border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? 'var(--primary)' : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
-              boxShadow: activeTab === t.id ? '0 2px 8px rgba(26,86,219,0.3)' : 'none' }}>
+              boxShadow: activeTab === t.id ? '0 2px 8px rgba(26,86,219,0.3)' : 'none',
+            }}>
             {t.label}
           </button>
         ))}
@@ -422,16 +351,16 @@ export default function OrgStructurePage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : (
         <>
-          {/* ══ المخطط التنظيمي ══ */}
+          {/* المخطط التنظيمي */}
           {activeTab === 'chart' && (
             <OrgChart divisions={divisions} ceoId={ceoId} allEmployees={employees} />
           )}
 
-          {/* ══ المدير التنفيذي ══ */}
+          {/* المدير التنفيذي */}
           {activeTab === 'ceo' && (
             <div className="card" style={{ padding: '28px', maxWidth: '520px' }}>
               <div style={{ marginBottom: '20px' }}>
@@ -461,8 +390,8 @@ export default function OrgStructurePage() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  {ceoId ? 'تغيير المدير التنفيذي' : 'تحديد المدير التنفيذي'} <span className="text-red-500">*</span>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                  {ceoId ? 'تغيير المدير التنفيذي' : 'تحديد المدير التنفيذي'} <span style={{ color: '#c81e1e' }}>*</span>
                 </label>
                 <select
                   value={ceoId || ''}
@@ -483,10 +412,9 @@ export default function OrgStructurePage() {
             </div>
           )}
 
-          {/* ══ الفروع ══ */}
-  
-        {activeTab === 'divisions' && (
-            <div className="space-y-3">
+          {/* الإدارات */}
+          {activeTab === 'divisions' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {divisions.length === 0 ? (
                 <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                   <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🏗️</div>
@@ -498,7 +426,6 @@ export default function OrgStructurePage() {
               ) : (
                 divisions.map(div => (
                   <div key={div.id} className="card" style={{ overflow: 'hidden' }}>
-                    {/* رأس الإدارة */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)', background: div.color + '10' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: div.color }} />
@@ -517,7 +444,6 @@ export default function OrgStructurePage() {
                         <button onClick={() => deleteDivision(div.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
                       </div>
                     </div>
-                    {/* الأقسام */}
                     {(div.departments || []).length > 0 && (
                       <div style={{ padding: '12px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {(div.departments || []).map(dept => (
@@ -536,17 +462,17 @@ export default function OrgStructurePage() {
             </div>
           )}
 
-          {/* ══ الأقسام ══ */}
+          {/* الأقسام */}
           {activeTab === 'departments' && tenant && (
             <DepartmentsTab tenantId={tenant.id} managers={managers} divisions={divisions} onUpdate={loadAll} />
           )}
 
-          {/* ══ المسميات الوظيفية ══ */}
+          {/* المسميات الوظيفية */}
           {activeTab === 'jobtitles' && tenant && (
             <JobTitlesTab tenantId={tenant.id} grades={grades} />
           )}
 
-          {/* ══ الدرجات الوظيفية ══ */}
+          {/* الدرجات الوظيفية */}
           {activeTab === 'grades' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               {grades.length === 0 ? (
@@ -588,7 +514,7 @@ export default function OrgStructurePage() {
                                 <div style={{ position: 'absolute', top: '-3px', right: `${100 - midPct}%`, width: '14px', height: '14px', background: 'var(--primary)', borderRadius: '50%', border: '2px solid white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
                               </div>
                             </td>
-                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            <td style={{ padding: '12px 14px' }}>
                               <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                                 <button onClick={() => { setEditGrade(g); setGradeModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
                                 <button onClick={() => deleteGrade(g.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
@@ -604,9 +530,9 @@ export default function OrgStructurePage() {
             </div>
           )}
 
-          {/* ══ الأوصاف الوظيفية ══ */}
+          {/* الأوصاف الوظيفية */}
           {activeTab === 'descriptions' && (
-            <div className="space-y-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {descriptions.length === 0 ? (
                 <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                   <div style={{ fontSize: '3rem', marginBottom: '12px' }}>📄</div>
@@ -649,17 +575,7 @@ export default function OrgStructurePage() {
         </>
       )}
 
-
-      {/* ══ Modal: فرع ══ */}
-      {branchModal && (
-        <BranchModal
-          branch={editBranch} employees={employees}
-          onClose={() => { setBranchModal(false); setEditBranch(null) }}
-          onSave={saveBranch}
-        />
-      )}
-
-      {/* ══ Modal: إدارة ══ */}
+      {/* Modal: إدارة */}
       {divModal && (
         <DivisionModal
           div={editDiv} employees={employees}
@@ -668,7 +584,7 @@ export default function OrgStructurePage() {
         />
       )}
 
-      {/* ══ Modal: درجة ══ */}
+      {/* Modal: درجة */}
       {gradeModal && (
         <GradeModal
           grade={editGrade}
@@ -677,7 +593,7 @@ export default function OrgStructurePage() {
         />
       )}
 
-      {/* ══ Modal: وصف ══ */}
+      {/* Modal: وصف */}
       {descModal && (
         <DescriptionModal
           desc={editDesc} jobTitles={jobTitles} grades={grades}
@@ -689,84 +605,42 @@ export default function OrgStructurePage() {
   )
 }
 
-
-// ── Modal: فرع ──
-function BranchModal({ branch, employees, onClose, onSave }: any) {
+// ══════════════════════════════════════
+// Modal: إدارة
+// ══════════════════════════════════════
+function DivisionModal({ div, employees, onClose, onSave }: any) {
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    id: branch?.id || null,
-    name: branch?.name || '',
-    manager_id: branch?.manager_id || '',
-  })
+  const [form, setForm] = useState({ name: div?.name || '', manager_id: div?.manager_id || '', color: div?.color || '#1a56db' })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name.trim()) { toast.error('اسم الفرع مطلوب'); return }
-    setSaving(true); await onSave(form); setSaving(false)
-  }
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '420px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{branch ? 'تعديل الفرع' : 'إضافة فرع جديد'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-        </div>
-        <form onSubmit={submit}>
-          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الفرع <span className="text-red-500">*</span></label>
-              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: الفرع الرئيسي - الرياض" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الفرع</label>
-              <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
-                <option value="">— بدون مدير —</option>
-                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-            <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ── Modal: إدارة ──
-function DivisionModal({ div, employees, onClose, onSave }: any) {
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    name: div?.name || '',
-    manager_id: div?.manager_id || '', color: div?.color || '#1a56db',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!form.name.trim()) { toast.error('اسم الإدارة مطلوب'); return }
+    if (!form.name.trim()) { toast.error('اسم الإدارة مطلوب'); return }
     setSaving(true); await onSave(form); setSaving(false)
   }
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{div ? 'تعديل الإدارة' : 'إضافة إدارة جديدة'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{div ? 'تعديل الإدارة' : 'إضافة إدارة جديدة'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', color: 'var(--text3)' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <form onSubmit={submit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الإدارة <span className="text-red-500">*</span></label><input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: إدارة الهندسة" /></div>
-
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">مدير الإدارة</label>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                اسم الإدارة <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: إدارة الهندسة" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مدير الإدارة</label>
               <select value={form.manager_id} onChange={e => set('manager_id', e.target.value)} className="select">
                 <option value="">— بدون مدير —</option>
                 {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
               </select>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">اللون</label>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اللون</label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 {DIVISION_COLORS.map(c => (
                   <button key={c} type="button" onClick={() => set('color', c)}
@@ -778,7 +652,8 @@ function DivisionModal({ div, employees, onClose, onSave }: any) {
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+              {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '14px', height: '14px' }} />}
+              حفظ
             </button>
           </div>
         </form>
@@ -787,41 +662,60 @@ function DivisionModal({ div, employees, onClose, onSave }: any) {
   )
 }
 
-// ── Modal: درجة وظيفية ──
+// ══════════════════════════════════════
+// Modal: درجة وظيفية
+// ══════════════════════════════════════
 function GradeModal({ grade, onClose, onSave }: any) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ grade_code: grade?.grade_code || '', grade_name: grade?.grade_name || '', salary_min: grade?.salary_min || 0, salary_mid: grade?.salary_mid || 0, salary_max: grade?.salary_max || 0 })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!form.grade_code || !form.grade_name) { toast.error('الكود والاسم مطلوبان'); return }
+    e.preventDefault()
+    if (!form.grade_code || !form.grade_name) { toast.error('الكود والاسم مطلوبان'); return }
     setSaving(true); await onSave(form); setSaving(false)
   }
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{grade ? 'تعديل الدرجة' : 'إضافة درجة وظيفية'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{grade ? 'تعديل الدرجة' : 'إضافة درجة وظيفية'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', color: 'var(--text3)' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <form onSubmit={submit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs text-gray-500 mb-1">كود الدرجة *</label><input value={form.grade_code} onChange={e => set('grade_code', e.target.value)} className="input" placeholder="G1" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">اسم الدرجة *</label><input value={form.grade_name} onChange={e => set('grade_name', e.target.value)} className="input" placeholder="مبتدئ" /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '4px' }}>كود الدرجة *</label>
+                <input value={form.grade_code} onChange={e => set('grade_code', e.target.value)} className="input" placeholder="G1" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '4px' }}>اسم الدرجة *</label>
+                <input value={form.grade_name} onChange={e => set('grade_name', e.target.value)} className="input" placeholder="مبتدئ" />
+              </div>
             </div>
             <div style={{ background: 'var(--bg2)', borderRadius: '10px', padding: '14px' }}>
               <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text)' }}>💰 نطاق الراتب (ر.س)</div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><label className="block text-xs text-gray-500 mb-1">الحد الأدنى</label><input type="number" value={form.salary_min} onChange={e => set('salary_min', e.target.value)} className="input" min="0" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">المتوسط</label><input type="number" value={form.salary_mid} onChange={e => set('salary_mid', e.target.value)} className="input" min="0" /></div>
-                <div><label className="block text-xs text-gray-500 mb-1">الحد الأعلى</label><input type="number" value={form.salary_max} onChange={e => set('salary_max', e.target.value)} className="input" min="0" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '4px' }}>الحد الأدنى</label>
+                  <input type="number" value={form.salary_min} onChange={e => set('salary_min', e.target.value)} className="input" min="0" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '4px' }}>المتوسط</label>
+                  <input type="number" value={form.salary_mid} onChange={e => set('salary_mid', e.target.value)} className="input" min="0" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '4px' }}>الحد الأعلى</label>
+                  <input type="number" value={form.salary_max} onChange={e => set('salary_max', e.target.value)} className="input" min="0" />
+                </div>
               </div>
             </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+              {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '14px', height: '14px' }} />}
+              حفظ
             </button>
           </div>
         </form>
@@ -830,46 +724,61 @@ function GradeModal({ grade, onClose, onSave }: any) {
   )
 }
 
-// ── Modal: وصف وظيفي ──
+// ══════════════════════════════════════
+// Modal: وصف وظيفي
+// ══════════════════════════════════════
 function DescriptionModal({ desc, jobTitles, grades, onClose, onSave }: any) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ job_title_id: desc?.job_title_id || '', grade_id: desc?.grade_id || '', description: desc?.description || '', responsibilities: desc?.responsibilities || '', qualifications: desc?.qualifications || '' })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!form.job_title_id) { toast.error('المسمى الوظيفي مطلوب'); return }
+    e.preventDefault()
+    if (!form.job_title_id) { toast.error('المسمى الوظيفي مطلوب'); return }
     setSaving(true); await onSave(form); setSaving(false)
   }
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800">{desc ? 'تعديل الوصف الوظيفي' : 'إضافة وصف وظيفي'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{desc ? 'تعديل الوصف الوظيفي' : 'إضافة وصف وظيفي'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', color: 'var(--text3)' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <form onSubmit={submit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي *</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المسمى الوظيفي *</label>
                 <select value={form.job_title_id} onChange={e => set('job_title_id', e.target.value)} className="select">
                   <option value="">— اختر المسمى —</option>
                   {jobTitles.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الدرجة الوظيفية</label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الدرجة الوظيفية</label>
                 <select value={form.grade_id} onChange={e => set('grade_id', e.target.value)} className="select">
                   <option value="">— بدون درجة —</option>
                   {grades.map((g: any) => <option key={g.id} value={g.id}>{g.grade_code} — {g.grade_name}</option>)}
                 </select>
               </div>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">وصف الوظيفة</label><textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="نبذة عامة عن الوظيفة..." /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المهام والمسؤوليات</label><textarea value={form.responsibilities} onChange={e => set('responsibilities', e.target.value)} className="input" style={{ minHeight: '90px', resize: 'none' }} placeholder="- مسؤولية 1&#10;- مسؤولية 2&#10;..." /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">المؤهلات المطلوبة</label><textarea value={form.qualifications} onChange={e => set('qualifications', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="- مؤهل 1&#10;- خبرة 2 سنة..." /></div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>وصف الوظيفة</label>
+              <textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="نبذة عامة عن الوظيفة..." />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المهام والمسؤوليات</label>
+              <textarea value={form.responsibilities} onChange={e => set('responsibilities', e.target.value)} className="input" style={{ minHeight: '90px', resize: 'none' }} placeholder="- مسؤولية 1&#10;- مسؤولية 2&#10;..." />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المؤهلات المطلوبة</label>
+              <textarea value={form.qualifications} onChange={e => set('qualifications', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="- مؤهل 1&#10;- خبرة 2 سنة..." />
+            </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+              {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '14px', height: '14px' }} />}
+              حفظ
             </button>
           </div>
         </form>
@@ -878,7 +787,9 @@ function DescriptionModal({ desc, jobTitles, grades, onClose, onSave }: any) {
   )
 }
 
-
+// ══════════════════════════════════════
+// تاب الأقسام
+// ══════════════════════════════════════
 function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
   tenantId: string
   managers: any[]
@@ -935,15 +846,17 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div className="card" style={{ padding: '16px' }}>
         <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
           {editId ? '✏️ تعديل القسم' : '➕ إضافة قسم جديد'}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الإدارة <span className="text-red-500">*</span></label>
-            <select value={(form as any).division_id} onChange={e => setForm(f => ({ ...f, division_id: e.target.value }))} className="select">
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              الإدارة <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
+            <select value={form.division_id} onChange={e => setForm(f => ({ ...f, division_id: e.target.value }))} className="select">
               <option value="">— اختر الإدارة أولاً —</option>
               {divisions.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -952,18 +865,22 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم القسم <span className="text-red-500">*</span></label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              اسم القسم <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
             <input
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               className="input" placeholder="مثال: قسم المشاريع"
               onKeyDown={noEnter}
-              disabled={!(form as any).division_id}
+              disabled={!form.division_id}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">مدير القسم <span className="text-red-500">*</span></label>
-            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select" disabled={!(form as any).division_id}>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              مدير القسم <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
+            <select value={form.manager_id} onChange={e => setForm(f => ({ ...f, manager_id: e.target.value }))} className="select" disabled={!form.division_id}>
               <option value="">— اختر المدير —</option>
               {managers.map(m => <option key={m.id} value={m.id}>{m.name} — {m.role}</option>)}
             </select>
@@ -984,7 +901,7 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : depts.length === 0 ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
@@ -1006,15 +923,22 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
                 <div>
                   <div style={{ fontWeight: 700 }}>{d.name}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
-                    {d.manager
-                      ? `👤 ${d.manager.name}`
+                    {(d.manager as any)
+                      ? `👤 ${(d.manager as any).name}`
                       : <span style={{ color: '#c81e1e' }}>⚠️ لا يوجد مدير</span>}
                   </div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
-                  onClick={() => { setForm({ name: d.name, manager_id: d.manager_id ? String(d.manager_id) : '', division_id: (d as any).division_id ? String((d as any).division_id) : '' }); setEditId(d.id) }}
+                  onClick={() => {
+                    setForm({
+                      name: d.name,
+                      manager_id: d.manager_id ? String(d.manager_id) : '',
+                      division_id: (d as any).division_id ? String((d as any).division_id) : '',
+                    })
+                    setEditId(d.id)
+                  }}
                   className="btn btn-ghost btn-xs">
                   <Pencil style={{ width: '14px', height: '14px' }} />
                 </button>
@@ -1033,7 +957,6 @@ function DepartmentsTab({ tenantId, managers, divisions, onUpdate }: {
 // ══════════════════════════════════════
 // تاب المسميات الوظيفية
 // ══════════════════════════════════════
-
 function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade[] }) {
   const [titles, setTitles] = useState<JobTitle[]>([])
   const [depts, setDepts] = useState<Department[]>([])
@@ -1087,7 +1010,7 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
   })).filter(g => g.titles.length > 0)
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div className="card" style={{ padding: '16px' }}>
         <div style={{ fontWeight: 700, marginBottom: '12px', color: 'var(--text)' }}>
           {editId ? '✏️ تعديل المسمى' : '➕ إضافة مسمى وظيفي'}
@@ -1098,16 +1021,20 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3" style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                  القسم <span style={{ color: '#c81e1e' }}>*</span>
+                </label>
                 <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))} className="select">
                   <option value="">— اختر القسم —</option>
                   {depts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المسمى الوظيفي <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                  اسم المسمى الوظيفي <span style={{ color: '#c81e1e' }}>*</span>
+                </label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -1133,7 +1060,7 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : titles.length === 0 ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
@@ -1141,7 +1068,7 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
           <p style={{ color: 'var(--text3)' }}>لا توجد مسميات وظيفية بعد</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {grouped.map(g => (
             <div key={g.dept.id} className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1161,12 +1088,19 @@ function JobTitlesTab({ tenantId, grades }: { tenantId: string; grades: JobGrade
                     </div>
                     <div>
                       <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
-                      {(t as any).grade && <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '1px' }}>{(t as any).grade.grade_code} — {(t as any).grade.grade_name}</div>}
+                      {(t as any).grade && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--primary)', marginTop: '1px' }}>
+                          {(t as any).grade.grade_code} — {(t as any).grade.grade_name}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
-                      onClick={() => { setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '', grade_id: t.grade_id ? String(t.grade_id) : '' }); setEditId(t.id) }}
+                      onClick={() => {
+                        setForm({ name: t.name, department_id: t.department_id ? String(t.department_id) : '', grade_id: t.grade_id ? String(t.grade_id) : '' })
+                        setEditId(t.id)
+                      }}
                       className="btn btn-ghost btn-xs">
                       <Pencil style={{ width: '14px', height: '14px' }} />
                     </button>
