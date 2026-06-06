@@ -101,13 +101,17 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 
         if (parent) {
           // 2. نحسب عدد الحسابات الفرعية تحت 1110 لتوليد كود جديد
-          const { count } = await supabase
+          // نجلب أكبر كود فرعي موجود تحت 1110 ونضيف 1
+          const { data: siblings } = await supabase
             .from('finance_accounts')
-            .select('*', { count: 'exact', head: true })
+            .select('code')
             .eq('tenant_id', tenantId)
             .eq('parent_id', parent.id)
+            .order('code', { ascending: false })
+            .limit(1)
 
-          const newCode = `111${(count || 0) + 1}`
+          const lastCode = siblings?.[0]?.code ? parseInt(siblings[0].code) : 1110
+          const newCode = String(lastCode + 1)
 
           // 3. نضيف الحساب في شجرة الحسابات
           const { data: newAcc, error: accErr } = await supabase
@@ -160,7 +164,7 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
             <Building2 style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {account ? 'تعديل حساب نقدي' : 'إضافة حساب نقدي'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -175,29 +179,29 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
             ))}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الاسم *</label>
             <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: بنك الراجحي" />
           </div>
           {form.account_type === 'بنك' && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم البنك</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم البنك</label>
                   <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="بنك الراجحي" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الحساب</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الحساب</label>
                   <input value={form.account_no} onChange={e => set('account_no', e.target.value)} className="input" dir="ltr" />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم IBAN</label>
                 <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA..." />
               </div>
             </>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الرصيد الافتتاحي</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرصيد الافتتاحي</label>
             <input type="number" value={form.opening_balance} onChange={e => set('opening_balance', e.target.value)} className="input" dir="ltr" min="0" />
           </div>
           {!account && (
@@ -209,7 +213,7 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {account ? 'حفظ' : 'إضافة'}
           </button>
         </div>
@@ -320,32 +324,32 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
               : <ArrowDownRight style={{ width: '18px', height: '18px', color: '#c81e1e' }} />}
             {isReceipt ? 'إضافة مقبوض' : 'إضافة مدفوع'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">التاريخ *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
               <input type="date" value={form.transaction_date} onChange={e => set('transaction_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المرجع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
               <input value={form.reference_no} onChange={e => set('reference_no', e.target.value)} className="input" dir="ltr" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">البيان *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البيان *</label>
             <input value={form.description} onChange={e => set('description', e.target.value)} className="input"
               placeholder={isReceipt ? 'مثال: تحصيل فاتورة' : 'مثال: سداد فاتورة مورد'} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: isReceipt ? '#ecfdf5' : '#fef2f2', padding: '14px', borderRadius: '10px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
               <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00"
                 style={{ borderColor: isReceipt ? '#bbf7d0' : '#fecaca', background: 'white' }} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحساب النقدي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب النقدي</label>
               <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
                 {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
               </select>
@@ -353,12 +357,12 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
               <input value={form.party_name} onChange={e => set('party_name', e.target.value)} className="input"
                 placeholder={isReceipt ? 'اسم العميل' : 'اسم المورد'} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
               <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
                 {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية'].map(m => <option key={m}>{m}</option>)}
               </select>
@@ -366,14 +370,14 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحساب المحاسبي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
               <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
                 <option value="">— اختياري —</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">مركز التكلفة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
               <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
                 <option value="">— اختياري —</option>
                 {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -382,13 +386,13 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 {['معتمد', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
               <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
             </div>
           </div>
@@ -397,7 +401,7 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary"
             style={{ background: isReceipt ? '#0ea77b' : '#c81e1e' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (isReceipt ? '💵' : '💸')}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : (isReceipt ? '💵' : '💸')}
             {isReceipt ? 'تسجيل المقبوض' : 'تسجيل المدفوع'}
           </button>
         </div>
@@ -489,7 +493,7 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
             <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             {custody ? 'تعديل عهدة' : 'إصدار عهدة موظف'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -505,45 +509,45 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الموظف *</label>
               <select value={form.employee_id} onChange={e => handleEmployeeSelect(e.target.value)} className="select">
                 <option value="">— اختر الموظف —</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">أو أدخل الاسم يدوياً</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
               <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإصدار *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإصدار *</label>
               <input type="date" value={form.custody_date} onChange={e => set('custody_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الاستحقاق</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
               <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الصرف من</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصرف من</label>
               <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
                 {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الغرض *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الغرض *</label>
             <input value={form.purpose} onChange={e => set('purpose', e.target.value)} className="input" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
             <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
               <option value="">— اختياري —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -553,7 +557,7 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             إصدار العهدة
           </button>
         </div>
@@ -619,7 +623,7 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
       <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700 }}>✅ تسوية عهدة — {custody.employee_name}</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
@@ -635,7 +639,7 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
             ))}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ المُسوَّى</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ المُسوَّى</label>
             <input type="number" value={form.settled_amount} onChange={e => set('settled_amount', e.target.value)} className="input" dir="ltr" max={remaining} />
           </div>
           {returnAmt > 0 && (
@@ -645,11 +649,11 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ التسوية</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ التسوية</label>
               <input type="date" value={form.settled_date} onChange={e => set('settled_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الصندوق</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصندوق</label>
               <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
                 {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -659,7 +663,7 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSettle} disabled={saving || returnAmt < 0} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '✅'}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '✅'}
             تسوية العهدة
           </button>
         </div>
@@ -783,7 +787,7 @@ export default function FinanceTreasuryPage() {
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -857,7 +861,7 @@ export default function FinanceTreasuryPage() {
       {/* ══ الحركات ══ */}
       {(activeTab === 'transactions' || activeTab === 'receipts' || activeTab === 'payments') && (
         loading
-          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : filtered.length === 0
             ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                 <Wallet style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -926,7 +930,7 @@ export default function FinanceTreasuryPage() {
       {/* ══ عهد الموظفين ══ */}
       {activeTab === 'custody' && (
         loading
-          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : custodies.length === 0
             ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
                 <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -982,7 +986,7 @@ export default function FinanceTreasuryPage() {
 
       {/* ══ الحسابات النقدية ══ */}
       {activeTab === 'accounts' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
             {cashAccounts.map(ca => (
               <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
