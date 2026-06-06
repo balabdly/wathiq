@@ -337,7 +337,7 @@ function ClientModal({ client, tenantId, onClose, onSave }: {
             <Users style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {client ? 'تعديل بيانات العميل' : 'إضافة عميل جديد'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
@@ -356,63 +356,63 @@ function ClientModal({ client, tenantId, onClose, onSave }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم العميل (عربي) <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم العميل (عربي) <span className="text-red-500">*</span></label>
               <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="اسم الشركة أو المؤسسة" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم العميل (إنجليزي)</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم العميل (إنجليزي)</label>
               <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
                 الرقم الضريبي (VAT)
                 {form.vat_number && <span style={{ marginRight: '6px', fontSize: '0.72rem', color: vatValid ? '#0ea77b' : '#c81e1e' }}>{vatValid ? '✓' : '✗ 15 رقم'}</span>}
               </label>
               <input value={form.vat_number} onChange={e => set('vat_number', e.target.value.replace(/\D/g, '').slice(0, 15))} className="input" dir="ltr" placeholder="300XXXXXXXXXXX3" maxLength={15} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم السجل التجاري</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم السجل التجاري</label>
               <input value={form.cr_number} onChange={e => set('cr_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الهاتف</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الهاتف</label>
               <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">البريد الإلكتروني</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البريد الإلكتروني</label>
               <input value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">شخص التواصل</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>شخص التواصل</label>
               <input value={form.contact_person} onChange={e => set('contact_person', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المدينة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المدينة</label>
               <input value={form.city} onChange={e => set('city', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحي</label>
               <input value={form.district} onChange={e => set('district', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الشارع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الشارع</label>
               <input value={form.street} onChange={e => set('street', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الرمز البريدي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرمز البريدي</label>
               <input value={form.postal_code} onChange={e => set('postal_code', e.target.value)} className="input" dir="ltr" maxLength={5} />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
           </div>
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {client ? 'حفظ التعديل' : 'إضافة العميل'}
           </button>
         </div>
@@ -535,28 +535,28 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
             <FileText style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {invoice ? 'تعديل فاتورة' : 'فاتورة مبيعات جديدة'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الفاتورة *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الفاتورة *</label>
               <input value={form.invoice_number} onChange={e => set('invoice_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإصدار *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإصدار *</label>
               <input type="date" value={form.invoice_date} onChange={e => set('invoice_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الاستحقاق</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
             </div>
           </div>
 
           {/* اختيار العميل */}
           <div style={{ background: '#f0f9ff', borderRadius: '12px', padding: '14px', border: '1px solid #bae6fd' }}>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">العميل <span className="text-red-500">*</span> — يجب اختيار عميل مضاف مسبقاً</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل <span className="text-red-500">*</span> — يجب اختيار عميل مضاف مسبقاً</label>
             <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
               <option value="">— اختر العميل —</option>
               {clients.filter(c => c.is_active).map(c => (
@@ -577,14 +577,14 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
               <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
                 <option value="">— بدون ربط —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المستخلص</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المستخلص</label>
               <input value={form.extract_ref} onChange={e => set('extract_ref', e.target.value)} className="input" />
             </div>
           </div>
@@ -594,20 +594,20 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">نسبة ضريبة القيمة المضافة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
                   <option value={15}>15% — المعيارية</option>
                   <option value={0}>0% — معفي</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['مسودة', 'مرسلة', 'مدفوعة', 'ملغاة'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
               </div>
             </div>
@@ -617,7 +617,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, onClose, 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving || !form.client_id} className="btn btn-primary">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {invoice ? 'حفظ التعديل' : 'إنشاء الفاتورة'}
           </button>
         </div>
@@ -742,7 +742,7 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
             <RotateCcw style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
             إنشاء إشعار دائن / مرتجع
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
@@ -761,17 +761,17 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الإشعار *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الإشعار *</label>
               <input value={form.note_number} onChange={e => set('note_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإشعار *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإشعار *</label>
               <input type="date" value={form.note_date} onChange={e => set('note_date', e.target.value)} className="input" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">العميل *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل *</label>
             <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
               <option value="">— اختر العميل —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -779,12 +779,12 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الفاتورة الأصلية (اختياري)</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الفاتورة الأصلية (اختياري)</label>
             <input value={form.original_invoice_id} onChange={e => set('original_invoice_id', e.target.value)} className="input" dir="ltr" placeholder="رقم الفاتورة الأصلية" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">سبب الإشعار *</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>سبب الإشعار *</label>
             <input value={form.reason} onChange={e => set('reason', e.target.value)} className="input" placeholder="مثال: خصم على الأسعار، إرجاع بضاعة، تصحيح خطأ..." />
           </div>
 
@@ -793,19 +793,19 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">نسبة ضريبة القيمة المضافة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
                   <option value={15}>15%</option><option value={0}>0% — معفي</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['مسودة', 'معتمد', 'مُطبَّق'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
               </div>
             </div>
@@ -815,7 +815,7 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
             إنشاء الإشعار
           </button>
         </div>
@@ -891,35 +891,35 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
             <ClipboardList style={{ width: '18px', height: '18px', color: '#0ea77b' }} />
             إنشاء عرض سعر جديد
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم العرض *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم العرض *</label>
               <input value={form.quote_number} onChange={e => set('quote_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ العرض *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ العرض *</label>
               <input type="date" value={form.quote_date} onChange={e => set('quote_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">صالح حتى</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>صالح حتى</label>
               <input type="date" value={form.valid_until} onChange={e => set('valid_until', e.target.value)} className="input" />
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">العميل *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل *</label>
               <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
                 <option value="">— اختر العميل —</option>
                 {clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">المشروع</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
               <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
                 <option value="">— بدون ربط —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -932,19 +932,19 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ضريبة القيمة المضافة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
                   <option value={15}>15%</option><option value={0}>0% — معفي</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['مسودة', 'مرسلة', 'مقبولة', 'مرفوضة', 'منتهية'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الشروط والأحكام</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الشروط والأحكام</label>
                 <textarea value={form.terms} onChange={e => set('terms', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} placeholder="شروط الدفع، ضمانات، ملاحظات..." />
               </div>
             </div>
@@ -954,7 +954,7 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ClipboardList style={{ width: '15px', height: '15px' }} />}
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <ClipboardList style={{ width: '15px', height: '15px' }} />}
             إنشاء عرض السعر
           </button>
         </div>
@@ -969,54 +969,81 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
 // ════════════════════════════════════════
 // مودال: إضافة دفعة
 // ════════════════════════════════════════
+type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: string }
+
 function PaymentModal({ invoice, tenantId, onClose, onSave }: {
   invoice: Invoice; tenantId: string; onClose: () => void; onSave: () => void
 }) {
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving]               = useState(false)
+  const [cashAccounts, setCashAccounts]   = useState<CashAccount[]>([])
   const [form, setForm] = useState({
-    amount: String(invoice.total_amount),
-    payment_date: new Date().toISOString().split('T')[0],
-    payment_method: 'تحويل بنكي',
-    reference: '',
-    notes: '',
+    amount:          String(invoice.total_amount),
+    payment_date:    new Date().toISOString().split('T')[0],
+    payment_method:  'تحويل بنكي',
+    cash_account_id: '',
+    reference:       '',
+    notes:           '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  useEffect(() => {
+    supabase.from('finance_cash_accounts')
+      .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
+      .then(({ data }) => setCashAccounts(data || []))
+  }, [])
+
+  const bankAccounts    = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
+  const cashBoxes       = cashAccounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
+  const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+
+  function getDebitAccountCode() {
+    if (selectedAccount?.account_id) return selectedAccount.account_id
+    if (form.payment_method === 'نقداً') return '1111'
+    return '1120'
+  }
+
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
+    if ((form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && !form.cash_account_id) {
+      toast.error('يجب تحديد الحساب البنكي'); return
+    }
+    if (form.payment_method === 'نقداً' && !form.cash_account_id) {
+      toast.error('يجب تحديد الصندوق'); return
+    }
     setSaving(true)
 
-    // إضافة للخزينة
+    const accountLabel = selectedAccount
+      ? `${selectedAccount.name}${selectedAccount.bank_name ? ' — ' + selectedAccount.bank_name : ''}`
+      : form.payment_method
+
     await supabase.from('finance_treasury').insert({
-      tenant_id: tenantId,
+      tenant_id:        tenantId,
       transaction_date: form.payment_date,
-      type: 'قبض',
-      amount: Number(form.amount),
-      description: 'تحصيل فاتورة ' + invoice.invoice_number + ' — ' + invoice.client_name,
-      reference_no: form.reference || null,
-      invoice_id: invoice.id,
+      type:             'قبض',
+      amount:           Number(form.amount),
+      description:      `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${form.payment_method}: ${accountLabel})`,
+      reference_no:     form.reference || null,
+      invoice_id:       invoice.id,
     })
 
-    // تحديث حالة الفاتورة للمدفوعة
     await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
 
-    // ══ قيد محاسبي تلقائي للتحصيل ══
     await createJournalEntry(tenantId, {
       date:          form.payment_date,
-      description:   `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name}`,
+      description:   `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${form.payment_method})`,
       referenceType: 'تحصيل فاتورة',
       referenceId:   invoice.id,
       lines: [
-        // مدين: الصندوق/البنك (المبلغ المحصّل)
-        { accountCode: '1111', debit: Number(form.amount), credit: 0, description: `تحصيل ${invoice.invoice_number}` },
-        // دائن: الذمم المدينة (تقفيل المديونية)
-        { accountCode: '1120', debit: 0, credit: Number(form.amount), description: `تسوية ${invoice.invoice_number}` },
+        { accountCode: getDebitAccountCode(), debit: Number(form.amount), credit: 0,                   description: `${form.payment_method} — ${accountLabel}` },
+        { accountCode: '1120',                debit: 0,                   credit: Number(form.amount), description: `تسوية ${invoice.invoice_number}` },
       ]
     })
 
     toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
     onSave(); setSaving(false)
   }
+
+  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -1025,36 +1052,117 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             💵 تسجيل دفعة — {invoice.invoice_number}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* ملخص الفاتورة */}
           <div style={{ padding: '12px 16px', background: '#ecfdf5', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', color: '#065f46' }}>إجمالي الفاتورة</span>
-            <span style={{ fontWeight: 700, color: '#0ea77b', fontSize: '1.1rem' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: '#065f46' }}>إجمالي الفاتورة</div>
+              <div style={{ fontSize: '0.75rem', color: '#065f46', marginTop: '2px' }}>{invoice.client_name}</div>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#0ea77b' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</span>
           </div>
+
+          {/* المبلغ والتاريخ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>المبلغ المدفوع <span style={{ color: '#c81e1e' }}>*</span></label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" min="0" dir="ltr" />
+            </div>
+            <div>
+              <label style={lbl}>تاريخ الدفع <span style={{ color: '#c81e1e' }}>*</span></label>
+              <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+            </div>
+          </div>
+
+          {/* طريقة الدفع */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">المبلغ المدفوع *</label>
-            <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" min="0" dir="ltr" />
+            <label style={lbl}>طريقة الدفع</label>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {[
+                { val: 'تحويل بنكي',    icon: '🏦' },
+                { val: 'نقداً',          icon: '💵' },
+                { val: 'شيك',           icon: '📝' },
+                { val: 'بطاقة ائتمانية', icon: '💳' },
+              ].map(m => (
+                <button key={m.val} type="button"
+                  onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
+                  style={{ flex: 1, minWidth: '90px', padding: '7px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
+                    borderColor: form.payment_method === m.val ? '#0ea77b' : 'var(--border)',
+                    background:  form.payment_method === m.val ? '#ecfdf5' : 'white',
+                    color:       form.payment_method === m.val ? '#0ea77b' : 'var(--text3)' }}>
+                  <div>{m.icon}</div>
+                  <div style={{ marginTop: '2px' }}>{m.val}</div>
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* الحساب البنكي */}
+          {(form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك' || form.payment_method === 'بطاقة ائتمانية') && (
+            <div>
+              <label style={lbl}>الحساب البنكي <span style={{ color: '#c81e1e' }}>*</span></label>
+              {bankAccounts.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ⚠️ لا توجد حسابات بنكية — أضفها من إعدادات الخزينة
+                </div>
+              ) : (
+                <>
+                  <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                    <option value="">— اختر الحساب البنكي —</option>
+                    {bankAccounts.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}{a.bank_name ? ` — ${a.bank_name}` : ''}{a.account_no ? ` (${a.account_no})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedAccount?.iban && (
+                    <div style={{ marginTop: '6px', fontSize: '0.75rem', color: 'var(--text3)', fontFamily: 'monospace' }}>
+                      IBAN: {selectedAccount.iban}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* الصندوق */}
+          {form.payment_method === 'نقداً' && (
+            <div>
+              <label style={lbl}>الصندوق <span style={{ color: '#c81e1e' }}>*</span></label>
+              {cashBoxes.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ⚠️ لا توجد صناديق — أضفها من إعدادات الخزينة
+                </div>
+              ) : (
+                <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                  <option value="">— اختر الصندوق —</option>
+                  {cashBoxes.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* رقم المرجع */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الدفع *</label>
-            <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
+            <label style={lbl}>
+              {form.payment_method === 'شيك' ? 'رقم الشيك' : 'رقم المرجع / التحويل'}
+            </label>
+            <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr"
+              placeholder={form.payment_method === 'شيك' ? 'رقم الشيك...' : 'رقم التحويل...'} />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">طريقة الدفع</label>
-            <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
-              {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية', 'أخرى'].map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم المرجع / التحويل</label>
-            <input value={form.reference} onChange={e => set('reference', e.target.value)} className="input" dir="ltr" placeholder="رقم التحويل أو الشيك" />
-          </div>
+
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : '💵'}
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : '💵'}
             تسجيل الدفعة
           </button>
         </div>
@@ -1086,7 +1194,7 @@ function InvoiceViewModal({ invoice, items, company, onClose, onPrint }: {
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 16px', borderRadius: '8px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
               <Printer style={{ width: '15px', height: '15px' }} /> طباعة / PDF
             </button>
-            <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
           </div>
         </div>
 
@@ -1381,7 +1489,7 @@ export default function FinanceInvoicesPage() {
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -1448,7 +1556,7 @@ export default function FinanceInvoicesPage() {
             </div>
           </div>
 
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : filteredInvoices.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1552,12 +1660,12 @@ export default function FinanceInvoicesPage() {
 
       {/* ══ تاب المرتجعات والإشعارات ══ */}
       {activeTab === 'credits' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', fontSize: '0.82rem', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <AlertCircle style={{ width: '16px', height: '16px', flexShrink: 0 }} />
             لا يمكن إلغاء الفواتير الصادرة — يجب إنشاء إشعار دائن أو مرتجع مبيعات لتصحيح أي خطأ
           </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : creditNotes.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <RotateCcw style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1601,8 +1709,8 @@ export default function FinanceInvoicesPage() {
 
       {/* ══ تاب عروض الأسعار ══ */}
       {activeTab === 'quotations' && (
-        <div className="space-y-4">
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : quotations.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <ClipboardList style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -1654,7 +1762,7 @@ export default function FinanceInvoicesPage() {
 
       {/* ══ تاب العملاء ══ */}
       {activeTab === 'clients' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ position: 'relative' }}>
               <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
@@ -1662,7 +1770,7 @@ export default function FinanceInvoicesPage() {
             </div>
             <span style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>{clients.length} عميل</span>
           </div>
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : clients.filter(c => !search || c.name.includes(search)).length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
