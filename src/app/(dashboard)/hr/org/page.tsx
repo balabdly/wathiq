@@ -37,6 +37,158 @@ type Employee = { id: number; name: string; role: string }
 const DIVISION_COLORS = ['#1a56db','#0ea77b','#e6820a','#c81e1e','#7c3aed','#0891b2','#be185d']
 
 // ══════════════════════════════════════
+// عرض الهيكل: جدول + شجرة
+// ══════════════════════════════════════
+function OrgStructureView({ divisions, ceoId, allEmployees }: {
+  divisions: Division[]
+  ceoId: number | null
+  allEmployees: Employee[]
+}) {
+  const [view, setView] = useState<'table' | 'tree'>('table')
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* مبدّل العرض */}
+      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '4px', borderRadius: '10px', width: 'fit-content' }}>
+        <button
+          onClick={() => setView('table')}
+          style={{
+            padding: '6px 18px', borderRadius: '7px', fontSize: '0.85rem', fontWeight: 600,
+            border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+            background: view === 'table' ? 'white' : 'transparent',
+            color: view === 'table' ? 'var(--primary)' : 'var(--text3)',
+            boxShadow: view === 'table' ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+          }}>
+          📋 جدول
+        </button>
+        <button
+          onClick={() => setView('tree')}
+          style={{
+            padding: '6px 18px', borderRadius: '7px', fontSize: '0.85rem', fontWeight: 600,
+            border: 'none', cursor: 'pointer', transition: 'all 0.2s',
+            background: view === 'tree' ? 'white' : 'transparent',
+            color: view === 'tree' ? 'var(--primary)' : 'var(--text3)',
+            boxShadow: view === 'tree' ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+          }}>
+          🌲 شجرة
+        </button>
+      </div>
+
+      {/* الجدول */}
+      {view === 'table' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {divisions.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🏢</div>
+              <p style={{ color: 'var(--text3)' }}>لا توجد إدارات بعد — أضف من تاب الإدارات</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['الإدارة', 'مدير الإدارة', 'القسم', 'مدير القسم', 'المسميات الوظيفية', 'عدد الموظفين'].map(h => (
+                      <th key={h} style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {divisions.map(div => {
+                    const depts = div.departments || []
+                    if (depts.length === 0) {
+                      return (
+                        <tr key={`div-${div.id}`} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: div.color, flexShrink: 0 }} />
+                              <span style={{ fontWeight: 700 }}>{div.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: 'var(--text3)' }}>{div.manager?.name || '—'}</td>
+                          <td style={{ padding: '12px 16px', color: 'var(--text3)', fontStyle: 'italic' }}>لا توجد أقسام</td>
+                          <td style={{ padding: '12px 16px' }}>—</td>
+                          <td style={{ padding: '12px 16px' }}>—</td>
+                          <td style={{ padding: '12px 16px' }}>—</td>
+                        </tr>
+                      )
+                    }
+                    return depts.map((dept, di) => {
+                      const titles = dept.job_titles || []
+                      const empCount = titles.reduce((s, t) => s + (t.employee_count || 0), 0)
+                      return (
+                        <tr key={`dept-${dept.id}`}
+                          style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          {di === 0 ? (
+                            <td style={{ padding: '12px 16px', verticalAlign: 'top' }} rowSpan={depts.length}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: div.color, flexShrink: 0 }} />
+                                <span style={{ fontWeight: 700 }}>{div.name}</span>
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px', paddingRight: '18px' }}>
+                                {depts.length} قسم
+                              </div>
+                            </td>
+                          ) : null}
+                          {di === 0 ? (
+                            <td style={{ padding: '12px 16px', verticalAlign: 'top', color: 'var(--text3)' }} rowSpan={depts.length}>
+                              {div.manager?.name || '—'}
+                            </td>
+                          ) : null}
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: div.color + '18', color: div.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <Building2 style={{ width: '13px', height: '13px' }} />
+                              </div>
+                              <span style={{ fontWeight: 600 }}>{dept.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 16px', color: 'var(--text3)' }}>
+                            {(dept.manager as any)?.name || '—'}
+                          </td>
+                          <td style={{ padding: '12px 16px' }}>
+                            {titles.length === 0 ? (
+                              <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>—</span>
+                            ) : (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {titles.map(t => (
+                                  <span key={t.id} style={{ background: div.color + '15', color: div.color, borderRadius: '12px', padding: '2px 10px', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                    {t.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                            {empCount > 0 ? (
+                              <span style={{ background: 'var(--primary-light)', color: 'var(--primary)', borderRadius: '20px', padding: '3px 12px', fontSize: '0.78rem', fontWeight: 700 }}>
+                                {empCount}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text3)' }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* الشجرة */}
+      {view === 'tree' && (
+        <OrgChart divisions={divisions} ceoId={ceoId} allEmployees={allEmployees} />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
 // Org Chart SVG
 // ══════════════════════════════════════
 function OrgChart({ divisions, ceoId, allEmployees }: {
@@ -355,9 +507,9 @@ export default function OrgStructurePage() {
         </div>
       ) : (
         <>
-          {/* المخطط التنظيمي */}
+          {/* الهيكل التنظيمي: جدول + شجرة */}
           {activeTab === 'chart' && (
-            <OrgChart divisions={divisions} ceoId={ceoId} allEmployees={employees} />
+            <OrgStructureView divisions={divisions} ceoId={ceoId} allEmployees={employees} />
           )}
 
           {/* المدير التنفيذي */}
