@@ -87,6 +87,31 @@ function SubLink({ href, label, icon, active }: {
   )
 }
 
+// رابط مباشر بنفس تنسيق NavSection لكن بدون toggle
+function NavDirectLink({ href, label, icon, active }: {
+  href: string; label: string; icon: string; active: boolean
+}) {
+  return (
+    <Link href={href} style={{ textDecoration: 'none' }}>
+      <div style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '12px 16px', cursor: 'pointer',
+        background: active ? C.groupOpenBg : 'transparent',
+        borderBottom: '1px solid ' + C.border,
+        transition: 'background 0.2s',
+      }}
+        onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = C.hoverBg }}
+        onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+      >
+        <span style={{ flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: 700, color: C.textPrimary }}>
+          {label}
+        </span>
+        <Icon d={icon} size={18} color={C.textMuted} />
+      </div>
+    </Link>
+  )
+}
+
 function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
   label: string; icon: string
   isActive: boolean; isOpen: boolean
@@ -288,7 +313,7 @@ export default function Sidebar() {
         )}
 
         {hasInventory && (
-          <SubLink href="/inventory" label="🏗️ المخزون" icon={IC.inventory} active={pathname.startsWith('/inventory')} />
+          <NavDirectLink href="/inventory" label="المخزون" icon={IC.inventory} active={pathname.startsWith('/inventory')} />
         )}
 
         {hasQHSE && (
