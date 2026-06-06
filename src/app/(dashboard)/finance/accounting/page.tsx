@@ -1,4 +1,5 @@
 'use client'
+import AccountsTree from "@/components/accounting/AccountsTree";
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
@@ -200,7 +201,13 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
               </label>
             </div>
           </div>
-
+export default function AccountingPage() {
+  return (
+    <div className="p-6">
+      <AccountsTree />
+    </div>
+  );
+}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
