@@ -810,6 +810,113 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
 }
 
 // ════════════════════════════════════════
+// دليل معايير شجرة الحسابات
+// ════════════════════════════════════════
+function StandardsGuide() {
+  const cats = [
+    {
+      code: '1', title: 'الأصول', color: '#1a56db', bg: '#eff6ff',
+      desc: 'جميع الموارد التي تمتلكها الشركة والتي تُتوقع منها منافع اقتصادية مستقبلية',
+      items: [
+        { code: '11', name: 'الأصول المتداولة',      desc: 'النقدية، العملاء، المخزون، المدفوعات المقدمة' },
+        { code: '12', name: 'الأصول الثابتة',        desc: 'المباني، الآليات، المعدات، الأثاث' },
+        { code: '13', name: 'الأصول غير الملموسة',   desc: 'البرامج، براءات الاختراع، العلامات التجارية' },
+      ]
+    },
+    {
+      code: '2', title: 'الخصوم', color: '#c81e1e', bg: '#fef2f2',
+      desc: 'الالتزامات المالية المستحقة على الشركة تجاه الغير',
+      items: [
+        { code: '21', name: 'الخصوم المتداولة',      desc: 'الموردون، المصاريف المستحقة، الديون قصيرة الأجل' },
+        { code: '22', name: 'الخصوم طويلة الأجل',    desc: 'القروض البنكية، الديون طويلة الأجل' },
+      ]
+    },
+    {
+      code: '3', title: 'حقوق الملكية', color: '#0ea77b', bg: '#ecfdf5',
+      desc: 'حقوق المساهمين وصافي أصول الشركة بعد خصم الالتزامات',
+      items: [
+        { code: '31', name: 'رأس المال',             desc: 'رأس المال المدفوع والاحتياطيات' },
+        { code: '32', name: 'الأرباح المبقاة',        desc: 'الأرباح غير الموزعة من السنوات السابقة' },
+      ]
+    },
+    {
+      code: '4', title: 'الإيرادات', color: '#0891b2', bg: '#f0f9ff',
+      desc: 'الدخل الناتج عن الأنشطة التشغيلية وغير التشغيلية للشركة',
+      items: [
+        { code: '41', name: 'إيرادات العقود',         desc: 'الإيرادات من عقود المشاريع والخدمات' },
+        { code: '42', name: 'إيرادات أخرى',           desc: 'الفوائد، الأرباح، الإيرادات المتنوعة' },
+      ]
+    },
+    {
+      code: '5', title: 'تكلفة الإيرادات', color: '#e6820a', bg: '#fffbeb',
+      desc: 'التكاليف المباشرة المرتبطة بتنفيذ المشاريع وتقديم الخدمات',
+      items: [
+        { code: '51', name: 'تكلفة العمالة',          desc: 'رواتب ومستحقات العمالة المباشرة' },
+        { code: '52', name: 'تكلفة المواد',            desc: 'مواد البناء والتشغيل المستخدمة في المشاريع' },
+        { code: '53', name: 'تكلفة المقاولين',         desc: 'مدفوعات المقاولين من الباطن' },
+      ]
+    },
+    {
+      code: '6', title: 'المصروفات', color: '#6b7280', bg: '#f9fafb',
+      desc: 'التكاليف الإدارية والتشغيلية غير المرتبطة مباشرة بالمشاريع',
+      items: [
+        { code: '61', name: 'المصروفات الإدارية',      desc: 'الرواتب الإدارية، الإيجارات، المرافق' },
+        { code: '62', name: 'مصروفات التسويق',         desc: 'الإعلانات، العلاقات العامة' },
+        { code: '63', name: 'المصروفات المالية',        desc: 'الفوائد، رسوم البنوك' },
+      ]
+    },
+  ]
+
+  return (
+    <div style={{ maxWidth: '860px' }}>
+      <div className="card" style={{ padding: '28px' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1a1a2e', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          📋 دليل معايير شجرة الحسابات
+        </h2>
+        <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginBottom: '24px' }}>
+          الهيكل المحاسبي الموحد للشركة وفق المعايير المهنية
+        </p>
+
+        {cats.map(cat => (
+          <div key={cat.code} style={{ marginBottom: '16px', border: `1px solid ${cat.color}30`, borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ background: cat.bg, padding: '12px 16px', borderBottom: `1px solid ${cat.color}20`, display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: cat.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 800, fontSize: '1rem', flexShrink: 0 }}>
+                {cat.code}
+              </div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: cat.color }}>{cat.title}</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '2px' }}>{cat.desc}</div>
+              </div>
+            </div>
+            <div>
+              {cat.items.map((item, i) => (
+                <div key={item.code} style={{
+                  display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px',
+                  borderBottom: i < cat.items.length - 1 ? '1px solid var(--bg2)' : 'none',
+                  background: 'white'
+                }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.82rem', color: cat.color, background: cat.bg, padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
+                    {item.code}
+                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{item.name}</div>
+                    <div style={{ fontSize: '0.73rem', color: 'var(--text3)', marginTop: '1px' }}>{item.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px', padding: '12px 14px', fontSize: '0.8rem', color: '#92400e', lineHeight: 1.7 }}>
+          <strong>ملاحظة:</strong> لإضافة حسابات تفصيلية أو تعديل الشجرة، استخدم تاب <strong>شجرة الحسابات</strong>.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
 export default function FinanceAccountingPage() {
@@ -820,6 +927,7 @@ export default function FinanceAccountingPage() {
     { id: 'chart',       label: '📊 شجرة الحسابات',  color: '#1a56db' },
     { id: 'journal',     label: '📒 القيود اليومية',  color: '#0ea77b' },
     { id: 'costcenters', label: '🎯 مراكز التكلفة',   color: '#e6820a' },
+    { id: 'standards',   label: '📋 دليل المعايير',   color: '#7c3aed' },
   ]
 
   return (
@@ -851,6 +959,7 @@ export default function FinanceAccountingPage() {
           {activeTab === 'chart'       && <ChartOfAccounts tenantId={tenant.id} />}
           {activeTab === 'journal'     && <JournalEntriesTab tenantId={tenant.id} />}
           {activeTab === 'costcenters' && <CostCentersTab tenantId={tenant.id} />}
+          {activeTab === 'standards'   && <StandardsGuide />}
         </>
       )}
     </div>
