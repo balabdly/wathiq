@@ -208,13 +208,25 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       const expAccountCode =
         payload.expense_type === 'مشاريع' ? '5012'
         : payload.expense_type === 'تشغيلي' ? '5300'
-        : '5300'
+        : '5300'  // افتراضي لأي نوع آخر
 
       // الحساب الدائن: الحساب البنكي / الصندوق المختار
       let creditAccountCode = '1111' // الصندوق افتراضي
       if (form.cash_account_id) {
-        const { data: ca } = await supabase.from('finance_cash_accounts').select('account_id').eq('id', Number(form.cash_account_id)).single()
-        if (ca?.account_id) creditAccountCode = ca.account_id
+        const { data: ca } = await supabase
+          .from('finance_cash_accounts')
+          .select('account_id')
+          .eq('id', Number(form.cash_account_id))
+          .single()
+        if (ca?.account_id) {
+          // نجلب كود الحساب من finance_accounts
+          const { data: acc } = await supabase
+            .from('finance_accounts')
+            .select('code')
+            .eq('id', ca.account_id)
+            .single()
+          if (acc?.code) creditAccountCode = acc.code
+        }
       }
 
       await createJournalEntry(tenantId, {
@@ -223,8 +235,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         referenceType: 'مصروف',
         referenceId:   newExpenseId,
         lines: [
-          { accountCode: expAccountCode,    debit: payload.total_amount, credit: 0,                    description: payload.description },
-          { accountCode: creditAccountCode, debit: 0,                    credit: payload.total_amount, description: `صرف مصروف ${payload.category} (${form.payment_method})` },
+          { accountCode: expAccountCode,    debit: total, credit: 0,     description: payload.description },
+          { accountCode: creditAccountCode, debit: 0,     credit: total, description: `صرف مصروف ${payload.category} (${form.payment_method})` },
         ]
       })
     }
@@ -472,7 +484,7 @@ export default function FinanceExpensesPage() {
     setLoading(true)
     const [expRes, accRes, ccRes, projRes, venRes] = await Promise.all([
       supabase.from('finance_expenses')
-        .select('*, account:finance_accounts(code,name), cost_center:finance_cost_centers(name), project:projects(name), vendor:finance_vendors(name)')
+        .select('*, project:projects(name), vendor:finance_vendors(name)')
         .eq('tenant_id', tenant.id)
         .order('expense_date', { ascending: false }),
       supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
