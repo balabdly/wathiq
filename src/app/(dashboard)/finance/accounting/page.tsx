@@ -1,9 +1,8 @@
 'use client'
-import AccountsTree from "@/components/accounting/AccountsTree";
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, Search, BookOpen, Layers, Target } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Layers, Target } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ════════════════════════════════════════
@@ -42,28 +41,16 @@ const ACCOUNT_TYPE_COLOR: Record<string, string> = {
   'إيرادات': '#0ea77b', 'تكلفة': '#e6820a', 'مصروفات': '#6b7280'
 }
 
-// ════════════════════════════════════════
-// بناء الشجرة من قائمة مسطحة
-// ════════════════════════════════════════
-function buildTree(accounts: Account[]): Account[] {
-  const map = new Map<number, Account>()
-  accounts.forEach(a => map.set(a.id, { ...a, children: [] }))
-  const roots: Account[] = []
-  map.forEach(a => {
-    if (a.parent_id && map.has(a.parent_id)) {
-      map.get(a.parent_id)!.children!.push(a)
-    } else {
-      roots.push(a)
-    }
-  })
-  // ترتيب حسب الكود
-  const sort = (arr: Account[]) => {
-    arr.sort((a, b) => a.code.localeCompare(b.code))
-    arr.forEach(a => a.children && sort(a.children))
-  }
-  sort(roots)
-  return roots
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: '0.875rem', fontWeight: 600,
+  color: 'var(--text)', marginBottom: '6px'
 }
+
+const Spinner = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
+    <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+  </div>
+)
 
 // ════════════════════════════════════════
 // مودال: إضافة / تعديل حساب
@@ -87,7 +74,6 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  // تحديد normal_balance تلقائياً حسب نوع الحساب
   function handleTypeChange(type: string) {
     const balance = ['أصول', 'تكلفة', 'مصروفات'].includes(type) ? 'مدين' : 'دائن'
     const cls = ['أصول', 'خصوم', 'حقوق ملكية'].includes(type) ? 'ميزانية' : 'دخل'
@@ -133,29 +119,30 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
             <BookOpen style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {account ? 'تعديل الحساب' : 'إضافة حساب جديد'}
           </h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رمز الحساب *</label>
+              <label style={labelStyle}>رمز الحساب <span style={{ color: '#c81e1e' }}>*</span></label>
               <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr" placeholder="مثال: 6310" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الحساب (عربي) *</label>
+              <label style={labelStyle}>اسم الحساب (عربي) <span style={{ color: '#c81e1e' }}>*</span></label>
               <input value={form.name} onChange={e => set('name', e.target.value)} className="input" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الحساب (إنجليزي)</label>
+            <label style={labelStyle}>اسم الحساب (إنجليزي)</label>
             <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" />
           </div>
 
-          {/* نوع الحساب */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الحساب *</label>
+            <label style={labelStyle}>نوع الحساب <span style={{ color: '#c81e1e' }}>*</span></label>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات'].map(t => (
                 <button key={t} type="button" onClick={() => handleTypeChange(t)}
@@ -169,22 +156,19 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
             </div>
           </div>
 
-          {/* الحساب الأب */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">الحساب الأب</label>
+            <label style={labelStyle}>الحساب الأب</label>
             <select value={form.parent_id} onChange={e => set('parent_id', e.target.value)} className="select">
               <option value="">— حساب رئيسي (بدون أب) —</option>
               {parentAccounts.map(a => (
-                <option key={a.id} value={a.id}>
-                  {'—'.repeat(a.level - 1)} {a.code} — {a.name}
-                </option>
+                <option key={a.id} value={a.id}>{'—'.repeat(a.level - 1)} {a.code} — {a.name}</option>
               ))}
             </select>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الرصيد الطبيعي</label>
+              <label style={labelStyle}>الرصيد الطبيعي</label>
               <select value={form.normal_balance} onChange={e => set('normal_balance', e.target.value)} className="select">
                 <option value="مدين">مدين (Dr)</option>
                 <option value="دائن">دائن (Cr)</option>
@@ -201,22 +185,18 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
               </label>
             </div>
           </div>
-export default function AccountingPage() {
-  return (
-    <div className="p-6">
-      <AccountsTree />
-    </div>
-  );
-}
+
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+            <label style={labelStyle}>ملاحظات</label>
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
           </div>
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary">
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : <Save style={{ width: '15px', height: '15px' }} />}
             {account ? 'حفظ التعديل' : 'إضافة الحساب'}
           </button>
         </div>
@@ -229,14 +209,12 @@ export default function AccountingPage() {
 // تاب شجرة الحسابات — Drill-Down
 // ════════════════════════════════════════
 function ChartOfAccounts({ tenantId }: { tenantId: string }) {
-  const [accounts, setAccounts]   = useState<Account[]>([])
-  const [loading,  setLoading]    = useState(true)
-  const [showModal, setShowModal] = useState(false)
+  const [accounts, setAccounts]         = useState<Account[]>([])
+  const [loading,  setLoading]          = useState(true)
+  const [showModal, setShowModal]       = useState(false)
   const [editAccount, setEditAccount]   = useState<Account | null>(null)
   const [parentForNew, setParentForNew] = useState<Account | null>(null)
-
-  // مسار التنقل (breadcrumb)
-  const [path, setPath] = useState<Account[]>([])
+  const [path, setPath]                 = useState<Account[]>([])
 
   useEffect(() => { loadAccounts() }, [])
 
@@ -247,7 +225,6 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     setLoading(false)
   }
 
-  // الحسابات الظاهرة حالياً (أبناء الحساب المحدد أو الجذور)
   const currentParentId = path.length > 0 ? path[path.length - 1].id : null
   const currentAccounts = accounts
     .filter(a => currentParentId ? a.parent_id === currentParentId : !a.parent_id)
@@ -258,9 +235,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     if (hasChildren) setPath(p => [...p, account])
   }
 
-  function goTo(idx: number) {
-    setPath(p => p.slice(0, idx))
-  }
+  function goTo(idx: number) { setPath(p => p.slice(0, idx)) }
 
   async function handleDelete(account: Account) {
     const hasChildren = accounts.some(a => a.parent_id === account.id)
@@ -270,7 +245,6 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     await loadAccounts(); toast.success('تم الحذف')
   }
 
-  // إحصائيات
   const stats = {
     total:   accounts.length,
     active:  accounts.filter(a => a.is_active).length,
@@ -284,7 +258,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
       {/* إحصائيات */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
@@ -303,7 +277,6 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
 
       {/* شريط الأدوات */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
           <button onClick={() => setPath([])}
             style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: path.length === 0 ? 'var(--primary)' : 'white', color: path.length === 0 ? 'white' : 'var(--text3)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -325,10 +298,9 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
         </button>
       </div>
 
-      {/* الشجرة */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
-      ) : currentAccounts.length === 0 ? (
+      {/* الجدول */}
+      {loading ? <Spinner />
+      : currentAccounts.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
           <p style={{ color: 'var(--text3)' }}>لا توجد حسابات في هذا المستوى</p>
@@ -354,18 +326,11 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                       onClick={() => hasChildren && drillDown(account)}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-
-                      {/* الرمز */}
                       <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          {/* أيقونة المستوى */}
-                          <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.82rem', color }}>{account.code}</span>
-                          </div>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: color + '15', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.82rem', color }}>{account.code}</span>
                         </div>
                       </td>
-
-                      {/* الاسم */}
                       <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div>
@@ -383,25 +348,17 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                           )}
                         </div>
                       </td>
-
-                      {/* النوع */}
                       <td style={{ padding: '14px 16px' }}>
                         <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '20px', fontWeight: 600, background: color + '15', color }}>
                           {account.account_type}
                         </span>
                       </td>
-
-                      {/* الرصيد الطبيعي */}
                       <td style={{ padding: '14px 16px', fontSize: '0.82rem', color: account.normal_balance === 'مدين' ? '#1a56db' : '#c81e1e', fontWeight: 600 }}>
                         {account.normal_balance === 'مدين' ? 'مدين (Dr)' : 'دائن (Cr)'}
                       </td>
-
-                      {/* التصنيف */}
                       <td style={{ padding: '14px 16px', fontSize: '0.78rem', color: 'var(--text3)' }}>
                         {account.account_class}
                       </td>
-
-                      {/* الإجراءات */}
                       <td style={{ padding: '14px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           {hasChildren && (
@@ -479,7 +436,7 @@ function CostCentersTab({ tenantId }: { tenantId: string }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {!showForm && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowForm(true)} className="btn btn-primary">
@@ -496,28 +453,28 @@ function CostCentersTab({ tenantId }: { tenantId: string }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الرمز *</label>
+              <label style={labelStyle}>الرمز <span style={{ color: '#c81e1e' }}>*</span></label>
               <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr" placeholder="مثال: CC-001" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم *</label>
+              <label style={labelStyle}>الاسم <span style={{ color: '#c81e1e' }}>*</span></label>
               <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: مشروع أرامكو" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">النوع</label>
+              <label style={labelStyle}>النوع</label>
               <select value={form.type} onChange={e => set('type', e.target.value)} className="select">
                 {['مشروع', 'قسم إداري', 'فرع', 'نشاط'].map(t => <option key={t}>{t}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ربط بمشروع</label>
+              <label style={labelStyle}>ربط بمشروع</label>
               <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
                 <option value="">— بدون ربط —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <label style={labelStyle}>ملاحظات</label>
               <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
             </div>
           </div>
@@ -528,7 +485,7 @@ function CostCentersTab({ tenantId }: { tenantId: string }) {
         </div>
       )}
 
-      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+      {loading ? <Spinner />
       : centers.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <Target style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -627,7 +584,7 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
 
   async function handleSave() {
     if (!form.description.trim()) { toast.error('وصف القيد مطلوب'); return }
-    if (!isBalanced) { toast.error('القيد غير متوازن — يجب أن يتساوى المدين والدائن'); return }
+    if (!isBalanced) { toast.error('القيد غير متوازن'); return }
     if (lines.some(l => !l.account_id)) { toast.error('اختر حساباً لكل سطر'); return }
 
     const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
@@ -658,7 +615,7 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
   const leafAccounts = accounts.filter(a => !a.is_parent)
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {!showForm && (
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowForm(true)} className="btn btn-primary">
@@ -676,15 +633,15 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '12px', marginBottom: '16px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">التاريخ *</label>
+              <label style={labelStyle}>التاريخ <span style={{ color: '#c81e1e' }}>*</span></label>
               <input type="date" value={form.entry_date} onChange={e => setF('entry_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الوصف / البيان *</label>
+              <label style={labelStyle}>الوصف / البيان <span style={{ color: '#c81e1e' }}>*</span></label>
               <input value={form.description} onChange={e => setF('description', e.target.value)} className="input" placeholder="مثال: استلام دفعة من العميل..." />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <label style={labelStyle}>الحالة</label>
               <select value={form.status} onChange={e => setF('status', e.target.value)} className="select">
                 <option value="معتمد">معتمد</option>
                 <option value="مسودة">مسودة</option>
@@ -771,7 +728,7 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
       )}
 
       {/* قائمة القيود */}
-      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+      {loading ? <Spinner />
       : entries.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
@@ -860,19 +817,19 @@ export default function FinanceAccountingPage() {
   const [activeTab, setActiveTab] = useState<'chart' | 'journal' | 'costcenters'>('chart')
 
   const TABS = [
-    { id: 'chart',       label: '📊 شجرة الحسابات',   color: '#1a56db' },
-    { id: 'journal',     label: '📒 القيود اليومية',   color: '#0ea77b' },
-    { id: 'costcenters', label: '🎯 مراكز التكلفة',    color: '#e6820a' },
+    { id: 'chart',       label: '📊 شجرة الحسابات',  color: '#1a56db' },
+    { id: 'journal',     label: '📒 القيود اليومية',  color: '#0ea77b' },
+    { id: 'costcenters', label: '🎯 مراكز التكلفة',   color: '#e6820a' },
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
-        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
           <Layers style={{ width: '20px', height: '20px', color: 'var(--primary)' }} />
           الحسابات العامة
         </h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '4px' }}>
           شجرة الحسابات — القيود اليومية — مراكز التكلفة
         </p>
       </div>
