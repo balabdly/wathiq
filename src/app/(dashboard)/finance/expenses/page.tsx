@@ -204,14 +204,21 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
     // ══ قيد محاسبي تلقائي للمصروف المدفوع ══
     if (payload.status === 'مدفوع' && !expense && newExpenseId) {
-      // الحساب المدين: حسب نوع المصروف
+      // الحساب المدين: حسب نوع وفئة المصروف
+      const cat = payload.category || ''
+      const typ = payload.expense_type || ''
+
       const expAccountCode =
-        payload.expense_type === 'مشاريع' ? '5012'
-        : payload.expense_type === 'تشغيلي' ? '5300'
-        : '5300'  // افتراضي لأي نوع آخر
+        typ === 'مشاريع'
+          ? (cat.includes('عمالة') ? '5110' : cat.includes('مقاول') ? '5130' : cat.includes('موقع') ? '5140' : '5120')
+        : typ === 'إداري'
+          ? (cat.includes('إيجار') ? '5310' : cat.includes('تسويق') ? '5340' : cat.includes('صيانة') ? '5330' : '5320')
+        : typ === 'تشغيلي'
+          ? (cat.includes('مركبة') || cat.includes('سيارة') ? '5410' : cat.includes('بنك') ? '5510' : '5320')
+        : '5800'  // مصروفات أخرى
 
       // الحساب الدائن: الحساب البنكي / الصندوق المختار
-      let creditAccountCode = '1111' // الصندوق افتراضي
+      let creditAccountCode = '1111'
       if (form.cash_account_id) {
         const { data: ca } = await supabase
           .from('finance_cash_accounts')
@@ -219,7 +226,6 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           .eq('id', Number(form.cash_account_id))
           .single()
         if (ca?.account_id) {
-          // نجلب كود الحساب من finance_accounts
           const { data: acc } = await supabase
             .from('finance_accounts')
             .select('code')
