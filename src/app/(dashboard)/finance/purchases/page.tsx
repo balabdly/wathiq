@@ -1795,6 +1795,19 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                               style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer' }}>
                               <Printer style={{ width: '13px', height: '13px' }} />
                             </button>
+                            {/* اعتماد — مسودة فقط */}
+                            {inv.status === 'مسودة' && (
+                              <button
+                                onClick={async () => {
+                                  await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
+                                  toast.success('✅ تم اعتماد الفاتورة')
+                                  loadAll()
+                                }}
+                                title="اعتماد الفاتورة"
+                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                ✓ اعتماد
+                              </button>
+                            )}
                             {/* تعديل — مسودة فقط */}
                             {inv.status === 'مسودة' && (
                               <button onClick={() => { setEditInv(inv); setShowInvModal(true) }} className="btn btn-ghost btn-xs">
@@ -1804,8 +1817,8 @@ ${inv.notes ? '<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;
                             {/* دفع — معتمدة فقط */}
                             {inv.status === 'معتمدة' && (
                               <button onClick={() => { setPayInvoice(inv); setShowPayModal(true) }} title="تسجيل دفعة"
-                                style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
-                                💸
+                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                💸 دفع
                               </button>
                             )}
                             {/* مرتجع — غير مسودة */}
