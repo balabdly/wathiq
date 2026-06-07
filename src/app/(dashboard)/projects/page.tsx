@@ -64,6 +64,256 @@ function getCurrentStage(p: Project) {
 }
 
 // ══════════════════════════════════════
+// مودال إدارة الجهات
+// ══════════════════════════════════════
+function ClientManagerModal({ tenantId, customClients, onClose, onSave }: {
+  tenantId: string
+  customClients: string[]
+  onClose: () => void
+  onSave: (clients: string[]) => void
+}) {
+  const [clients, setClients] = useState<string[]>(customClients)
+  const [newName, setNewName] = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  async function handleAdd() {
+    const name = newName.trim()
+    if (!name) { toast.error('أدخل اسم الجهة'); return }
+    if (clients.includes(name)) { toast.error('الجهة موجودة مسبقاً'); return }
+    const { error } = await supabase.from('project_custom_clients').insert({ tenant_id: tenantId, name })
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    const updated = [...clients, name]
+    setClients(updated)
+    setNewName('')
+    toast.success('✅ تمت الإضافة')
+  }
+
+  async function handleDelete(name: string) {
+    if (!confirm(`حذف جهة "${name}"؟`)) return
+    await supabase.from('project_custom_clients').delete().eq('tenant_id', tenantId).eq('name', name)
+    setClients(c => c.filter(x => x !== name))
+    toast.success('تم الحذف')
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>🏢 إدارة الجهات</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* الجهات الافتراضية */}
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الجهات الافتراضية (غير قابلة للحذف)</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {CLIENTS.map(c => (
+                <span key={c} style={{ background: '#f3f4f6', color: '#6b7280', borderRadius: '20px', padding: '3px 12px', fontSize: '0.78rem' }}>{c}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* الجهات المخصصة */}
+          {clients.length > 0 && (
+            <div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الجهات المضافة</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {clients.map(c => (
+                  <div key={c} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1a56db' }}>{c}</span>
+                    <button onClick={() => handleDelete(c)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '2px' }}>
+                      <X style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* إضافة جديدة */}
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '6px', fontWeight: 600 }}>إضافة جهة جديدة</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                className="input"
+                placeholder="اسم الجهة..."
+                style={{ flex: 1 }}
+              />
+              <button onClick={handleAdd} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                <Plus style={{ width: '15px', height: '15px' }} /> إضافة
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={() => onSave(clients)} className="btn btn-primary">حفظ وإغلاق</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// مودال إدارة الحالات
+// ══════════════════════════════════════
+const DEFAULT_STATUS_OPTIONS = [
+  { icon: '📋', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
+  { icon: '🔄', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
+  { icon: '⚠️', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5' },
+  { icon: '✅', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac' },
+  { icon: '🚫', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d' },
+  { icon: '⏸️', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+  { icon: '🎯', color: '#0891b2', bg: '#f0f9ff', border: '#bae6fd' },
+]
+
+function StatusManagerModal({ tenantId, columns, onClose, onSave }: {
+  tenantId: string
+  columns: typeof COLUMNS
+  onClose: () => void
+  onSave: (cols: typeof COLUMNS) => void
+}) {
+  const [cols,    setCols]    = useState([...columns])
+  const [newLabel,setNewLabel]= useState('')
+  const [newIcon, setNewIcon] = useState('📋')
+  const [newColor,setNewColor]= useState('#6b7280')
+  const [saving,  setSaving]  = useState(false)
+
+  async function handleSaveAll() {
+    setSaving(true)
+    // حذف القديم وإدخال الجديد
+    await supabase.from('project_custom_statuses').delete().eq('tenant_id', tenantId)
+    if (cols.length > 0) {
+      await supabase.from('project_custom_statuses').insert(
+        cols.map((c, i) => ({
+          tenant_id:  tenantId,
+          id_key:     c.id,
+          label:      c.label,
+          icon:       c.icon,
+          color:      c.color,
+          bg:         c.bg,
+          border:     c.border,
+          sort_order: i,
+        }))
+      )
+    }
+    toast.success('✅ تم حفظ الحالات')
+    setSaving(false)
+    onSave(cols)
+  }
+
+  function handleRename(idx: number, newLabel: string) {
+    setCols(prev => prev.map((c, i) => i === idx ? { ...c, label: newLabel, id: newLabel } : c))
+  }
+
+  function handleDelete(idx: number) {
+    if (cols.length <= 2) { toast.error('يجب أن تبقى حالتان على الأقل'); return }
+    setCols(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  function handleAdd() {
+    const label = newLabel.trim()
+    if (!label) { toast.error('أدخل اسم الحالة'); return }
+    if (cols.find(c => c.label === label)) { toast.error('الحالة موجودة'); return }
+    // اختيار bg وborder تلقائياً من اللون
+    setCols(prev => [...prev, {
+      id:     label,
+      label:  label,
+      icon:   newIcon,
+      color:  newColor,
+      bg:     newColor + '18',
+      border: newColor + '60',
+    }])
+    setNewLabel('')
+    toast.success('تمت الإضافة')
+  }
+
+  const COLOR_OPTIONS = ['#6b7280','#1a56db','#c81e1e','#0ea77b','#e6820a','#7c3aed','#0891b2','#be185d']
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>🎛️ إدارة حالات المشاريع</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* الحالات الحالية */}
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الحالات الحالية — اضغط على الاسم لتعديله</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {cols.map((col, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: col.bg, borderRadius: '8px', border: `1px solid ${col.border}` }}>
+                  <span style={{ fontSize: '1rem', flexShrink: 0 }}>{col.icon}</span>
+                  <input
+                    value={col.label}
+                    onChange={e => handleRename(idx, e.target.value)}
+                    style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontWeight: 700, fontSize: '0.875rem', color: col.color, cursor: 'text' }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>اسحب لإعادة الترتيب</span>
+                  <button onClick={() => handleDelete(idx)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '2px', flexShrink: 0 }}>
+                    <X style={{ width: '14px', height: '14px' }} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* إضافة حالة جديدة */}
+          <div style={{ background: 'var(--bg2)', borderRadius: '10px', padding: '14px' }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '10px', fontWeight: 600 }}>إضافة حالة جديدة</div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+              {DEFAULT_STATUS_OPTIONS.map(o => (
+                <button key={o.icon} type="button" onClick={() => setNewIcon(o.icon)}
+                  style={{ width: '32px', height: '32px', borderRadius: '8px', border: `2px solid ${newIcon === o.icon ? o.color : 'var(--border)'}`, background: newIcon === o.icon ? o.bg : 'white', cursor: 'pointer', fontSize: '1rem' }}>
+                  {o.icon}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              {COLOR_OPTIONS.map(c => (
+                <button key={c} type="button" onClick={() => setNewColor(c)}
+                  style={{ width: '24px', height: '24px', borderRadius: '50%', background: c, border: newColor === c ? '3px solid #1a1a2e' : '2px solid transparent', cursor: 'pointer' }} />
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={newLabel}
+                onChange={e => setNewLabel(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                className="input" placeholder="اسم الحالة..."
+                style={{ flex: 1 }}
+              />
+              <button onClick={handleAdd} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                <Plus style={{ width: '15px', height: '15px' }} /> إضافة
+              </button>
+            </div>
+          </div>
+
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSaveAll} disabled={saving} className="btn btn-primary">
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : null}
+            حفظ الحالات
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
 // مودال إضافة ملاحظة
 // ══════════════════════════════════════
 function NoteModal({ project, onClose, onSave }: {
@@ -491,6 +741,7 @@ export default function ProjectsPage() {
   const now = new Date(); now.setHours(0, 0, 0, 0)
 
   // قائمة الجهات الموجودة فعلاً في المشاريع
+  const allClients = Array.from(new Set([...CLIENTS, ...customClients])) as string[]
   const existingClients = Array.from(
     new Set(projects.map(p => (p as any).client).filter(Boolean))
   ) as string[]
@@ -533,9 +784,19 @@ export default function ProjectsPage() {
           <p style={{ color: '#9ca3af', fontSize: '0.875rem', marginTop: '2px' }}>{filtered.length} مشروع</p>
         </div>
         {canEdit && (
-          <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={() => setShowClientModal(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: '2px solid var(--primary)', background: 'white', color: 'var(--primary)', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              <Plus style={{ width: '15px', height: '15px' }} /> إضافة جهة
+            </button>
+            <button onClick={() => setShowStatusModal(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: '2px solid #7c3aed', background: 'white', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+              <Plus style={{ width: '15px', height: '15px' }} /> إضافة حالة
+            </button>
+            <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
+            </button>
+          </div>
         )}
       </div>
 
@@ -830,6 +1091,26 @@ export default function ProjectsPage() {
       )}
 
       {/* مودال المشروع */}
+      {/* مودال إضافة جهة */}
+      {showClientModal && (
+        <ClientManagerModal
+          tenantId={tenant!.id}
+          customClients={customClients}
+          onClose={() => setShowClientModal(false)}
+          onSave={(clients) => { setCustomClients(clients); setShowClientModal(false) }}
+        />
+      )}
+
+      {/* مودال إدارة الحالات */}
+      {showStatusModal && (
+        <StatusManagerModal
+          tenantId={tenant!.id}
+          columns={customColumns}
+          onClose={() => setShowStatusModal(false)}
+          onSave={(cols) => { setCustomColumns(cols); setShowStatusModal(false) }}
+        />
+      )}
+
       {showModal && (
         <ProjectModal project={editProject}
           onClose={() => { setShowModal(false); setEditProject(null) }}
