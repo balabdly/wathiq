@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
@@ -8,7 +8,8 @@ import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/uti
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
   LayoutGrid, List, Columns, TrendingUp, Clock,
-  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight
+  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight,
+  MessageSquarePlus, X, Send, StickyNote
 } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
@@ -18,6 +19,22 @@ const ProjectDetail = dynamic(() => import('@/components/projects/ProjectDetail'
 
 // ── المستندات الإلزامية للإغلاق ──
 const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
+
+// ── الجهات المنفذة ──
+const CLIENTS = [
+  'شركة السعودية للكهرباء',
+  'أرامكو السعودية',
+  'وزارة الإسكان',
+  'أمانة منطقة الرياض',
+  'وزارة الصحة',
+  'وزارة التعليم',
+  'وزارة النقل',
+  'الهيئة الملكية للجبيل',
+  'شركة معادن',
+  'سابك',
+  'القطاع الخاص',
+  'أخرى',
+]
 
 // ── ألوان وإعدادات الأعمدة ──
 const COLUMNS = [
@@ -47,12 +64,196 @@ function getCurrentStage(p: Project) {
 }
 
 // ══════════════════════════════════════
+// مودال إضافة ملاحظة
+// ══════════════════════════════════════
+function NoteModal({ project, onClose, onSave }: {
+  project: Project
+  onClose: () => void
+  onSave: (note: string) => Promise<void>
+}) {
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+  const textRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    textRef.current?.focus()
+  }, [])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!text.trim()) return
+    setSaving(true)
+    await onSave(text.trim())
+    setSaving(false)
+    onClose()
+  }
+
+  // آخر 5 ملاحظات من السجل
+  const notes = (project.history || [])
+    .filter(h => h.includes('📝'))
+    .slice(-5)
+    .reverse()
+
+  return (
+    <div
+      className="modal-overlay"
+      onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ zIndex: 60 }}
+    >
+      <div
+        className="modal-box"
+        style={{ maxWidth: '480px' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="modal-header">
+          <div>
+            <h3 className="font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <StickyNote style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+              إضافة ملاحظة
+            </h3>
+            <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '2px' }}>
+              {project.name}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ paddingBottom: '12px' }}>
+            {/* حقل الملاحظة */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                الملاحظة
+              </label>
+              <textarea
+                ref={textRef}
+                value={text}
+                onChange={e => setText(e.target.value)}
+                className="input"
+                style={{ minHeight: '100px', resize: 'vertical', lineHeight: 1.6 }}
+                placeholder="اكتب ملاحظتك هنا..."
+                maxLength={500}
+                required
+              />
+              <div style={{ textAlign: 'left', fontSize: '0.72rem', color: '#9ca3af', marginTop: '4px' }}>
+                {text.length}/500
+              </div>
+            </div>
+
+            {/* آخر الملاحظات */}
+            {notes.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <StickyNote style={{ width: '12px', height: '12px' }} />
+                  آخر الملاحظات
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {notes.map((note, i) => {
+                    // استخراج التاريخ والنص من السجل
+                    // الصيغة: "DD/MM/YYYY، HH:MM: 📝 النص"
+                    const match = note.match(/^(.+?):\s*📝\s*(.+)$/)
+                    const dateStr = match ? match[1] : ''
+                    const noteText = match ? match[2] : note.replace('📝', '').trim()
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          padding: '8px 12px',
+                          background: '#fffbeb',
+                          borderRadius: '8px',
+                          border: '1px solid #fcd34d',
+                          fontSize: '0.82rem',
+                        }}
+                      >
+                        <div style={{ color: '#1a1a2e', lineHeight: 1.5 }}>{noteText}</div>
+                        {dateStr && (
+                          <div style={{ color: '#9ca3af', fontSize: '0.7rem', marginTop: '4px', direction: 'ltr', textAlign: 'right' }}>
+                            {dateStr}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button
+              type="submit"
+              disabled={saving || !text.trim()}
+              className="btn"
+              style={{ background: '#e6820a', color: 'white', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              {saving
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Send style={{ width: '14px', height: '14px' }} />
+              }
+              حفظ الملاحظة
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// زر أيقونة الملاحظة
+// ══════════════════════════════════════
+function NoteButton({ project, onNote }: { project: Project; onNote: () => void }) {
+  const noteCount = (project.history || []).filter(h => h.includes('📝')).length
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onNote() }}
+      title="إضافة ملاحظة"
+      style={{
+        padding: '5px 7px',
+        borderRadius: '6px',
+        border: noteCount > 0 ? '1px solid #fcd34d' : '1px solid #e5e7eb',
+        background: noteCount > 0 ? '#fffbeb' : 'white',
+        cursor: 'pointer',
+        color: noteCount > 0 ? '#e6820a' : '#9ca3af',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '3px',
+        transition: 'all 0.15s',
+        position: 'relative',
+      }}
+      onMouseEnter={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.background = '#fffbeb'
+        el.style.borderColor = '#fcd34d'
+        el.style.color = '#e6820a'
+      }}
+      onMouseLeave={e => {
+        const el = e.currentTarget as HTMLElement
+        el.style.background = noteCount > 0 ? '#fffbeb' : 'white'
+        el.style.borderColor = noteCount > 0 ? '#fcd34d' : '#e5e7eb'
+        el.style.color = noteCount > 0 ? '#e6820a' : '#9ca3af'
+      }}
+    >
+      <MessageSquarePlus style={{ width: '13px', height: '13px' }} />
+      {noteCount > 0 && (
+        <span style={{ fontSize: '0.68rem', fontWeight: 700 }}>{noteCount}</span>
+      )}
+    </button>
+  )
+}
+
+// ══════════════════════════════════════
 // بطاقة الـ Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove }: {
+function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove, onNote }: {
   p: Project; canEdit: boolean
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (direction: 'prev' | 'next') => void
+  onNote: () => void
 }) {
   const days   = daysUntil(p.end_date)
   const isLate = days !== null && days < 0 && p.progress < 100
@@ -83,6 +284,12 @@ function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove }: {
           <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1a1a2e', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
             {p.name}
           </div>
+          {/* الجهة المنفذة */}
+          {(p as any).client && (
+            <div style={{ fontSize: '0.7rem', color: '#1a56db', marginTop: '3px', fontWeight: 600 }}>
+              🏢 {(p as any).client}
+            </div>
+          )}
         </div>
       </div>
 
@@ -145,6 +352,10 @@ function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove }: {
             <ChevronLeft style={{ width: '13px', height: '13px' }} />
           </button>
         )}
+
+        {/* ملاحظة */}
+        <NoteButton project={p} onNote={onNote} />
+
         <button onClick={onView}
           style={{ flex: 1, padding: '5px', borderRadius: '6px', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
           <Eye style={{ width: '13px', height: '13px' }} /> تفاصيل
@@ -175,14 +386,16 @@ export default function ProjectsPage() {
   const [search, setSearch]           = useState('')
   const [statusFilter, setStatus]     = useState('')
   const [typeFilter, setType]         = useState('')
+  const [clientFilter, setClient]     = useState('')
   const savedView = (tenant as any)?.display_settings?.projectsView || 'kanban'
   const [viewMode, setViewMode] = useState<'kanban' | 'grid' | 'list'>(savedView as any)
+  const [noteProject, setNoteProject] = useState<Project | null>(null)
 
-  // تحديث عند تغيير الإعدادات
   useEffect(() => {
     const v = (tenant as any)?.display_settings?.projectsView
     if (v) setViewMode(v as any)
   }, [(tenant as any)?.display_settings?.projectsView])
+
   const [showModal, setShowModal]     = useState(false)
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [detailProject, setDetail]    = useState<Project | null>(null)
@@ -215,13 +428,30 @@ export default function ProjectsPage() {
     toast.success('تم حذف المشروع')
   }
 
+  // ── حفظ الملاحظة في السجل ──
+  async function handleSaveNote(project: Project, noteText: string) {
+    if (!tenant) return
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    const timeStr = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const entry = `${dateStr}، ${timeStr}: 📝 ${noteText}`
+    const history = [...(project.history || []), entry]
+    const { error } = await supabase
+      .from('projects')
+      .update({ history })
+      .eq('id', project.id)
+    if (error) { toast.error('خطأ في حفظ الملاحظة'); return }
+    // تحديث محلي فوري
+    setProjects(projects.map(p => p.id === project.id ? { ...p, history } : p))
+    toast.success('✅ تم حفظ الملاحظة')
+  }
+
   async function handleMove(p: Project, direction: 'prev' | 'next') {
     const colIdx = COLUMNS.findIndex(c => c.id === p.status)
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
     const newStatus = COLUMNS[newIdx].id as any
 
-    // ── تحقق من المرفقات عند الإغلاق ──
     if (newStatus === 'مكتمل') {
       const { data: attachments } = await supabase
         .from('project_attachments')
@@ -260,12 +490,18 @@ export default function ProjectsPage() {
 
   const now = new Date(); now.setHours(0, 0, 0, 0)
 
+  // قائمة الجهات الموجودة فعلاً في المشاريع
+  const existingClients = Array.from(
+    new Set(projects.map(p => (p as any).client).filter(Boolean))
+  ) as string[]
+
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
     return (
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
       (!statusFilter || p.status === statusFilter) &&
-      (!typeFilter   || p.type   === typeFilter)
+      (!typeFilter   || p.type   === typeFilter)  &&
+      (!clientFilter || (p as any).client === clientFilter)
     )
   })
 
@@ -329,22 +565,47 @@ export default function ProjectsPage() {
 
       {/* Filters + view toggle */}
       <div className="card" style={{ padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        {/* البحث */}
         <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
           <Search style={{ width: '15px', height: '15px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
             className="input" style={{ paddingRight: '32px', fontSize: '0.875rem' }}
             placeholder="بحث بالاسم أو الرقم..." />
         </div>
+
+        {/* فلتر الحالة */}
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
           <option value="">كل الحالات</option>
           {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
         </select>
+
+        {/* فلتر النوع */}
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select" style={{ width: 'auto' }}>
           <option value="">كل الأنواع</option>
           {['801','802','441','442','805','405','O&M'].map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        {(search || statusFilter || typeFilter) && (
-          <button onClick={() => { setSearch(''); setStatus(''); setType('') }}
+
+        {/* ── فلتر الجهة المنفذة ── */}
+        <select
+          value={clientFilter}
+          onChange={e => setClient(e.target.value)}
+          className="select"
+          style={{ width: 'auto', minWidth: '160px' }}
+        >
+          <option value="">كل الجهات</option>
+          {/* الجهات الموجودة في المشاريع أولاً */}
+          {existingClients.map(c => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+          {/* الجهات الإضافية غير المستخدمة */}
+          {CLIENTS.filter(c => !existingClients.includes(c)).map(c => (
+            <option key={c} value={c} style={{ color: '#9ca3af' }}>{c}</option>
+          ))}
+        </select>
+
+        {/* مسح الفلاتر */}
+        {(search || statusFilter || typeFilter || clientFilter) && (
+          <button onClick={() => { setSearch(''); setStatus(''); setType(''); setClient('') }}
             className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>مسح</button>
         )}
 
@@ -427,11 +688,11 @@ export default function ProjectsPage() {
                         onEdit={() => { setEditProject(p); setShowModal(true) }}
                         onDelete={() => handleDelete(p)}
                         onMove={(dir) => handleMove(p, dir)}
+                        onNote={() => setNoteProject(p)}
                       />
                     ))
                   )}
 
-                  {/* زر إضافة سريع */}
                   {canEdit && col.id !== 'مكتمل' && (
                     <button onClick={() => { setEditProject(null); setShowModal(true) }}
                       style={{ padding: '8px', borderRadius: '8px', border: `1px dashed ${col.border}`, background: 'transparent', cursor: 'pointer', color: col.color, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'background 0.15s' }}
@@ -465,6 +726,11 @@ export default function ProjectsPage() {
                       {p.type && <span className="badge badge-blue" style={{ fontSize: '0.68rem' }}>{p.type}</span>}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1a1a2e' }}>{p.name}</div>
+                    {(p as any).client && (
+                      <div style={{ fontSize: '0.72rem', color: '#1a56db', marginTop: '3px', fontWeight: 600 }}>
+                        🏢 {(p as any).client}
+                      </div>
+                    )}
                   </div>
                   <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.72rem', flexShrink: 0 }}>
                     {p.progress >= 100 ? 'مكتمل' : isLate ? 'متأخر' : p.status}
@@ -485,6 +751,8 @@ export default function ProjectsPage() {
                   {p.end_date && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#9ca3af' }}>التسليم</span><div style={{ fontWeight: 600, color: isLate ? '#ef4444' : '#374151' }}>{formatDate(p.end_date)}</div></div>}
                 </div>
                 <div style={{ display: 'flex', gap: '6px', paddingTop: '10px', borderTop: '1px solid #f3f4f6' }} onClick={e => e.stopPropagation()}>
+                  {/* ملاحظة */}
+                  <NoteButton project={p} onNote={() => setNoteProject(p)} />
                   <button onClick={() => setDetail(p)} className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center' }}><Eye style={{ width: '13px', height: '13px' }} /> تفاصيل</button>
                   {canEdit && <>
                     <button onClick={() => { setEditProject(p); setShowModal(true) }} className="btn btn-ghost btn-sm"><Pencil style={{ width: '13px', height: '13px' }} /></button>
@@ -503,7 +771,7 @@ export default function ProjectsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['المشروع','النوع','المهندس','الحالة','الإنجاز','التسليم','القيمة',''].map(h => (
+                  {['المشروع','الجهة','النوع','المهندس','الحالة','الإنجاز','التسليم','القيمة',''].map(h => (
                     <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -520,6 +788,10 @@ export default function ProjectsPage() {
                       <td style={{ padding: '12px 14px' }}>
                         <div style={{ fontWeight: 700, color: '#1a1a2e' }}>{p.name}</div>
                         {p.code && <div style={{ fontSize: '0.72rem', color: '#9ca3af', fontFamily: 'monospace' }}>{p.code}</div>}
+                      </td>
+                      {/* ── عمود الجهة في list ── */}
+                      <td style={{ padding: '12px 14px', color: '#1a56db', fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {(p as any).client ? `🏢 ${(p as any).client}` : <span style={{ color: '#d1d5db' }}>—</span>}
                       </td>
                       <td style={{ padding: '12px 14px' }}>{p.type ? <span className="badge badge-blue" style={{ fontSize: '0.72rem' }}>{p.type}</span> : '—'}</td>
                       <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.engineer || '—'}</td>
@@ -539,6 +811,8 @@ export default function ProjectsPage() {
                       <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.value ? formatCurrency(p.value) : '—'}</td>
                       <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                          {/* ملاحظة */}
+                          <NoteButton project={p} onNote={() => setNoteProject(p)} />
                           <button onClick={() => setDetail(p)} className="btn btn-ghost btn-xs"><Eye style={{ width: '13px', height: '13px' }} /></button>
                           {canEdit && <>
                             <button onClick={() => { setEditProject(p); setShowModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button>
@@ -555,10 +829,20 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      {/* مودال المشروع */}
       {showModal && (
         <ProjectModal project={editProject}
           onClose={() => { setShowModal(false); setEditProject(null) }}
           onSave={handleSave} />
+      )}
+
+      {/* ── مودال الملاحظة ── */}
+      {noteProject && (
+        <NoteModal
+          project={projects.find(p => p.id === noteProject.id) || noteProject}
+          onClose={() => setNoteProject(null)}
+          onSave={(text) => handleSaveNote(noteProject, text)}
+        />
       )}
     </div>
   )
