@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { signedAccountBalance } from '@/lib/journal'
 import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Layers, Target } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -223,6 +224,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
       `)
       .eq('account_id', account.id)
       .eq('finance_journal_entries.tenant_id', tenantId)
+      .eq('finance_journal_entries.status', 'معتمد')
       .order('finance_journal_entries(entry_date)', { ascending: true })
 
     if (data) {
@@ -231,7 +233,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
         const entry  = l.finance_journal_entries
         const debit  = Number(l.debit  || 0)
         const credit = Number(l.credit || 0)
-        balance += debit - credit
+        balance += signedAccountBalance(debit, credit, account.normal_balance)
         return {
           id:              l.id,
           entry_number:    entry.entry_number,
@@ -250,7 +252,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
 
   const totalDebit  = lines.reduce((s, l) => s + l.debit, 0)
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0)
-  const netBalance  = totalDebit - totalCredit
+  const netBalance  = signedAccountBalance(totalDebit, totalCredit, account.normal_balance)
   const color = ACCOUNT_TYPE_COLOR[account.account_type] || '#6b7280'
 
   return (
@@ -425,7 +427,11 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     setLoading(true)
     const [accRes, linesRes] = await Promise.all([
       supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code'),
-      supabase.from('finance_journal_lines').select('account_id, debit, credit'),
+      supabase
+        .from('finance_journal_lines')
+        .select('account_id, debit, credit, finance_journal_entries!inner(tenant_id, status)')
+        .eq('finance_journal_entries.tenant_id', tenantId)
+        .eq('finance_journal_entries.status', 'معتمد'),
     ])
     const accs = accRes.data || []
 
@@ -435,10 +441,11 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
       raw[l.account_id].debit  += Number(l.debit  || 0)
       raw[l.account_id].credit += Number(l.credit || 0)
     })
+
     const bal: Record<number, number> = {}
     accs.forEach((a: Account) => {
       const r = raw[a.id] || { debit: 0, credit: 0 }
-      bal[a.id] = r.debit - r.credit
+      bal[a.id] = signedAccountBalance(r.debit, r.credit, a.normal_balance)
     })
     function sumBalance(id: number): number {
       const children = accs.filter((a: Account) => a.parent_id === id)
@@ -551,10 +558,15 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
             )}
           </div>
         </div>
-        <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
-          <Plus style={{ width: '16px', height: '16px' }} />
-          إضافة حساب
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={loadAll} className="btn btn-ghost" title="تحديث الأرصدة من القيود">
+            🔄 تحديث الأرصدة
+          </button>
+          <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} />
+            إضافة حساب
+          </button>
+        </div>
       </div>
 
       {/* تلميح */}
@@ -586,7 +598,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                   const hasChildren = accounts.some(a => a.parent_id === account.id)
                   const color  = TYPE_COLOR[account.account_type] || '#6b7280'
                   const bal    = balances[account.id] || 0
-                  const isDebit = bal >= 0
+                  const isDebit = account.normal_balance === 'مدين' ? bal >= 0 : bal <= 0
                   const absbal = Math.abs(bal)
 
                   return (
