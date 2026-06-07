@@ -10,12 +10,29 @@ interface Props {
   onSave: (data: Partial<Project>) => Promise<void>
 }
 
+// الجهات المنفذة الشائعة — يمكن تعديلها حسب الحاجة
+const CLIENTS = [
+  'شركة السعودية للكهرباء',
+  'أرامكو السعودية',
+  'وزارة الإسكان',
+  'أمانة منطقة الرياض',
+  'وزارة الصحة',
+  'وزارة التعليم',
+  'وزارة النقل',
+  'الهيئة الملكية للجبيل',
+  'شركة معادن',
+  'سابك',
+  'القطاع الخاص',
+  'أخرى',
+]
+
 export default function ProjectModal({ project, onClose, onSave }: Props) {
   const { employees } = useStore()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     code: '', name: '', type: '' as any, status: 'تحت التخطيط' as any,
     engineer: '', value: '', progress: 0, start_date: '', end_date: '',
+    client: '',
   })
 
   const engineers = employees.filter(e =>
@@ -25,15 +42,16 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
   useEffect(() => {
     if (project) {
       setForm({
-        code: project.code || '',
-        name: project.name,
-        type: project.type || '',
-        status: project.status,
-        engineer: project.engineer || '',
-        value: project.value?.toString() || '',
-        progress: project.progress,
-        start_date: project.start_date || '',
-        end_date: project.end_date || '',
+        code:       project.code         || '',
+        name:       project.name,
+        type:       project.type         || '',
+        status:     project.status,
+        engineer:   project.engineer     || '',
+        value:      project.value?.toString() || '',
+        progress:   project.progress,
+        start_date: project.start_date   || '',
+        end_date:   project.end_date     || '',
+        client:     (project as any).client || '',
       })
     }
   }, [project])
@@ -46,16 +64,17 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
     setSaving(true)
     await onSave({
       ...(project ? { id: project.id, stages: project.stages, attachments: project.attachments, history: project.history } : {}),
-      code: form.code || undefined,
-      name: form.name,
-      type: form.type || undefined,
-      status: form.status,
-      engineer: form.engineer || undefined,
-      value: form.value ? parseFloat(form.value) : undefined,
-      progress: form.progress,
+      code:       form.code       || undefined,
+      name:       form.name,
+      type:       form.type       || undefined,
+      status:     form.status,
+      engineer:   form.engineer   || undefined,
+      value:      form.value ? parseFloat(form.value) : undefined,
+      progress:   form.progress,
       start_date: form.start_date || undefined,
-      end_date: form.end_date || undefined,
-    })
+      end_date:   form.end_date   || undefined,
+      client:     form.client     || undefined,
+    } as any)
     setSaving(false)
   }
 
@@ -94,6 +113,19 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               </label>
               <input value={form.name} onChange={e=>set('name',e.target.value)}
                 className="input" placeholder="اسم المشروع" required />
+            </div>
+
+            {/* ── الجهة المنفذة ── */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                الجهة المنفذ لها
+              </label>
+              <select value={form.client} onChange={e=>set('client',e.target.value)} className="select">
+                <option value="">— اختر الجهة —</option>
+                {CLIENTS.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
