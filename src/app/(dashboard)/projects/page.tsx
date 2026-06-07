@@ -646,9 +646,13 @@ export default function ProjectsPage() {
     if (v) setViewMode(v as any)
   }, [(tenant as any)?.display_settings?.projectsView])
 
-  const [showModal, setShowModal]     = useState(false)
-  const [editProject, setEditProject] = useState<Project | null>(null)
-  const [detailProject, setDetail]    = useState<Project | null>(null)
+  const [showModal,       setShowModal]       = useState(false)
+  const [showClientModal, setShowClientModal] = useState(false)
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [editProject,     setEditProject]     = useState<Project | null>(null)
+  const [detailProject,   setDetail]          = useState<Project | null>(null)
+  const [customClients,   setCustomClients]   = useState<string[]>([])
+  const [customColumns,   setCustomColumns]   = useState<typeof COLUMNS>([...COLUMNS])
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
@@ -657,6 +661,28 @@ export default function ProjectsPage() {
   async function loadProjects() {
     if (!tenant || !activeBranch) return
     if (projects.length === 0) setLoading(true)
+
+    // جلب الجهات المخصصة
+    const { data: clientsData } = await supabase
+      .from('project_custom_clients')
+      .select('name')
+      .eq('tenant_id', tenant.id)
+      .order('name')
+    if (clientsData) setCustomClients(clientsData.map((c: any) => c.name))
+
+    // جلب الحالات المخصصة
+    const { data: statusData } = await supabase
+      .from('project_custom_statuses')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .order('sort_order')
+    if (statusData && statusData.length > 0) {
+      setCustomColumns(statusData.map((s: any) => ({
+        id: s.id_key, label: s.label, icon: s.icon,
+        color: s.color, bg: s.bg, border: s.border
+      })))
+    }
+
     const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
     setProjects(data || [])
     setLoading(false)
