@@ -76,7 +76,6 @@ function Icon({ d, size = 16, color = "currentColor" }: {
   )
 }
 
-}
 
 function SubLink({ href, label, icon, active }: {
   href: string; label: string; icon: string; active: boolean
