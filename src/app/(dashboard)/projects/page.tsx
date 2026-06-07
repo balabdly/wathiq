@@ -20,21 +20,8 @@ const ProjectDetail = dynamic(() => import('@/components/projects/ProjectDetail'
 // ── المستندات الإلزامية للإغلاق ──
 const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
 
-// ── الجهات المنفذة ──
-const CLIENTS = [
-  'شركة السعودية للكهرباء',
-  'أرامكو السعودية',
-  'وزارة الإسكان',
-  'أمانة منطقة الرياض',
-  'وزارة الصحة',
-  'وزارة التعليم',
-  'وزارة النقل',
-  'الهيئة الملكية للجبيل',
-  'شركة معادن',
-  'سابك',
-  'القطاع الخاص',
-  'أخرى',
-]
+// ── الجهات المنفذة ── (فارغة — يضيفها المستخدم)
+const CLIENTS: string[] = []
 
 // ── ألوان وإعدادات الأعمدة ──
 const COLUMNS = [
@@ -106,20 +93,18 @@ function ClientManagerModal({ tenantId, customClients, onClose, onSave }: {
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* الجهات الافتراضية */}
-          <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الجهات الافتراضية (غير قابلة للحذف)</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {CLIENTS.map(c => (
-                <span key={c} style={{ background: '#f3f4f6', color: '#6b7280', borderRadius: '20px', padding: '3px 12px', fontSize: '0.78rem' }}>{c}</span>
-              ))}
-            </div>
+          {/* نص توضيحي */}
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '14px 16px', fontSize: '0.82rem', color: '#1e40af', lineHeight: 1.7 }}>
+            <div style={{ fontWeight: 700, marginBottom: '4px' }}>🏢 ما هي الجهات؟</div>
+            أضف هنا أسماء الجهات والعملاء الذين تنفذ لهم مشاريعك — مثل:
+            شركة السعودية للكهرباء، أرامكو، الجهات الحكومية، أو أي جهة خاصة.
+            ستظهر هذه الجهات عند إضافة أو تعديل أي مشروع.
           </div>
 
-          {/* الجهات المخصصة */}
-          {clients.length > 0 && (
+          {/* الجهات المضافة */}
+          {clients.length > 0 ? (
             <div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الجهات المضافة</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '8px', fontWeight: 600 }}>الجهات المضافة ({clients.length})</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {clients.map(c => (
                   <div key={c} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
@@ -132,6 +117,10 @@ function ClientManagerModal({ tenantId, customClients, onClose, onSave }: {
                 ))}
               </div>
             </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', fontSize: '0.82rem' }}>
+              لا توجد جهات بعد — أضف أول جهة أدناه
+            </div>
           )}
 
           {/* إضافة جديدة */}
@@ -143,7 +132,7 @@ function ClientManagerModal({ tenantId, customClients, onClose, onSave }: {
                 onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAdd()}
                 className="input"
-                placeholder="اسم الجهة..."
+                placeholder="مثال: شركة السعودية للكهرباء..."
                 style={{ flex: 1 }}
               />
               <button onClick={handleAdd} className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
