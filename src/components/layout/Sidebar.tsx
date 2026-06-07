@@ -54,14 +54,28 @@ const C = {
   borderLight:   '#f0f0f0',
 }
 
-function Icon({ d, size = 16 }: { d: string; size?: number }) {
+function Icon({ d, size = 16, color = "currentColor" }: {
+  d: string
+  size?: number
+  color?: string
+}) {
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-      style={{ flexShrink: 0 }}>
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
       <path d={d} />
     </svg>
   )
+}
+
 }
 
 function SubLink({ href, label, icon, active }: {
