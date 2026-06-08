@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import dynamic from 'next/dynamic'
+import ProjectModal  from '@/components/projects/ProjectModal'
+import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
@@ -13,12 +14,6 @@ import {
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
 
-const ProjectModal  = dynamic<{ project: Project | null; onClose: () => void; onSave: (data: Partial<Project>) => Promise<void> }>(
-  () => import('@/components/projects/ProjectModal'), { ssr: false }
-)
-const ProjectDetail = dynamic<{ project: Project; onBack: () => void; onEdit: (p: Project) => void; onRefresh: () => void }>(
-  () => import('@/components/projects/ProjectDetail'), { ssr: false }
-)
 
 const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
 
