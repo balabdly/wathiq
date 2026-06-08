@@ -47,8 +47,23 @@ const lbl: React.CSSProperties = {
 }
 
 export default function ProjectModal({ project, onClose, onSave }: Props) {
-  const { employees } = useStore()
-  const [saving, setSaving] = useState(false)
+  const { employees, tenant } = useStore()
+  const [saving, setSaving]         = useState(false)
+  const [dbClients, setDbClients]   = useState<string[]>([])
+  const [dbTypes,   setDbTypes]     = useState<{code:string; name:string}[]>([])
+
+  useEffect(() => {
+    async function loadOptions() {
+      if (!tenant) return
+      const [cRes, tRes] = await Promise.all([
+        supabase.from('project_clients').select('name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+        supabase.from('project_types').select('code, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      ])
+      setDbClients((cRes.data || []).map((c: any) => c.name))
+      setDbTypes(tRes.data || [])
+    }
+    loadOptions()
+  }, [tenant?.id])
   const [form, setForm] = useState({
     code:        '',
     name:        '',
@@ -151,7 +166,12 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
                 <label style={lbl}>نوع المشروع <span style={{ color: '#c81e1e' }}>*</span></label>
                 <select value={form.type} onChange={e => set('type', e.target.value)} className="select">
                   <option value="">— اختر النوع —</option>
+                  {/* أنواع افتراضية */}
                   {PROJECT_TYPES.map(t => (
+                    <option key={t.code} value={t.code}>{t.name}</option>
+                  ))}
+                  {/* أنواع مضافة من المستخدم */}
+                  {dbTypes.filter(t => !PROJECT_TYPES.find(p => p.code === t.code)).map(t => (
                     <option key={t.code} value={t.code}>{t.name}</option>
                   ))}
                 </select>
@@ -170,7 +190,12 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               <label style={lbl}>الجهة المنفذة / العميل</label>
               <select value={form.client_name} onChange={e => set('client_name', e.target.value)} className="select">
                 <option value="">— اختر —</option>
-                {CLIENTS.map(c => <option key={c} value={c}>{c}</option>)}
+                {/* جهات مضافة من المستخدم */}
+                {dbClients.map(c => <option key={c} value={c}>{c}</option>)}
+                {/* جهات افتراضية غير موجودة في قاعدة البيانات */}
+                {CLIENTS.filter(c => !dbClients.includes(c)).map(c => (
+                  <option key={c} value={c} style={{ color: '#9ca3af' }}>{c}</option>
+                ))}
               </select>
             </div>
 
