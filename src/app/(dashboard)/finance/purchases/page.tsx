@@ -1247,23 +1247,56 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [poRes, invRes, retRes, venRes, projRes, whRes] = await Promise.all([
-      supabase.from('finance_purchase_orders').select('*, vendor:finance_vendors(name,phone), project:projects(name)').eq('tenant_id', tenant.id).order('po_date', { ascending: false }),
-      supabase.from('finance_vendor_invoices').select('*, vendor:finance_vendors(name,iban), project:projects(name), po:finance_purchase_orders(po_number)').eq('tenant_id', tenant.id).order('invoice_date', { ascending: false }),
-      supabase.from('finance_purchase_returns').select('*').eq('tenant_id', tenant.id).order('return_date', { ascending: false }),
+    const [retRes, venRes, projRes, whRes] = await Promise.all([
+      supabase.from('finance_purchase_returns').select('*').eq('tenant_id', tenant.id).order('return_date', { ascending: false }).limit(200),
       supabase.from('finance_vendors').select('*').eq('tenant_id', tenant.id).order('name'),
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('warehouses').select('id, name, wh_type').eq('tenant_id', tenant.id),
     ])
-    const invPoIds = new Set((invRes.data || []).map((i: any) => i.po_id).filter(Boolean))
-    const posWithFlag = (poRes.data || []).map((po: any) => ({ ...po, has_invoice: invPoIds.has(po.id) }))
-    setPurchaseOrders(posWithFlag)
-    setVendorInvoices(invRes.data || [])
     setReturns(retRes.data || [])
     setVendors(venRes.data || [])
     setProjects(projRes.data || [])
     setWarehouses(whRes.data || [])
+    await Promise.all([loadPurchaseOrders(1), loadVendorInvoices(1)])
     setLoading(false)
+  }
+
+  async function loadPurchaseOrders(page = 1, q = search) {
+    if (!tenant) return
+    const from = (page - 1) * 50
+    const to   = from + 49
+    let query = supabase
+      .from('finance_purchase_orders')
+      .select('*, vendor:finance_vendors(name,phone), project:projects(name)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .order('po_date', { ascending: false })
+      .range(from, to)
+    if (q) query = query.or(`po_number.ilike.%${q}%,vendor_name.ilike.%${q}%`)
+    const { data, count } = await query
+    const ids = (data || []).map((p: any) => p.id)
+    let invPoIds = new Set<number>()
+    if (ids.length > 0) {
+      const { data: invs } = await supabase.from('finance_vendor_invoices').select('po_id').in('po_id', ids)
+      invPoIds = new Set((invs || []).map((i: any) => i.po_id).filter(Boolean))
+    }
+    setPurchaseOrders((data || []).map((po: any) => ({ ...po, has_invoice: invPoIds.has(po.id) })))
+    poPagination.setTotal(count || 0)
+  }
+
+  async function loadVendorInvoices(page = 1, q = search) {
+    if (!tenant) return
+    const from = (page - 1) * 50
+    const to   = from + 49
+    let query = supabase
+      .from('finance_vendor_invoices')
+      .select('*, vendor:finance_vendors(name,iban), project:projects(name), po:finance_purchase_orders(po_number)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .order('invoice_date', { ascending: false })
+      .range(from, to)
+    if (q) query = query.or(`invoice_number.ilike.%${q}%,vendor_name.ilike.%${q}%`)
+    const { data, count } = await query
+    setVendorInvoices(data || [])
+    invPagination.setTotal(count || 0)
   }
 
   async function deletePO(id: number, status: string) {
