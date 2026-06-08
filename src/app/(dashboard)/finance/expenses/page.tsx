@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, getExpenseAccountCode, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
@@ -465,6 +466,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 export default function FinanceExpensesPage() {
   const { tenant } = useStore()
   const [activeTab, setActiveTab] = useState<'مشاريع' | 'تشغيلي' | 'إداري'>('مشاريع')
+  const pagination = usePagination(50)
   const [expenses,    setExpenses]    = useState<Expense[]>([])
   const [accounts,    setAccounts]    = useState<Account[]>([])
   const [costCenters, setCostCenters] = useState<CostCenter[]>([])
@@ -478,25 +480,38 @@ export default function FinanceExpensesPage() {
 
   useEffect(() => { loadAll() }, [tenant?.id])
 
-  async function loadAll() {
+  async function loadExpenses(page = 1, tab = activeTab, q = search) {
     if (!tenant) return
     setLoading(true)
-    const [expRes, accRes, ccRes, projRes, venRes] = await Promise.all([
-      supabase.from('finance_expenses')
-        .select('*, project:projects(name), vendor:finance_vendors!finance_expenses_vendor_id_fkey(name)')
-        .eq('tenant_id', tenant.id)
-        .order('expense_date', { ascending: false }),
+    const from = (page - 1) * 50
+    const to   = from + 49
+    let query = supabase
+      .from('finance_expenses')
+      .select('*, project:projects(name), vendor:finance_vendors!finance_expenses_vendor_id_fkey(name)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .eq('expense_type', tab)
+      .order('expense_date', { ascending: false })
+      .range(from, to)
+    if (q) query = query.or(`description.ilike.%${q}%,category.ilike.%${q}%,vendor_name.ilike.%${q}%`)
+    const { data, count } = await query
+    setExpenses(data || [])
+    pagination.setTotal(count || 0)
+    setLoading(false)
+  }
+
+  async function loadAll() {
+    if (!tenant) return
+    const [accRes, ccRes, projRes, venRes] = await Promise.all([
       supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
       supabase.from('finance_cost_centers').select('id,code,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
-    setExpenses(expRes.data || [])
     setAccounts(accRes.data || [])
     setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
     setVendors(venRes.data || [])
-    setLoading(false)
+    await loadExpenses(1, activeTab, search)
   }
 
   async function handleDelete(id: number) {
@@ -506,18 +521,15 @@ export default function FinanceExpensesPage() {
     toast.success('تم الحذف')
   }
 
-  const tabExpenses = expenses.filter(e => e.expense_type === activeTab)
-  const filtered = tabExpenses.filter(e => {
-    const matchSearch = !search || e.description.includes(search) || e.category.includes(search) || (e.vendor_name || '').includes(search)
-    const matchStatus = filterStatus === 'الكل' || e.status === filterStatus
-    return matchSearch && matchStatus
-  })
+  // الفلترة server-side — expenses هي الصفحة الحالية فقط
+  const filtered = expenses
 
-  const totalAll      = expenses.reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalProjects = expenses.filter(e => e.expense_type === 'مشاريع').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalOps      = expenses.filter(e => e.expense_type === 'تشغيلي').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalAdmin    = expenses.filter(e => e.expense_type === 'إداري').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalTab      = filtered.reduce((s, e) => s + Number(e.total_amount), 0)
+  // الإجماليات من الصفحة الحالية فقط (الكاملة تُحسب من التقارير)
+  const totalAll      = filtered.reduce((s, e) => s + Number(e.total_amount), 0)
+  const totalProjects = activeTab === 'مشاريع' ? totalAll : 0
+  const totalOps      = activeTab === 'تشغيلي' ? totalAll : 0
+  const totalAdmin    = activeTab === 'إداري'  ? totalAll : 0
+  const totalTab      = totalAll
 
   const TABS = [
     { id: 'مشاريع', label: '🏗️ مصروفات المشاريع',  color: '#1a56db', total: totalProjects },
@@ -586,7 +598,7 @@ export default function FinanceExpensesPage() {
         </div>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px', width: '240px' }} />
+          <input value={search} onChange={e => { setSearch(e.target.value); loadExpenses(1, activeTab, e.target.value) }} placeholder="بحث..." className="input" style={{ paddingRight: '32px', width: '240px' }} />
         </div>
       </div>
 
@@ -678,6 +690,9 @@ export default function FinanceExpensesPage() {
           </div>
         </div>
       )}
+
+      {/* شريط التصفح الصفحي */}
+      {pagination.total > 50 && <div className="card"><pagination.PaginationBar color="#e6820a" /></div>}
 
       {showModal && (
         <ExpenseModal
