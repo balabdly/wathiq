@@ -425,7 +425,11 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     setLoading(true)
     const [accRes, linesRes] = await Promise.all([
       supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code'),
-      supabase.from('finance_journal_lines').select('account_id, debit, credit'),
+      // فلترة القيود بـ tenant_id عبر الانضمام لجدول القيود
+      supabase
+        .from('finance_journal_lines')
+        .select('account_id, debit, credit, finance_journal_entries!inner(tenant_id)')
+        .eq('finance_journal_entries.tenant_id', tenantId),
     ])
     const accs = accRes.data || []
 
