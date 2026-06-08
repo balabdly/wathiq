@@ -260,7 +260,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         description: `${form.payment_method} — ${payload.category}`,
       })
 
-      await createJournalEntry(tenantId, {
+      await createJournalEntry({
+        tenantId,
         date:          payload.expense_date,
         description:   `مصروف ${payload.expense_type} — ${payload.category} — ${payload.description}`,
         referenceType: 'مصروف',
