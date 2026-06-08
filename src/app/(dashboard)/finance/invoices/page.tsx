@@ -718,7 +718,8 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
     // ══ قيد محاسبي تلقائي عند الإرسال (ليس المسودة) ══
     if (finalStatus === 'مرسلة' && invoiceId) {
-      await createJournalEntry(tenantId, {
+      await createJournalEntry({
+        tenantId,
         date:          payload.invoice_date,
         description:   `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
         referenceType: 'فاتورة مبيعات',
@@ -916,7 +917,8 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
       await supabase.from('finance_credit_note_items').insert(validItems.map(i => ({ note_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    await createJournalEntry(tenantId, {
+    await createJournalEntry({
+        tenantId,
       date: form.note_date,
       description: `${form.note_type} ${form.note_number} — ${selectedClient!.name}`,
       referenceType: form.note_type, referenceId: data.id, source: 'آلي',
@@ -1125,7 +1127,8 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
 
     await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
 
-    await createJournalEntry(tenantId, {
+    await createJournalEntry({
+        tenantId,
       date:          form.payment_date,
       description:   `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${accountLabel})`,
       referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
