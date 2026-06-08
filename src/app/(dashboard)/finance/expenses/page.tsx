@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { createJournalEntry, getExpenseAccountCode, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
@@ -93,63 +94,7 @@ function getExpenseAccountCode(expenseType: string, category: string): string {
   return '5800'  // مصروفات أخرى
 }
 
-// ════════════════════════════════════════
-// دوال مساعدة للقيود المحاسبية
-// ════════════════════════════════════════
-async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase.from('finance_accounts').select('id')
-    .eq('tenant_id', tenantId).eq('code', code).single()
-  return data?.id || null
-}
-
-async function createJournalEntry(tenantId: string, params: {
-  date: string; description: string
-  referenceType: string; referenceId: number; source?: string
-  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
-}) {
-  const lineIds = await Promise.all(
-    params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) }))
-  )
-  // تجاهل الأسطر التي لا يوجد لها حساب بدلاً من إلغاء القيد كاملاً
-  const validLines = lineIds.filter(l => l.account_id)
-  if (validLines.length < 2) {
-    console.warn('لا تكفي حسابات للقيد — تخطي')
-    return null
-  }
-
-  const totalDebit  = validLines.reduce((s, l) => s + l.debit,  0)
-  const totalCredit = validLines.reduce((s, l) => s + l.credit, 0)
-
-  const { count } = await supabase.from('finance_journal_entries')
-    .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-
-  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-    tenant_id:      tenantId,
-    entry_number:   entryNumber,
-    entry_date:     params.date,
-    description:    params.description,
-    reference_type: params.referenceType,
-    reference_id:   params.referenceId,
-    total_debit:    totalDebit,
-    total_credit:   totalCredit,
-    status:         'معتمد',
-    entry_source:   params.source || 'آلي',
-  }).select('id').single()
-
-  if (error || !entry) { console.error('خطأ في القيد:', error); return null }
-
-  await supabase.from('finance_journal_lines').insert(
-    validLines.map(l => ({
-      entry_id:    entry.id,
-      account_id:  l.account_id,
-      debit:       l.debit,
-      credit:      l.credit,
-      description: l.description || null,
-    }))
-  )
-  return entry.id
-}
+// القيود تستخدم @/lib/journal
 
 // ════════════════════════════════════════
 // مكوّن مشترك: اختيار حساب الدفع
