@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { X, Save } from 'lucide-react'
+import { X, Save, Plus, Trash2 } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -12,33 +12,13 @@ export interface Props {
   onSave: (data: Partial<Project>) => Promise<void>
 }
 
-// أنواع المشاريع بأسماء واضحة
-const PROJECT_TYPES = [
-  { code: '801',   name: 'مشاريع الربط الكهربائي 801' },
-  { code: '802',   name: 'مشاريع التوزيع 802' },
-  { code: '405',   name: 'مشاريع كهرباء 405' },
-  { code: '441',   name: 'مشاريع المحولات 441' },
-  { code: '442',   name: 'محطات التوزيع 442' },
-  { code: '805',   name: 'مشاريع النقل 805' },
-  { code: 'O&M',   name: 'صيانة وتشغيل O&M' },
-  { code: 'EPC',   name: 'هندسة وتوريد وتنفيذ EPC' },
-  { code: 'CIVIL', name: 'أعمال مدنية' },
-  { code: 'OTHER', name: 'أخرى' },
-]
-
-const CLIENTS = [
-  'شركة السعودية للكهرباء',
-  'أرامكو السعودية',
-  'وزارة الإسكان',
-  'أمانة منطقة الرياض',
-  'وزارة الصحة',
-  'وزارة التعليم',
-  'وزارة النقل',
-  'الهيئة الملكية للجبيل',
-  'شركة معادن',
-  'سابك',
-  'القطاع الخاص',
-  'أخرى',
+// أنواع افتراضية إن لم يكن هناك أنواع في قاعدة البيانات
+const DEFAULT_TYPES = [
+  { code: '801', name: 'مشاريع الربط الكهربائي 801' },
+  { code: '802', name: 'مشاريع التوزيع 802' },
+  { code: '405', name: 'مشاريع كهرباء 405' },
+  { code: '441', name: 'مشاريع المحولات 441' },
+  { code: 'O&M', name: 'صيانة وتشغيل O&M' },
 ]
 
 const lbl: React.CSSProperties = {
@@ -48,95 +28,75 @@ const lbl: React.CSSProperties = {
 
 export default function ProjectModal({ project, onClose, onSave }: Props) {
   const { employees, tenant } = useStore()
-  const [saving, setSaving]         = useState(false)
-  const [dbClients, setDbClients]   = useState<string[]>([])
-  const [dbTypes,   setDbTypes]     = useState<{code:string; name:string}[]>([])
+  const [saving, setSaving]       = useState(false)
+  const [clients, setClients]     = useState<{ id: number; name: string; vat_number?: string }[]>([])
+  const [types,   setTypes]       = useState<{ code: string; name: string }[]>([])
 
-  useEffect(() => {
-    async function loadOptions() {
-      if (!tenant) return
-      const [cRes, tRes] = await Promise.all([
-        supabase.from('project_clients').select('name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-        supabase.from('project_types').select('code, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      ])
-      setDbClients((cRes.data || []).map((c: any) => c.name))
-      setDbTypes(tRes.data || [])
-    }
-    loadOptions()
-  }, [tenant?.id])
   const [form, setForm] = useState({
-    code:        '',
-    name:        '',
-    type:        '',
-    client_name: '',
-    status:      'تحت التخطيط',
-    engineer:    '',
-    value:       '',
-    progress:    0,
-    start_date:  '',
-    end_date:    '',
-    location:    '',
-    description: '',
-    notes:       '',
+    code:        project?.code              || '',
+    name:        project?.name              || '',
+    client_id:   (project as any)?.client_id ? String((project as any).client_id) : '',
+    type:        project?.type              || '',
+    status:      project?.status            || 'تحت التخطيط',
+    engineer:    project?.engineer          || '',
+    value:       project?.value?.toString() || '',
+    progress:    project?.progress          ?? 0,
+    start_date:  project?.start_date        || '',
+    end_date:    project?.end_date          || '',
+    location:    (project as any)?.location    || '',
+    description: (project as any)?.description || '',
   })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    if (project) {
-      setForm({
-        code:        project.code              || '',
-        name:        project.name              || '',
-        type:        project.type              || '',
-        client_name: (project as any).client_name || (project as any).client || '',
-        status:      project.status            || 'تحت التخطيط',
-        engineer:    project.engineer          || '',
-        value:       project.value?.toString() || '',
-        progress:    project.progress          ?? 0,
-        start_date:  project.start_date        || '',
-        end_date:    project.end_date          || '',
-        location:    (project as any).location    || '',
-        description: (project as any).description || '',
-        notes:       (project as any).notes       || '',
-      })
-    }
-  }, [project])
+    if (!tenant) return
+    // جلب العملاء من finance_clients
+    supabase.from('finance_clients')
+      .select('id, name, vat_number')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => setClients(data || []))
 
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+    // جلب أنواع المشاريع
+    supabase.from('project_types')
+      .select('code, name')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => setTypes(data && data.length > 0 ? data : DEFAULT_TYPES))
+  }, [tenant?.id])
 
   const engineers = employees.filter(e =>
     ['مدير مشروع', 'مدير عام', 'مهندس مدني', 'مشرف كهربائي', 'مهندس'].includes(e.role || '')
   )
 
+  const selectedClient = clients.find(c => c.id === Number(form.client_id))
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.name.trim()) { toast.error('اسم المشروع مطلوب'); return }
-    if (!form.type)        { toast.error('نوع المشروع مطلوب'); return }
+    if (!form.name.trim())  { toast.error('اسم المشروع مطلوب'); return }
+    if (!form.client_id)    { toast.error('العميل إلزامي — اختر عميلاً من قائمة المبيعات'); return }
     setSaving(true)
-    try {
-      await onSave({
-        ...(project ? {
-          id:          project.id,
-          stages:      project.stages,
-          attachments: project.attachments,
-          history:     project.history,
-        } : {}),
-        code:        form.code        || undefined,
-        name:        form.name.trim(),
-        type:        form.type,
-        status:      form.status,
-        engineer:    form.engineer    || undefined,
-        value:       form.value ? parseFloat(form.value) : undefined,
-        progress:    form.progress,
-        start_date:  form.start_date  || undefined,
-        end_date:    form.end_date    || undefined,
-        // حقول جديدة
-        client_name: form.client_name || undefined,
-        location:    form.location    || undefined,
-        description: form.description || undefined,
-        notes:       form.notes       || undefined,
-      } as any)
-    } catch (err) {
-      toast.error('حدث خطأ في الحفظ')
-    }
+    await onSave({
+      ...(project ? {
+        id: project.id, stages: project.stages,
+        attachments: project.attachments, history: project.history,
+      } : {}),
+      code:        form.code        || undefined,
+      name:        form.name.trim(),
+      client_id:   Number(form.client_id),
+      client_name: selectedClient?.name,
+      type:        form.type        || undefined,
+      status:      form.status,
+      engineer:    form.engineer    || undefined,
+      value:       form.value ? parseFloat(form.value) : undefined,
+      progress:    form.progress,
+      start_date:  form.start_date  || undefined,
+      end_date:    form.end_date    || undefined,
+      location:    (form as any).location    || undefined,
+      description: (form as any).description || undefined,
+    } as any)
     setSaving(false)
   }
 
@@ -155,26 +115,24 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-            {/* رقم + نوع المشروع */}
+            {/* رقم + نوع */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
               <div>
                 <label style={lbl}>رقم المشروع</label>
                 <input value={form.code} onChange={e => set('code', e.target.value)}
-                  className="input" placeholder="مثال: 2024-001" />
+                  className="input" placeholder="2024-001" />
               </div>
               <div>
-                <label style={lbl}>نوع المشروع <span style={{ color: '#c81e1e' }}>*</span></label>
+                <label style={lbl}>نوع المشروع</label>
                 <select value={form.type} onChange={e => set('type', e.target.value)} className="select">
                   <option value="">— اختر النوع —</option>
-                  {/* أنواع افتراضية */}
-                  {PROJECT_TYPES.map(t => (
-                    <option key={t.code} value={t.code}>{t.name}</option>
-                  ))}
-                  {/* أنواع مضافة من المستخدم */}
-                  {dbTypes.filter(t => !PROJECT_TYPES.find(p => p.code === t.code)).map(t => (
-                    <option key={t.code} value={t.code}>{t.name}</option>
-                  ))}
+                  {types.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
                 </select>
+                {types.length === 0 && (
+                  <div style={{ fontSize: '0.72rem', color: '#e6820a', marginTop: '4px' }}>
+                    ⚠️ لا توجد أنواع — أضف من زر "إضافة نوع"
+                  </div>
+                )}
               </div>
             </div>
 
@@ -185,18 +143,31 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
                 className="input" placeholder="اسم المشروع التفصيلي" required />
             </div>
 
-            {/* الجهة المنفذة */}
-            <div>
-              <label style={lbl}>الجهة المنفذة / العميل</label>
-              <select value={form.client_name} onChange={e => set('client_name', e.target.value)} className="select">
-                <option value="">— اختر —</option>
-                {/* جهات مضافة من المستخدم */}
-                {dbClients.map(c => <option key={c} value={c}>{c}</option>)}
-                {/* جهات افتراضية غير موجودة في قاعدة البيانات */}
-                {CLIENTS.filter(c => !dbClients.includes(c)).map(c => (
-                  <option key={c} value={c} style={{ color: '#9ca3af' }}>{c}</option>
-                ))}
-              </select>
+            {/* العميل — إلزامي */}
+            <div style={{ background: '#fef9f0', borderRadius: '12px', padding: '14px', border: '2px solid #fde68a' }}>
+              <label style={{ ...lbl, color: '#92400e' }}>
+                العميل / الجهة المنفذة <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              {clients.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.82rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
+                  ⚠️ لا يوجد عملاء — أضف العميل أولاً من <strong>المبيعات ← العملاء</strong> ثم عد لإضافة المشروع
+                </div>
+              ) : (
+                <>
+                  <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
+                    <option value="">— اختر العميل —</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {selectedClient && (
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '12px', fontSize: '0.78rem', color: '#92400e' }}>
+                      {selectedClient.vat_number && <span>🔢 الرقم الضريبي: <strong>{selectedClient.vat_number}</strong></span>}
+                      <span style={{ color: '#0ea77b', fontSize: '0.72rem' }}>✅ الاسم مطابق لبيانات الفواتير</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* الحالة + المهندس */}
@@ -205,7 +176,7 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
                 <label style={lbl}>حالة المشروع</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['تحت التخطيط', 'قيد التنفيذ', 'متأخر', 'مكتمل', 'موقوف'].map(s => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s}>{s}</option>
                   ))}
                 </select>
               </div>
@@ -228,11 +199,12 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               <div>
                 <label style={lbl}>قيمة العقد (ريال)</label>
                 <input type="number" value={form.value} onChange={e => set('value', e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
                   className="input" dir="ltr" placeholder="0.00" min="0" />
               </div>
               <div>
                 <label style={lbl}>موقع المشروع</label>
-                <input value={form.location} onChange={e => set('location', e.target.value)}
+                <input value={(form as any).location || ''} onChange={e => set('location', e.target.value)}
                   className="input" placeholder="المدينة / الحي" />
               </div>
             </div>
@@ -248,11 +220,9 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
                   {form.progress}%
                 </span>
               </div>
-              {/* شريط مرئي */}
               <div style={{ height: '6px', background: '#f3f4f6', borderRadius: '4px', marginTop: '6px', overflow: 'hidden' }}>
                 <div style={{
-                  height: '100%', borderRadius: '4px',
-                  width: `${form.progress}%`, transition: 'width 0.2s',
+                  height: '100%', borderRadius: '4px', width: `${form.progress}%`, transition: 'width 0.2s',
                   background: form.progress >= 100 ? '#0ea77b' : form.progress >= 60 ? '#1a56db' : '#e6820a'
                 }} />
               </div>
@@ -273,7 +243,7 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
             {/* الوصف */}
             <div>
               <label style={lbl}>وصف المشروع</label>
-              <textarea value={form.description} onChange={e => set('description', e.target.value)}
+              <textarea value={(form as any).description || ''} onChange={e => set('description', e.target.value)}
                 className="input" style={{ minHeight: '70px', resize: 'none' }}
                 placeholder="نبذة مختصرة عن نطاق العمل..." />
             </div>
@@ -282,7 +252,7 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
 
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-            <button type="submit" disabled={saving} className="btn btn-primary">
+            <button type="submit" disabled={saving || !form.client_id} className="btn btn-primary">
               {saving
                 ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
                 : <Save style={{ width: '15px', height: '15px' }} />}
