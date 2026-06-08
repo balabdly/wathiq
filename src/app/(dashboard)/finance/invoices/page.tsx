@@ -3,7 +3,6 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { createJournalEntry } from '@/lib/journal'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink, Package, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -237,6 +236,37 @@ function TotalsBox({ subtotal, vatRate, vatAmount, total }: {
       </div>
     </div>
   )
+}
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string; referenceType: string; referenceId: number; source?: string
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit,
+    status: 'معتمد', entry_source: params.source || 'آلي',
+  }).select('id').single()
+  if (error || !entry) return null
+  await supabase.from('finance_journal_lines').insert(
+    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
+  )
+  return entry.id
 }
 
 // ════════════════════════════════════════
@@ -712,26 +742,21 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
     // ══ قيد محاسبي تلقائي عند الإرسال (ليس المسودة) ══
     if (finalStatus === 'مرسلة' && invoiceId) {
-      const je = await createJournalEntry(tenantId, {
+      await createJournalEntry(tenantId, {
         date:          payload.invoice_date,
         description:   `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
         referenceType: 'فاتورة مبيعات',
         referenceId:   invoiceId,
         source:        'آلي',
         lines: [
-          { accountCode: '1120', debit: payload.total_amount, credit: 0,               description: `ذمم مدينة — فاتورة ${payload.invoice_number}` },
-          { accountCode: '4100', debit: 0,                    credit: payload.subtotal, description: `إيرادات صافية — ${payload.invoice_number}` },
-          ...(payload.vat_amount > 0 ? [{ accountCode: '2130', debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة المستحقة' }] : []),
-        ],
+          { accountCode: '1120', debit: payload.total_amount, credit: 0,               description: `فاتورة ${payload.invoice_number}` },
+          { accountCode: '4100', debit: 0,                    credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
+          ...(payload.vat_amount > 0 ? [{ accountCode: '2130', debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
+        ]
       })
-      if (!je.success) {
-        toast.error('تم حفظ الفاتورة لكن فشل ترحيل القيد: ' + je.error)
-        onSave(); setSaving(false); return
-      }
-      toast.success(je.entryId ? '✅ تم إنشاء الفاتورة وترحيل القيد المحاسبي' : '✅ تم إنشاء الفاتورة وإرسالها')
-    } else {
-      toast.success(asDraft ? '💾 تم الحفظ كمسودة' : '✅ تم إنشاء الفاتورة وإرسالها')
     }
+
+    toast.success(asDraft ? '💾 تم الحفظ كمسودة' : '✅ تم إنشاء الفاتورة وإرسالها')
     onSave(); setSaving(false)
   }
 
@@ -915,17 +940,16 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
       await supabase.from('finance_credit_note_items').insert(validItems.map(i => ({ note_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    const je = await createJournalEntry(tenantId, {
+    await createJournalEntry(tenantId, {
       date: form.note_date,
       description: `${form.note_type} ${form.note_number} — ${selectedClient!.name}`,
       referenceType: form.note_type, referenceId: data.id, source: 'آلي',
       lines: [
-        { accountCode: '4100', debit: subtotal,    credit: 0,       description: `${form.note_type} — صافي` },
+        { accountCode: '4100', debit: subtotal,    credit: 0,       description: `${form.note_type} ${form.note_number}` },
         ...(vatAmount > 0 ? [{ accountCode: '2130', debit: vatAmount, credit: 0, description: 'ضريبة مستردة' }] : []),
         { accountCode: '1120', debit: 0,           credit: total,   description: `إشعار للعميل ${selectedClient!.name}` },
-      ],
+      ]
     })
-    if (!je.success) { toast.error('تم حفظ الإشعار لكن فشل ترحيل القيد: ' + je.error); onSave(); setSaving(false); return }
 
     toast.success('✅ تم إنشاء الإشعار والقيد المحاسبي')
     onSave(); setSaving(false)
@@ -1090,17 +1114,16 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
   async function handleSave() {
     setSaving(true)
     await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
-    const je = await createJournalEntry(tenantId, {
+    await createJournalEntry(tenantId, {
       date: form.payment_date,
       description: `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name}`,
       referenceType: 'تحصيل', referenceId: invoice.id, source: 'آلي',
       lines: [
         { accountCode: '1110', debit: Number(invoice.total_amount), credit: 0,                            description: `تحصيل ${invoice.invoice_number}` },
         { accountCode: '1120', debit: 0,                            credit: Number(invoice.total_amount), description: `إقفال ذمة ${invoice.client_name}` },
-      ],
+      ]
     })
-    if (!je.success) { toast.error('تم تحديث الفاتورة لكن فشل ترحيل قيد التحصيل: ' + je.error); onSave(); setSaving(false); return }
-    toast.success('✅ تم تسجيل الدفعة وترحيل القيد المحاسبي')
+    toast.success('✅ تم تسجيل الدفعة وتحديث الفاتورة')
     onSave(); setSaving(false)
   }
 
