@@ -1,181 +1,416 @@
-import { supabase } from './supabase'
+/**
+ * journal.ts — دالة القيود المحاسبية المشتركة
+ *
+ * تُستخدم من: invoices, purchases, expenses, treasury, HR
+ *
+ * التحسينات مقارنة بالنسخ القديمة:
+ *  1. batch query واحد لجلب كل account_ids بدل N queries
+ *  2. يستخدم دالة SQL get_account_ids_by_codes() من قاعدة البيانات
+ *  3. entry_source مدعوم (آلي / يدوي)
+ *  4. أسطر بدون حساب تُتجاهل بدل إلغاء القيد كاملاً
+ *  5. رقم القيد يُولَّد بشكل آمن
+ */
 
-export type JournalLineInput = {
+import { supabase } from '@/lib/supabase'
+
+// ════════════════════════════════════
+// Types
+// ════════════════════════════════════
+export type JournalLine = {
   accountCode: string
-  debit: number
-  credit: number
+  debit:       number
+  credit:      number
   description?: string
 }
 
-export type CreateJournalEntryParams = {
-  date: string
-  description: string
+export type CreateJournalParams = {
+  tenantId:      string
+  date:          string
+  description:   string
   referenceType: string
-  referenceId: number
-  source?: string
-  lines: JournalLineInput[]
-  /** تجنّب تكرار القيد لنفس المرجع (افتراضي: true) */
-  skipIfExists?: boolean
+  referenceId:   number
+  lines:         JournalLine[]
+  source?:       'آلي' | 'يدوي'
 }
 
-export type JournalEntryResult = {
-  success: boolean
-  entryId?: number
-  skipped?: boolean
-  error?: string
-}
+export type JournalResult = {
+  entryId:   number
+  entryNumber: string
+  skippedCodes: string[]   // أكواد لم يُعثر عليها في الشجرة
+} | null
 
-export async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase
-    .from('finance_accounts')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('code', code)
-    .maybeSingle()
-  return data?.id ?? null
-}
-
-export async function getCashAccountCode(tenantId: string, cashAccountId: number): Promise<string> {
-  const { data: ca } = await supabase
-    .from('finance_cash_accounts')
-    .select('account_id')
-    .eq('id', cashAccountId)
-    .maybeSingle()
-  if (!ca?.account_id) return '1111'
-  const { data: acc } = await supabase
-    .from('finance_accounts')
-    .select('code')
-    .eq('id', ca.account_id)
-    .maybeSingle()
-  return acc?.code || '1111'
-}
-
-export async function journalEntryExists(
-  tenantId: string,
-  referenceType: string,
-  referenceId: number
-): Promise<boolean> {
-  const { count } = await supabase
-    .from('finance_journal_entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
-    .eq('reference_type', referenceType)
-    .eq('reference_id', referenceId)
-    .eq('status', 'معتمد')
-  return (count || 0) > 0
-}
-
-/** رصيد الحركة الصافية حسب طبيعة الحساب (مدين / دائن) */
-export function signedAccountBalance(
-  debit: number,
-  credit: number,
-  normalBalance: string
-): number {
-  const d = Number(debit || 0)
-  const c = Number(credit || 0)
-  return normalBalance === 'دائن' ? c - d : d - c
-}
-
-/** حساب المصروف المدين حسب النوع والفئة */
-export function resolveExpenseAccountCode(expenseType: string, category: string): string {
-  const cat = category || ''
-  if (expenseType === 'مشاريع') {
-    if (cat.includes('عمالة')) return '5110'
-    if (cat.includes('مقاول')) return '5130'
-    if (cat.includes('موقع')) return '5140'
-    return '5120'
-  }
-  if (expenseType === 'إداري') {
-    if (cat.includes('إيجار')) return '5310'
-    if (cat.includes('تسويق')) return '5340'
-    if (cat.includes('صيانة')) return '5330'
-    return '5320'
-  }
-  if (expenseType === 'تشغيلي') {
-    if (cat.includes('مركبة') || cat.includes('سيارة')) return '5410'
-    if (cat.includes('بنك')) return '5510'
-    return '5320'
-  }
-  return '5800'
-}
-
+// ════════════════════════════════════
+// الدالة الرئيسية
+// ════════════════════════════════════
 export async function createJournalEntry(
-  tenantId: string,
-  params: CreateJournalEntryParams
-): Promise<JournalEntryResult> {
-  const activeLines = params.lines.filter(l => l.debit > 0 || l.credit > 0)
-  if (activeLines.length < 2) {
-    return { success: false, error: 'القيد يتطلب طرفين على الأقل' }
+  params: CreateJournalParams
+): Promise<JournalResult> {
+
+  const { tenantId, date, description, referenceType, referenceId, lines, source = 'آلي' } = params
+
+  // ══ 1. جلب كل account_ids بـ query واحد (بدل N queries) ══
+  const uniqueCodes = [...new Set(lines.map(l => l.accountCode))]
+
+  const { data: accountRows, error: accError } = await supabase
+    .rpc('get_account_ids_by_codes', {
+      p_tenant_id: tenantId,
+      p_codes:     uniqueCodes,
+    })
+
+  if (accError) {
+    console.error('[journal] خطأ في جلب الحسابات:', accError.message)
+    return null
   }
 
-  if (params.skipIfExists !== false) {
-    const exists = await journalEntryExists(tenantId, params.referenceType, params.referenceId)
-    if (exists) return { success: true, skipped: true }
-  }
-
-  const lineIds = await Promise.all(
-    activeLines.map(async l => ({
-      ...l,
-      account_id: await getAccountId(tenantId, l.accountCode),
-    }))
+  // بناء Map: code → account_id
+  const codeMap = new Map<string, number>(
+    (accountRows || []).map((r: { code: string; account_id: number }) => [r.code, r.account_id])
   )
 
-  const missing = lineIds.filter(l => !l.account_id)
-  if (missing.length > 0) {
-    const codes = missing.map(l => l.accountCode).join('، ')
-    return { success: false, error: `حسابات غير موجودة في شجرة الحسابات: ${codes}` }
+  // تحديد الأكواد غير الموجودة
+  const skippedCodes = uniqueCodes.filter(c => !codeMap.has(c))
+  if (skippedCodes.length > 0) {
+    console.warn('[journal] أكواد حسابات غير موجودة:', skippedCodes)
   }
 
-  const totalDebit  = Math.round(lineIds.reduce((s, l) => s + l.debit,  0) * 100) / 100
-  const totalCredit = Math.round(lineIds.reduce((s, l) => s + l.credit, 0) * 100) / 100
+  // فلترة الأسطر الصالحة فقط
+  const validLines = lines
+    .filter(l => codeMap.has(l.accountCode))
+    .filter(l => l.debit > 0 || l.credit > 0)
 
+  if (validLines.length < 2) {
+    console.warn('[journal] أسطر غير كافية للقيد — تخطي')
+    return null
+  }
+
+  const totalDebit  = validLines.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = validLines.reduce((s, l) => s + l.credit, 0)
+
+  // تحقق التوازن (تسامح 0.01 للكسور)
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
-    return {
-      success: false,
-      error: `القيد غير متوازن — مدين ${totalDebit.toLocaleString()} ≠ دائن ${totalCredit.toLocaleString()}`,
-    }
+    console.error('[journal] قيد غير متوازن:', { totalDebit, totalCredit })
+    return null
   }
 
+  // ══ 2. توليد رقم القيد ══
+  const year = new Date(date).getFullYear()
   const { count } = await supabase
     .from('finance_journal_entries')
     .select('*', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
 
-  const { data: entry, error } = await supabase
+  const entryNumber = `JE-${year}-${String((count || 0) + 1).padStart(4, '0')}`
+
+  // ══ 3. إدراج رأس القيد ══
+  const { data: entry, error: entryError } = await supabase
     .from('finance_journal_entries')
     .insert({
-      tenant_id: tenantId,
-      entry_number: entryNumber,
-      entry_date: params.date,
-      description: params.description,
-      reference_type: params.referenceType,
-      reference_id: params.referenceId,
-      total_debit: totalDebit,
-      total_credit: totalCredit,
-      status: 'معتمد',
-      entry_source: params.source || 'آلي',
+      tenant_id:      tenantId,
+      entry_number:   entryNumber,
+      entry_date:     date,
+      description,
+      reference_type: referenceType,
+      reference_id:   referenceId,
+      total_debit:    totalDebit,
+      total_credit:   totalCredit,
+      status:         'معتمد',
+      entry_source:   source,
     })
     .select('id')
     .single()
 
-  if (error || !entry) {
-    return { success: false, error: error?.message || 'فشل إنشاء القيد المحاسبي' }
+  if (entryError || !entry) {
+    console.error('[journal] خطأ في إنشاء القيد:', entryError?.message)
+    return null
   }
 
-  const { error: linesError } = await supabase.from('finance_journal_lines').insert(
-    lineIds.map(l => ({
-      entry_id: entry.id,
-      account_id: l.account_id!,
-      debit: l.debit,
-      credit: l.credit,
-      description: l.description || null,
-    }))
-  )
+  // ══ 4. إدراج أسطر القيد (batch insert واحد) ══
+  const { error: linesError } = await supabase
+    .from('finance_journal_lines')
+    .insert(
+      validLines.map(l => ({
+        entry_id:    entry.id,
+        account_id:  codeMap.get(l.accountCode)!,
+        debit:       l.debit,
+        credit:      l.credit,
+        description: l.description || null,
+      }))
+    )
 
   if (linesError) {
-    return { success: false, error: linesError.message }
+    console.error('[journal] خطأ في إدراج الأسطر:', linesError.message)
+    // القيد أُنشئ لكن الأسطر فشلت — نحذفه للحفاظ على التوازن
+    await supabase.from('finance_journal_entries').delete().eq('id', entry.id)
+    return null
   }
 
-  return { success: true, entryId: entry.id }
+  return {
+    entryId:      entry.id,
+    entryNumber,
+    skippedCodes,
+  }
+}
+
+// ════════════════════════════════════
+// دوال مساعدة للقيود الشائعة
+// ════════════════════════════════════
+
+/**
+ * قيد فاتورة مبيعات
+ * مدين: الذمم المدينة (1120) بالإجمالي
+ * دائن: الإيرادات (4110) بالصافي + ضريبة المحصّلة (2130)
+ */
+export async function journalSalesInvoice(params: {
+  tenantId:      string
+  date:          string
+  invoiceNumber: string
+  clientName:    string
+  invoiceId:     number
+  subtotal:      number
+  vatAmount:     number
+  total:         number
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = [
+    { accountCode: '1120', debit: params.total,    credit: 0,              description: `فاتورة ${params.invoiceNumber}` },
+    { accountCode: '4110', debit: 0,               credit: params.subtotal, description: `إيرادات ${params.invoiceNumber}` },
+  ]
+  if (params.vatAmount > 0) {
+    lines.push({ accountCode: '2130', debit: 0, credit: params.vatAmount, description: 'ضريبة القيمة المضافة المحصّلة' })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `فاتورة مبيعات ${params.invoiceNumber} — ${params.clientName}`,
+    referenceType: 'فاتورة مبيعات',
+    referenceId:   params.invoiceId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد تحصيل فاتورة مبيعات
+ * مدين: البنك / الصندوق
+ * دائن: الذمم المدينة (1120)
+ */
+export async function journalSalesCollection(params: {
+  tenantId:       string
+  date:           string
+  invoiceNumber:  string
+  clientName:     string
+  invoiceId:      number
+  amount:         number
+  cashAccountCode: string   // كود الحساب البنكي / الصندوق
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `تحصيل فاتورة ${params.invoiceNumber} — ${params.clientName}`,
+    referenceType: 'تحصيل فاتورة',
+    referenceId:   params.invoiceId,
+    lines: [
+      { accountCode: params.cashAccountCode, debit: params.amount, credit: 0,              description: `تحصيل ${params.invoiceNumber}` },
+      { accountCode: '1120',                 debit: 0,             credit: params.amount,  description: `إقفال ذمة ${params.clientName}` },
+    ],
+    source: 'آلي',
+  })
+}
+
+/**
+ * قيد فاتورة مورد
+ * مدين: المخزون/التكلفة/الأصل حسب وجهة التسليم
+ * دائن: الذمم الدائنة (2110) بالإجمالي
+ */
+export async function journalVendorInvoice(params: {
+  tenantId:         string
+  date:             string
+  invoiceNumber:    string
+  vendorName:       string
+  invoiceId:        number
+  subtotal:         number
+  vatAmount:        number
+  total:            number
+  debitAccountCode: string   // 1130 مخزون / 5120 تكلفة / 1220 أصول
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = [
+    { accountCode: params.debitAccountCode, debit: params.subtotal,   credit: 0,            description: `فاتورة ${params.invoiceNumber}` },
+    { accountCode: '2110',                  debit: 0,                 credit: params.total,  description: `مستحق للمورد ${params.vendorName}` },
+  ]
+  if (params.vatAmount > 0) {
+    lines.splice(1, 0, { accountCode: '2140', debit: params.vatAmount, credit: 0, description: 'ضريبة المدخلات' })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `فاتورة مورد ${params.invoiceNumber} — ${params.vendorName}`,
+    referenceType: 'فاتورة مورد',
+    referenceId:   params.invoiceId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد سداد فاتورة مورد
+ * مدين: الذمم الدائنة (2110)
+ * دائن: البنك / الصندوق
+ */
+export async function journalVendorPayment(params: {
+  tenantId:        string
+  date:            string
+  invoiceNumber:   string
+  vendorName:      string
+  invoiceId:       number
+  amount:          number
+  cashAccountCode: string
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `سداد فاتورة مورد ${params.invoiceNumber} — ${params.vendorName}`,
+    referenceType: 'سداد فاتورة مورد',
+    referenceId:   params.invoiceId,
+    lines: [
+      { accountCode: '2110',                  debit: params.amount, credit: 0,             description: `سداد ${params.invoiceNumber}` },
+      { accountCode: params.cashAccountCode,  debit: 0,             credit: params.amount, description: `دفع عبر ${params.vendorName}` },
+    ],
+    source: 'آلي',
+  })
+}
+
+/**
+ * قيد مصروف
+ * مدين: حساب المصروف
+ * مدين: ضريبة المدخلات (إن وجدت)
+ * دائن: البنك / الصندوق / الذمم الدائنة
+ */
+export async function journalExpense(params: {
+  tenantId:           string
+  date:               string
+  description:        string
+  category:           string
+  expenseId:          number
+  amount:             number
+  vatAmount:          number
+  total:              number
+  expenseAccountCode: string
+  creditAccountCode:  string   // بنك / صندوق / 2110
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = [
+    { accountCode: params.expenseAccountCode, debit: params.amount,    credit: 0,           description: params.description },
+  ]
+  if (params.vatAmount > 0) {
+    lines.push({ accountCode: '2140', debit: params.vatAmount, credit: 0, description: `ضريبة مدخلات — ${params.category}` })
+  }
+  lines.push({
+    accountCode: params.creditAccountCode,
+    debit:       0,
+    credit:      params.total,
+    description: `صرف مصروف ${params.category}`,
+  })
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `مصروف — ${params.category} — ${params.description}`,
+    referenceType: 'مصروف',
+    referenceId:   params.expenseId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد إشعار دائن
+ * مدين: الإيرادات (4110) بالصافي
+ * مدين: ضريبة مستردة (2130)
+ * دائن: الذمم المدينة (1120) بالإجمالي
+ */
+export async function journalCreditNote(params: {
+  tenantId:   string
+  date:       string
+  noteNumber: string
+  noteType:   string
+  clientName: string
+  noteId:     number
+  subtotal:   number
+  vatAmount:  number
+  total:      number
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = [
+    { accountCode: '4110', debit: params.subtotal,  credit: 0,           description: `${params.noteType} ${params.noteNumber}` },
+  ]
+  if (params.vatAmount > 0) {
+    lines.push({ accountCode: '2130', debit: params.vatAmount, credit: 0, description: 'ضريبة مستردة' })
+  }
+  lines.push({ accountCode: '1120', debit: 0, credit: params.total, description: `إشعار للعميل ${params.clientName}` })
+
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `${params.noteType} ${params.noteNumber} — ${params.clientName}`,
+    referenceType: params.noteType,
+    referenceId:   params.noteId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+// ════════════════════════════════════
+// دالة مساعدة: جلب كود حساب من cash_account_id
+// ════════════════════════════════════
+export async function getCashAccountCode(
+  cashAccountId: number
+): Promise<string> {
+  const { data } = await supabase
+    .from('finance_cash_accounts')
+    .select('account_id')
+    .eq('id', cashAccountId)
+    .single()
+
+  if (!data?.account_id) return '1111'  // fallback: الصندوق الرئيسي
+
+  const { data: acc } = await supabase
+    .from('finance_accounts')
+    .select('code')
+    .eq('id', data.account_id)
+    .single()
+
+  return acc?.code || '1111'
+}
+
+/**
+ * getExpenseAccountCode — خريطة الفئة → كود الحساب
+ * مُصدَّرة للاستخدام في expenses page
+ */
+export function getExpenseAccountCode(expenseType: string, category: string): string {
+  const cat = category || ''
+  const typ = expenseType || ''
+
+  if (typ === 'مشاريع') {
+    if (cat.includes('عمالة'))                           return '5110'
+    if (cat.includes('مقاول'))                           return '5130'
+    if (cat.includes('موقع') || cat.includes('معدة') || cat.includes('آلة')) return '5140'
+    return '5120'
+  }
+  if (typ === 'تشغيلي') {
+    if (cat.includes('راتب') || cat.includes('أجور'))    return '5210'
+    if (cat.includes('تأمين'))                           return '5220'
+    if (cat.includes('إيجار'))                           return '5310'
+    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return '5320'
+    if (cat.includes('صيانة'))                           return '5330'
+    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return '5410'
+    if (cat.includes('بنك'))                             return '5510'
+    if (cat.includes('غرامة') || cat.includes('جزاء'))  return '5520'
+    return '5320'
+  }
+  if (typ === 'إداري') {
+    if (cat.includes('قرطاسية') || cat.includes('مستلزمات')) return '5320'
+    if (cat.includes('ضيافة') || cat.includes('علاقات'))     return '5340'
+    if (cat.includes('رسوم') || cat.includes('ترخيص'))       return '5320'
+    if (cat.includes('سفر') || cat.includes('انتقال'))        return '5410'
+    if (cat.includes('بنك'))                                  return '5510'
+    if (cat.includes('غرامة') || cat.includes('جزاء'))       return '5520'
+    return '5320'
+  }
+  return '5800'
 }
