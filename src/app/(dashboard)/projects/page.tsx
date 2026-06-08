@@ -9,19 +9,13 @@ import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/uti
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
   LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
-  MessageSquarePlus, X, Send, StickyNote
+  MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save
 } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
 
 
 const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
-
-const CLIENTS = [
-  'شركة السعودية للكهرباء','أرامكو السعودية','وزارة الإسكان',
-  'أمانة منطقة الرياض','وزارة الصحة','وزارة التعليم','وزارة النقل',
-  'الهيئة الملكية للجبيل','شركة معادن','سابك','القطاع الخاص','أخرى',
-]
 
 const PROJECT_TYPES: { code: string; name: string }[] = [
   { code: '801',   name: 'مشاريع الربط الكهربائي 801' },
@@ -151,6 +145,155 @@ function NoteButton({ project, onClick }: { project: Project; onClick: () => voi
   )
 }
 
+
+// ══════════════════════════════════════
+// مودال: إضافة جهة منفذة
+// ══════════════════════════════════════
+function AddClientModal({ tenantId, onClose, onSave }: {
+  tenantId: string; onClose: () => void; onSave: (name: string) => void
+}) {
+  const [name, setName]     = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim()) { toast.error('اسم الجهة مطلوب'); return }
+    setSaving(true)
+    const { error } = await supabase.from('project_clients').insert({ tenant_id: tenantId, name: name.trim() })
+    if (error) { toast.error(error.code === '23505' ? 'هذه الجهة موجودة مسبقاً' : 'خطأ في الحفظ'); setSaving(false); return }
+    toast.success('✅ تمت إضافة الجهة')
+    onSave(name.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+            إضافة جهة منفذة
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* توضيح للمستخدم */}
+          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', border: '1px solid #bfdbfe', fontSize: '0.82rem', color: '#1e40af', lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 700, marginBottom: '4px' }}>💡 تنبيه مهم</div>
+            أدخل الاسم الرسمي الكامل للجهة كما يظهر في العقود والفواتير.
+            <br />
+            <span style={{ opacity: 0.8 }}>مثال: <strong>شركة الطاقة السعودية</strong> أو <strong>أرامكو السعودية</strong></span>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              اسم الجهة المنفذة <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              className="input"
+              placeholder="مثال: شركة الطاقة السعودية"
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || !name.trim()} className="btn btn-primary">
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : <Save style={{ width: '14px', height: '14px' }} />}
+            إضافة الجهة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// مودال: إضافة نوع مشروع
+// ══════════════════════════════════════
+function AddTypeModal({ tenantId, onClose, onSave }: {
+  tenantId: string; onClose: () => void; onSave: (code: string, name: string) => void
+}) {
+  const [code, setCode]     = useState('')
+  const [name, setName]     = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim()) { toast.error('اسم النوع مطلوب'); return }
+    const finalCode = code.trim() || name.trim().substring(0, 10)
+    setSaving(true)
+    const { error } = await supabase.from('project_types').insert({ tenant_id: tenantId, code: finalCode, name: name.trim() })
+    if (error) { toast.error(error.code === '23505' ? 'هذا النوع موجود مسبقاً' : 'خطأ في الحفظ'); setSaving(false); return }
+    toast.success('✅ تمت إضافة النوع')
+    onSave(finalCode, name.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Tag style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            إضافة نوع مشروع
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* توضيح للمستخدم */}
+          <div style={{ background: '#f5f3ff', borderRadius: '10px', padding: '12px 14px', border: '1px solid #ddd6fe', fontSize: '0.82rem', color: '#5b21b6', lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 700, marginBottom: '4px' }}>💡 توضيح</div>
+            أنواع المشاريع تساعدك في تصنيف وتصفية مشاريعك.
+            <br />
+            <span style={{ opacity: 0.8 }}>مثال: <strong>مشروع تحسين</strong> أو <strong>صيانة دورية</strong> أو <strong>توسعة شبكة</strong></span>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              اسم النوع <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              className="input"
+              placeholder="مثال: مشروع تحسين"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+              الرمز / الكود <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400 }}>(اختياري — يُولَّد تلقائياً)</span>
+            </label>
+            <input
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              className="input"
+              dir="ltr"
+              placeholder="مثال: IMPROVE"
+            />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || !name.trim()} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : <Save style={{ width: '14px', height: '14px' }} />}
+            إضافة النوع
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
@@ -267,13 +410,28 @@ export default function ProjectsPage() {
     if (v) setViewMode(v as any)
   }, [(tenant as any)?.display_settings?.projectsView])
 
-  const [showModal,     setShowModal]     = useState(false)
-  const [editProject,   setEditProject]   = useState<Project | null>(null)
-  const [detailProject, setDetail]        = useState<Project | null>(null)
+  const [showModal,        setShowModal]        = useState(false)
+  const [editProject,      setEditProject]      = useState<Project | null>(null)
+  const [detailProject,    setDetail]           = useState<Project | null>(null)
+  const [showAddClient,    setShowAddClient]    = useState(false)
+  const [showAddType,      setShowAddType]      = useState(false)
+  const [projectClients,   setProjectClients]   = useState<{id:number; name:string}[]>([])
+  const [projectTypes,     setProjectTypes]     = useState<{code:string; name:string}[]>([])
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
   useEffect(() => { loadProjects() }, [tenant?.id, activeBranch?.id])
+  useEffect(() => { if (tenant) loadClientsAndTypes() }, [tenant?.id])
+
+  async function loadClientsAndTypes() {
+    if (!tenant) return
+    const [cRes, tRes] = await Promise.all([
+      supabase.from('project_clients').select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('project_types').select('code, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+    ])
+    setProjectClients(cRes.data || [])
+    setProjectTypes(tRes.data || [])
+  }
 
   async function loadProjects() {
     if (!tenant || !activeBranch) return
@@ -406,11 +564,21 @@ export default function ProjectsPage() {
           </h1>
           <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>{projects.length} مشروع إجمالاً</p>
         </div>
-        {canEdit && (
-          <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {canEdit && (
+            <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
+            </button>
+          )}
+          <button onClick={() => setShowAddClient(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+            <Building2 style={{ width: '15px', height: '15px' }} /> إضافة جهة
           </button>
-        )}
+          <button onClick={() => setShowAddType(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
+            <Tag style={{ width: '15px', height: '15px' }} /> إضافة نوع
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -444,12 +612,22 @@ export default function ProjectsPage() {
 
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل الأنواع</option>
+          {/* أنواع افتراضية */}
           {PROJECT_TYPES.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
+          {/* أنواع مضافة من المستخدم */}
+          {projectTypes.filter(t => !PROJECT_TYPES.find(p => p.code === t.code)).map(t => (
+            <option key={t.code} value={t.code}>{t.name}</option>
+          ))}
         </select>
 
         <select value={clientFilter} onChange={e => setClient(e.target.value)} className="select" style={{ width: 'auto', minWidth: '160px' }}>
           <option value="">كل الجهات</option>
+          {/* جهات موجودة في المشاريع */}
           {existingClients.map(c => <option key={c} value={c}>{c}</option>)}
+          {/* جهات مضافة من المستخدم غير موجودة في المشاريع */}
+          {projectClients.filter(c => !existingClients.includes(c.name)).map(c => (
+            <option key={c.id} value={c.name} style={{ color: '#9ca3af' }}>{c.name}</option>
+          ))}
         </select>
 
         {(search || statusFilter || typeFilter || clientFilter) && (
@@ -683,6 +861,30 @@ export default function ProjectsPage() {
         <NoteModal project={noteProject}
           onClose={() => setNoteProject(null)}
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
+      )}
+
+      {showAddClient && tenant && (
+        <AddClientModal
+          tenantId={tenant.id}
+          onClose={() => setShowAddClient(false)}
+          onSave={(name) => {
+            setShowAddClient(false)
+            loadClientsAndTypes()
+            toast.success(`✅ تمت إضافة الجهة: ${name}`)
+          }}
+        />
+      )}
+
+      {showAddType && tenant && (
+        <AddTypeModal
+          tenantId={tenant.id}
+          onClose={() => setShowAddType(false)}
+          onSave={(code, name) => {
+            setShowAddType(false)
+            loadClientsAndTypes()
+            toast.success(`✅ تمت إضافة النوع: ${name}`)
+          }}
+        />
       )}
     </div>
   )
