@@ -53,48 +53,7 @@ const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'إداري':  { bg: '#fef2f2', color: '#c81e1e' },
 }
 
-// ════════════════════════════════════════
-// خريطة تصنيف المصروف → كود الحساب
-// ════════════════════════════════════════
-function getExpenseAccountCode(expenseType: string, category: string): string {
-  const cat = category || ''
-  const typ = expenseType || ''
-
-  if (typ === 'مشاريع') {
-    if (cat.includes('عمالة'))              return '5110'  // عمالة مباشرة
-    if (cat.includes('مقاول'))             return '5130'  // مقاولون من الباطن
-    if (cat.includes('موقع'))              return '5140'  // مصروفات الموقع
-    if (cat.includes('معدة') || cat.includes('آلة') || cat.includes('معدات')) return '5140'
-    return '5120'  // مواد مباشرة (افتراضي للمشاريع)
-  }
-
-  if (typ === 'تشغيلي') {
-    if (cat.includes('راتب') || cat.includes('أجور') || cat.includes('رواتب')) return '5210'
-    if (cat.includes('تأمين'))             return '5220'  // GOSI
-    if (cat.includes('إيجار'))             return '5310'
-    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return '5320'
-    if (cat.includes('صيانة'))             return '5330'
-    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return '5410'
-    if (cat.includes('بنك'))               return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
-    return '5320'  // مصروفات إدارية (افتراضي للتشغيلي)
-  }
-
-  if (typ === 'إداري') {
-    if (cat.includes('قرطاسية') || cat.includes('مستلزمات مكتبية')) return '5320'
-    if (cat.includes('ضيافة') || cat.includes('علاقات'))  return '5340'
-    if (cat.includes('رسوم') || cat.includes('ترخيص') || cat.includes('اشتراك')) return '5320'
-    if (cat.includes('تدريب'))             return '5320'
-    if (cat.includes('سفر') || cat.includes('انتقال'))    return '5410'
-    if (cat.includes('بنك'))               return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
-    return '5320'  // مصروفات إدارية (افتراضي)
-  }
-
-  return '5800'  // مصروفات أخرى
-}
-
-// القيود تستخدم @/lib/journal
+// getExpenseAccountCode مستوردة من @/lib/journal
 
 // ════════════════════════════════════════
 // مكوّن مشترك: اختيار حساب الدفع
