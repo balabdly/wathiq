@@ -7,15 +7,18 @@ import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
-  LayoutGrid, List, Columns, TrendingUp, Clock,
-  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight,
+  LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
   MessageSquarePlus, X, Send, StickyNote
 } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
 
-const ProjectModal  = dynamic(() => import('@/components/projects/ProjectModal'),  { ssr: false })
-const ProjectDetail = dynamic(() => import('@/components/projects/ProjectDetail'), { ssr: false })
+const ProjectModal  = dynamic<{ project: Project | null; onClose: () => void; onSave: (data: Partial<Project>) => Promise<void> }>(
+  () => import('@/components/projects/ProjectModal'), { ssr: false }
+)
+const ProjectDetail = dynamic<{ project: Project; onBack: () => void; onEdit: (p: Project) => void; onRefresh: () => void }>(
+  () => import('@/components/projects/ProjectDetail'), { ssr: false }
+)
 
 const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
 
