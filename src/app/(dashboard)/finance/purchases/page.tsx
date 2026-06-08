@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, CheckCircle, Warehouse, MapPin, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
@@ -1157,6 +1158,8 @@ export default function FinancePurchasesPage() {
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [vendorInvoices, setVendorInvoices] = useState<VendorInvoice[]>([])
+  const poPagination  = usePagination(50)
+  const invPagination = usePagination(50)
   const [returns,        setReturns]        = useState<PurchaseReturn[]>([])
   const [vendors,        setVendors]        = useState<Vendor[]>([])
   const [projects,       setProjects]       = useState<Project[]>([])
@@ -1282,8 +1285,9 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
   const totalPaid = vendorInvoices.filter(i => i.status === 'مدفوعة').reduce((s, i) => s + Number(i.total_amount), 0)
   const totalDue  = vendorInvoices.filter(i => i.status !== 'مدفوعة' && i.status !== 'ملغاة').reduce((s, i) => s + Number(i.total_amount), 0)
 
-  const filteredPOs  = purchaseOrders.filter(p => !search || p.po_number.includes(search) || p.vendor_name.includes(search))
-  const filteredInvs = vendorInvoices.filter(i => !search || i.invoice_number.includes(search) || i.vendor_name.includes(search))
+  // الفلترة server-side — purchaseOrders و vendorInvoices هي الصفحة الحالية فقط
+  const filteredPOs  = purchaseOrders
+  const filteredInvs = vendorInvoices
 
   const TABS = [
     { id: 'orders',   label: '📋 أوامر الشراء',   color: '#e6820a' },
@@ -1343,7 +1347,11 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
       {/* بحث */}
       <div style={{ position: 'relative', maxWidth: '360px' }}>
         <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px' }} />
+        <input value={search} onChange={e => {
+          setSearch(e.target.value)
+          if (activeTab === 'orders')   loadPurchaseOrders(1, e.target.value)
+          if (activeTab === 'invoices') loadVendorInvoices(1, e.target.value)
+        }} placeholder="بحث..." className="input" style={{ paddingRight: '32px' }} />
       </div>
 
       {/* ══ أوامر الشراء ══ */}
@@ -1406,6 +1414,7 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
               </table>
             </div>
           )}
+          <poPagination.PaginationBar color="#e6820a" />
         </div>
       )}
 
@@ -1511,6 +1520,7 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
               </table>
             </div>
           )}
+          <invPagination.PaginationBar color="#c81e1e" />
         </div>
       )}
 
