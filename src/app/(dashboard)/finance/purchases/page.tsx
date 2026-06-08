@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, CheckCircle, Warehouse, MapPin, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { createJournalEntry, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
@@ -212,37 +213,7 @@ function DeliveryField({ value, warehouseId, assetType, projects, warehouses, on
   )
 }
 
-// ════════════════════════════════════════
-// دوال مساعدة للقيود المحاسبية
-// ════════════════════════════════════════
-async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
-  return data?.id || null
-}
-
-async function createJournalEntry(tenantId: string, params: {
-  date: string; description: string; referenceType: string; referenceId: number
-  source?: string
-  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
-}) {
-  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
-  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
-  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
-  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
-  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
-    description: params.description, reference_type: params.referenceType,
-    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit,
-    status: 'معتمد', entry_source: params.source || 'آلي',
-  }).select('id').single()
-  if (error || !entry) return null
-  await supabase.from('finance_journal_lines').insert(
-    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
-  )
-  return entry.id
-}
+// القيود تستخدم @/lib/journal
 
 // ════════════════════════════════════════
 // مودال: إضافة / تعديل مورد
