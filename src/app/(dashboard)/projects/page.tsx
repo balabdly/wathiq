@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import ProjectModal  from '@/components/projects/ProjectModal'
-import ProjectDetail from '@/components/projects/ProjectDetail'
+import ProjectModal,  { type Props as ProjectModalProps }  from '@/components/projects/ProjectModal'
+import ProjectDetail, { type Props as ProjectDetailProps } from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
@@ -284,7 +284,7 @@ export default function ProjectsPage() {
   }
 
   // ✅ إصلاح handleSave — insert للجديد، update للتعديل
-  async function handleSave(data: Partial<Project>) {
+  async function handleSave(data: Partial<Project>): Promise<void> {
     if (!tenant || !activeBranch) return
     let error: any = null
 
@@ -676,7 +676,7 @@ export default function ProjectsPage() {
       {showModal && (
         <ProjectModal project={editProject}
           onClose={() => { setShowModal(false); setEditProject(null) }}
-          onSave={handleSave} />
+          onSave={(data) => handleSave(data)} />
       )}
 
       {noteProject && (
