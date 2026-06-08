@@ -2,551 +2,219 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, Search, Receipt } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, Search, Wallet, ArrowUpRight, ArrowDownRight, Building2, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ════════════════════════════════════════
-// Types
-// ════════════════════════════════════════
-type Expense = {
-  id: number; expense_number: string; expense_date: string
-  category: string; description: string
-  amount: number; vat_amount: number; total_amount: number; vat_rate: number
-  expense_type: string; account_id?: number; cost_center_id?: number
-  project_id?: number; vendor_id?: number; vendor_name?: string
-  receipt_no?: string; payment_method: string; cash_account_id?: number; status: string; notes?: string
+type CashAccount = {
+  id: number; name: string; account_type: string
+  bank_name?: string; account_no?: string; iban?: string
+  opening_balance: number; is_active: boolean; notes?: string
+  balance?: number; account_id?: number
+}
+
+type Transaction = {
+  id: number; transaction_no: string; transaction_date: string
+  type: string; amount: number; description: string
+  cash_account_id?: number; payment_method: string
+  reference_type?: string; reference_no?: string
+  account_id?: number; cost_center_id?: number
+  party_name?: string; status: string; notes?: string
+  cash_account?: { name: string }
   account?: { code: string; name: string }
-  cost_center?: { name: string }
+}
+
+type Custody = {
+  id: number; custody_no: string; custody_date: string
+  employee_id?: number; employee_name: string
+  custody_type: string; amount: number; purpose: string
+  project_id?: number; due_date?: string
+  settled_amount: number; settled_date?: string
+  status: string; notes?: string
   project?: { name: string }
-  vendor?: { name: string }
+  employee?: { name: string }
 }
-type Account    = { id: number; code: string; name: string; account_type: string }
-type CostCenter = { id: number; code: string; name: string }
+
+type Account    = { id: number; code: string; name: string }
+type CostCenter = { id: number; name: string }
 type Project    = { id: number; name: string }
-type Vendor     = { id: number; name: string }
-
-// تصنيفات المصروفات حسب النوع
-const CATEGORIES: Record<string, string[]> = {
-  'مشاريع': [
-    'مواد ومستلزمات الموقع', 'عمالة مباشرة', 'مقاولون فرعيون',
-    'نقل ومواصلات الموقع', 'معدات وآلات', 'مصروفات موقع أخرى'
-  ],
-  'تشغيلي': [
-    'رواتب وأجور', 'إيجار مكتب', 'كهرباء وماء',
-    'اتصالات وإنترنت', 'صيانة وإصلاح', 'تأمينات اجتماعية',
-    'مصروفات سيارات', 'وقود', 'مصروفات تشغيلية أخرى'
-  ],
-  'إداري': [
-    'قرطاسية ومستلزمات مكتبية', 'ضيافة وعلاقات عامة',
-    'رسوم ترخيص واشتراكات', 'تدريب وتطوير', 'سفر وانتقالات',
-    'مصروفات بنكية', 'غرامات وجزاءات', 'مصروفات إدارية أخرى'
-  ]
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  'مدفوع': 'badge-green', 'معلق': 'badge-amber', 'ملغي': 'badge-red'
-}
-const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
-  'مشاريع': { bg: '#eff6ff', color: '#1a56db' },
-  'تشغيلي': { bg: '#fffbeb', color: '#e6820a' },
-  'إداري':  { bg: '#fef2f2', color: '#c81e1e' },
-}
+type Employee   = { id: number; name: string }
 
 // ════════════════════════════════════════
-// خريطة تصنيف المصروف → كود الحساب
+// مودال: إضافة حساب نقدي
 // ════════════════════════════════════════
-function getExpenseAccountCode(expenseType: string, category: string): string {
-  const cat = category || ''
-  const typ = expenseType || ''
-
-  if (typ === 'مشاريع') {
-    if (cat.includes('عمالة'))              return '5110'  // عمالة مباشرة
-    if (cat.includes('مقاول'))             return '5130'  // مقاولون من الباطن
-    if (cat.includes('موقع'))              return '5140'  // مصروفات الموقع
-    if (cat.includes('معدة') || cat.includes('آلة') || cat.includes('معدات')) return '5140'
-    return '5120'  // مواد مباشرة (افتراضي للمشاريع)
-  }
-
-  if (typ === 'تشغيلي') {
-    if (cat.includes('راتب') || cat.includes('أجور') || cat.includes('رواتب')) return '5210'
-    if (cat.includes('تأمين'))             return '5220'  // GOSI
-    if (cat.includes('إيجار'))             return '5310'
-    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return '5320'
-    if (cat.includes('صيانة'))             return '5330'
-    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return '5410'
-    if (cat.includes('بنك'))               return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
-    return '5320'  // مصروفات إدارية (افتراضي للتشغيلي)
-  }
-
-  if (typ === 'إداري') {
-    if (cat.includes('قرطاسية') || cat.includes('مستلزمات مكتبية')) return '5320'
-    if (cat.includes('ضيافة') || cat.includes('علاقات'))  return '5340'
-    if (cat.includes('رسوم') || cat.includes('ترخيص') || cat.includes('اشتراك')) return '5320'
-    if (cat.includes('تدريب'))             return '5320'
-    if (cat.includes('سفر') || cat.includes('انتقال'))    return '5410'
-    if (cat.includes('بنك'))               return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
-    return '5320'  // مصروفات إدارية (افتراضي)
-  }
-
-  return '5800'  // مصروفات أخرى
-}
-
-// ════════════════════════════════════════
-// دوال مساعدة للقيود المحاسبية
-// ════════════════════════════════════════
-async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase.from('finance_accounts').select('id')
-    .eq('tenant_id', tenantId).eq('code', code).single()
-  return data?.id || null
-}
-
-async function createJournalEntry(tenantId: string, params: {
-  date: string; description: string
-  referenceType: string; referenceId: number; source?: string
-  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
-}) {
-  const lineIds = await Promise.all(
-    params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) }))
-  )
-  // تجاهل الأسطر التي لا يوجد لها حساب بدلاً من إلغاء القيد كاملاً
-  const validLines = lineIds.filter(l => l.account_id)
-  if (validLines.length < 2) {
-    console.warn('لا تكفي حسابات للقيد — تخطي')
-    return null
-  }
-
-  const totalDebit  = validLines.reduce((s, l) => s + l.debit,  0)
-  const totalCredit = validLines.reduce((s, l) => s + l.credit, 0)
-
-  const { count } = await supabase.from('finance_journal_entries')
-    .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-
-  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-    tenant_id:      tenantId,
-    entry_number:   entryNumber,
-    entry_date:     params.date,
-    description:    params.description,
-    reference_type: params.referenceType,
-    reference_id:   params.referenceId,
-    total_debit:    totalDebit,
-    total_credit:   totalCredit,
-    status:         'معتمد',
-    entry_source:   params.source || 'آلي',
-  }).select('id').single()
-
-  if (error || !entry) { console.error('خطأ في القيد:', error); return null }
-
-  await supabase.from('finance_journal_lines').insert(
-    validLines.map(l => ({
-      entry_id:    entry.id,
-      account_id:  l.account_id,
-      debit:       l.debit,
-      credit:      l.credit,
-      description: l.description || null,
-    }))
-  )
-  return entry.id
-}
-
-// ════════════════════════════════════════
-// مكوّن مشترك: اختيار حساب الدفع
-// ════════════════════════════════════════
-function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
-  paymentMethod: string; value: string; tenantId: string; onChange: (v: string) => void
-}) {
-  const [accounts, setAccounts] = useState<any[]>([])
-  useEffect(() => {
-    supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
-      .then(({ data }) => setAccounts(data || []))
-  }, [tenantId])
-
-  const banks    = accounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
-  const boxes    = accounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
-  const selected = accounts.find(a => a.id === Number(value))
-
-  if (paymentMethod === 'آجل') return (
-    <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
-      📅 سيُسجَّل كالتزام في الذمم الدائنة
-    </div>
-  )
-
-  const list  = (paymentMethod === 'نقداً') ? boxes : banks
-  const label = (paymentMethod === 'نقداً') ? 'الصندوق' : 'الحساب البنكي'
-
-  return (
-    <div>
-      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '5px' }}>
-        {label} <span style={{ color: '#c81e1e' }}>*</span>
-      </label>
-      {list.length === 0 ? (
-        <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
-          ⚠️ لا توجد {label === 'الصندوق' ? 'صناديق' : 'حسابات بنكية'} — أضفها من إعدادات الخزينة
-        </div>
-      ) : (
-        <>
-          <select value={value} onChange={e => onChange(e.target.value)} className="select">
-            <option value="">— اختر {label} —</option>
-            {list.map(a => (
-              <option key={a.id} value={a.id}>
-                {a.name}{a.bank_name ? ` — ${a.bank_name}` : ''}{a.account_no ? ` (${a.account_no})` : ''}
-              </option>
-            ))}
-          </select>
-          {selected?.iban && (
-            <div style={{ marginTop: '4px', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>IBAN: {selected.iban}</div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: إضافة / تعديل مصروف
-// ════════════════════════════════════════
-function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenantId, onClose, onSave }: {
-  expense: Expense | null
-  accounts: Account[]; costCenters: CostCenter[]
-  projects: Project[]; vendors: Vendor[]
-  tenantId: string; onClose: () => void; onSave: () => void
+function CashAccountModal({ account, tenantId, onClose, onSave }: {
+  account: CashAccount | null; tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
-  const today = new Date().toISOString().split('T')[0]
-
   const [form, setForm] = useState({
-    expense_number:  expense?.expense_number  || '',
-    expense_date:    expense?.expense_date    || today,
-    expense_type:    expense?.expense_type    || 'تشغيلي',
-    category:        expense?.category        || '',
-    description:     expense?.description     || '',
-    amount:          expense?.amount          ? String(expense.amount) : '',
-    vat_rate:        expense?.vat_rate        ?? 0,
-    account_id:      expense?.account_id      ? String(expense.account_id) : '',
-    cost_center_id:  expense?.cost_center_id  ? String(expense.cost_center_id) : '',
-    project_id:      expense?.project_id      ? String(expense.project_id) : '',
-    vendor_id:       expense?.vendor_id       ? String(expense.vendor_id) : '',
-    vendor_name:     expense?.vendor_name     || '',
-    receipt_no:      expense?.receipt_no      || '',
-    payment_method:  expense?.payment_method  || 'نقداً',
-    cash_account_id: expense?.cash_account_id ? String(expense.cash_account_id) : '',
-    status:          expense?.status          || 'مدفوع',
-    notes:           expense?.notes           || '',
+    name:            account?.name            || '',
+    account_type:    account?.account_type    || 'بنك',
+    bank_name:       account?.bank_name       || '',
+    account_no:      account?.account_no      || '',
+    iban:            account?.iban            || '',
+    opening_balance: account?.opening_balance ? String(account.opening_balance) : '0',
+    is_active:       account?.is_active       ?? true,
+    notes:           account?.notes           || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  useEffect(() => { if (!expense) generateNumber() }, [])
-
-  async function generateNumber() {
-    const { count } = await supabase.from('finance_expenses')
-      .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    set('expense_number', `EXP-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`)
-  }
-
-  const amount    = Number(form.amount) || 0
-  const vatAmount = Math.round(amount * (Number(form.vat_rate) / 100) * 100) / 100
-  const total     = amount + vatAmount
-
-  function handleVendorSelect(vendorId: string) {
-    set('vendor_id', vendorId)
-    const vendor = vendors.find(v => v.id === Number(vendorId))
-    if (vendor) set('vendor_name', vendor.name)
-  }
-
   async function handleSave() {
-    if (!form.expense_date)       { toast.error('التاريخ مطلوب'); return }
-    if (!form.category)           { toast.error('الفئة مطلوبة'); return }
-    if (!form.description.trim()) { toast.error('الوصف مطلوب'); return }
-    if (!amount || amount <= 0)   { toast.error('المبلغ مطلوب'); return }
-    if (form.payment_method !== 'آجل' && !form.cash_account_id) {
-      toast.error('يجب اختيار حساب الدفع'); return
-    }
+    if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
+    try {
+      const payload: Record<string, any> = {
+        tenant_id:       tenantId,
+        name:            form.name.trim(),
+        account_type:    form.account_type,
+        bank_name:       form.bank_name   || null,
+        account_no:      form.account_no  || null,
+        iban:            form.iban        || null,
+        opening_balance: Number(form.opening_balance) || 0,
+        is_active:       form.is_active,
+        notes:           form.notes       || null,
+      }
 
-    const payload: Record<string, any> = {
-      tenant_id:      tenantId,
-      expense_number: form.expense_number,
-      expense_date:   form.expense_date,
-      expense_type:   form.expense_type,
-      category:       form.category,
-      description:    form.description.trim(),
-      amount,
-      vat_amount:     vatAmount,
-      total_amount:   total,
-      vat_rate:       Number(form.vat_rate),
-      payment_method: form.payment_method,
-      status:         form.status,
-      notes:          form.notes || null,
-      receipt_no:     form.receipt_no || null,
-      vendor_name:    form.vendor_name || null,
-    }
-    if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
-    if (form.project_id)      payload.project_id      = Number(form.project_id)
-    if (form.vendor_id)       payload.vendor_id       = Number(form.vendor_id)
-    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+      if (account) {
+        // ── تعديل حساب موجود ──
+        await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
 
-    let newExpenseId: number | undefined
+        // تعديل الاسم في شجرة الحسابات إذا كان مربوطاً
+        if (account.account_id) {
+          await supabase.from('finance_accounts')
+            .update({ name: form.name.trim(), notes: form.iban || form.account_no || null })
+            .eq('id', account.account_id)
+        }
+        toast.success('✅ تم التعديل')
 
-    if (expense) {
-      const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id)
-      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    } else {
-      const { data: newExp, error } = await supabase.from('finance_expenses').insert(payload).select('id').single()
-      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-      newExpenseId = newExp?.id
-    }
+      } else {
+        // ── إضافة حساب جديد ──
 
-    // ══ قيد محاسبي تلقائي — عند الإنشاء + الحالة مدفوع أو آجل ══
-    if (!expense && newExpenseId && (payload.status === 'مدفوع' || payload.status === 'معلق')) {
-
-      // الحساب المدين: حسب نوع وفئة المصروف
-      const expAccountCode = getExpenseAccountCode(payload.expense_type, payload.category)
-
-      // الحساب الدائن: الحساب البنكي / الصندوق المختار أو الذمم الدائنة للآجل
-      let creditAccountCode = '1111'  // الصندوق الرئيسي (fallback)
-
-      if (payload.status === 'معلق' || form.payment_method === 'آجل') {
-        // مصروف آجل → الذمم الدائنة
-        creditAccountCode = '2110'
-      } else if (form.cash_account_id) {
-        // نجلب كود الحساب البنكي المرتبط
-        const { data: ca } = await supabase
-          .from('finance_cash_accounts')
-          .select('account_id')
-          .eq('id', Number(form.cash_account_id))
+        // 1. نجيب id حساب 1110 (الصندوق والبنوك)
+        const { data: parent } = await supabase
+          .from('finance_accounts')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('code', '1110')
           .single()
-        if (ca?.account_id) {
-          const { data: acc } = await supabase
+
+        let newAccountId: number | null = null
+
+        if (parent) {
+          // 2. نحسب عدد الحسابات الفرعية تحت 1110 لتوليد كود جديد
+          // نجلب أكبر كود فرعي موجود تحت 1110 ونضيف 1
+          const { data: siblings } = await supabase
             .from('finance_accounts')
             .select('code')
-            .eq('id', ca.account_id)
+            .eq('tenant_id', tenantId)
+            .eq('parent_id', parent.id)
+            .order('code', { ascending: false })
+            .limit(1)
+
+          const lastCode = siblings?.[0]?.code ? parseInt(siblings[0].code) : 1110
+          const newCode = String(lastCode + 1)
+
+          // 3. نضيف الحساب في شجرة الحسابات
+          const { data: newAcc, error: accErr } = await supabase
+            .from('finance_accounts')
+            .insert({
+              tenant_id:      tenantId,
+              code:           newCode,
+              name:           form.name.trim(),
+              name_en:        form.bank_name || form.name.trim(),
+              account_type:   'أصول',
+              account_class:  'ميزانية',
+              parent_id:      parent.id,
+              level:          4,
+              is_parent:      false,
+              normal_balance: 'مدين',
+              is_active:      true,
+              notes:          form.iban || form.account_no || null,
+            })
+            .select('id')
             .single()
-          if (acc?.code) creditAccountCode = acc.code
+
+          if (!accErr && newAcc) {
+            newAccountId = newAcc.id
+          }
         }
+
+        // 4. نضيف في finance_cash_accounts مع ربط account_id
+        if (newAccountId) payload.account_id = newAccountId
+
+        await supabase.from('finance_cash_accounts').insert(payload)
+
+        toast.success(newAccountId
+          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات تحت 1110'
+          : '✅ تمت الإضافة (تعذر إنشاء الحساب في الشجرة — تأكد من وجود حساب 1110)'
+        )
       }
 
-      // بناء أسطر القيد
-      const journalLines: { accountCode: string; debit: number; credit: number; description?: string }[] = [
-        // مدين: حساب المصروف (المبلغ صافي)
-        {
-          accountCode: expAccountCode,
-          debit:       amount,
-          credit:      0,
-          description: `${payload.category} — ${payload.description}`,
-        },
-      ]
-
-      // مدين: ضريبة المدخلات إن وجدت
-      if (vatAmount > 0) {
-        journalLines.push({
-          accountCode: '2140',  // ضريبة القيمة المضافة القابلة للاسترداد
-          debit:       vatAmount,
-          credit:      0,
-          description: `ضريبة المدخلات — ${payload.category}`,
-        })
-      }
-
-      // دائن: الحساب النقدي / البنكي (الإجمالي شامل الضريبة)
-      journalLines.push({
-        accountCode: creditAccountCode,
-        debit:       0,
-        credit:      total,
-        description: `${form.payment_method} — ${payload.category}`,
-      })
-
-      await createJournalEntry(tenantId, {
-        date:          payload.expense_date,
-        description:   `مصروف ${payload.expense_type} — ${payload.category} — ${payload.description}`,
-        referenceType: 'مصروف',
-        referenceId:   newExpenseId,
-        source:        'آلي',
-        lines:         journalLines,
-      })
+      onSave()
+    } catch (err: any) {
+      toast.error('خطأ: ' + err.message)
     }
-
-    toast.success(expense ? 'تم التعديل ✅' : '✅ تم تسجيل المصروف والقيد المحاسبي')
-    onSave(); setSaving(false)
+    setSaving(false)
   }
-
-  const catList = CATEGORIES[form.expense_type as keyof typeof CATEGORIES] || []
-  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '92vh' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Receipt style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            {expense ? 'تعديل المصروف' : 'تسجيل مصروف جديد'}
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
+            {account ? 'تعديل حساب نقدي' : 'إضافة حساب نقدي'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
-            <X style={{ width: '18px', height: '18px' }} />
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
-
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* نوع المصروف */}
           <div style={{ display: 'flex', gap: '8px' }}>
-            {(['مشاريع', 'تشغيلي', 'إداري'] as const).map(t => {
-              const tc = TYPE_COLOR[t]
-              return (
-                <button key={t} type="button" onClick={() => { set('expense_type', t); set('category', '') }}
-                  style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', textAlign: 'center',
-                    borderColor: form.expense_type === t ? tc.color : 'var(--border)',
-                    background:  form.expense_type === t ? tc.bg : 'white',
-                    color:       form.expense_type === t ? tc.color : 'var(--text3)' }}>
-                  {t === 'مشاريع' ? '🏗️' : t === 'تشغيلي' ? '⚙️' : '🏢'} {t}
-                </button>
-              )
-            })}
+            {['صندوق', 'بنك'].map(t => (
+              <button key={t} type="button" onClick={() => set('account_type', t)}
+                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700,
+                  borderColor: form.account_type === t ? 'var(--primary)' : 'var(--border)',
+                  background: form.account_type === t ? 'var(--primary-light)' : 'white',
+                  color: form.account_type === t ? 'var(--primary)' : 'var(--text3)' }}>
+                {t === 'صندوق' ? '💰 صندوق نقدي' : '🏦 حساب بنكي'}
+              </button>
+            ))}
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>رقم المصروف</label>
-              <input value={form.expense_number} onChange={e => set('expense_number', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={lbl}>تاريخ المصروف *</label>
-              <input type="date" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label style={lbl}>الفئة *</label>
-              <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
-                <option value="">— اختر الفئة —</option>
-                {catList.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-          </div>
-
           <div>
-            <label style={lbl}>الوصف / البيان *</label>
-            <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="وصف تفصيلي للمصروف..." />
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الاسم *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: بنك الراجحي" />
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>المبلغ (قبل الضريبة) *</label>
-              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
-                className="input" dir="ltr" min="0" placeholder="0.00" />
-            </div>
-            <div>
-              <label style={lbl}>نسبة ضريبة القيمة المضافة</label>
-              <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select">
-                <option value={0}>0% — معفي</option>
-                <option value={15}>15%</option>
-              </select>
-            </div>
-            <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '10px 14px', border: '1px solid #fde68a' }}>
-              <div style={{ fontSize: '0.72rem', color: '#92400e' }}>الإجمالي شامل الضريبة</div>
-              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#e6820a' }}>{total.toLocaleString()} ر.س</div>
-              {vatAmount > 0 && <div style={{ fontSize: '0.7rem', color: '#92400e' }}>ضريبة: {vatAmount.toLocaleString()} ر.س</div>}
-            </div>
-          </div>
-
-          {/* القيد المتوقع */}
-          {amount > 0 && (
-            <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '10px 14px', border: '1px solid #bbf7d0', fontSize: '0.78rem' }}>
-              <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '6px' }}>⚙️ القيد المحاسبي المتوقع:</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <div><span style={{ color: '#1a56db' }}>مدين</span> — {getExpenseAccountCode(form.expense_type, form.category)} ({form.category || form.expense_type}) = <strong>{amount.toLocaleString()} ر.س</strong></div>
-                {vatAmount > 0 && <div><span style={{ color: '#1a56db' }}>مدين</span> — 2140 (ضريبة المدخلات) = <strong>{vatAmount.toLocaleString()} ر.س</strong></div>}
-                <div><span style={{ color: '#c81e1e' }}>دائن</span> — {form.payment_method === 'آجل' ? '2110 (الذمم الدائنة)' : form.cash_account_id ? 'الحساب المختار' : '...'} = <strong>{total.toLocaleString()} ر.س</strong></div>
+          {form.account_type === 'بنك' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>اسم البنك</label>
+                  <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="بنك الراجحي" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الحساب</label>
+                  <input value={form.account_no} onChange={e => set('account_no', e.target.value)} className="input" dir="ltr" />
+                </div>
               </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم IBAN</label>
+                <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA..." />
+              </div>
+            </>
+          )}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرصيد الافتتاحي</label>
+            <input type="number" value={form.opening_balance} onChange={e => set('opening_balance', e.target.value)} className="input" dir="ltr" min="0" />
+          </div>
+          {!account && (
+            <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1e40af' }}>
+              ℹ️ سيُضاف الحساب تلقائياً في شجرة الحسابات تحت <strong>1110 — الصندوق والبنوك</strong>
             </div>
           )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>المشروع</label>
-              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                <option value="">— مصروف عام —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>مركز التكلفة</label>
-              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {costCenters.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>الجهة / المورد</label>
-              <select value={form.vendor_id} onChange={e => handleVendorSelect(e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
-              {!form.vendor_id && (
-                <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)}
-                  className="input" style={{ marginTop: '6px' }} placeholder="أو اكتب اسم الجهة..." />
-              )}
-            </div>
-            <div>
-              <label style={lbl}>رقم الإيصال</label>
-              <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" placeholder="اختياري..." />
-            </div>
-          </div>
-
-          {/* طريقة الدفع + الحساب */}
-          <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', border: '1px solid var(--border)' }}>
-            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '10px' }}>
-              💳 طريقة الدفع وحساب الصرف
-            </label>
-            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
-              {[
-                { val: 'نقداً',      icon: '💵' },
-                { val: 'تحويل بنكي', icon: '🏦' },
-                { val: 'شيك',        icon: '📝' },
-                { val: 'بطاقة',      icon: '💳' },
-                { val: 'آجل',        icon: '📅' },
-              ].map(m => (
-                <button key={m.val} type="button"
-                  onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
-                  style={{ padding: '7px 12px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                    borderColor: form.payment_method === m.val ? '#e6820a' : 'var(--border)',
-                    background:  form.payment_method === m.val ? '#fffbeb' : 'white',
-                    color:       form.payment_method === m.val ? '#e6820a' : 'var(--text3)' }}>
-                  {m.icon} {m.val}
-                </button>
-              ))}
-            </div>
-            <CashAccountSelector
-              paymentMethod={form.payment_method}
-              value={form.cash_account_id}
-              tenantId={tenantId}
-              onChange={v => set('cash_account_id', v)}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>الحالة</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                {['مدفوع', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>ملاحظات</label>
-              <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
-            </div>
-          </div>
         </div>
-
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving
-              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-              : <Save style={{ width: '15px', height: '15px' }} />}
-            {expense ? 'حفظ التعديل' : 'تسجيل المصروف'}
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {account ? 'حفظ' : 'إضافة'}
           </button>
         </div>
       </div>
@@ -555,69 +223,567 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 }
 
 // ════════════════════════════════════════
+// مودال: إضافة حركة (قبض / صرف)
+// ════════════════════════════════════════
+function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId, onClose, onSave }: {
+  type: 'قبض' | 'صرف'; cashAccounts: CashAccount[]
+  accounts: Account[]; costCenters: CostCenter[]
+  tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    transaction_date: today,
+    amount:           '',
+    description:      '',
+    cash_account_id:  cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    payment_method:   'تحويل بنكي',
+    reference_no:     '',
+    account_id:       '',
+    cost_center_id:   '',
+    party_name:       '',
+    status:           'معتمد',
+    notes:            '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => { generateNumber() }, [])
+
+  async function generateNumber() {
+    const { count } = await supabase.from('finance_treasury').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const prefix = type === 'قبض' ? 'RCV' : 'PAY'
+    set('reference_no', `${prefix}-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`)
+  }
+
+  async function handleSave() {
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
+    setSaving(true)
+
+    const payload: Record<string, any> = {
+      tenant_id: tenantId,
+      transaction_no: form.reference_no,
+      transaction_date: form.transaction_date,
+      type, amount: Number(form.amount),
+      description: form.description.trim(),
+      payment_method: form.payment_method,
+      reference_no: form.reference_no,
+      party_name: form.party_name || null,
+      status: form.status,
+      notes: form.notes || null,
+    }
+    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+    if (form.account_id)      payload.account_id      = Number(form.account_id)
+    if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
+
+    const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+
+    // ── قيد محاسبي تلقائي ──
+    if (trxData) {
+      // نجيب كود الحساب النقدي المختار
+      const selectedCashAccount = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
+      const cashAccountCode = selectedCashAccount?.account_id
+        ? await getCashAccountCode(tenantId, selectedCashAccount.account_id)
+        : '1111'
+
+      const otherAccountCode = form.account_id
+        ? null
+        : type === 'قبض' ? '1120' : '2110'
+
+      if (otherAccountCode && cashAccountCode) {
+        await createJournalEntry(tenantId, {
+          date: form.transaction_date,
+          description: `${type} — ${form.description}`,
+          referenceType: type,
+          referenceId: trxData.id,
+          lines: type === 'قبض' ? [
+            { accountCode: cashAccountCode,  debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: otherAccountCode, debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ] : [
+            { accountCode: otherAccountCode, debit: Number(form.amount), credit: 0,                   description: form.description },
+            { accountCode: cashAccountCode,  debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
+          ]
+        })
+      }
+    }
+
+    toast.success(type === 'قبض' ? '✅ تم تسجيل المقبوض والقيد' : '✅ تم تسجيل المدفوع والقيد')
+    onSave(); setSaving(false)
+  }
+
+  const isReceipt = type === 'قبض'
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isReceipt
+              ? <ArrowUpRight style={{ width: '18px', height: '18px', color: '#0ea77b' }} />
+              : <ArrowDownRight style={{ width: '18px', height: '18px', color: '#c81e1e' }} />}
+            {isReceipt ? 'إضافة مقبوض' : 'إضافة مدفوع'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
+              <input type="date" value={form.transaction_date} onChange={e => set('transaction_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
+              <input value={form.reference_no} onChange={e => set('reference_no', e.target.value)} className="input" dir="ltr" />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البيان *</label>
+            <input value={form.description} onChange={e => set('description', e.target.value)} className="input"
+              placeholder={isReceipt ? 'مثال: تحصيل فاتورة' : 'مثال: سداد فاتورة مورد'} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: isReceipt ? '#ecfdf5' : '#fef2f2', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00"
+                style={{ borderColor: isReceipt ? '#bbf7d0' : '#fecaca', background: 'white' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب النقدي</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
+              <input value={form.party_name} onChange={e => set('party_name', e.target.value)} className="input"
+                placeholder={isReceipt ? 'اسم العميل' : 'اسم المورد'} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
+              <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
+                {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية'].map(m => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
+              <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
+                <option value="">— اختياري —</option>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
+              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
+                <option value="">— اختياري —</option>
+                {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['معتمد', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
+              <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary"
+            style={{ background: isReceipt ? '#0ea77b' : '#c81e1e' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : (isReceipt ? '💵' : '💸')}
+            {isReceipt ? 'تسجيل المقبوض' : 'تسجيل المدفوع'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: عهدة موظف
+// ════════════════════════════════════════
+function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, onClose, onSave }: {
+  custody: Custody | null; employees: Employee[]; projects: Project[]
+  cashAccounts: CashAccount[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    custody_date:    custody?.custody_date   || today,
+    employee_id:     custody?.employee_id    ? String(custody.employee_id) : '',
+    employee_name:   custody?.employee_name  || '',
+    custody_type:    custody?.custody_type   || 'عهدة نقدية',
+    amount:          custody?.amount         ? String(custody.amount) : '',
+    purpose:         custody?.purpose        || '',
+    project_id:      custody?.project_id     ? String(custody.project_id) : '',
+    due_date:        custody?.due_date       || '',
+    cash_account_id: cashAccounts[0]?.id     ? String(cashAccounts[0].id) : '',
+    notes:           custody?.notes          || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  function handleEmployeeSelect(empId: string) {
+    set('employee_id', empId)
+    const emp = employees.find(e => e.id === Number(empId))
+    if (emp) set('employee_name', emp.name)
+  }
+
+  async function handleSave() {
+    if (!form.employee_name.trim()) { toast.error('اسم الموظف مطلوب'); return }
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (!form.purpose.trim()) { toast.error('الغرض مطلوب'); return }
+    setSaving(true)
+
+    const { count } = await supabase.from('finance_employee_custody').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const custodyNo = `CUS-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+    const payload: Record<string, any> = {
+      tenant_id: tenantId, custody_no: custodyNo,
+      custody_date: form.custody_date,
+      employee_name: form.employee_name.trim(),
+      custody_type: form.custody_type,
+      amount: Number(form.amount),
+      purpose: form.purpose.trim(),
+      due_date: form.due_date || null,
+      settled_amount: 0, status: 'مفتوحة',
+      notes: form.notes || null,
+    }
+    if (form.employee_id) payload.employee_id = Number(form.employee_id)
+    if (form.project_id)  payload.project_id  = Number(form.project_id)
+
+    const { error } = await supabase.from('finance_employee_custody').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+
+    if (form.cash_account_id) {
+      await supabase.from('finance_treasury').insert({
+        tenant_id: tenantId,
+        transaction_no: `PAY-CUS-${custodyNo}`,
+        transaction_date: form.custody_date,
+        type: 'صرف',
+        amount: Number(form.amount),
+        description: `عهدة نقدية — ${form.employee_name} — ${form.purpose}`,
+        cash_account_id: Number(form.cash_account_id),
+        payment_method: 'نقداً',
+        reference_type: 'عهدة',
+        party_name: form.employee_name,
+        status: 'معتمد',
+      })
+    }
+
+    toast.success('✅ تم إصدار العهدة وتسجيل حركة الصرف')
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '560px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+            {custody ? 'تعديل عهدة' : 'إصدار عهدة موظف'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['عهدة نقدية', 'سلفة راتب'].map(t => (
+              <button key={t} type="button" onClick={() => set('custody_type', t)}
+                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
+                  borderColor: form.custody_type === t ? '#e6820a' : 'var(--border)',
+                  background: form.custody_type === t ? '#fffbeb' : 'white',
+                  color: form.custody_type === t ? '#e6820a' : 'var(--text3)' }}>
+                {t === 'عهدة نقدية' ? '💼 عهدة نقدية' : '💳 سلفة راتب'}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الموظف *</label>
+              <select value={form.employee_id} onChange={e => handleEmployeeSelect(e.target.value)} className="select">
+                <option value="">— اختر الموظف —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
+              <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإصدار *</label>
+              <input type="date" value={form.custody_date} onChange={e => set('custody_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
+              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصرف من</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الغرض *</label>
+            <input value={form.purpose} onChange={e => set('purpose', e.target.value)} className="input" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
+            <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+              <option value="">— اختياري —</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            إصدار العهدة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: تسوية عهدة
+// ════════════════════════════════════════
+function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }: {
+  custody: Custody; cashAccounts: CashAccount[]
+  tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const remaining = custody.amount - custody.settled_amount
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    settled_amount:  String(remaining),
+    settled_date:    today,
+    cash_account_id: cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    notes:           '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const settledAmt = Number(form.settled_amount) || 0
+  const returnAmt  = remaining - settledAmt
+
+  async function handleSettle() {
+    if (settledAmt <= 0) { toast.error('أدخل المبلغ المُسوَّى'); return }
+    setSaving(true)
+
+    await supabase.from('finance_employee_custody').update({
+      settled_amount: custody.settled_amount + settledAmt,
+      settled_date:   form.settled_date,
+      status:         settledAmt >= remaining ? 'مُسوَّاة' : 'جزئية',
+      notes:          form.notes || null,
+    }).eq('id', custody.id)
+
+    if (returnAmt > 0 && form.cash_account_id) {
+      await supabase.from('finance_treasury').insert({
+        tenant_id: tenantId,
+        transaction_no: `RCV-CUS-${custody.custody_no}`,
+        transaction_date: form.settled_date,
+        type: 'قبض',
+        amount: returnAmt,
+        description: `إرجاع فائض عهدة — ${custody.employee_name}`,
+        cash_account_id: Number(form.cash_account_id),
+        payment_method: 'نقداً',
+        reference_type: 'عهدة',
+        party_name: custody.employee_name,
+        status: 'معتمد',
+      })
+    }
+
+    toast.success('✅ تمت التسوية' + (returnAmt > 0 ? ` — تم إرجاع ${returnAmt.toLocaleString()} ر.س للصندوق` : ''))
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700 }}>✅ تسوية عهدة — {custody.employee_name}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
+            {[
+              { label: 'إجمالي العهدة',  value: custody.amount,          color: '#374151', bg: '#f3f4f6' },
+              { label: 'تم تسويته',      value: custody.settled_amount,  color: '#0ea77b', bg: '#ecfdf5' },
+              { label: 'المتبقي',        value: remaining,               color: '#c81e1e', bg: '#fef2f2' },
+            ].map(s => (
+              <div key={s.label} style={{ padding: '10px', background: s.bg, borderRadius: '8px' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 700, color: s.color }}>{s.value.toLocaleString()}</div>
+                <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>{s.label} ر.س</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ المُسوَّى</label>
+            <input type="number" value={form.settled_amount} onChange={e => set('settled_amount', e.target.value)} className="input" dir="ltr" max={remaining} />
+          </div>
+          {returnAmt > 0 && (
+            <div style={{ padding: '10px 14px', background: '#ecfdf5', borderRadius: '8px', fontSize: '0.82rem', color: '#065f46', fontWeight: 600 }}>
+              💰 سيُرجَع للصندوق: {returnAmt.toLocaleString()} ر.س
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ التسوية</label>
+              <input type="date" value={form.settled_date} onChange={e => set('settled_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصندوق</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSettle} disabled={saving || returnAmt < 0} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '✅'}
+            تسوية العهدة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getCashAccountCode(tenantId: string, accountId: number): Promise<string | null> {
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  return data?.code || null
+}
+
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
+  }).select('id').single()
+  if (error || !entry) return null
+  await supabase.from('finance_journal_lines').insert(
+    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
+  )
+  return entry.id
+}
+
+// ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
-export default function FinanceExpensesPage() {
+export default function FinanceTreasuryPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'مشاريع' | 'تشغيلي' | 'إداري'>('مشاريع')
-  const [expenses,    setExpenses]    = useState<Expense[]>([])
-  const [accounts,    setAccounts]    = useState<Account[]>([])
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([])
-  const [projects,    setProjects]    = useState<Project[]>([])
-  const [vendors,     setVendors]     = useState<Vendor[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [search,      setSearch]      = useState('')
-  const [filterStatus, setFilterStatus] = useState('الكل')
-  const [showModal,   setShowModal]   = useState(false)
-  const [editExpense, setEditExpense] = useState<Expense | null>(null)
+  const [activeTab, setActiveTab] = useState<'transactions' | 'receipts' | 'payments' | 'custody' | 'accounts'>('transactions')
+
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [custodies,    setCustodies]    = useState<Custody[]>([])
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
+  const [projects,     setProjects]     = useState<Project[]>([])
+  const [employees,    setEmployees]    = useState<Employee[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [search,       setSearch]       = useState('')
+
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showCustodyModal, setShowCustodyModal] = useState(false)
+  const [showAccountModal, setShowAccountModal] = useState(false)
+  const [showSettleModal,  setShowSettleModal]  = useState(false)
+  const [editAccount,      setEditAccount]      = useState<CashAccount | null>(null)
+  const [settleCustody,    setSettleCustody]    = useState<Custody | null>(null)
 
   useEffect(() => { loadAll() }, [tenant?.id])
 
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [expRes, accRes, ccRes, projRes, venRes] = await Promise.all([
-      supabase.from('finance_expenses')
-        .select('*, project:projects(name), vendor:finance_vendors!finance_expenses_vendor_id_fkey(name)')
-        .eq('tenant_id', tenant.id)
-        .order('expense_date', { ascending: false }),
-      supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
-      supabase.from('finance_cost_centers').select('id,code,name').eq('tenant_id', tenant.id).eq('is_active', true),
+    const [trRes, cusRes, caRes, accRes, ccRes, projRes, empRes] = await Promise.all([
+      supabase.from('finance_treasury').select('*, cash_account:finance_cash_accounts(name), account:finance_accounts(code,name)').eq('tenant_id', tenant.id).order('transaction_date', { ascending: false }).limit(200),
+      supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
+      supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('finance_accounts').select('id,code,name').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
+      supabase.from('finance_cost_centers').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('hr_employees').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
-    setExpenses(expRes.data || [])
+    setTransactions(trRes.data || [])
+    setCustodies(cusRes.data || [])
+
+    const trData = trRes.data || []
+    const caData = (caRes.data || []).map((ca: CashAccount) => {
+      const cashIn  = trData.filter((t: Transaction) => t.type === 'قبض' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
+      const cashOut = trData.filter((t: Transaction) => t.type === 'صرف' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
+      return { ...ca, balance: Number(ca.opening_balance) + cashIn - cashOut }
+    })
+    setCashAccounts(caData)
     setAccounts(accRes.data || [])
     setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
-    setVendors(venRes.data || [])
+    setEmployees(empRes.data || [])
     setLoading(false)
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm('حذف هذا المصروف؟')) return
-    await supabase.from('finance_expenses').delete().eq('id', id)
-    setExpenses(p => p.filter(e => e.id !== id))
-    toast.success('تم الحذف')
-  }
+  const totalIn      = transactions.filter(t => t.type === 'قبض').reduce((s, t) => s + Number(t.amount), 0)
+  const totalOut     = transactions.filter(t => t.type === 'صرف').reduce((s, t) => s + Number(t.amount), 0)
+  const netBalance   = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0)
+  const openCustodies = custodies.filter(c => c.status === 'مفتوحة').reduce((s, c) => s + Number(c.amount) - Number(c.settled_amount), 0)
 
-  const tabExpenses = expenses.filter(e => e.expense_type === activeTab)
-  const filtered = tabExpenses.filter(e => {
-    const matchSearch = !search || e.description.includes(search) || e.category.includes(search) || (e.vendor_name || '').includes(search)
-    const matchStatus = filterStatus === 'الكل' || e.status === filterStatus
-    return matchSearch && matchStatus
-  })
+  const receipts = transactions.filter(t => t.type === 'قبض')
+  const payments = transactions.filter(t => t.type === 'صرف')
 
-  const totalAll      = expenses.reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalProjects = expenses.filter(e => e.expense_type === 'مشاريع').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalOps      = expenses.filter(e => e.expense_type === 'تشغيلي').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalAdmin    = expenses.filter(e => e.expense_type === 'إداري').reduce((s, e) => s + Number(e.total_amount), 0)
-  const totalTab      = filtered.reduce((s, e) => s + Number(e.total_amount), 0)
+  const filtered = (activeTab === 'receipts' ? receipts
+    : activeTab === 'payments' ? payments
+    : transactions).filter(t =>
+      !search || t.description.includes(search) || (t.party_name || '').includes(search) || t.transaction_no.includes(search)
+  )
 
   const TABS = [
-    { id: 'مشاريع', label: '🏗️ مصروفات المشاريع',  color: '#1a56db', total: totalProjects },
-    { id: 'تشغيلي', label: '⚙️ مصروفات تشغيلية',   color: '#e6820a', total: totalOps },
-    { id: 'إداري',  label: '🏢 إدارية وعمومية',     color: '#c81e1e', total: totalAdmin },
+    { id: 'transactions', label: '📋 كل الحركات',      color: '#374151' },
+    { id: 'receipts',     label: '💵 المقبوضات',        color: '#0ea77b' },
+    { id: 'payments',     label: '💸 المدفوعات',        color: '#c81e1e' },
+    { id: 'custody',      label: '👤 عهد الموظفين',     color: '#e6820a' },
+    { id: 'accounts',     label: '🏦 الحسابات النقدية', color: '#1a56db' },
   ]
 
   return (
@@ -627,164 +793,252 @@ export default function FinanceExpensesPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Receipt style={{ width: '20px', height: '20px', color: '#e6820a' }} />
-            المصروفات
+            <Wallet style={{ width: '20px', height: '20px', color: '#1a56db' }} />
+            الخزينة
           </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>مصروفات المشاريع — التشغيلية — الإدارية والعمومية</p>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>المقبوضات والمدفوعات — عهد الموظفين — الحسابات النقدية</p>
         </div>
-        <button onClick={() => { setEditExpense(null); setShowModal(true) }} className="btn btn-primary" style={{ background: '#e6820a' }}>
-          <Plus style={{ width: '16px', height: '16px' }} /> تسجيل مصروف
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {(activeTab === 'transactions' || activeTab === 'receipts') && (
+            <button onClick={() => setShowReceiptModal(true)} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> قبض
+            </button>
+          )}
+          {(activeTab === 'transactions' || activeTab === 'payments') && (
+            <button onClick={() => setShowPaymentModal(true)} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> صرف
+            </button>
+          )}
+          {activeTab === 'custody' && (
+            <button onClick={() => setShowCustodyModal(true)} className="btn btn-primary" style={{ background: '#e6820a' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> إصدار عهدة
+            </button>
+          )}
+          {activeTab === 'accounts' && (
+            <button onClick={() => { setEditAccount(null); setShowAccountModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> إضافة حساب
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
-          { label: 'إجمالي المصروفات',  value: totalAll,      color: '#374151', bg: '#f3f4f6' },
-          { label: 'مصروفات المشاريع',  value: totalProjects, color: '#1a56db', bg: '#eff6ff' },
-          { label: 'مصروفات تشغيلية',  value: totalOps,      color: '#e6820a', bg: '#fffbeb' },
-          { label: 'إدارية وعمومية',    value: totalAdmin,    color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'الرصيد الإجمالي',  value: netBalance,    color: '#1a56db', bg: 'linear-gradient(135deg, #1a56db, #3b82f6)', white: true },
+          { label: 'إجمالي المقبوضات', value: totalIn,        color: '#0ea77b', bg: '#ecfdf5', white: false },
+          { label: 'إجمالي المدفوعات', value: totalOut,       color: '#c81e1e', bg: '#fef2f2', white: false },
+          { label: 'عهد مفتوحة',       value: openCustodies, color: '#e6820a', bg: '#fffbeb', white: false },
         ].map(kpi => (
-          <div key={kpi.label} className="card" style={{ padding: '14px 16px', background: kpi.bg }}>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value.toLocaleString()}</div>
-            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label} — ريال</div>
+          <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.white ? 'white' : kpi.color }}>{kpi.value.toLocaleString()}</div>
+            <div style={{ fontSize: '0.72rem', color: kpi.white ? 'rgba(255,255,255,0.8)' : '#9ca3af', marginTop: '3px' }}>{kpi.label} — ريال</div>
           </div>
         ))}
       </div>
 
       {/* التابات */}
-      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => { setActiveTab(t.id as any); setSearch(''); setFilterStatus('الكل') }}
+          <button key={t.id} onClick={() => { setActiveTab(t.id as any); setSearch('') }}
             style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? t.color : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
               boxShadow: activeTab === t.id ? '0 2px 8px ' + t.color + '44' : 'none' }}>
             {t.label}
-            <span style={{ marginRight: '6px', fontSize: '0.72rem', opacity: 0.8 }}>({t.total.toLocaleString()} ر.س)</span>
           </button>
         ))}
       </div>
 
-      {/* فلاتر */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', gap: '6px' }}>
-          {['الكل', 'مدفوع', 'معلق', 'ملغي'].map(s => (
-            <button key={s} onClick={() => setFilterStatus(s)}
-              style={{ padding: '5px 12px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-                borderColor: filterStatus === s ? 'var(--primary)' : 'var(--border)',
-                background: filterStatus === s ? 'var(--primary)' : 'white',
-                color: filterStatus === s ? 'white' : 'var(--text3)' }}>
-              {s}
-            </button>
-          ))}
+      {/* بحث */}
+      {activeTab !== 'accounts' && activeTab !== 'custody' && (
+        <div style={{ position: 'relative', width: '240px' }}>
+          <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px' }} placeholder="بحث..." />
         </div>
-        <div style={{ position: 'relative' }}>
-          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px', width: '240px' }} />
-        </div>
-      </div>
+      )}
 
-      {/* الجدول */}
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-          <Receipt style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-          <p style={{ color: '#9ca3af' }}>لا توجد مصروفات في هذا التصنيف</p>
-          <button onClick={() => { setEditExpense(null); setShowModal(true) }} className="btn btn-primary" style={{ marginTop: '16px', background: '#e6820a' }}>
-            <Plus style={{ width: '16px', height: '16px' }} /> تسجيل أول مصروف
-          </button>
-        </div>
-      ) : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['التاريخ', 'الفئة', 'الوصف', 'المشروع/م.التكلفة', 'الجهة', 'طريقة الدفع', 'صافي', 'ض.ق.م', 'الإجمالي', 'الحالة', ''].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(exp => (
-                  <tr key={exp.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{exp.expense_date}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
-                        background: TYPE_COLOR[exp.expense_type]?.bg || '#f3f4f6',
-                        color: TYPE_COLOR[exp.expense_type]?.color || '#6b7280' }}>
-                        {exp.category}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', maxWidth: '160px' }}>
-                      <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.description}</div>
-                      {exp.receipt_no && <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>إيصال: {exp.receipt_no}</div>}
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>
-                      {exp.project?.name || exp.cost_center?.name || '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{exp.vendor?.name || exp.vendor_name || '—'}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: '#f3f4f6', color: '#374151', fontWeight: 600 }}>
-                        {exp.payment_method}
-                      </span>
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>
-                      {Number(exp.amount).toLocaleString()} ر.س
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: '#e6820a', whiteSpace: 'nowrap' }}>
-                      {Number(exp.vat_amount) > 0 ? Number(exp.vat_amount).toLocaleString() + ' ر.س' : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>
-                      {Number(exp.total_amount).toLocaleString()} ر.س
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span className={'badge ' + (STATUS_COLOR[exp.status] || 'badge-gray')}>{exp.status}</span>
-                    </td>
-                    <td style={{ padding: '10px 8px' }}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button onClick={() => { setEditExpense(exp); setShowModal(true) }} className="btn btn-ghost btn-xs">
-                          <Pencil style={{ width: '13px', height: '13px' }} />
-                        </button>
-                        <button onClick={() => handleDelete(exp.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                          <Trash2 style={{ width: '13px', height: '13px' }} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                  <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length} مصروف)</td>
-                  <td style={{ padding: '10px 12px', color: 'var(--text3)' }}>{filtered.reduce((s,e)=>s+Number(e.amount),0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 12px', color: '#e6820a' }}>{filtered.reduce((s,e)=>s+Number(e.vat_amount),0).toLocaleString()} ر.س</td>
-                  <td style={{ padding: '10px 12px', color: '#e6820a' }}>{totalTab.toLocaleString()} ر.س</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tfoot>
-            </table>
+      {/* ══ الحركات ══ */}
+      {(activeTab === 'transactions' || activeTab === 'receipts' || activeTab === 'payments') && (
+        loading
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
+          : filtered.length === 0
+            ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <Wallet style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                <p style={{ color: '#9ca3af' }}>لا توجد حركات بعد</p>
+              </div>
+            : <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['التاريخ','النوع','البيان','الجهة','الحساب النقدي','طريقة الدفع','المبلغ','الحالة',''].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(t => (
+                        <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{t.transaction_date}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
+                              background: t.type === 'قبض' ? '#ecfdf5' : '#fef2f2',
+                              color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
+                              {t.type === 'قبض' ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
+                              {t.type}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 12px', maxWidth: '200px' }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{t.transaction_no}</div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{t.party_name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.cash_account?.name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.payment_method}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, whiteSpace: 'nowrap', color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
+                            {t.type === 'قبض' ? '+' : '-'}{Number(t.amount).toLocaleString()} ر.س
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span className={'badge ' + (t.status === 'معتمد' ? 'badge-green' : t.status === 'معلق' ? 'badge-amber' : 'badge-gray')}>{t.status}</span>
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>
+                            <button onClick={async () => { if (!confirm('حذف هذه الحركة؟')) return; await supabase.from('finance_treasury').delete().eq('id', t.id); loadAll(); toast.success('تم الحذف') }}
+                              className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                              <Trash2 style={{ width: '13px', height: '13px' }} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
+                        <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length})</td>
+                        <td style={{ padding: '10px 12px', color: activeTab === 'receipts' ? '#0ea77b' : activeTab === 'payments' ? '#c81e1e' : 'var(--text)' }}>
+                          {filtered.reduce((s, t) => s + Number(t.amount), 0).toLocaleString()} ر.س
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+      )}
+
+      {/* ══ عهد الموظفين ══ */}
+      {activeTab === 'custody' && (
+        loading
+          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
+          : custodies.length === 0
+            ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                <p style={{ color: '#9ca3af' }}>لا توجد عهد مفتوحة</p>
+              </div>
+            : <div className="card" style={{ overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['رقم العهدة','الموظف','النوع','الغرض','المشروع','التاريخ','الاستحقاق','العهدة','المُسوَّى','المتبقي','الحالة',''].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {custodies.map(c => {
+                      const remaining = Number(c.amount) - Number(c.settled_amount)
+                      const isOverdue = c.due_date && c.due_date < new Date().toISOString().split('T')[0] && c.status === 'مفتوحة'
+                      return (
+                        <tr key={c.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: '#e6820a', fontSize: '0.8rem' }}>{c.custody_no}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>{c.employee_name}</td>
+                          <td style={{ padding: '10px 12px' }}><span className="badge badge-amber" style={{ fontSize: '0.72rem' }}>{c.custody_type}</span></td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.purpose}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(c as any).project?.name || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{c.custody_date}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap', color: isOverdue ? '#c81e1e' : 'inherit' }}>
+                            {c.due_date || '—'} {isOverdue && '⚠️'}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: '#e6820a' }}>{Number(c.amount).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px', color: '#0ea77b' }}>{Number(c.settled_amount).toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 700, color: remaining > 0 ? '#c81e1e' : '#0ea77b' }}>{remaining.toLocaleString()} ر.س</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span className={'badge ' + (c.status === 'مُسوَّاة' ? 'badge-green' : c.status === 'جزئية' ? 'badge-amber' : 'badge-blue')}>{c.status}</span>
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>
+                            {c.status !== 'مُسوَّاة' && (
+                              <button onClick={() => { setSettleCustody(c); setShowSettleModal(true) }}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                                تسوية
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+      )}
+
+      {/* ══ الحسابات النقدية ══ */}
+      {activeTab === 'accounts' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+            {cashAccounts.map(ca => (
+              <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>
+                      {ca.account_type === 'صندوق' ? '💰' : '🏦'} {ca.name}
+                    </div>
+                    {ca.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{ca.bank_name}</div>}
+                    {ca.iban && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{ca.iban.substring(0, 14)}...</div>}
+                    {ca.account_id && (
+                      <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
+                    )}
+                  </div>
+                  <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs">
+                    <Pencil style={{ width: '13px', height: '13px' }} />
+                  </button>
+                </div>
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>الرصيد الحالي</div>
+                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: (ca.balance || 0) >= 0 ? '#1a56db' : '#c81e1e' }}>
+                    {(ca.balance || 0).toLocaleString()} <span style={{ fontSize: '0.875rem', fontWeight: 400 }}>ر.س</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {showModal && (
-        <ExpenseModal
-          expense={editExpense}
-          accounts={accounts}
-          costCenters={costCenters}
-          projects={projects}
-          vendors={vendors}
-          tenantId={tenant!.id}
-          onClose={() => { setShowModal(false); setEditExpense(null) }}
-          onSave={() => { setShowModal(false); setEditExpense(null); loadAll() }}
-        />
+      {/* المودالات */}
+      {showReceiptModal && (
+        <TransactionModal type="قبض" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+          tenantId={tenant!.id} onClose={() => setShowReceiptModal(false)} onSave={() => { setShowReceiptModal(false); loadAll() }} />
+      )}
+      {showPaymentModal && (
+        <TransactionModal type="صرف" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+          tenantId={tenant!.id} onClose={() => setShowPaymentModal(false)} onSave={() => { setShowPaymentModal(false); loadAll() }} />
+      )}
+      {showCustodyModal && (
+        <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts}
+          tenantId={tenant!.id} onClose={() => setShowCustodyModal(false)} onSave={() => { setShowCustodyModal(false); loadAll() }} />
+      )}
+      {showAccountModal && (
+        <CashAccountModal account={editAccount} tenantId={tenant!.id}
+          onClose={() => { setShowAccountModal(false); setEditAccount(null) }}
+          onSave={() => { setShowAccountModal(false); setEditAccount(null); loadAll() }} />
+      )}
+      {showSettleModal && settleCustody && (
+        <SettleCustodyModal custody={settleCustody} cashAccounts={cashAccounts}
+          tenantId={tenant!.id} onClose={() => { setShowSettleModal(false); setSettleCustody(null) }}
+          onSave={() => { setShowSettleModal(false); setSettleCustody(null); loadAll() }} />
       )}
     </div>
   )
