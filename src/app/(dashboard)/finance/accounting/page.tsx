@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Layers, Target } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { createJournalEntry } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
