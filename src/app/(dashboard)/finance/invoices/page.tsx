@@ -5,6 +5,8 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink, Package, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { usePagination } from '@/hooks/usePagination'
+import { useRef } from 'react'
 import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
@@ -1355,6 +1357,10 @@ export default function InvoicesPage() {
   const [activeTab, setActiveTab] = useState<'invoices' | 'creditnotes' | 'quotations' | 'clients'>('invoices')
   const [loading, setLoading] = useState(true)
   const [invoices, setInvoices]       = useState<Invoice[]>([])
+  const [filterStatus, setFilterStatus] = useState('الكل')
+
+  // ══ Pagination للفواتير ══
+  const invPagination = usePagination(50)
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([])
   const [quotations, setQuotations]   = useState<Quotation[]>([])
   const [clients, setClients]         = useState<Client[]>([])
@@ -1378,27 +1384,49 @@ export default function InvoicesPage() {
   const [viewItems,     setViewItems]     = useState<InvoiceItem[]>([])
 
   useEffect(() => { if (tenant) loadAll() }, [tenant])
+  useEffect(() => { if (tenant) loadInvoices(1, filterStatus, search) }, [filterStatus])
+
+  // ══ تحميل الفواتير بـ pagination ══
+  async function loadInvoices(page = invPagination.page, status = filterStatus, q = search) {
+    if (!tenant) return
+    setLoading(true)
+    const from = (page - 1) * 50
+    const to   = from + 49
+
+    let query = supabase
+      .from('finance_invoices')
+      .select('*, client:finance_clients(name), project:projects(name)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .order('invoice_date', { ascending: false })
+      .range(from, to)
+
+    if (status !== 'الكل') query = query.eq('status', status)
+    if (q) query = query.or(`invoice_number.ilike.%${q}%,client_name.ilike.%${q}%`)
+
+    const { data, count } = await query
+    setInvoices(data || [])
+    invPagination.setTotal(count || 0)
+    setLoading(false)
+  }
 
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [invRes, cnRes, qtRes, clRes, compRes, projRes, catRes] = await Promise.all([
-      supabase.from('finance_invoices').select('*, client:finance_clients(name), project:projects(name)').eq('tenant_id', tenant.id).order('invoice_date', { ascending: false }),
-      supabase.from('finance_credit_notes').select('*').eq('tenant_id', tenant.id).order('note_date', { ascending: false }),
-      supabase.from('finance_quotations').select('*, client:finance_clients(name), project:projects(name)').eq('tenant_id', tenant.id).order('quote_date', { ascending: false }),
+    const [cnRes, qtRes, clRes, compRes, projRes, catRes] = await Promise.all([
+      supabase.from('finance_credit_notes').select('*').eq('tenant_id', tenant.id).order('note_date', { ascending: false }).limit(200),
+      supabase.from('finance_quotations').select('*, client:finance_clients(name), project:projects(name)').eq('tenant_id', tenant.id).order('quote_date', { ascending: false }).limit(200),
       supabase.from('finance_clients').select('*').eq('tenant_id', tenant.id).order('name'),
       supabase.from('tenants').select('*').eq('id', tenant.id).single(),
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('finance_catalog_items').select('*').eq('tenant_id', tenant.id).order('item_type').order('name'),
     ])
-    setInvoices(invRes.data || [])
     setCreditNotes(cnRes.data || [])
     setQuotations(qtRes.data || [])
     setClients(clRes.data || [])
     if (compRes.data) setCompany(compRes.data)
     setProjects(projRes.data || [])
     setCatalogItems(catRes.data || [])
-    setLoading(false)
+    await loadInvoices(1, filterStatus, search)
   }
 
   async function handleViewInvoice(inv: Invoice) {
@@ -1430,15 +1458,11 @@ export default function InvoicesPage() {
   const totalCollected = invoices.filter(i => i.status === 'مدفوعة').reduce((s, i) => s + Number(i.total_amount), 0)
   const totalPending   = invoices.filter(i => i.status === 'مرسلة' || i.status === 'مسودة').reduce((s, i) => s + Number(i.total_amount), 0)
 
-  const filteredInvoices = invoices.filter(i => {
-    const matchSearch = !search || i.invoice_number.includes(search) || i.client_name.includes(search)
-    const isOverdue = i.status !== 'مدفوعة' && i.status !== 'ملغاة' && i.due_date && i.due_date < today
-    const displayStatus = isOverdue ? 'متأخرة' : i.status
-    return matchSearch
-  })
+  // الفلترة تتم server-side في loadInvoices — invoices هي الصفحة الحالية فقط
+  const filteredInvoices = invoices
 
   const TABS = [
-    { id: 'invoices',    label: '🧾 الفواتير',       count: invoices.length,    color: '#1a56db' },
+    { id: 'invoices',    label: '🧾 الفواتير',       count: invPagination.total, color: '#1a56db' },
     { id: 'creditnotes', label: '↩️ الإشعارات',      count: creditNotes.length, color: '#c81e1e' },
     { id: 'quotations',  label: '📋 عروض الأسعار',   count: quotations.length,  color: '#7c3aed' },
     { id: 'clients',     label: '👥 العملاء',         count: clients.length,     color: '#e6820a' },
@@ -1519,10 +1543,27 @@ export default function InvoicesPage() {
         ))}
       </div>
 
-      {/* بحث */}
-      <div style={{ position: 'relative', maxWidth: '360px' }}>
-        <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px' }} />
+      {/* بحث + فلاتر حالة */}
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative' }}>
+          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
+          <input value={search}
+            onChange={e => { setSearch(e.target.value); if (activeTab === 'invoices') loadInvoices(1, filterStatus, e.target.value) }}
+            placeholder="بحث برقم الفاتورة أو العميل..." className="input" style={{ paddingRight: '32px', width: '280px' }} />
+        </div>
+        {activeTab === 'invoices' && (
+          <div style={{ display: 'flex', gap: '4px' }}>
+            {['الكل', 'مسودة', 'مرسلة', 'مدفوعة', 'ملغاة'].map(s => (
+              <button key={s} onClick={() => setFilterStatus(s)}
+                style={{ padding: '6px 12px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                  borderColor: filterStatus === s ? '#1a56db' : 'var(--border)',
+                  background:  filterStatus === s ? '#1a56db' : 'white',
+                  color:       filterStatus === s ? 'white'   : 'var(--text3)' }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ══ تاب: الفواتير ══ */}
@@ -1615,6 +1656,8 @@ export default function InvoicesPage() {
               </table>
             </div>
           )}
+          {/* شريط التصفح الصفحي */}
+          <invPagination.PaginationBar color="#1a56db" />
         </div>
       )}
 
