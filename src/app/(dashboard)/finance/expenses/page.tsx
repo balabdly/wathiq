@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { createJournalEntry, getCashAccountCode, resolveExpenseAccountCode } from '@/lib/journal'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -21,8 +20,7 @@ type Expense = {
   project?: { name: string }
   vendor?: { name: string }
 }
-
-type Account   = { id: number; code: string; name: string; account_type: string }
+type Account    = { id: number; code: string; name: string; account_type: string }
 type CostCenter = { id: number; code: string; name: string }
 type Project    = { id: number; name: string }
 type Vendor     = { id: number; name: string }
@@ -48,11 +46,109 @@ const CATEGORIES: Record<string, string[]> = {
 const STATUS_COLOR: Record<string, string> = {
   'مدفوع': 'badge-green', 'معلق': 'badge-amber', 'ملغي': 'badge-red'
 }
-
 const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
   'مشاريع': { bg: '#eff6ff', color: '#1a56db' },
   'تشغيلي': { bg: '#fffbeb', color: '#e6820a' },
   'إداري':  { bg: '#fef2f2', color: '#c81e1e' },
+}
+
+// ════════════════════════════════════════
+// خريطة تصنيف المصروف → كود الحساب
+// ════════════════════════════════════════
+function getExpenseAccountCode(expenseType: string, category: string): string {
+  const cat = category || ''
+  const typ = expenseType || ''
+
+  if (typ === 'مشاريع') {
+    if (cat.includes('عمالة'))              return '5110'  // عمالة مباشرة
+    if (cat.includes('مقاول'))             return '5130'  // مقاولون من الباطن
+    if (cat.includes('موقع'))              return '5140'  // مصروفات الموقع
+    if (cat.includes('معدة') || cat.includes('آلة') || cat.includes('معدات')) return '5140'
+    return '5120'  // مواد مباشرة (افتراضي للمشاريع)
+  }
+
+  if (typ === 'تشغيلي') {
+    if (cat.includes('راتب') || cat.includes('أجور') || cat.includes('رواتب')) return '5210'
+    if (cat.includes('تأمين'))             return '5220'  // GOSI
+    if (cat.includes('إيجار'))             return '5310'
+    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return '5320'
+    if (cat.includes('صيانة'))             return '5330'
+    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return '5410'
+    if (cat.includes('بنك'))               return '5510'
+    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
+    return '5320'  // مصروفات إدارية (افتراضي للتشغيلي)
+  }
+
+  if (typ === 'إداري') {
+    if (cat.includes('قرطاسية') || cat.includes('مستلزمات مكتبية')) return '5320'
+    if (cat.includes('ضيافة') || cat.includes('علاقات'))  return '5340'
+    if (cat.includes('رسوم') || cat.includes('ترخيص') || cat.includes('اشتراك')) return '5320'
+    if (cat.includes('تدريب'))             return '5320'
+    if (cat.includes('سفر') || cat.includes('انتقال'))    return '5410'
+    if (cat.includes('بنك'))               return '5510'
+    if (cat.includes('غرامة') || cat.includes('جزاء') || cat.includes('غرامات')) return '5520'
+    return '5320'  // مصروفات إدارية (افتراضي)
+  }
+
+  return '5800'  // مصروفات أخرى
+}
+
+// ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id')
+    .eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number; source?: string
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(
+    params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) }))
+  )
+  // تجاهل الأسطر التي لا يوجد لها حساب بدلاً من إلغاء القيد كاملاً
+  const validLines = lineIds.filter(l => l.account_id)
+  if (validLines.length < 2) {
+    console.warn('لا تكفي حسابات للقيد — تخطي')
+    return null
+  }
+
+  const totalDebit  = validLines.reduce((s, l) => s + l.debit,  0)
+  const totalCredit = validLines.reduce((s, l) => s + l.credit, 0)
+
+  const { count } = await supabase.from('finance_journal_entries')
+    .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id:      tenantId,
+    entry_number:   entryNumber,
+    entry_date:     params.date,
+    description:    params.description,
+    reference_type: params.referenceType,
+    reference_id:   params.referenceId,
+    total_debit:    totalDebit,
+    total_credit:   totalCredit,
+    status:         'معتمد',
+    entry_source:   params.source || 'آلي',
+  }).select('id').single()
+
+  if (error || !entry) { console.error('خطأ في القيد:', error); return null }
+
+  await supabase.from('finance_journal_lines').insert(
+    validLines.map(l => ({
+      entry_id:    entry.id,
+      account_id:  l.account_id,
+      debit:       l.debit,
+      credit:      l.credit,
+      description: l.description || null,
+    }))
+  )
+  return entry.id
 }
 
 // ════════════════════════════════════════
@@ -67,8 +163,8 @@ function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
       .then(({ data }) => setAccounts(data || []))
   }, [tenantId])
 
-  const banks   = accounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
-  const boxes   = accounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
+  const banks    = accounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
+  const boxes    = accounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
   const selected = accounts.find(a => a.id === Number(value))
 
   if (paymentMethod === 'آجل') return (
@@ -77,8 +173,8 @@ function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
     </div>
   )
 
-  const list   = (paymentMethod === 'نقداً') ? boxes : banks
-  const label  = (paymentMethod === 'نقداً') ? 'الصندوق' : 'الحساب البنكي'
+  const list  = (paymentMethod === 'نقداً') ? boxes : banks
+  const label = (paymentMethod === 'نقداً') ? 'الصندوق' : 'الحساب البنكي'
 
   return (
     <div>
@@ -121,41 +217,38 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
   const today = new Date().toISOString().split('T')[0]
 
   const [form, setForm] = useState({
-    expense_number: expense?.expense_number || '',
-    expense_date:   expense?.expense_date   || today,
-    expense_type:   expense?.expense_type   || 'تشغيلي',
-    category:       expense?.category       || '',
-    description:    expense?.description    || '',
-    amount:         expense?.amount         ? String(expense.amount) : '',
-    vat_rate:       expense?.vat_rate       ?? 0,
-    account_id:     expense?.account_id     ? String(expense.account_id) : '',
-    cost_center_id: expense?.cost_center_id ? String(expense.cost_center_id) : '',
-    project_id:     expense?.project_id     ? String(expense.project_id) : '',
-    vendor_id:      expense?.vendor_id      ? String(expense.vendor_id) : '',
-    vendor_name:    expense?.vendor_name    || '',
-    receipt_no:     expense?.receipt_no     || '',
+    expense_number:  expense?.expense_number  || '',
+    expense_date:    expense?.expense_date    || today,
+    expense_type:    expense?.expense_type    || 'تشغيلي',
+    category:        expense?.category        || '',
+    description:     expense?.description     || '',
+    amount:          expense?.amount          ? String(expense.amount) : '',
+    vat_rate:        expense?.vat_rate        ?? 0,
+    account_id:      expense?.account_id      ? String(expense.account_id) : '',
+    cost_center_id:  expense?.cost_center_id  ? String(expense.cost_center_id) : '',
+    project_id:      expense?.project_id      ? String(expense.project_id) : '',
+    vendor_id:       expense?.vendor_id       ? String(expense.vendor_id) : '',
+    vendor_name:     expense?.vendor_name     || '',
+    receipt_no:      expense?.receipt_no      || '',
     payment_method:  expense?.payment_method  || 'نقداً',
     cash_account_id: expense?.cash_account_id ? String(expense.cash_account_id) : '',
     status:          expense?.status          || 'مدفوع',
-    notes:          expense?.notes          || '',
+    notes:           expense?.notes           || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  useEffect(() => {
-    if (!expense) generateNumber()
-  }, [])
+  useEffect(() => { if (!expense) generateNumber() }, [])
 
   async function generateNumber() {
-    const { count } = await supabase.from('finance_expenses').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const { count } = await supabase.from('finance_expenses')
+      .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
     set('expense_number', `EXP-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`)
   }
 
-  // حساب الضريبة تلقائياً
   const amount    = Number(form.amount) || 0
   const vatAmount = Math.round(amount * (Number(form.vat_rate) / 100) * 100) / 100
   const total     = amount + vatAmount
 
-  // عند اختيار المورد نملأ اسمه
   function handleVendorSelect(vendorId: string) {
     set('vendor_id', vendorId)
     const vendor = vendors.find(v => v.id === Number(vendorId))
@@ -163,10 +256,13 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
   }
 
   async function handleSave() {
-    if (!form.expense_date)    { toast.error('التاريخ مطلوب'); return }
-    if (!form.category)        { toast.error('الفئة مطلوبة'); return }
+    if (!form.expense_date)       { toast.error('التاريخ مطلوب'); return }
+    if (!form.category)           { toast.error('الفئة مطلوبة'); return }
     if (!form.description.trim()) { toast.error('الوصف مطلوب'); return }
     if (!amount || amount <= 0)   { toast.error('المبلغ مطلوب'); return }
+    if (form.payment_method !== 'آجل' && !form.cash_account_id) {
+      toast.error('يجب اختيار حساب الدفع'); return
+    }
     setSaving(true)
 
     const payload: Record<string, any> = {
@@ -186,14 +282,13 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       receipt_no:     form.receipt_no || null,
       vendor_name:    form.vendor_name || null,
     }
-
-    // account_id غير موجود في جدول finance_expenses
     if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
     if (form.project_id)      payload.project_id      = Number(form.project_id)
     if (form.vendor_id)       payload.vendor_id       = Number(form.vendor_id)
     if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
 
     let newExpenseId: number | undefined
+
     if (expense) {
       const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
@@ -203,201 +298,226 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       newExpenseId = newExp?.id
     }
 
-    // ══ قيد محاسبي تلقائي فور الحفظ ══
-    const expenseId = newExpenseId ?? expense?.id
-    const shouldPost = expenseId && payload.status !== 'ملغي' && (payload.status === 'مدفوع' || form.payment_method === 'آجل')
+    // ══ قيد محاسبي تلقائي — عند الإنشاء + الحالة مدفوع أو آجل ══
+    if (!expense && newExpenseId && (payload.status === 'مدفوع' || payload.status === 'معلق')) {
 
-    if (shouldPost) {
-      const expAccountCode = resolveExpenseAccountCode(payload.expense_type, payload.category)
-      let creditAccountCode = '2110'
-      if (form.payment_method !== 'آجل') {
-        creditAccountCode = form.cash_account_id
-          ? await getCashAccountCode(tenantId, Number(form.cash_account_id))
-          : '1111'
+      // الحساب المدين: حسب نوع وفئة المصروف
+      const expAccountCode = getExpenseAccountCode(payload.expense_type, payload.category)
+
+      // الحساب الدائن: الحساب البنكي / الصندوق المختار أو الذمم الدائنة للآجل
+      let creditAccountCode = '1111'  // الصندوق الرئيسي (fallback)
+
+      if (payload.status === 'معلق' || form.payment_method === 'آجل') {
+        // مصروف آجل → الذمم الدائنة
+        creditAccountCode = '2110'
+      } else if (form.cash_account_id) {
+        // نجلب كود الحساب البنكي المرتبط
+        const { data: ca } = await supabase
+          .from('finance_cash_accounts')
+          .select('account_id')
+          .eq('id', Number(form.cash_account_id))
+          .single()
+        if (ca?.account_id) {
+          const { data: acc } = await supabase
+            .from('finance_accounts')
+            .select('code')
+            .eq('id', ca.account_id)
+            .single()
+          if (acc?.code) creditAccountCode = acc.code
+        }
       }
 
-      const je = await createJournalEntry(tenantId, {
-        date:          payload.expense_date,
-        description:   `مصروف ${payload.category} — ${payload.description}`,
-        referenceType: 'مصروف',
-        referenceId:   expenseId,
-        source:        'آلي',
-        lines: [
-          { accountCode: expAccountCode, debit: amount, credit: 0, description: 'المبلغ الصافي' },
-          ...(vatAmount > 0 ? [{ accountCode: '2140', debit: vatAmount, credit: 0, description: 'ضريبة المدخلات' }] : []),
-          {
-            accountCode: creditAccountCode,
-            debit: 0,
-            credit: total,
-            description: form.payment_method === 'آجل' ? 'ذمم دائنة — مصروف آجل' : `صرف مصروف (${form.payment_method})`,
-          },
-        ],
+      // بناء أسطر القيد
+      const journalLines: { accountCode: string; debit: number; credit: number; description?: string }[] = [
+        // مدين: حساب المصروف (المبلغ صافي)
+        {
+          accountCode: expAccountCode,
+          debit:       amount,
+          credit:      0,
+          description: `${payload.category} — ${payload.description}`,
+        },
+      ]
+
+      // مدين: ضريبة المدخلات إن وجدت
+      if (vatAmount > 0) {
+        journalLines.push({
+          accountCode: '2140',  // ضريبة القيمة المضافة القابلة للاسترداد
+          debit:       vatAmount,
+          credit:      0,
+          description: `ضريبة المدخلات — ${payload.category}`,
+        })
+      }
+
+      // دائن: الحساب النقدي / البنكي (الإجمالي شامل الضريبة)
+      journalLines.push({
+        accountCode: creditAccountCode,
+        debit:       0,
+        credit:      total,
+        description: `${form.payment_method} — ${payload.category}`,
       })
-      if (!je.success) {
-        toast.error('تم حفظ المصروف لكن فشل ترحيل القيد: ' + je.error)
-        onSave(); setSaving(false); return
-      }
-      if (je.entryId) {
-        toast.success(expense ? 'تم التعديل وترحيل القيد المحاسبي ✅' : '✅ تم تسجيل المصروف وترحيل القيد المحاسبي')
-        onSave(); setSaving(false); return
-      }
+
+      await createJournalEntry(tenantId, {
+        date:          payload.expense_date,
+        description:   `مصروف ${payload.expense_type} — ${payload.category} — ${payload.description}`,
+        referenceType: 'مصروف',
+        referenceId:   newExpenseId,
+        source:        'آلي',
+        lines:         journalLines,
+      })
     }
 
-    toast.success(expense ? 'تم التعديل ✅' : '✅ تم تسجيل المصروف')
+    toast.success(expense ? 'تم التعديل ✅' : '✅ تم تسجيل المصروف والقيد المحاسبي')
     onSave(); setSaving(false)
   }
 
-  // حسابات مناسبة حسب النوع
-  const relevantAccounts = accounts.filter(a => {
-    if (form.expense_type === 'مشاريع') return a.account_type === 'تكلفة'
-    return a.account_type === 'مصروفات'
-  })
+  const catList = CATEGORIES[form.expense_type as keyof typeof CATEGORIES] || []
+  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '680px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '92vh' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Receipt style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            {expense ? 'تعديل مصروف' : 'تسجيل مصروف جديد'}
+            {expense ? 'تعديل المصروف' : 'تسجيل مصروف جديد'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
 
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
           {/* نوع المصروف */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نوع المصروف *</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {Object.keys(CATEGORIES).map(type => (
-                <button key={type} type="button" onClick={() => { set('expense_type', type); set('category', '') }}
-                  style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700,
-                    borderColor: form.expense_type === type ? TYPE_COLOR[type].color : 'var(--border)',
-                    background: form.expense_type === type ? TYPE_COLOR[type].bg : 'white',
-                    color: form.expense_type === type ? TYPE_COLOR[type].color : 'var(--text3)' }}>
-                  {type === 'مشاريع' ? '🏗️ مشاريع' : type === 'تشغيلي' ? '⚙️ تشغيلي' : '🏢 إداري'}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(['مشاريع', 'تشغيلي', 'إداري'] as const).map(t => {
+              const tc = TYPE_COLOR[t]
+              return (
+                <button key={t} type="button" onClick={() => { set('expense_type', t); set('category', '') }}
+                  style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', textAlign: 'center',
+                    borderColor: form.expense_type === t ? tc.color : 'var(--border)',
+                    background:  form.expense_type === t ? tc.bg : 'white',
+                    color:       form.expense_type === t ? tc.color : 'var(--text3)' }}>
+                  {t === 'مشاريع' ? '🏗️' : t === 'تشغيلي' ? '⚙️' : '🏢'} {t}
                 </button>
-              ))}
-            </div>
+              )
+            })}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المصروف</label>
+              <label style={lbl}>رقم المصروف</label>
               <input value={form.expense_number} onChange={e => set('expense_number', e.target.value)} className="input" dir="ltr" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
+              <label style={lbl}>تاريخ المصروف *</label>
               <input type="date" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم الإيصال</label>
-              <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" placeholder="اختياري" />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الفئة *</label>
+              <label style={lbl}>الفئة *</label>
               <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
                 <option value="">— اختر الفئة —</option>
-                {CATEGORIES[form.expense_type]?.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
-              <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
-                <option value="">— اختر الحساب —</option>
-                {relevantAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                {catList.map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الوصف / البيان *</label>
-            <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="مثال: فاتورة كهرباء مكتب شهر يناير" />
+            <label style={lbl}>الوصف / البيان *</label>
+            <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="وصف تفصيلي للمصروف..." />
           </div>
 
-          {/* المبلغ والضريبة */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ (قبل الضريبة) *</label>
-              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00" />
+              <label style={lbl}>المبلغ (قبل الضريبة) *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                className="input" dir="ltr" min="0" placeholder="0.00" />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label>
+              <label style={lbl}>نسبة ضريبة القيمة المضافة</label>
               <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select">
-                <option value={0}>0% — بدون ضريبة</option>
-                <option value={15}>15% — خاضع للضريبة</option>
+                <option value={0}>0% — معفي</option>
+                <option value={15}>15%</option>
+              </select>
+            </div>
+            <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '10px 14px', border: '1px solid #fde68a' }}>
+              <div style={{ fontSize: '0.72rem', color: '#92400e' }}>الإجمالي شامل الضريبة</div>
+              <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#e6820a' }}>{total.toLocaleString()} ر.س</div>
+              {vatAmount > 0 && <div style={{ fontSize: '0.7rem', color: '#92400e' }}>ضريبة: {vatAmount.toLocaleString()} ر.س</div>}
+            </div>
+          </div>
+
+          {/* القيد المتوقع */}
+          {amount > 0 && (
+            <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '10px 14px', border: '1px solid #bbf7d0', fontSize: '0.78rem' }}>
+              <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '6px' }}>⚙️ القيد المحاسبي المتوقع:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <div><span style={{ color: '#1a56db' }}>مدين</span> — {getExpenseAccountCode(form.expense_type, form.category)} ({form.category || form.expense_type}) = <strong>{amount.toLocaleString()} ر.س</strong></div>
+                {vatAmount > 0 && <div><span style={{ color: '#1a56db' }}>مدين</span> — 2140 (ضريبة المدخلات) = <strong>{vatAmount.toLocaleString()} ر.س</strong></div>}
+                <div><span style={{ color: '#c81e1e' }}>دائن</span> — {form.payment_method === 'آجل' ? '2110 (الذمم الدائنة)' : form.cash_account_id ? 'الحساب المختار' : '...'} = <strong>{total.toLocaleString()} ر.س</strong></div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>المشروع</label>
+              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+                <option value="">— مصروف عام —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الإجمالي</label>
-              <div style={{ padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontWeight: 700, color: '#e6820a', fontSize: '1rem' }}>
-                {total.toLocaleString()} ر.س
-              </div>
-            </div>
-          </div>
-
-          {/* الربط */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            {form.expense_type === 'مشاريع' && (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
-                <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                  <option value="">— اختر المشروع —</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
+              <label style={lbl}>مركز التكلفة</label>
               <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
                 <option value="">— اختياري —</option>
-                {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {costCenters.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
               </select>
             </div>
           </div>
 
-          {/* المورد وطريقة الدفع */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المورد / الجهة</label>
+              <label style={lbl}>الجهة / المورد</label>
               <select value={form.vendor_id} onChange={e => handleVendorSelect(e.target.value)} className="select">
                 <option value="">— اختياري —</option>
                 {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
+              {!form.vendor_id && (
+                <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)}
+                  className="input" style={{ marginTop: '6px' }} placeholder="أو اكتب اسم الجهة..." />
+              )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
-              <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} className="input" placeholder="اسم الجهة" />
+              <label style={lbl}>رقم الإيصال</label>
+              <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" placeholder="اختياري..." />
             </div>
           </div>
 
-          {/* طريقة الدفع */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>طريقة الدفع</label>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          {/* طريقة الدفع + الحساب */}
+          <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', border: '1px solid var(--border)' }}>
+            <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '10px' }}>
+              💳 طريقة الدفع وحساب الصرف
+            </label>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
               {[
-                { val: 'نقداً',          icon: '💵' },
-                { val: 'تحويل بنكي',    icon: '🏦' },
-                { val: 'شيك',           icon: '📝' },
-                { val: 'بطاقة ائتمانية', icon: '💳' },
-                { val: 'آجل',           icon: '📅' },
+                { val: 'نقداً',      icon: '💵' },
+                { val: 'تحويل بنكي', icon: '🏦' },
+                { val: 'شيك',        icon: '📝' },
+                { val: 'بطاقة',      icon: '💳' },
+                { val: 'آجل',        icon: '📅' },
               ].map(m => (
                 <button key={m.val} type="button"
                   onClick={() => { set('payment_method', m.val); set('cash_account_id', '') }}
-                  style={{ flex: 1, minWidth: '80px', padding: '7px 6px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
+                  style={{ padding: '7px 12px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
                     borderColor: form.payment_method === m.val ? '#e6820a' : 'var(--border)',
                     background:  form.payment_method === m.val ? '#fffbeb' : 'white',
                     color:       form.payment_method === m.val ? '#e6820a' : 'var(--text3)' }}>
-                  <div>{m.icon}</div>
-                  <div style={{ marginTop: '2px' }}>{m.val}</div>
+                  {m.icon} {m.val}
                 </button>
               ))}
             </div>
-            {/* اختيار الحساب البنكي / الصندوق */}
             <CashAccountSelector
               paymentMethod={form.payment_method}
               value={form.cash_account_id}
@@ -408,13 +528,13 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
+              <label style={lbl}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 {['مدفوع', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
+              <label style={lbl}>ملاحظات</label>
               <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
             </div>
           </div>
@@ -423,7 +543,9 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : <Save style={{ width: '15px', height: '15px' }} />}
             {expense ? 'حفظ التعديل' : 'تسجيل المصروف'}
           </button>
         </div>
@@ -431,7 +553,6 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     </div>
   )
 }
-
 
 // ════════════════════════════════════════
 // الصفحة الرئيسية
@@ -480,7 +601,6 @@ export default function FinanceExpensesPage() {
     toast.success('تم الحذف')
   }
 
-  // فلترة حسب التاب
   const tabExpenses = expenses.filter(e => e.expense_type === activeTab)
   const filtered = tabExpenses.filter(e => {
     const matchSearch = !search || e.description.includes(search) || e.category.includes(search) || (e.vendor_name || '').includes(search)
@@ -488,7 +608,6 @@ export default function FinanceExpensesPage() {
     return matchSearch && matchStatus
   })
 
-  // إحصائيات
   const totalAll      = expenses.reduce((s, e) => s + Number(e.total_amount), 0)
   const totalProjects = expenses.filter(e => e.expense_type === 'مشاريع').reduce((s, e) => s + Number(e.total_amount), 0)
   const totalOps      = expenses.filter(e => e.expense_type === 'تشغيلي').reduce((s, e) => s + Number(e.total_amount), 0)
@@ -521,10 +640,10 @@ export default function FinanceExpensesPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
-          { label: 'إجمالي المصروفات',   value: totalAll,      color: '#374151', bg: '#f3f4f6' },
-          { label: 'مصروفات المشاريع',   value: totalProjects, color: '#1a56db', bg: '#eff6ff' },
-          { label: 'مصروفات تشغيلية',   value: totalOps,      color: '#e6820a', bg: '#fffbeb' },
-          { label: 'إدارية وعمومية',     value: totalAdmin,    color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'إجمالي المصروفات',  value: totalAll,      color: '#374151', bg: '#f3f4f6' },
+          { label: 'مصروفات المشاريع',  value: totalProjects, color: '#1a56db', bg: '#eff6ff' },
+          { label: 'مصروفات تشغيلية',  value: totalOps,      color: '#e6820a', bg: '#fffbeb' },
+          { label: 'إدارية وعمومية',    value: totalAdmin,    color: '#c81e1e', bg: '#fef2f2' },
         ].map(kpi => (
           <div key={kpi.label} className="card" style={{ padding: '14px 16px', background: kpi.bg }}>
             <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value.toLocaleString()}</div>
@@ -542,6 +661,7 @@ export default function FinanceExpensesPage() {
               color: activeTab === t.id ? 'white' : 'var(--text3)',
               boxShadow: activeTab === t.id ? '0 2px 8px ' + t.color + '44' : 'none' }}>
             {t.label}
+            <span style={{ marginRight: '6px', fontSize: '0.72rem', opacity: 0.8 }}>({t.total.toLocaleString()} ر.س)</span>
           </button>
         ))}
       </div>
@@ -560,8 +680,8 @@ export default function FinanceExpensesPage() {
           ))}
         </div>
         <div style={{ position: 'relative' }}>
-          <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px', width: '220px' }} placeholder="بحث..." />
+          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px', width: '240px' }} />
         </div>
       </div>
 
@@ -584,7 +704,7 @@ export default function FinanceExpensesPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['التاريخ', 'الفئة', 'الوصف', 'الحساب', 'المشروع / م.التكلفة', 'الجهة', 'طريقة الدفع', 'المبلغ', 'ض.ق.م', 'الإجمالي', 'الحالة', ''].map(h => (
+                  {['التاريخ', 'الفئة', 'الوصف', 'المشروع/م.التكلفة', 'الجهة', 'طريقة الدفع', 'صافي', 'ض.ق.م', 'الإجمالي', 'الحالة', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -602,24 +722,31 @@ export default function FinanceExpensesPage() {
                         {exp.category}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 12px', maxWidth: '180px' }}>
+                    <td style={{ padding: '10px 12px', maxWidth: '160px' }}>
                       <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.description}</div>
                       {exp.receipt_no && <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>إيصال: {exp.receipt_no}</div>}
                     </td>
                     <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>
-                      {exp.account ? <span style={{ fontFamily: 'monospace' }}>{exp.account.code}</span> : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>
                       {exp.project?.name || exp.cost_center?.name || '—'}
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{exp.vendor_name || '—'}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{exp.payment_method}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{Number(exp.amount).toLocaleString()} ر.س</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: '#e6820a' }}>
+                    <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{exp.vendor?.name || exp.vendor_name || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: '#f3f4f6', color: '#374151', fontWeight: 600 }}>
+                        {exp.payment_method}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                      {Number(exp.amount).toLocaleString()} ر.س
+                    </td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: '#e6820a', whiteSpace: 'nowrap' }}>
                       {Number(exp.vat_amount) > 0 ? Number(exp.vat_amount).toLocaleString() + ' ر.س' : '—'}
                     </td>
-                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>{Number(exp.total_amount).toLocaleString()} ر.س</td>
-                    <td style={{ padding: '10px 12px' }}><span className={'badge ' + (STATUS_COLOR[exp.status] || 'badge-gray')}>{exp.status}</span></td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#e6820a', whiteSpace: 'nowrap' }}>
+                      {Number(exp.total_amount).toLocaleString()} ر.س
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span className={'badge ' + (STATUS_COLOR[exp.status] || 'badge-gray')}>{exp.status}</span>
+                    </td>
                     <td style={{ padding: '10px 8px' }}>
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <button onClick={() => { setEditExpense(exp); setShowModal(true) }} className="btn btn-ghost btn-xs">
@@ -635,8 +762,8 @@ export default function FinanceExpensesPage() {
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                  <td colSpan={7} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length} مصروف)</td>
-                  <td style={{ padding: '10px 12px' }}>{filtered.reduce((s,e)=>s+Number(e.amount),0).toLocaleString()} ر.س</td>
+                  <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length} مصروف)</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text3)' }}>{filtered.reduce((s,e)=>s+Number(e.amount),0).toLocaleString()} ر.س</td>
                   <td style={{ padding: '10px 12px', color: '#e6820a' }}>{filtered.reduce((s,e)=>s+Number(e.vat_amount),0).toLocaleString()} ر.س</td>
                   <td style={{ padding: '10px 12px', color: '#e6820a' }}>{totalTab.toLocaleString()} ر.س</td>
                   <td colSpan={2}></td>
