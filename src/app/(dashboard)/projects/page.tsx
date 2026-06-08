@@ -146,153 +146,146 @@ function NoteButton({ project, onClick }: { project: Project; onClick: () => voi
 }
 
 
-// ══════════════════════════════════════
-// مودال: إضافة جهة منفذة
-// ══════════════════════════════════════
-function AddClientModal({ tenantId, onClose, onSave }: {
-  tenantId: string; onClose: () => void; onSave: (name: string) => void
-}) {
-  const [name, setName]     = useState('')
-  const [saving, setSaving] = useState(false)
 
-  async function handleSave() {
-    if (!name.trim()) { toast.error('اسم الجهة مطلوب'); return }
-    setSaving(true)
-    const { error } = await supabase.from('project_clients').insert({ tenant_id: tenantId, name: name.trim() })
-    if (error) { toast.error(error.code === '23505' ? 'هذه الجهة موجودة مسبقاً' : 'خطأ في الحفظ'); setSaving(false); return }
-    toast.success('✅ تمت إضافة الجهة')
-    onSave(name.trim())
-    setSaving(false)
+// ══════════════════════════════════════
+// نافذة إدارة أنواع المشاريع
+// ══════════════════════════════════════
+function ManageTypesModal({ tenantId, onClose }: {
+  tenantId: string; onClose: () => void
+}) {
+  const [types,   setTypes]   = useState<{ id: number; code: string; name: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+  const [newName, setNewName] = useState('')
+  const [editId,  setEditId]  = useState<number | null>(null)
+  const [editName,setEditName]= useState('')
+
+  useEffect(() => { loadTypes() }, [])
+
+  async function loadTypes() {
+    setLoading(true)
+    const { data } = await supabase.from('project_types')
+      .select('id, code, name').eq('tenant_id', tenantId)
+      .eq('is_active', true).order('name')
+    setTypes(data || [])
+    setLoading(false)
   }
 
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Building2 style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-            إضافة جهة منفذة
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
-            <X style={{ width: '18px', height: '18px' }} />
-          </button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* توضيح للمستخدم */}
-          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', border: '1px solid #bfdbfe', fontSize: '0.82rem', color: '#1e40af', lineHeight: 1.6 }}>
-            <div style={{ fontWeight: 700, marginBottom: '4px' }}>💡 تنبيه مهم</div>
-            أدخل الاسم الرسمي الكامل للجهة كما يظهر في العقود والفواتير.
-            <br />
-            <span style={{ opacity: 0.8 }}>مثال: <strong>شركة الطاقة السعودية</strong> أو <strong>أرامكو السعودية</strong></span>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-              اسم الجهة المنفذة <span style={{ color: '#c81e1e' }}>*</span>
-            </label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSave()}
-              className="input"
-              placeholder="مثال: شركة الطاقة السعودية"
-              autoFocus
-            />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !name.trim()} className="btn btn-primary">
-            {saving
-              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-              : <Save style={{ width: '14px', height: '14px' }} />}
-            إضافة الجهة
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// مودال: إضافة نوع مشروع
-// ══════════════════════════════════════
-function AddTypeModal({ tenantId, onClose, onSave }: {
-  tenantId: string; onClose: () => void; onSave: (code: string, name: string) => void
-}) {
-  const [code, setCode]     = useState('')
-  const [name, setName]     = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
-    if (!name.trim()) { toast.error('اسم النوع مطلوب'); return }
-    const finalCode = code.trim() || name.trim().substring(0, 10)
+  async function handleAdd() {
+    if (!newName.trim()) { toast.error('اسم النوع مطلوب'); return }
     setSaving(true)
-    const { error } = await supabase.from('project_types').insert({ tenant_id: tenantId, code: finalCode, name: name.trim() })
+    const code = newName.trim().substring(0, 20)
+    const { error } = await supabase.from('project_types')
+      .insert({ tenant_id: tenantId, code, name: newName.trim() })
     if (error) { toast.error(error.code === '23505' ? 'هذا النوع موجود مسبقاً' : 'خطأ في الحفظ'); setSaving(false); return }
-    toast.success('✅ تمت إضافة النوع')
-    onSave(finalCode, name.trim())
+    setNewName('')
+    await loadTypes()
+    toast.success('✅ تمت الإضافة')
     setSaving(false)
+  }
+
+  async function handleEdit(id: number) {
+    if (!editName.trim()) return
+    await supabase.from('project_types').update({ name: editName.trim(), code: editName.trim().substring(0, 20) }).eq('id', id)
+    setEditId(null); setEditName('')
+    await loadTypes()
+    toast.success('تم التعديل ✅')
+  }
+
+  async function handleDelete(id: number, name: string) {
+    if (!confirm(`حذف النوع "${name}"؟`)) return
+    await supabase.from('project_types').update({ is_active: false }).eq('id', id)
+    await loadTypes()
+    toast.success('تم الحذف')
   }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Tag style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
-            إضافة نوع مشروع
+            إدارة أنواع المشاريع
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
             <X style={{ width: '18px', height: '18px' }} />
           </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* توضيح للمستخدم */}
+
+          {/* توضيح */}
           <div style={{ background: '#f5f3ff', borderRadius: '10px', padding: '12px 14px', border: '1px solid #ddd6fe', fontSize: '0.82rem', color: '#5b21b6', lineHeight: 1.6 }}>
             <div style={{ fontWeight: 700, marginBottom: '4px' }}>💡 توضيح</div>
-            أنواع المشاريع تساعدك في تصنيف وتصفية مشاريعك.
+            أنواع المشاريع تُستخدم للتصنيف والتقارير — مثل مراكز التكلفة.
             <br />
-            <span style={{ opacity: 0.8 }}>مثال: <strong>مشروع تحسين</strong> أو <strong>صيانة دورية</strong> أو <strong>توسعة شبكة</strong></span>
+            <span style={{ opacity: 0.8 }}>مثال: <strong>مشروع 405</strong> أو <strong>صيانة دورية</strong> أو <strong>توسعة شبكة</strong></span>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-              اسم النوع <span style={{ color: '#c81e1e' }}>*</span>
-            </label>
+
+          {/* إضافة نوع جديد */}
+          <div style={{ display: 'flex', gap: '8px' }}>
             <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSave()}
-              className="input"
-              placeholder="مثال: مشروع تحسين"
-              autoFocus
-            />
+              value={newName} onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              className="input" placeholder="اكتب اسم النوع الجديد..." style={{ flex: 1 }} />
+            <button onClick={handleAdd} disabled={saving || !newName.trim()} className="btn btn-primary" style={{ background: '#7c3aed', whiteSpace: 'nowrap' }}>
+              {saving
+                ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+                : <Plus style={{ width: '15px', height: '15px' }} />}
+              إضافة
+            </button>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-              الرمز / الكود <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400 }}>(اختياري — يُولَّد تلقائياً)</span>
-            </label>
-            <input
-              value={code}
-              onChange={e => setCode(e.target.value)}
-              className="input"
-              dir="ltr"
-              placeholder="مثال: IMPROVE"
-            />
-          </div>
+
+          {/* قائمة الأنواع */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>جاري التحميل...</div>
+          ) : types.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', background: '#f9fafb', borderRadius: '10px', fontSize: '0.875rem' }}>
+              لا توجد أنواع بعد — أضف أول نوع
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
+              {types.map(t => (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', borderRadius: '8px', background: '#f9fafb', border: '1px solid var(--border)' }}>
+                  {editId === t.id ? (
+                    <>
+                      <input value={editName} onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleEdit(t.id)}
+                        className="input" style={{ flex: 1, padding: '5px 10px' }} autoFocus />
+                      <button onClick={() => handleEdit(t.id)}
+                        style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+                        حفظ
+                      </button>
+                      <button onClick={() => { setEditId(null); setEditName('') }}
+                        style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', color: '#9ca3af', cursor: 'pointer' }}>
+                        <X style={{ width: '13px', height: '13px' }} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ flex: 1, fontWeight: 600, fontSize: '0.875rem' }}>{t.name}</span>
+                      <button onClick={() => { setEditId(t.id); setEditName(t.name) }}
+                        style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
+                        <Pencil style={{ width: '13px', height: '13px' }} />
+                      </button>
+                      <button onClick={() => handleDelete(t.id, t.name)}
+                        style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
+                        <Trash2 style={{ width: '13px', height: '13px' }} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !name.trim()} className="btn btn-primary" style={{ background: '#7c3aed' }}>
-            {saving
-              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-              : <Save style={{ width: '14px', height: '14px' }} />}
-            إضافة النوع
-          </button>
+          <button onClick={onClose} className="btn btn-primary" style={{ background: '#7c3aed' }}>تم</button>
         </div>
       </div>
     </div>
   )
 }
+
 
 // ══════════════════════════════════════
 // بطاقة Kanban
@@ -413,25 +406,12 @@ export default function ProjectsPage() {
   const [showModal,        setShowModal]        = useState(false)
   const [editProject,      setEditProject]      = useState<Project | null>(null)
   const [detailProject,    setDetail]           = useState<Project | null>(null)
-  const [showAddClient,    setShowAddClient]    = useState(false)
-  const [showAddType,      setShowAddType]      = useState(false)
-  const [projectClients,   setProjectClients]   = useState<{id:number; name:string}[]>([])
-  const [projectTypes,     setProjectTypes]     = useState<{code:string; name:string}[]>([])
+  const [showManageTypes, setShowManageTypes] = useState(false)
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
   useEffect(() => { loadProjects() }, [tenant?.id, activeBranch?.id])
-  useEffect(() => { if (tenant) loadClientsAndTypes() }, [tenant?.id])
 
-  async function loadClientsAndTypes() {
-    if (!tenant) return
-    const [cRes, tRes] = await Promise.all([
-      supabase.from('project_clients').select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('project_types').select('code, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-    ])
-    setProjectClients(cRes.data || [])
-    setProjectTypes(tRes.data || [])
-  }
 
   async function loadProjects() {
     if (!tenant || !activeBranch) return
@@ -570,13 +550,9 @@ export default function ProjectsPage() {
               <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
             </button>
           )}
-          <button onClick={() => setShowAddClient(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-            <Building2 style={{ width: '15px', height: '15px' }} /> إضافة جهة
-          </button>
-          <button onClick={() => setShowAddType(true)}
+          <button onClick={() => setShowManageTypes(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-            <Tag style={{ width: '15px', height: '15px' }} /> إضافة نوع
+            <Tag style={{ width: '15px', height: '15px' }} /> أنواع المشاريع
           </button>
         </div>
       </div>
@@ -612,22 +588,12 @@ export default function ProjectsPage() {
 
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل الأنواع</option>
-          {/* أنواع افتراضية */}
-          {PROJECT_TYPES.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-          {/* أنواع مضافة من المستخدم */}
-          {projectTypes.filter(t => !PROJECT_TYPES.find(p => p.code === t.code)).map(t => (
-            <option key={t.code} value={t.code}>{t.name}</option>
-          ))}
+          {existingTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
 
         <select value={clientFilter} onChange={e => setClient(e.target.value)} className="select" style={{ width: 'auto', minWidth: '160px' }}>
           <option value="">كل الجهات</option>
-          {/* جهات موجودة في المشاريع */}
           {existingClients.map(c => <option key={c} value={c}>{c}</option>)}
-          {/* جهات مضافة من المستخدم غير موجودة في المشاريع */}
-          {projectClients.filter(c => !existingClients.includes(c.name)).map(c => (
-            <option key={c.id} value={c.name} style={{ color: '#9ca3af' }}>{c.name}</option>
-          ))}
         </select>
 
         {(search || statusFilter || typeFilter || clientFilter) && (
@@ -863,27 +829,10 @@ export default function ProjectsPage() {
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
       )}
 
-      {showAddClient && tenant && (
-        <AddClientModal
+      {showManageTypes && tenant && (
+        <ManageTypesModal
           tenantId={tenant.id}
-          onClose={() => setShowAddClient(false)}
-          onSave={(name) => {
-            setShowAddClient(false)
-            loadClientsAndTypes()
-            toast.success(`✅ تمت إضافة الجهة: ${name}`)
-          }}
-        />
-      )}
-
-      {showAddType && tenant && (
-        <AddTypeModal
-          tenantId={tenant.id}
-          onClose={() => setShowAddType(false)}
-          onSave={(code, name) => {
-            setShowAddType(false)
-            loadClientsAndTypes()
-            toast.success(`✅ تمت إضافة النوع: ${name}`)
-          }}
+          onClose={() => setShowManageTypes(false)}
         />
       )}
     </div>
