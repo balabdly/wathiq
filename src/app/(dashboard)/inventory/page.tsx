@@ -474,8 +474,11 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     setRows(prev => { const next = [...prev]; next[i] = { ...next[i], [k]: v }; return next })
   }
 
-  // نمط المستودع المختار — محسوب هنا ليكون متاحاً لـ handleSave والـ JSX
-  const selectedWh           = warehouses.find(w => w.id === Number(form.warehouse_id))
+  // نمط المستودع المختار
+  const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
+  const whMode                   = selectedWh?.mode || 'عام'
+  const showProjectOnReceive     = whMode === 'مشاريع' || whMode === 'مرن'
+  const projectRequiredOnReceive = whMode === 'مشاريع'
 
   async function handleSave() {
     const validRows = rows.filter(r => r.mat_id && Number(r.qty) > 0)
