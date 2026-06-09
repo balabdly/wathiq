@@ -67,7 +67,7 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
       await supabase.from('warehouses').insert(payload)
       toast.success('تم إضافة المستودع ✅')
     }
-    setForm({ name: '', location: '', capacity: '', sections: '' })
+    setForm({ name: '', location: '', capacity: '', sections: '', mode: 'عام' })
     setEditId(null)
     await load(); onSave()
   }
