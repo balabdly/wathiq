@@ -45,7 +45,7 @@ type PurchaseReturn = {
 }
 type Project   = { id: number; name: string }
 type Warehouse = { id: number; name: string; wh_type: string }
-type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: string }
+type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: number; account_code?: string }
 
 const PO_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'مرسل': 'badge-blue', 'مستلم جزئياً': 'badge-amber',
@@ -483,9 +483,18 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#e6820a' }}>
+          {!po && (
+            <button onClick={() => { set('status','مسودة'); handleSave() }}
+              disabled={saving || !form.vendor_id}
+              style={{ padding:'8px 18px', borderRadius:'10px', border:'1px solid #e5e7eb', background:'white', cursor:'pointer', fontWeight:600, fontSize:'0.875rem', display:'flex', alignItems:'center', gap:'6px', color:'#6b7280' }}>
+              <Save style={{ width:'14px', height:'14px' }} />
+              حفظ مسودة
+            </button>
+          )}
+          <button onClick={() => { set('status', po ? form.status : 'مفتوحة'); handleSave() }}
+            disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#e6820a' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
-            {po ? 'حفظ التعديل' : 'إنشاء أمر الشراء'}
+            {po ? 'حفظ التعديل' : 'إصدار أمر الشراء'}
           </button>
         </div>
       </div>
@@ -734,9 +743,18 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+          {!invoice && (
+            <button onClick={() => { set('status','مسودة'); handleSave() }}
+              disabled={saving || !form.vendor_id}
+              style={{ padding:'8px 18px', borderRadius:'10px', border:'1px solid #e5e7eb', background:'white', cursor:'pointer', fontWeight:600, fontSize:'0.875rem', display:'flex', alignItems:'center', gap:'6px', color:'#6b7280' }}>
+              <Save style={{ width:'14px', height:'14px' }} />
+              حفظ مسودة
+            </button>
+          )}
+          <button onClick={() => { set('status', invoice ? form.status : 'معتمدة'); handleSave() }}
+            disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#c81e1e' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
-            {invoice ? 'حفظ التعديل' : 'حفظ الفاتورة'}
+            {invoice ? 'حفظ التعديل' : 'إصدار الفاتورة'}
           </button>
         </div>
       </div>
@@ -912,8 +930,10 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
-      .then(({ data }) => setCashAccounts(data || []))
+    supabase.from('finance_cash_accounts')
+      .select('*, fa:finance_accounts(code)')
+      .eq('tenant_id', tenantId).eq('is_active', true).order('name')
+      .then(({ data }) => setCashAccounts((data || []).map((a: any) => ({ ...a, account_code: a.fa?.code }))))
   }, [])
 
   const bankAccounts    = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
@@ -921,7 +941,9 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
   const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
 
   function getCreditAccountCode() {
-    if (selectedAccount?.account_id) return selectedAccount.account_id
+    // account_code = كود الحساب من finance_accounts
+    if (selectedAccount?.account_code) return selectedAccount.account_code
+    // fallback بالكود المعروف
     if (form.payment_method === 'نقداً') return '1111'
     return '1120'
   }
@@ -942,7 +964,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
       referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
       lines: [
         { accountCode: '2110',                    debit: Number(form.amount), credit: 0,                   description: `تسوية مستحق ${invoice.vendor_name}` },
-        { accountCode: getCreditAccountCode()!,   debit: 0,                   credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
+        { accountCode: getCreditAccountCode() || (form.payment_method === 'نقداً' ? '1111' : '1120'), debit: 0, credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
       ]
     })
 
