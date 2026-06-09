@@ -477,14 +477,14 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           {!po && (
-            <button onClick={() => { set('status','مسودة'); handleSave() }}
+            <button onClick={() => handleSave('مسودة')}
               disabled={saving || !form.vendor_id}
               style={{ padding:'8px 18px', borderRadius:'10px', border:'1px solid #e5e7eb', background:'white', cursor:'pointer', fontWeight:600, fontSize:'0.875rem', display:'flex', alignItems:'center', gap:'6px', color:'#6b7280' }}>
               <Save style={{ width:'14px', height:'14px' }} />
               حفظ مسودة
             </button>
           )}
-          <button onClick={() => { set('status', po ? form.status : 'مفتوحة'); handleSave() }}
+          <button onClick={() => handleSave(po ? form.status : 'مفتوحة')}
             disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#e6820a' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {po ? 'حفظ التعديل' : 'إصدار أمر الشراء'}
@@ -731,14 +731,14 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           {!invoice && (
-            <button onClick={() => { set('status','مسودة'); handleSave() }}
+            <button onClick={() => handleSave('مسودة')}
               disabled={saving || !form.vendor_id}
               style={{ padding:'8px 18px', borderRadius:'10px', border:'1px solid #e5e7eb', background:'white', cursor:'pointer', fontWeight:600, fontSize:'0.875rem', display:'flex', alignItems:'center', gap:'6px', color:'#6b7280' }}>
               <Save style={{ width:'14px', height:'14px' }} />
               حفظ مسودة
             </button>
           )}
-          <button onClick={() => { set('status', invoice ? form.status : 'معتمدة'); handleSave() }}
+          <button onClick={() => handleSave(invoice ? form.status : 'معتمدة')}
             disabled={saving || !form.vendor_id} className="btn btn-primary" style={{ background: '#c81e1e' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {invoice ? 'حفظ التعديل' : 'إصدار الفاتورة'}
