@@ -11,7 +11,7 @@ import {
   LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
   MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save
 } from 'lucide-react'
-import type { Project } from '@/types'
+import type { Project, ProjectStatus } from '@/types'
 import toast from 'react-hot-toast'
 
 
@@ -487,7 +487,7 @@ export default function ProjectsPage() {
     const colIdx = COLUMNS.findIndex(c => c.id === p.status)
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
-    const newStatus = COLUMNS[newIdx].id as string
+    const newStatus = COLUMNS[newIdx].id as ProjectStatus
 
     if (newStatus === 'مكتمل') {
       const { data: attachments } = await supabase
