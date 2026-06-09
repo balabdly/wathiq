@@ -1158,7 +1158,7 @@ export default function InventoryPage() {
             tenantId={tenant.id} branchId={activeBranch.id}
             warehouses={warehouses} projects={projects}
             onClose={() => setModal(null)}
-            onSave={() => { setModal(null); if (modal === 'materials') loadMaterials(matPage) }} />
+            onSave={() => { setModal(null) }} />
         )
       ))}
     </div>
