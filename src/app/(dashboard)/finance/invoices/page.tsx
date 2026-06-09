@@ -853,8 +853,8 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 // ════════════════════════════════════════
 // مودال: إشعار دائن / مرتجع
 // ════════════════════════════════════════
-function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
-  invoice: Invoice | null; clients: Client[]; tenantId: string; onClose: () => void; onSave: () => void
+function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave }: {
+  invoice: Invoice | null; clients: Client[]; invoices: Invoice[]; tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [items, setItems]   = useState<InvoiceItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
@@ -880,6 +880,35 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
+  // فواتير العميل المختار (مرسلة أو مدفوعة فقط)
+  const clientInvoices = invoices.filter(inv =>
+    inv.client_id === Number(form.client_id) &&
+    (inv.status === 'مرسلة' || inv.status === 'مدفوعة' || inv.status === 'متأخرة')
+  )
+  const selectedInvoice = clientInvoices.find(inv => inv.id === Number(form.original_invoice_id))
+
+  // عند تغيير العميل — أعد ضبط الفاتورة المرجعية
+  function handleClientChange(clientId: string) {
+    set('client_id', clientId)
+    set('original_invoice_id', '')
+    setItems([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
+  }
+
+  // عند اختيار فاتورة — تعبئة البنود تلقائياً
+  async function handleInvoiceSelect(invoiceId: string) {
+    set('original_invoice_id', invoiceId)
+    if (!invoiceId) {
+      setItems([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
+      return
+    }
+    const { data } = await supabase.from('finance_invoice_items')
+      .select('*').eq('invoice_id', Number(invoiceId)).order('id')
+    if (data && data.length > 0) setItems(data)
+    // تعيين نسبة الضريبة من الفاتورة
+    const inv = clientInvoices.find(i => i.id === Number(invoiceId))
+    if (inv) set('vat_rate', inv.vat_rate ?? 15)
+  }
+
   useEffect(() => { generateNumber() }, [])
 
   async function generateNumber() {
@@ -894,9 +923,18 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
   const total     = subtotal + vatAmount
 
   async function handleSave() {
-    if (!form.note_number.trim()) { toast.error('رقم الإشعار مطلوب'); return }
-    if (!form.client_id) { toast.error('اختر العميل'); return }
+    if (!form.note_number.trim())          { toast.error('رقم الإشعار مطلوب'); return }
+    if (!form.client_id)                   { toast.error('اختر العميل'); return }
+    if (!form.original_invoice_id)         { toast.error('الفاتورة المرجعية إلزامية — لا يمكن إنشاء إشعار بدون فاتورة'); return }
+    if (!form.reason.trim())               { toast.error('سبب الإشعار مطلوب'); return }
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
+
+    // تحقق أن مبلغ الإشعار لا يتجاوز مبلغ الفاتورة الأصلية
+    if (selectedInvoice && total > Number(selectedInvoice.total_amount)) {
+      toast.error(`مبلغ الإشعار (${total.toLocaleString()} ر.س) يتجاوز مبلغ الفاتورة (${Number(selectedInvoice.total_amount).toLocaleString()} ر.س)`)
+      return
+    }
+
     setSaving(true)
 
     const payload = {
@@ -964,14 +1002,40 @@ function CreditNoteModal({ invoice, clients, tenantId, onClose, onSave }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل *</label>
-              <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
+              <select value={form.client_id} onChange={e => handleClientChange(e.target.value)} className="select">
                 <option value="">— اختر العميل —</option>
                 {clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>فاتورة مرجعية</label>
-              <input value={form.original_invoice_id} onChange={e => set('original_invoice_id', e.target.value)} className="input" dir="ltr" placeholder="معرّف الفاتورة" />
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                الفاتورة المرجعية <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              {!form.client_id ? (
+                <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                  ← اختر العميل أولاً
+                </div>
+              ) : clientInvoices.length === 0 ? (
+                <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.8rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
+                  ⚠️ لا توجد فواتير مرسلة أو مدفوعة لهذا العميل
+                </div>
+              ) : (
+                <>
+                  <select value={form.original_invoice_id} onChange={e => handleInvoiceSelect(e.target.value)} className="select">
+                    <option value="">— اختر الفاتورة —</option>
+                    {clientInvoices.map(inv => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoice_number} — {Number(inv.total_amount).toLocaleString()} ر.س ({inv.status})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedInvoice && (
+                    <div style={{ marginTop: '6px', padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1a56db', border: '1px solid #bfdbfe' }}>
+                      ✅ الفاتورة: {selectedInvoice.invoice_number} · المبلغ: {Number(selectedInvoice.total_amount).toLocaleString()} ر.س · الحالة: {selectedInvoice.status}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
           <div>
@@ -1315,7 +1379,7 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل *</label>
-              <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
+              <select value={form.client_id} onChange={e => handleClientChange(e.target.value)} className="select">
                 <option value="">— اختر العميل —</option>
                 {clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -1793,7 +1857,7 @@ export default function InvoicesPage() {
           onSave={() => { setShowInvoiceModal(false); setEditInvoice(null); loadAll() }} />
       )}
       {showCreditModal && (
-        <CreditNoteModal invoice={creditInvoice} clients={clients} tenantId={tenant!.id}
+        <CreditNoteModal invoice={creditInvoice} clients={clients} invoices={invoices} tenantId={tenant!.id}
           onClose={() => { setShowCreditModal(false); setCreditInvoice(null) }}
           onSave={() => { setShowCreditModal(false); setCreditInvoice(null); loadAll() }} />
       )}
