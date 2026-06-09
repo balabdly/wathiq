@@ -454,13 +454,6 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                {['مسودة', 'مرسل', 'مستلم جزئياً', 'مستلم', 'ملغي'].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
           <DeliveryField value={form.delivery_to} warehouseId={form.warehouse_id} projects={projects} warehouses={warehouses}
             onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || '') }} />
           <ItemsTable items={items} onChange={setItems} />
@@ -728,12 +721,6 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
                 </select>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['مسودة', 'معتمدة', 'مدفوعة', 'ملغاة'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
               </div>
@@ -883,12 +870,6 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
           <ItemsTable items={items} onChange={setItems} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['مسودة', 'معتمد', 'مُطبَّق'].map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
                 <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
