@@ -28,9 +28,10 @@ const lbl: React.CSSProperties = {
 
 export default function ProjectModal({ project, onClose, onSave }: Props) {
   const { employees, tenant } = useStore()
-  const [saving, setSaving]       = useState(false)
-  const [clients, setClients]     = useState<{ id: number; name: string; vat_number?: string }[]>([])
-  const [types,   setTypes]       = useState<{ code: string; name: string }[]>([])
+  const [saving,   setSaving]  = useState(false)
+  const [clients,  setClients] = useState<{ id: number; name: string; vat_number?: string }[]>([])
+  const [types,    setTypes]   = useState<{ code: string; name: string }[]>([])
+  const [managers, setManagers]= useState<{ id: number; name: string }[]>([])
 
   const [form, setForm] = useState({
     code:        project?.code              || '',
@@ -50,6 +51,15 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
 
   useEffect(() => {
     if (!tenant) return
+    // جلب مدراء المشاريع من hr_employees
+    supabase.from('hr_employees')
+      .select('id, name')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .eq('job_title', 'مدير مشروع')
+      .order('name')
+      .then(({ data }) => setManagers(data || []))
+
     // جلب العملاء من finance_clients
     supabase.from('finance_clients')
       .select('id, name, vat_number')
@@ -66,10 +76,6 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
       .order('name')
       .then(({ data }) => setTypes(data && data.length > 0 ? data : DEFAULT_TYPES))
   }, [tenant?.id])
-
-  const engineers = employees.filter(e =>
-    ['مدير مشروع', 'مدير عام', 'مهندس مدني', 'مشرف كهربائي', 'مهندس'].includes(e.role || '')
-  )
 
   const selectedClient = clients.find(c => c.id === Number(form.client_id))
 
@@ -175,21 +181,22 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               <div>
                 <label style={lbl}>حالة المشروع</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['تحت التخطيط', 'قيد التنفيذ', 'متأخر', 'مكتمل', 'موقوف'].map(s => (
+                  {['تحت التخطيط', 'قيد التنفيذ', 'قيد الإغلاق', 'مكتمل', 'متأخر', 'موقوف', 'ملغي'].map(s => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label style={lbl}>مدير / مهندس المشروع</label>
-                {engineers.length > 0 ? (
-                  <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select">
-                    <option value="">— اختر —</option>
-                    {engineers.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
-                  </select>
+                <label style={lbl}>مدير المشروع</label>
+                {managers.length === 0 ? (
+                  <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
+                    ⚠️ لا يوجد مدراء مشاريع — أضفهم من <strong>الموارد البشرية</strong> بمسمى "مدير مشروع"
+                  </div>
                 ) : (
-                  <input value={form.engineer} onChange={e => set('engineer', e.target.value)}
-                    className="input" placeholder="اسم المهندس المسؤول" />
+                  <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select">
+                    <option value="">— اختر مدير المشروع —</option>
+                    {managers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                  </select>
                 )}
               </div>
             </div>
