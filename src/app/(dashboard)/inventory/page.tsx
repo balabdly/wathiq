@@ -829,26 +829,26 @@ export default function InventoryPage() {
       </div>
 
       {/* ══ الجزء السفلي — الأزرار الرئيسية (نصف الصفحة) ══ */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '16px', minHeight: '360px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '14px', height: '280px' }}>
         {[
-          { type: 'استلام', icon: ArrowDownToLine, color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة للمستودع' },
-          { type: 'صرف',    icon: ArrowUpFromLine,  color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
-          { type: 'إرجاع',  icon: RotateCcw,        color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد من المشروع للمستودع' },
-          { type: 'تحويل',  icon: ArrowLeftRight,   color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل مواد بين المستودعات' },
+          { type: 'استلام', emoji: '📥', icon: ArrowDownToLine, color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة للمستودع' },
+          { type: 'صرف',    emoji: '📤', icon: ArrowUpFromLine,  color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
+          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,        color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للمستودع' },
+          { type: 'تحويل',  emoji: '🔄', icon: ArrowLeftRight,   color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
         ].map(btn => (
           <button key={btn.type}
             onClick={() => setModal(btn.type as any)}
             style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px',
-              padding: '24px', borderRadius: '16px', border: `2px solid ${btn.border}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              padding: '20px 16px', borderRadius: '16px', border: `2px solid ${btn.border}`,
               background: btn.bg, color: btn.color, cursor: 'pointer',
               transition: 'all 0.2s', fontWeight: 700,
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 8px 24px ${btn.color}30` }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 20px ${btn.color}25` }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
-            <btn.icon style={{ width: '36px', height: '36px', color: btn.color }} />
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: btn.color }}>{btn.type}</div>
-            <div style={{ fontSize: '0.78rem', color: btn.color, opacity: 0.7, textAlign: 'center' }}>{btn.desc}</div>
+            <span style={{ fontSize: '2.2rem', lineHeight: 1 }}>{btn.emoji}</span>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: btn.color }}>{btn.type}</div>
+            <div style={{ fontSize: '0.72rem', color: btn.color, opacity: 0.7, textAlign: 'center' }}>{btn.desc}</div>
           </button>
         ))}
       </div>
