@@ -3,13 +3,13 @@ import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
-import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
+import { formatDate, formatCurrency, daysUntil } from '@/lib/utils'
 import {
   ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle,
   Package, TrendingDown, TrendingUp, ArrowLeftRight,
   Paperclip, Trash2, Download, FileText, Image, File, X
 } from 'lucide-react'
-import type { Project, ProjectStage } from '@/types'
+import type { Project } from '@/types'
 import toast from 'react-hot-toast'
 
 interface Props {
@@ -23,15 +23,25 @@ type Attachment = {
   created_at: string; public_url?: string
 }
 
-const CATEGORIES = ['مخططات','رخصة بلدية','إخلاء بلدية','مستخلصات','فواتير','صور الموقع','أخرى']
-
-const REQUIRED_DOCS = [
-  { category: 'مخططات',      label: 'مخططات المشروع', icon: '📐' },
-  { category: 'رخصة بلدية',  label: 'رخصة البلدية',    icon: '📋' },
-  { category: 'إخلاء بلدية', label: 'إخلاء البلدية',   icon: '📋' },
-  { category: 'مستخلصات',    label: 'المستخلص',         icon: '📄' },
-  { category: 'فواتير',       label: 'الفاتورة',         icon: '🧾' },
-]
+// مستندات كل مرحلة — اختيارية للتنظيم
+const PHASE_DOCS: Record<string, { category: string; example: string; icon: string }[]> = {
+  'التخطيط': [
+    { category: 'مخططات المشروع',  example: 'مخطط الكهرباء، المخططات الهندسية',           icon: '📐' },
+    { category: 'تصريح الحفر',     example: 'تصريح الحفر الصادر من البلدية أو الجهة المختصة', icon: '🪛' },
+  ],
+  'التنفيذ': [
+    { category: 'تصاريح العمل',         example: 'تصاريح الدخول للموقع، تصاريح الرفع',        icon: '📋' },
+    { category: 'إجراءات العمل الآمنة', example: 'JSA، MSDS، خطة السلامة',                    icon: '🦺' },
+    { category: 'صور الموقع',           example: 'صور قبل البدء وأثناء التنفيذ',              icon: '📷' },
+    { category: 'مستندات الاختبار',     example: 'نتائج الاختبارات والفحوصات',               icon: '🔬' },
+    { category: 'طلبات الفصل',          example: 'طلبات فصل الكهرباء الصادرة للشركة',        icon: '⚡' },
+  ],
+  'الإغلاق': [
+    { category: 'أعمال البلدية',         example: 'شهادة إتمام الأعمال البلدية',              icon: '🏛️' },
+    { category: 'إخلاء طرف البلدية',    example: 'وثيقة إخلاء الطرف الصادرة من البلدية',    icon: '✅' },
+    { category: 'المستخلص',             example: 'المستخلص النهائي المعتمد',                 icon: '📄' },
+  ],
+}
 
 // أنواع المشاريع بأسماء واضحة
 const PROJECT_TYPE_NAMES: Record<string, string> = {
@@ -61,14 +71,14 @@ function formatSize(bytes: number) {
 }
 
 // ══════════════════════════════════════
-// تاب المرفقات
+// تاب المرفقات — مقسّمة حسب مراحل المشروع
 // ══════════════════════════════════════
 function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) {
   const [attachments, setAttachments] = useState<Attachment[]>([])
-  const [loading, setLoading]         = useState(false)
-  const [uploading, setUploading]     = useState(false)
-  const [category, setCategory]       = useState('أخرى')
-  const [dragOver, setDragOver]       = useState(false)
+  const [loading,    setLoading]      = useState(false)
+  const [uploading,  setUploading]    = useState(false)
+  const [activePhase,setActivePhase]  = useState<string>('التخطيط')
+  const [dragOver,   setDragOver]     = useState(false)
 
   useEffect(() => { loadAttachments() }, [project.id])
 
@@ -81,7 +91,6 @@ function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) 
       .eq('project_id', project.id)
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: false })
-
     const withUrls = await Promise.all((data || []).map(async (a: Attachment) => {
       const { data: urlData } = await supabase.storage
         .from('project-attachments')
@@ -92,19 +101,19 @@ function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) 
     setLoading(false)
   }
 
-  async function handleUpload(files: FileList | null) {
+  async function handleUpload(files: FileList | null, category: string) {
     if (!files || !tenant) return
     setUploading(true)
     for (const file of Array.from(files)) {
       const filePath = `${tenant.id}/${project.id}/${Date.now()}_${file.name}`
       const { error: uploadError } = await supabase.storage
-        .from('project-attachments')
-        .upload(filePath, file)
-      if (uploadError) { toast.error(`خطأ في رفع ${file.name}: ${uploadError.message}`); continue }
+        .from('project-attachments').upload(filePath, file)
+      if (uploadError) { toast.error(`خطأ في رفع ${file.name}`); continue }
       const { error: dbError } = await supabase.from('project_attachments').insert({
         tenant_id: tenant.id, project_id: project.id,
         file_name: file.name, file_path: filePath,
-        file_size: file.size, file_type: file.type, category,
+        file_size: file.size, file_type: file.type,
+        category: `${activePhase} — ${category}`,
       })
       if (dbError) toast.error(`خطأ في حفظ ${file.name}`)
       else toast.success(`✅ تم رفع ${file.name}`)
@@ -121,117 +130,116 @@ function AttachmentsTab({ project, tenant }: { project: Project; tenant: any }) 
     toast.success('تم الحذف')
   }
 
-  const byCategory: Record<string, Attachment[]> = {}
-  attachments.forEach(a => {
-    if (!byCategory[a.category]) byCategory[a.category] = []
-    byCategory[a.category].push(a)
-  })
-
-  const uploadedCategories = attachments.map(a => a.category)
+  const phases = Object.keys(PHASE_DOCS)
+  const PHASE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+    'التخطيط': { bg: '#eff6ff', color: '#1a56db', border: '#bfdbfe' },
+    'التنفيذ': { bg: '#fffbeb', color: '#e6820a', border: '#fde68a' },
+    'الإغلاق': { bg: '#ecfdf5', color: '#0ea77b', border: '#bbf7d0' },
+  }
 
   return (
     <div className="space-y-4">
-      {/* المستندات الإلزامية */}
-      <div className="card" style={{ padding: '16px' }}>
-        <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px', color: '#374151' }}>
-          📋 المستندات الإلزامية للإغلاق
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {REQUIRED_DOCS.map(doc => {
-            const done = uploadedCategories.includes(doc.category)
-            return (
-              <div key={doc.category} style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 12px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
-                background: done ? '#ecfdf5' : '#fef2f2',
-                color:      done ? '#0ea77b' : '#c81e1e',
-                border:    `1px solid ${done ? '#bbf7d0' : '#fca5a5'}`,
+
+      {/* تبويبات المراحل */}
+      <div style={{ display: 'flex', gap: '6px', background: '#f3f4f6', padding: '5px', borderRadius: '12px', width: 'fit-content' }}>
+        {phases.map(phase => {
+          const phaseAttachments = attachments.filter(a => a.category.startsWith(phase))
+          const pc = PHASE_COLORS[phase]
+          return (
+            <button key={phase} onClick={() => setActivePhase(phase)}
+              style={{
+                padding: '7px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                fontSize: '0.875rem', fontWeight: 600, transition: 'all 0.2s',
+                background: activePhase === phase ? pc.color : 'transparent',
+                color:      activePhase === phase ? 'white'   : 'var(--text3)',
+                boxShadow:  activePhase === phase ? `0 2px 8px ${pc.color}44` : 'none',
               }}>
-                {done ? '✅' : '⚠️'} {doc.icon} {doc.label}
+              {phase === 'التخطيط' ? '📋' : phase === 'التنفيذ' ? '🔄' : '🔒'} {phase}
+              {phaseAttachments.length > 0 && (
+                <span style={{ marginRight: '6px', background: activePhase === phase ? 'rgba(255,255,255,0.3)' : pc.bg, color: activePhase === phase ? 'white' : pc.color, borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem' }}>
+                  {phaseAttachments.length}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* فئات المرحلة الحالية */}
+      {PHASE_DOCS[activePhase]?.map(doc => {
+        const pc = PHASE_COLORS[activePhase]
+        const catKey = `${activePhase} — ${doc.category}`
+        const catAttachments = attachments.filter(a => a.category === catKey)
+
+        return (
+          <div key={doc.category} className="card" style={{ overflow: 'hidden', border: `1px solid ${pc.border}` }}>
+            {/* رأس الفئة */}
+            <div style={{ padding: '12px 16px', background: pc.bg, borderBottom: `1px solid ${pc.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.875rem', color: pc.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{doc.icon}</span> {doc.category}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  مثال: {doc.example}
+                </div>
               </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* منطقة الرفع */}
-      <div
-        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files) }}
-        style={{
-          border: `2px dashed ${dragOver ? '#1a56db' : '#d1d5db'}`,
-          borderRadius: '12px', padding: '24px',
-          textAlign: 'center', background: dragOver ? '#eff6ff' : '#fafafa',
-          transition: 'all 0.2s',
-        }}>
-        <Upload style={{ width: '28px', height: '28px', color: '#9ca3af', margin: '0 auto 8px' }} />
-        <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '12px' }}>
-          اسحب الملفات هنا أو اضغط للاختيار
-        </p>
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '12px' }}>
-          <select value={category} onChange={e => setCategory(e.target.value)}
-            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
-        </div>
-        <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
-          <input type="file" multiple style={{ display: 'none' }}
-            onChange={e => handleUpload(e.target.files)}
-            disabled={uploading} />
-          <span style={{
-            display: 'inline-block', padding: '8px 20px', borderRadius: '8px',
-            background: uploading ? '#9ca3af' : '#1a56db',
-            color: 'white', fontSize: '0.82rem', fontWeight: 600,
-          }}>
-            {uploading ? '⏳ جاري الرفع...' : '📎 اختيار ملفات'}
-          </span>
-        </label>
-      </div>
-
-      {/* قائمة المرفقات */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>جاري التحميل...</div>
-      ) : attachments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
-          <Paperclip style={{ width: '32px', height: '32px', margin: '0 auto 8px', opacity: 0.4 }} />
-          <div>لا توجد مرفقات</div>
-        </div>
-      ) : (
-        Object.entries(byCategory).map(([cat, files]) => (
-          <div key={cat} className="card" style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem', borderBottom: '1px solid var(--border)' }}>
-              {cat} ({files.length})
+              {/* زر رفع */}
+              <label style={{ cursor: uploading ? 'not-allowed' : 'pointer' }}>
+                <input type="file" multiple style={{ display: 'none' }}
+                  onChange={e => handleUpload(e.target.files, doc.category)}
+                  disabled={uploading} />
+                <span style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '6px 12px', borderRadius: '8px',
+                  background: uploading ? '#9ca3af' : pc.color,
+                  color: 'white', fontSize: '0.78rem', fontWeight: 600,
+                }}>
+                  <Upload style={{ width: '13px', height: '13px' }} />
+                  {uploading ? 'جاري...' : 'رفع'}
+                </span>
+              </label>
             </div>
-            {files.map(a => (
-              <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', borderBottom: '1px solid var(--bg2)' }}>
-                {fileIcon(a.file_type)}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {a.file_name}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{formatSize(a.file_size)} · {a.created_at?.split('T')[0]}</div>
-                </div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {a.public_url && (
-                    <a href={a.public_url} target="_blank" rel="noopener noreferrer"
-                      style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, textDecoration: 'none' }}>
-                      <Download style={{ width: '12px', height: '12px', display: 'inline' }} /> فتح
-                    </a>
-                  )}
-                  <button onClick={() => handleDelete(a)}
-                    style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fff5f5', color: '#ef4444', cursor: 'pointer' }}>
-                    <Trash2 style={{ width: '12px', height: '12px' }} />
-                  </button>
-                </div>
+
+            {/* الملفات */}
+            {catAttachments.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
+                لا توجد ملفات — اضغط "رفع" لإضافة مستند
               </div>
-            ))}
+            ) : (
+              catAttachments.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 16px', borderBottom: '1px solid var(--bg2)' }}>
+                  {fileIcon(a.file_type)}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.file_name}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                      {formatSize(a.file_size)} · {a.created_at?.split('T')[0]}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {a.public_url && (
+                      <a href={a.public_url} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: '5px 10px', borderRadius: '7px', border: `1px solid ${pc.border}`, background: pc.bg, color: pc.color, fontSize: '0.75rem', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        <Download style={{ width: '12px', height: '12px' }} /> فتح
+                      </a>
+                    )}
+                    <button onClick={() => handleDelete(a)}
+                      style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fff5f5', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <Trash2 style={{ width: '12px', height: '12px' }} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-        ))
-      )}
+        )
+      })}
+
+      {/* إجمالي */}
       {attachments.length > 0 && (
         <div style={{ fontSize: '0.78rem', color: '#9ca3af', textAlign: 'center' }}>
-          {attachments.length} ملف · {formatSize(attachments.reduce((s, a) => s + (a.file_size || 0), 0))} إجمالي
+          {attachments.length} ملف إجمالاً · {formatSize(attachments.reduce((s, a) => s + (a.file_size || 0), 0))}
         </div>
       )}
     </div>
@@ -317,59 +325,13 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'inventory'|'history'>('info')
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv]   = useState(false)
-  const [advancing, setAdvancing]     = useState(false)
   const canEdit = currentUser?.permissions?.includes('projects_edit')
   const days    = daysUntil(project.end_date)
   const isLate  = days !== null && days < 0 && project.progress < 100
 
-  function getCurrentStageIndex() {
-    const stages = project.stages || []
-    for (let i = PROJECT_STAGES.length - 1; i >= 0; i--) {
-      const s = stages.find(st => st.id === PROJECT_STAGES[i].id)
-      if (s && s.startedAt && !s.done) return i
-    }
-    for (let i = PROJECT_STAGES.length - 1; i >= 0; i--) {
-      if (stages.find(s => s.id === PROJECT_STAGES[i].id && s.done)) {
-        return Math.min(i + 1, PROJECT_STAGES.length - 1)
-      }
-    }
-    return 0
-  }
 
-  const currentIdx = getCurrentStageIndex()
 
-  async function advanceStage(idx: number, note?: string) {
-    if (!tenant) return
-    setAdvancing(true)
-    const stage    = PROJECT_STAGES[idx]
-    const now      = new Date().toLocaleDateString('ar-EG')
-    const stages   = [...(project.stages || [])]
 
-    for (let i = 0; i < idx; i++) {
-      const prevId = PROJECT_STAGES[i].id
-      const prev   = stages.find(s => s.id === prevId)
-      if (!prev) stages.push({ id: prevId, done: true, completedAt: now })
-      else { prev.done = true; if (!prev.completedAt) prev.completedAt = now }
-    }
-
-    const existing = stages.find(s => s.id === stage.id)
-    if (existing) { existing.done = false; existing.startedAt = now }
-    else stages.push({ id: stage.id, done: false, startedAt: now })
-
-    const history = [...(project.history || []),
-      `${now}: الانتقال إلى مرحلة "${stage.name}"${note ? ' — ' + note : ''}`]
-
-    // ✅ update مباشرة
-    const { error } = await supabase
-      .from('projects')
-      .update({ stages, progress: stage.pct, history, updated_at: new Date().toISOString() })
-      .eq('id', project.id)
-
-    if (error) { toast.error('خطأ: ' + error.message); setAdvancing(false); return }
-    await onRefresh()
-    setAdvancing(false)
-    toast.success(`تم الانتقال إلى: ${stage.icon} ${stage.name}`)
-  }
 
   async function loadInventory() {
     if (!tenant || loadingInv) return
@@ -443,40 +405,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
         )}
       </div>
 
-      {/* مراحل المشروع */}
-      {PROJECT_STAGES.length > 0 && (
-        <div className="card" style={{ padding: '16px', overflowX: 'auto' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '14px', color: '#374151' }}>
-            مراحل المشروع
-          </div>
-          <div style={{ display: 'flex', gap: '6px', minWidth: 'max-content' }}>
-            {PROJECT_STAGES.map((stage, idx) => {
-              const s    = (project.stages || []).find(st => st.id === stage.id)
-              const done = s?.done
-              const curr = idx === currentIdx && !done
-              return (
-                <div key={stage.id} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <div style={{
-                    padding: '6px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600,
-                    background: done ? '#ecfdf5' : curr ? '#eff6ff' : '#f9fafb',
-                    color:      done ? '#0ea77b' : curr ? '#1a56db' : '#9ca3af',
-                    border:    `1px solid ${done ? '#bbf7d0' : curr ? '#bfdbfe' : '#e5e7eb'}`,
-                    cursor: canEdit && !done ? 'pointer' : 'default',
-                    whiteSpace: 'nowrap',
-                  }}
-                    onClick={() => canEdit && !done && !advancing && advanceStage(idx)}>
-                    {done ? '✅' : curr ? '🔄' : stage.icon} {stage.name}
-                    {s?.completedAt && <span style={{ opacity: 0.6, marginRight: '4px', fontSize: '0.65rem' }}>{s.completedAt}</span>}
-                  </div>
-                  {idx < PROJECT_STAGES.length - 1 && (
-                    <div style={{ width: '16px', height: '2px', background: done ? '#0ea77b' : '#e5e7eb' }} />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+
 
       {/* التابات */}
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
