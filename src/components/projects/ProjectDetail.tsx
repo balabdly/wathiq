@@ -325,6 +325,8 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'inventory'|'history'>('info')
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv]   = useState(false)
+  const [visitsData,  setVisitsData]  = useState<any[]>([])
+  const [loadingVis,  setLoadingVis]  = useState(false)
   const canEdit = currentUser?.permissions?.includes('projects_edit')
   const days    = daysUntil(project.end_date)
   const isLate  = days !== null && days < 0 && project.progress < 100
@@ -332,6 +334,19 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
 
 
+
+  async function loadVisits() {
+    if (!tenant || loadingVis) return
+    setLoadingVis(true)
+    const { data } = await supabase
+      .from('visits')
+      .select('*')
+      .eq('project_id', project.id)
+      .eq('tenant_id', tenant.id)
+      .order('date', { ascending: false })
+    setVisitsData(data || [])
+    setLoadingVis(false)
+  }
 
   async function loadInventory() {
     if (!tenant || loadingInv) return
@@ -354,6 +369,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const TABS = [
     { id: 'info',        label: '📋 المعلومات'  },
     { id: 'attachments', label: '📎 المرفقات'   },
+    { id: 'visits',      label: '🔍 الزيارات'   },
     { id: 'inventory',   label: '📦 المخزون'    },
     { id: 'history',     label: '📜 السجل'       },
   ]
@@ -411,7 +427,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id}
-            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory() }}
+            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory(); if (t.id === 'visits') loadVisits() }}
             style={{
               padding: '10px 18px', fontSize: '0.875rem', fontWeight: 600,
               border: 'none', background: 'none', cursor: 'pointer',
@@ -469,6 +485,81 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       {/* Tab: المرفقات */}
       {activeTab === 'attachments' && (
         <AttachmentsTab project={project} tenant={tenant} />
+      )}
+
+
+      {/* Tab: الزيارات */}
+      {activeTab === 'visits' && (
+        <div className="space-y-4">
+          {loadingVis ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+              <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : visitsData.length === 0 ? (
+            <div className="card" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🔍</div>
+              <div style={{ fontWeight: 600, marginBottom: '6px' }}>لا توجد زيارات مسجلة لهذا المشروع</div>
+              <div style={{ fontSize: '0.8rem' }}>أضف الزيارات من صفحة الزيارات الميدانية</div>
+            </div>
+          ) : (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              {/* إحصاءات سريعة */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'var(--border)', borderBottom: '1px solid var(--border)' }}>
+                {[
+                  { label: 'إجمالي الزيارات', value: visitsData.length,                                                              color: '#1a56db', bg: '#eff6ff' },
+                  { label: 'مطابق',            value: visitsData.filter(v => v.specs === 'مطابق').length,                             color: '#0ea77b', bg: '#ecfdf5' },
+                  { label: 'غير مطابق',        value: visitsData.filter(v => v.specs === 'غير مطابق').length,                        color: '#c81e1e', bg: '#fef2f2' },
+                ].map(s => (
+                  <div key={s.label} style={{ padding: '12px 16px', background: s.bg, textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.3rem', fontWeight: 700, color: s.color }}>{s.value}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* جدول الزيارات */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['التاريخ', 'النوع', 'المهندس', 'النتيجة', 'الحالة', 'ملاحظات'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visitsData.map((v: any) => (
+                      <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{v.date}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600, background: '#eff6ff', color: '#1a56db' }}>
+                            {v.type === 'جودة' ? '🔍' : v.type === 'سلامة' ? '🦺' : v.type === 'كهربائية' ? '⚡' : '🏗️'} {v.type}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>{v.engineer || '—'}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{
+                            padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600,
+                            background: v.specs === 'مطابق' ? '#ecfdf5' : '#fef2f2',
+                            color:      v.specs === 'مطابق' ? '#0ea77b' : '#c81e1e',
+                          }}>
+                            {v.specs === 'مطابق' ? '✅' : '⚠️'} {v.specs}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{v.status || '—'}</td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {v.notes || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Tab: المخزون */}
