@@ -32,19 +32,23 @@ const PROJECT_TYPES: { code: string; name: string }[] = [
 const TYPE_NAME: Record<string, string> = Object.fromEntries(PROJECT_TYPES.map(t => [t.code, t.name]))
 
 const COLUMNS = [
-  { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
-  { id: 'قيد التنفيذ',  label: 'قيد التنفيذ',  icon: '🔄', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
-  { id: 'متأخر',        label: 'متأخر',         icon: '⚠️', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5' },
-  { id: 'مكتمل',        label: 'مكتمل',         icon: '✅', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac' },
-  { id: 'موقوف',        label: 'موقوف',          icon: '🚫', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d' },
+  { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb',  border: '#e5e7eb', autoProgress: 0   },
+  { id: 'قيد التنفيذ',  label: 'قيد التنفيذ',  icon: '🔄', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', autoProgress: 10  },
+  { id: 'قيد الإغلاق',  label: 'قيد الإغلاق',  icon: '🔒', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', autoProgress: 60  },
+  { id: 'مكتمل',        label: 'مكتمل',         icon: '✅', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', autoProgress: 100 },
+  { id: 'متأخر',        label: 'متأخر',         icon: '⚠️', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5', autoProgress: null },
+  { id: 'موقوف',        label: 'موقوف',          icon: '🚫', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d', autoProgress: null },
+  { id: 'ملغي',         label: 'ملغي',           icon: '❌', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
 ]
 
 function getStatusColor(p: Project): string {
   const days = daysUntil(p.end_date)
-  if (p.progress >= 100 || p.status === 'مكتمل') return 'badge-green'
-  if (days !== null && days < 0)                  return 'badge-red'
-  if (p.status === 'قيد التنفيذ')                 return 'badge-blue'
-  if (p.status === 'موقوف')                        return 'badge-amber'
+  if (p.progress >= 100 || p.status === 'مكتمل')  return 'badge-green'
+  if (p.status === 'متأخر' || (days !== null && days < 0 && p.status === 'قيد التنفيذ')) return 'badge-red'
+  if (p.status === 'قيد التنفيذ')                  return 'badge-blue'
+  if (p.status === 'قيد الإغلاق')                  return 'badge-purple'
+  if (p.status === 'موقوف')                         return 'badge-amber'
+  if (p.status === 'ملغي')                          return 'badge-gray'
   return 'badge-gray'
 }
 
@@ -422,12 +426,24 @@ export default function ProjectsPage() {
   }
 
   // ✅ إصلاح handleSave — insert للجديد، update للتعديل
+  // النسبة التلقائية حسب الحالة
+  function getAutoProgress(status: string, currentProgress: number): number {
+    const col = COLUMNS.find(c => c.id === status)
+    return col?.autoProgress !== null && col?.autoProgress !== undefined
+      ? col.autoProgress
+      : currentProgress
+  }
+
   async function handleSave(data: Partial<Project>): Promise<void> {
     if (!tenant || !activeBranch) return
     let error: any = null
 
-    if ((data as any).id) {
-      const { id, ...rest } = data as any
+    // تطبيق النسبة التلقائية حسب الحالة
+    const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
+    const payload = { ...data, progress: autoProgress }
+
+    if ((payload as any).id) {
+      const { id, ...rest } = payload as any
       const res = await supabase
         .from('projects')
         .update({ ...rest, updated_at: new Date().toISOString() })
@@ -436,7 +452,7 @@ export default function ProjectsPage() {
     } else {
       const res = await supabase
         .from('projects')
-        .insert({ ...data, tenant_id: tenant.id, branch_id: activeBranch.id })
+        .insert({ ...payload, tenant_id: tenant.id, branch_id: activeBranch.id })
       error = res.error
     }
 
@@ -491,12 +507,14 @@ export default function ProjectsPage() {
       }
     }
 
-    const newProgress = newStatus === 'مكتمل' ? 100 : p.progress
+    // النسبة التلقائية حسب المرحلة
+    const autoP = COLUMNS[newIdx].autoProgress
+    const newProgress = autoP !== null ? autoP : p.progress
     const { error } = await supabase.from('projects')
       .update({ status: newStatus, progress: newProgress }).eq('id', p.id)
     if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
     setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
-    toast.success(`نُقل إلى: ${COLUMNS[newIdx].icon} ${newStatus}`)
+    toast.success(`${COLUMNS[newIdx].icon} ${newStatus} — ${newProgress}%`)
   }
 
   const now = new Date(); now.setHours(0, 0, 0, 0)
@@ -583,7 +601,9 @@ export default function ProjectsPage() {
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
           <option value="">كل الحالات</option>
-          {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+          {COLUMNS.map(c => (
+            <option key={c.id} value={c.id}>{c.icon} {c.label}{c.autoProgress !== null ? ` — ${c.autoProgress}%` : ''}</option>
+          ))}
         </select>
 
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
