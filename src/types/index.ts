@@ -11,8 +11,17 @@ export type UserRole =
   | 'مهندس مدني'
   | 'أمين مستودع'
 
-export type ProjectType = '801' | '802' | '441' | '442' | '805' | '405' | 'O&M'
-export type ProjectStatus = 'تحت التخطيط' | 'قيد التنفيذ' | 'متأخر' | 'مكتمل' | 'موقوف'
+export type ProjectType = '801' | '802' | '441' | '442' | '805' | '405' | 'O&M' | string
+
+export type ProjectStatus =
+  | 'تحت التخطيط'
+  | 'قيد التنفيذ'
+  | 'قيد الإغلاق'
+  | 'مكتمل'
+  | 'متأخر'
+  | 'موقوف'
+  | 'ملغي'
+
 export type VisitType = 'جودة' | 'سلامة' | 'كهربائية' | 'ميدانية'
 export type LedgerType = 'توريد' | 'صرف' | 'إرجاع للكهرباء' | 'نقل مخزني'
 
@@ -25,8 +34,8 @@ export interface Tenant {
   phone?: string
   email?: string
   address?: string
-  cr_number?: string   // رقم السجل التجاري
-  sec_contractor_id?: string  // رقم المقاول في SEC
+  cr_number?: string
+  sec_contractor_id?: string
   footer_text?: string
   plan: 'basic' | 'pro'
   is_active: boolean
@@ -71,9 +80,14 @@ export interface Project {
   status: ProjectStatus
   progress: number
   engineer?: string
+  client_id?: number        // ربط بـ finance_clients
+  client_name?: string      // اسم العميل (cached)
   value?: number
   start_date?: string
   end_date?: string
+  location?: string
+  description?: string
+  notes?: string
   stages?: ProjectStage[]
   attachments?: Attachment[]
   timeline?: TimelineEntry[]
@@ -120,8 +134,8 @@ export interface Warehouse {
   tenant_id: string
   branch_id: number
   name: string
-  type?: 'SEC' | 'خاص' | 'مختلط'  // نوع المستودع
-  stock_type?: 'SEC' | 'خاص' | 'مختلط'  // alias
+  type?: 'SEC' | 'خاص' | 'مختلط'
+  stock_type?: 'SEC' | 'خاص' | 'مختلط'
   capacity?: string
   location?: string
   created_at: string
@@ -142,7 +156,7 @@ export interface Material {
   reorder: number
   source?: 'كهرباء' | 'خاص'
   notes?: string
-  location?: string      // الموقع الداخلي (رف A3، قسم الكابلات...)
+  location?: string
   created_at: string
   updated_at: string
 }
@@ -225,7 +239,7 @@ export interface QhseFile {
 export interface Attachment {
   name: string
   url?: string
-  data?: string  // base64 للملفات المحلية
+  data?: string
   size?: number
   type?: string
   uploaded_at?: string
