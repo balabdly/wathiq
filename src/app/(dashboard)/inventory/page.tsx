@@ -157,7 +157,7 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
                   {editId ? 'حفظ التعديل' : 'إضافة المستودع'}
                 </button>
                 {editId && (
-                  <button onClick={() => { setEditId(null); setForm({ name: '', location: '', capacity: '', sections: '' }) }}
+                  <button onClick={() => { setEditId(null); setForm({ name: '', location: '', capacity: '', sections: '', mode: 'عام' }) }}
                     className="btn btn-ghost">إلغاء</button>
                 )}
               </div>
