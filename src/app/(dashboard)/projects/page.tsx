@@ -512,9 +512,9 @@ export default function ProjectsPage() {
     const autoP = COLUMNS[newIdx].autoProgress
     const newProgress = autoP !== null ? autoP : p.progress
     const { error } = await supabase.from('projects')
-      .update({ status: newStatus, progress: newProgress }).eq('id', p.id)
+      .update({ status: newStatus as any, progress: newProgress }).eq('id', p.id)
     if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
-    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
+    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus as any, progress: newProgress } : x))
     toast.success(`${COLUMNS[newIdx].icon} ${newStatus} — ${newProgress}%`)
   }
 
