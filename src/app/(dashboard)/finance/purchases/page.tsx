@@ -598,9 +598,8 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           invoice.delivery_to === 'مستودع'   ? '1130' :
           invoice.delivery_to === 'أصل ثابت' ? '1220' : '5120'
 
-        await createJournalEntry({
-        tenantId,
-          date:          payload.invoice_date,
+        await createJournalEntry(tenantId, {
+      date:          payload.invoice_date,
           description:   `قيد تصحيحي — تعديل فاتورة مورد ${invoice.invoice_number}`,
           referenceType: 'تصحيح فاتورة مورد',
           referenceId:   invoice.id,
@@ -633,9 +632,8 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         payload.delivery_to === 'مستودع'   ? '1130' :
         payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') :
         '5120'
-      await createJournalEntry({
-        tenantId,
-        date:          payload.invoice_date,
+      await createJournalEntry(tenantId, {
+      date:          payload.invoice_date,
         description:   `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`,
         referenceType: 'فاتورة مورد',
         referenceId:   invId,
@@ -809,8 +807,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: {
         validItems.map(i => ({ return_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
       )
     }
-    await createJournalEntry({
-        tenantId,
+    await createJournalEntry(tenantId, {
       date: form.return_date,
       description: `${form.return_type} ${form.return_number} — ${selectedVendor!.name}`,
       referenceType: form.return_type, referenceId: data.id, source: 'آلي',
@@ -1504,8 +1501,7 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
                                 e.stopPropagation()
                                 const debitCode = inv.delivery_to === 'مستودع' ? '1130' : inv.delivery_to === 'أصل ثابت' ? '1220' : '5120'
                                 await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-                                await createJournalEntry({
-                                tenantId: tenant!.id,
+                                await createJournalEntry(tenant!.id, {
                                   date: inv.invoice_date,
                                   description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
                                   referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
