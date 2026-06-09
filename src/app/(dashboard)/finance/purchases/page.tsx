@@ -935,8 +935,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
     await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
 
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
-    await createJournalEntry({
-        tenantId,
+    await createJournalEntry(tenantId, {
       date: form.payment_date,
       description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`,
       referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
@@ -972,11 +971,11 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: {
             <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" />
           </div>
           <div>
-            <label style={lbl}>تاريخ الدفع</label>
+            <label style={lbl}>تاريخ الدفع <span style={{ color: '#c81e1e' }}>*</span></label>
             <input type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} className="input" />
           </div>
           <div>
-            <label style={lbl}>طريقة الدفع</label>
+            <label style={lbl}>طريقة الدفع <span style={{ color: '#c81e1e' }}>*</span></label>
             <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
               {['تحويل بنكي', 'شيك', 'نقداً'].map(m => <option key={m}>{m}</option>)}
             </select>
