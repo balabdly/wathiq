@@ -56,6 +56,12 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
     setLoading(false)
   }
 
+  // نمط المستودع المختار — محسوب هنا ليكون متاحاً لـ handleSave والـ JSX
+  const selectedWh           = warehouses.find(w => w.id === Number(form.warehouse_id))
+  const whMode               = selectedWh?.mode || 'عام'
+  const showProjectOnReceive = whMode === 'مشاريع' || whMode === 'مرن'
+  const projectRequiredOnReceive = whMode === 'مشاريع'
+
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم المستودع مطلوب'); return }
     const sections = form.sections ? form.sections.split('،').map(s => s.trim()).filter(Boolean) : []
@@ -474,6 +480,9 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     setRows(prev => { const next = [...prev]; next[i] = { ...next[i], [k]: v }; return next })
   }
 
+  // نمط المستودع المختار — محسوب هنا ليكون متاحاً لـ handleSave والـ JSX
+  const selectedWh           = warehouses.find(w => w.id === Number(form.warehouse_id))
+
   async function handleSave() {
     const validRows = rows.filter(r => r.mat_id && Number(r.qty) > 0)
     if (validRows.length === 0) { toast.error('أضف مادة واحدة على الأقل بكمية صحيحة'); return }
@@ -779,14 +788,6 @@ export default function InventoryPage() {
 
   const matTotalPages = Math.ceil(matTotal / PAGE_SIZE)
   const ledgerTotalPages = Math.ceil(ledgerTotal / PAGE_SIZE)
-
-  // نمط المستودع المختار
-  const selectedWh = warehouses.find(w => w.id === Number(form.warehouse_id))
-  const whMode     = selectedWh?.mode || 'عام'
-  // هل نُظهر حقل المشروع في الاستلام؟
-  const showProjectOnReceive = whMode === 'مشاريع' || whMode === 'مرن'
-  // هل المشروع إلزامي في الاستلام؟
-  const projectRequiredOnReceive = whMode === 'مشاريع'
 
   const TYPE_COLOR: Record<string, string> = {
     'توريد':      'badge-green',
