@@ -447,7 +447,7 @@ export default function JobsPage() {
   const [selectedApplicant, setSelectedApplicant] = useState<Applicant | null>(null)
   const [copied, setCopied]         = useState<number | null>(null)
 
-  const isAdmin = currentUser?.role === 'مدير عام' || currentUser?.role === 'مدير الموارد البشرية'
+  const isAdmin = ['مدير عام', 'مدير الموارد البشرية'].includes((currentUser?.role as string) || '')
 
   useEffect(() => { loadAll() }, [tenant?.id])
   useEffect(() => { if (view === 'applicants' || view === 'pipeline') loadApplicants() }, [view])
