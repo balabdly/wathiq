@@ -322,7 +322,7 @@ function ProgressUpdater({ project, tenant, onRefresh }: { project: Project; ten
 // ══════════════════════════════════════
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'inventory'|'history'>('info')
+  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'history'>('info')
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv]   = useState(false)
   const [visitsData,  setVisitsData]  = useState<any[]>([])
