@@ -42,13 +42,14 @@ const COLUMNS = [
 ]
 
 function getStatusColor(p: Project): string {
-  const days = daysUntil(p.end_date)
-  if (p.progress >= 100 || p.status === 'مكتمل')  return 'badge-green'
-  if (p.status === 'متأخر' || (days !== null && days < 0 && p.status === 'قيد التنفيذ')) return 'badge-red'
-  if (p.status === 'قيد التنفيذ')                  return 'badge-blue'
-  if (p.status === 'قيد الإغلاق')                  return 'badge-purple'
-  if (p.status === 'موقوف')                         return 'badge-amber'
-  if (p.status === 'ملغي')                          return 'badge-gray'
+  const status = (p as any).status as string
+  const days   = daysUntil(p.end_date)
+  if (p.progress >= 100 || status === 'مكتمل')                                       return 'badge-green'
+  if (status === 'متأخر' || (days !== null && days < 0 && status === 'قيد التنفيذ')) return 'badge-red'
+  if (status === 'قيد التنفيذ')                                                       return 'badge-blue'
+  if (status === 'قيد الإغلاق')                                                       return 'badge-closing'
+  if (status === 'موقوف')                                                              return 'badge-amber'
+  if (status === 'ملغي')                                                               return 'badge-gray'
   return 'badge-gray'
 }
 
@@ -427,8 +428,8 @@ export default function ProjectsPage() {
 
   // ✅ إصلاح handleSave — insert للجديد، update للتعديل
   // النسبة التلقائية حسب الحالة
-  function getAutoProgress(status: string, currentProgress: number): number {
-    const col = COLUMNS.find(c => c.id === status)
+  function getAutoProgress(status: string | undefined, currentProgress: number): number {
+    const col = COLUMNS.find(c => c.id === (status || ''))
     return col?.autoProgress !== null && col?.autoProgress !== undefined
       ? col.autoProgress
       : currentProgress
@@ -439,7 +440,7 @@ export default function ProjectsPage() {
     let error: any = null
 
     // تطبيق النسبة التلقائية حسب الحالة
-    const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
+    const autoProgress = getAutoProgress((data as any).status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress }
 
     if ((payload as any).id) {
@@ -486,7 +487,7 @@ export default function ProjectsPage() {
     const colIdx = COLUMNS.findIndex(c => c.id === p.status)
     const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
     if (newIdx < 0 || newIdx >= COLUMNS.length) return
-    const newStatus = COLUMNS[newIdx].id as any
+    const newStatus = COLUMNS[newIdx].id as string
 
     if (newStatus === 'مكتمل') {
       const { data: attachments } = await supabase
@@ -795,7 +796,7 @@ export default function ProjectsPage() {
                       {(p as any).client_name || (p as any).client || '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem' }}>{isLate ? 'متأخر' : p.status}</span>
+                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? 'متأخر' : (p as any).status}</span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
