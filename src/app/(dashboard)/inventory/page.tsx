@@ -56,12 +56,6 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
     setLoading(false)
   }
 
-  // نمط المستودع المختار — محسوب هنا ليكون متاحاً لـ handleSave والـ JSX
-  const selectedWh           = warehouses.find(w => w.id === Number(form.warehouse_id))
-  const whMode               = selectedWh?.mode || 'عام'
-  const showProjectOnReceive = whMode === 'مشاريع' || whMode === 'مرن'
-  const projectRequiredOnReceive = whMode === 'مشاريع'
-
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم المستودع مطلوب'); return }
     const sections = form.sections ? form.sections.split('،').map(s => s.trim()).filter(Boolean) : []
