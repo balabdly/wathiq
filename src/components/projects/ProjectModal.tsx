@@ -146,7 +146,7 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
             {/* العميل — إلزامي */}
             <div style={{ background: '#fef9f0', borderRadius: '12px', padding: '14px', border: '2px solid #fde68a' }}>
               <label style={{ ...lbl, color: '#92400e' }}>
-                العميل / الجهة المنفذة <span style={{ color: '#c81e1e' }}>*</span>
+                العميل <span style={{ color: '#c81e1e' }}>*</span>
               </label>
               {clients.length === 0 ? (
                 <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.82rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
