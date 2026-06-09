@@ -338,7 +338,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
   warehouses: Warehouse[]; tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
-  const poStatusRef = useRef<string>('مفتوحة')
+  const poStatusRef = useRef('مفتوحة')
   const [items, setItems]   = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
@@ -387,7 +387,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
       delivery_to: form.delivery_to,
       warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
       subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: poStatusRef.current || form.status, notes: form.notes || null,
+      vat_rate: Number(form.vat_rate), status: poStatusRef.current, notes: form.notes || null,
     }
     let poId = po?.id
     if (po) {
@@ -506,7 +506,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
-  const invStatusRef = useRef<string>('معتمدة')
+  const invStatusRef = useRef('معتمدة')
   const [items, setItems]   = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
@@ -1510,7 +1510,8 @@ ${items.map(i => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.uni
                                 e.stopPropagation()
                                 const debitCode = inv.delivery_to === 'مستودع' ? '1130' : inv.delivery_to === 'أصل ثابت' ? '1220' : '5120'
                                 await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-                                await createJournalEntry(tenant!.id, {
+                                await createJournalEntry({
+        tenantId: tenant!.id,
         date: inv.invoice_date,
                                   description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
                                   referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
