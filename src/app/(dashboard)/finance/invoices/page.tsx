@@ -1379,7 +1379,7 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>العميل *</label>
-              <select value={form.client_id} onChange={e => handleClientChange(e.target.value)} className="select">
+              <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select">
                 <option value="">— اختر العميل —</option>
                 {clients.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
