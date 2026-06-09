@@ -42,7 +42,7 @@ const COLUMNS = [
 ]
 
 function getStatusColor(p: Project): string {
-  const status = (p as any).status as string
+  const status = p.status as string
   const days   = daysUntil(p.end_date)
   if (p.progress >= 100 || status === 'مكتمل')                                       return 'badge-green'
   if (status === 'متأخر' || (days !== null && days < 0 && status === 'قيد التنفيذ')) return 'badge-red'
@@ -440,7 +440,7 @@ export default function ProjectsPage() {
     let error: any = null
 
     // تطبيق النسبة التلقائية حسب الحالة
-    const autoProgress = getAutoProgress((data as any).status || 'تحت التخطيط', data.progress || 0)
+    const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress }
 
     if ((payload as any).id) {
@@ -512,9 +512,9 @@ export default function ProjectsPage() {
     const autoP = COLUMNS[newIdx].autoProgress
     const newProgress = autoP !== null ? autoP : p.progress
     const { error } = await supabase.from('projects')
-      .update({ status: newStatus as any, progress: newProgress }).eq('id', p.id)
+      .update({ status: newStatus, progress: newProgress }).eq('id', p.id)
     if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
-    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus as any, progress: newProgress } : x))
+    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
     toast.success(`${COLUMNS[newIdx].icon} ${newStatus} — ${newProgress}%`)
   }
 
@@ -796,7 +796,7 @@ export default function ProjectsPage() {
                       {(p as any).client_name || (p as any).client || '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? 'متأخر' : (p as any).status}</span>
+                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? 'متأخر' : p.status}</span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
