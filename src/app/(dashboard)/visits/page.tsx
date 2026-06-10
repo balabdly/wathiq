@@ -3,26 +3,128 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useStore } from '@/hooks/useStore'
 import { visitsApi, projectsApi } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import {
-  Plus, Search, Eye, Pencil, Trash2,
+  Plus, Search, Eye, Pencil, Trash2, X, Save,
   ClipboardCheck, ArrowRight, Camera, ClipboardList
 } from 'lucide-react'
 import type { Visit } from '@/types'
 import toast from 'react-hot-toast'
 
-// تحميل المكونات الثقيلة عند الحاجة فقط
 const VisitModal  = dynamic(() => import('./VisitModal'),  { ssr: false })
 const VisitDetail = dynamic(() => import('./VisitDetail'), { ssr: false })
-const NcrModal    = dynamic(() => import('./NcrModal'),    { ssr: false })
 
 const VISIT_TYPES = [
-  { id: 'جودة',     icon: '🔍', color: 'border-blue-200 bg-blue-50/60',     text: 'text-blue-700'    },
-  { id: 'سلامة',    icon: '🛡️', color: 'border-amber-200 bg-amber-50/60',   text: 'text-amber-700'   },
-  { id: 'كهربائية', icon: '⚡', color: 'border-yellow-200 bg-yellow-50/60', text: 'text-yellow-700'  },
-  { id: 'ميدانية',  icon: '🏗️', color: 'border-emerald-200 bg-emerald-50/60', text: 'text-emerald-700' },
+  { id: 'جودة',     icon: '🔍', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
+  { id: 'سلامة',    icon: '🛡️', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d' },
+  { id: 'كهربائية', icon: '⚡', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+  { id: 'ميدانية',  icon: '🏗️', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac' },
 ]
 
+// ══════════════════════════════════════
+// مودال الإجراء التصحيحي (موحّد)
+// ══════════════════════════════════════
+function CorrectiveModal({ visit, onClose, onSave }: {
+  visit: Visit
+  onClose: () => void
+  onSave: (report: string) => Promise<void>
+}) {
+  const [report,  setReport]  = useState(visit.resolved_report || '')
+  const [saving,  setSaving]  = useState(false)
+  const isClosed = !!visit.resolved_report
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!report.trim()) { toast.error('أدخل تقرير الإجراء التصحيحي'); return }
+    setSaving(true)
+    await onSave(report.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 60 }}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: isClosed ? '#ecfdf5' : '#fffbeb', borderRadius: '10px 10px 0 0', margin: '-1px -1px 0' }}>
+          <h3 style={{ fontWeight: 700, color: isClosed ? '#0ea77b' : '#e6820a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ClipboardList style={{ width: '18px', height: '18px' }} />
+            {isClosed ? 'تفاصيل الإجراء التصحيحي' : 'إجراء تصحيحي — NCR'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            {/* معلومات الزيارة */}
+            <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px 14px', border: '1px solid var(--border)', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                {visit.date     && <span>📅 {formatDate(visit.date)}</span>}
+                {visit.engineer && <span>👷 {visit.engineer}</span>}
+                {(visit as any).location && <span>📍 {(visit as any).location}</span>}
+              </div>
+              {visit.corrective && (
+                <div style={{ color: '#c81e1e', marginTop: '4px' }}>
+                  <span style={{ fontWeight: 600 }}>المخالفة: </span>{visit.corrective}
+                </div>
+              )}
+            </div>
+
+            {/* إذا كانت مغلقة — عرض فقط */}
+            {isClosed ? (
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>تقرير الإجراء التصحيحي:</div>
+                <div style={{ padding: '12px 14px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac', fontSize: '0.875rem', lineHeight: 1.7 }}>
+                  {visit.resolved_report}
+                </div>
+                {visit.resolved_by && (
+                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#9ca3af' }}>
+                    ✅ أُغلق بواسطة: {visit.resolved_by}
+                    {visit.resolved_date && ` — ${formatDate(visit.resolved_date)}`}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
+                  تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span>
+                </label>
+                <textarea
+                  value={report}
+                  onChange={e => setReport(e.target.value)}
+                  className="input"
+                  style={{ minHeight: '120px', resize: 'none' }}
+                  placeholder="صف الإجراء التصحيحي المتخذ لإغلاق هذه المخالفة..."
+                  autoFocus
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">
+              {isClosed ? 'إغلاق' : 'إلغاء'}
+            </button>
+            {!isClosed && (
+              <button type="submit" disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+                {saving
+                  ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+                  : <Save style={{ width: '14px', height: '14px' }} />}
+                إغلاق NCR
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// الصفحة الرئيسية
+// ══════════════════════════════════════
 export default function VisitsPage() {
   const { tenant, activeBranch, visits, setVisits, projects, setProjects, currentUser } = useStore()
   const [loading, setLoading]           = useState(true)
@@ -31,7 +133,7 @@ export default function VisitsPage() {
   const [showModal, setShowModal]       = useState(false)
   const [editVisit, setEditVisit]       = useState<Visit | null>(null)
   const [detailVisit, setDetail]        = useState<Visit | null>(null)
-  const [ncrVisit, setNcrVisit]         = useState<Visit | null>(null)
+  const [correctiveVisit, setCorrectiveVisit] = useState<Visit | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
 
   const canEdit = currentUser?.permissions?.some(p => p.startsWith('visits'))
@@ -73,113 +175,121 @@ export default function VisitsPage() {
 
   async function handleResolve(id: number, report: string) {
     if (!tenant) return
-    await visitsApi.upsert({
-      id, tenant_id: tenant.id,
+    const { error } = await visitsApi.upsert({
+      id,
+      tenant_id:       tenant.id,
       resolved_report: report,
-      resolved_date: new Date().toLocaleDateString('ar-EG'),
-      resolved_by: currentUser?.name || '',
-      status: 'مغلق',
+      resolved_date:   new Date().toLocaleDateString('ar-EG'),
+      resolved_by:     currentUser?.name || '',
+      status:          'مغلق',
     })
+    if (error) { toast.error('خطأ في الحفظ'); return }
+
+    // تحديث الـ state مباشرة بدون إغلاق المودال أولاً
     await loadVisits()
-    setDetail(null); setNcrVisit(null)
-    toast.success('تم إغلاق NCR بنجاح ✅')
+    setCorrectiveVisit(null)
+    setDetail(null)
+    toast.success('✅ تم إغلاق NCR بنجاح')
   }
 
   const openNCR = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
   const totalOk = visits.filter(v => v.specs === 'مطابق').length
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
       {/* Header */}
-      <div className="page-header">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardCheck className="w-5 h-5 text-primary-500" />
+          <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ClipboardCheck style={{ width: '22px', height: '22px', color: '#1a56db' }} />
             الزيارات الفنية
           </h1>
-          <p className="text-gray-400 text-sm mt-0.5 flex items-center gap-2">
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
             {visits.length} زيارة إجمالية
-            {loading && <span className="w-3 h-3 border border-gray-300 border-t-gray-500 rounded-full animate-spin inline-block" />}
+            {loading && <span style={{ width: '12px', height: '12px', border: '2px solid #e5e7eb', borderTopColor: '#6b7280', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite', marginRight: '8px' }} />}
           </p>
         </div>
         {canEdit && (
           <button onClick={() => { setEditVisit(null); loadProjects(); setShowModal(true) }} className="btn btn-primary">
-            <Plus className="w-4 h-4" /> زيارة جديدة
+            <Plus style={{ width: '16px', height: '16px' }} /> زيارة جديدة
           </button>
         )}
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="card p-4 text-center">
-          <div className="text-2xl font-bold text-gray-800">{visits.length}</div>
-          <div className="text-xs text-gray-400 mt-0.5">إجمالي الزيارات</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+        <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1a1a2e' }}>{visits.length}</div>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>إجمالي الزيارات</div>
         </div>
-        <div className={`card p-4 text-center ${openNCR > 0 ? 'border-red-200 bg-red-50/50' : ''}`}>
-          <div className={`text-2xl font-bold ${openNCR > 0 ? 'text-red-600' : 'text-gray-800'}`}>{openNCR}</div>
-          <div className="text-xs text-gray-400 mt-0.5">NCR معلقة</div>
+        <div className="card" style={{ padding: '16px', textAlign: 'center', background: openNCR > 0 ? '#fef2f2' : 'white', border: openNCR > 0 ? '1px solid #fecaca' : '' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: openNCR > 0 ? '#c81e1e' : '#1a1a2e' }}>{openNCR}</div>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>NCR معلقة</div>
         </div>
-        <div className="card p-4 text-center border-emerald-100 bg-emerald-50/30">
-          <div className="text-2xl font-bold text-emerald-600">{totalOk}</div>
-          <div className="text-xs text-gray-400 mt-0.5">مطابق</div>
+        <div className="card" style={{ padding: '16px', textAlign: 'center', background: '#ecfdf5', border: '1px solid #bbf7d0' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#0ea77b' }}>{totalOk}</div>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>مطابق</div>
         </div>
       </div>
 
-      {/* الصفحة الرئيسية — بطاقات الأنواع */}
+      {/* بطاقات الأنواع */}
       {!selectedType ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {VISIT_TYPES.map(type => {
-              const typeVisits = visits.filter(v => v.type === type.id)
-              const typeNCR    = typeVisits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
-              const typeOk     = typeVisits.filter(v => v.specs === 'مطابق').length
-              const matchRate  = typeVisits.length ? Math.round(typeOk / typeVisits.length * 100) : 0
-              return (
-                <button key={type.id} onClick={() => setSelectedType(type.id)}
-                  className={`card p-5 text-right transition-all hover:shadow-lg border-2 ${type.color} w-full`}>
-                  <div className="text-3xl mb-3">{type.icon}</div>
-                  <div className={`font-bold text-lg mb-1 ${type.text}`}>زيارات {type.id}</div>
-                  <div className="text-2xl font-bold text-gray-700 mb-3">{typeVisits.length}</div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-500">نسبة المطابقة</span>
-                      <span className={`font-bold ${matchRate >= 80 ? 'text-emerald-600' : 'text-amber-600'}`}>{matchRate}%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/60 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${matchRate >= 80 ? 'bg-emerald-500' : 'bg-amber-400'}`}
-                        style={{ width: `${matchRate}%` }} />
-                    </div>
-                    {typeNCR > 0 && (
-                      <div className="mt-2">
-                        <span className="badge badge-red text-xs">⚠ {typeNCR} NCR معلقة</span>
-                      </div>
-                    )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+          {VISIT_TYPES.map(type => {
+            const typeVisits = visits.filter(v => v.type === type.id)
+            const typeNCR    = typeVisits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
+            const typeOk     = typeVisits.filter(v => v.specs === 'مطابق').length
+            const matchRate  = typeVisits.length ? Math.round(typeOk / typeVisits.length * 100) : 0
+            return (
+              <button key={type.id} onClick={() => setSelectedType(type.id)}
+                style={{ padding: '20px', borderRadius: '14px', border: `2px solid ${type.border}`, background: type.bg, cursor: 'pointer', textAlign: 'right', transition: 'all 0.2s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.08)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>{type.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: '1rem', color: type.color, marginBottom: '4px' }}>زيارات {type.id}</div>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1a1a2e', marginBottom: '10px' }}>{typeVisits.length}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
+                  <span style={{ color: '#9ca3af' }}>نسبة المطابقة</span>
+                  <span style={{ fontWeight: 700, color: matchRate >= 80 ? '#0ea77b' : '#e6820a' }}>{matchRate}%</span>
+                </div>
+                <div style={{ height: '6px', background: 'rgba(255,255,255,0.6)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: '4px', width: `${matchRate}%`, background: matchRate >= 80 ? '#0ea77b' : '#e6820a', transition: 'width 0.3s' }} />
+                </div>
+                {typeNCR > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    <span className="badge badge-red" style={{ fontSize: '0.72rem' }}>⚠ {typeNCR} NCR معلقة</span>
                   </div>
-                </button>
-              )
-            })}
-          </div>
+                )}
+              </button>
+            )
+          })}
+        </div>
       ) : (
         /* زيارات النوع المحدد */
         <>
-          <div className="flex items-center gap-3 flex-wrap">
-            <button onClick={() => { setSelectedType(null); setSearch(''); setSpecs('') }} className="btn btn-ghost btn-sm">
-              <ArrowRight className="w-4 h-4" /> العودة
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <button onClick={() => { setSelectedType(null); setSearch(''); setSpecs('') }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.82rem', color: '#6b7280' }}>
+              <ArrowRight style={{ width: '15px', height: '15px' }} /> العودة
             </button>
-            <div className="flex-1">
-              <h2 className="font-bold text-gray-800">
+            <div>
+              <h2 style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '1rem' }}>
                 {VISIT_TYPES.find(t => t.id === selectedType)?.icon} زيارات {selectedType}
               </h2>
-              <p className="text-xs text-gray-400">{visits.filter(v => v.type === selectedType).length} زيارة</p>
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{visits.filter(v => v.type === selectedType).length} زيارة</p>
             </div>
           </div>
 
-          <div className="card p-3 flex flex-wrap gap-2">
-            <div className="relative flex-1 min-w-48">
-              <Search className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+          {/* فلاتر */}
+          <div className="card" style={{ padding: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+              <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#9ca3af' }} />
               <input value={search} onChange={e => setSearch(e.target.value)}
-                className="input pr-9 text-sm" placeholder="بحث بالمهندس أو الموقع..." />
+                className="input" style={{ paddingRight: '32px', fontSize: '0.82rem' }}
+                placeholder="بحث بالمهندس أو الموقع..." />
             </div>
-            <select value={specsFilter} onChange={e => setSpecs(e.target.value)} className="select w-auto text-sm">
+            <select value={specsFilter} onChange={e => setSpecs(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
               <option value="">كل النتائج</option>
               <option value="مطابق">مطابق</option>
               <option value="غير مطابق">غير مطابق (NCR)</option>
@@ -190,21 +300,22 @@ export default function VisitsPage() {
             const q = search.toLowerCase()
             const filtered = visits.filter(v =>
               v.type === selectedType &&
-              (!q || v.engineer.toLowerCase().includes(q) || (v.location||'').toLowerCase().includes(q)) &&
+              (!q || v.engineer.toLowerCase().includes(q) || ((v as any).location || '').toLowerCase().includes(q)) &&
               (!specsFilter || v.specs === specsFilter)
             )
             return filtered.length === 0 ? (
-              <div className="card p-16 text-center">
-                <ClipboardCheck className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                <p className="text-gray-400">لا توجد زيارات</p>
+              <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+                <ClipboardCheck style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 12px' }} />
+                <p style={{ color: '#9ca3af' }}>لا توجد زيارات</p>
               </div>
             ) : (
-              <div className="table-wrap">
-                <table className="data-table">
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                   <thead>
-                    <tr>
-                      <th>التاريخ</th><th>المهندس</th><th>الموقع</th>
-                      <th>النتيجة</th><th>الحالة</th><th></th>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['التاريخ', 'المهندس', 'الموقع', 'النتيجة', 'الحالة', ''].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -212,41 +323,60 @@ export default function VisitsPage() {
                       const isNCR  = v.specs === 'غير مطابق'
                       const isOpen = isNCR && !v.resolved_report
                       return (
-                        <tr key={v.id}>
-                          <td className="text-gray-600 text-sm">{formatDate(v.date)}</td>
-                          <td className="font-medium text-gray-800 text-sm">{v.engineer}</td>
-                          <td className="text-gray-500 text-sm">{v.location || '—'}</td>
-                          <td>
+                        <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', color: '#9ca3af', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(v.date)}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 600, fontSize: '0.82rem' }}>{v.engineer}</td>
+                          <td style={{ padding: '10px 12px', color: '#9ca3af', fontSize: '0.78rem' }}>{(v as any).location || '—'}</td>
+                          <td style={{ padding: '10px 12px' }}>
                             <span className={`badge ${isNCR ? 'badge-red' : 'badge-green'}`}>
                               {isNCR ? '❌ غير مطابق' : '✅ مطابق'}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ padding: '10px 12px' }}>
                             <span className={`badge ${isNCR ? (isOpen ? 'badge-amber' : 'badge-green') : 'badge-green'}`}>
                               {isNCR ? (isOpen ? '⚠ مفتوح' : '✓ مغلق') : 'مغلق'}
                             </span>
                           </td>
-                          <td>
-                            <div className="flex items-center gap-1 justify-end">
+                          <td style={{ padding: '10px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
                               {v.attachments && v.attachments.length > 0 && (
-                                <span className="flex items-center gap-0.5 text-xs text-blue-500 mr-1">
-                                  <Camera className="w-3 h-3" />{v.attachments.length}
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', color: '#1a56db', marginLeft: '4px' }}>
+                                  <Camera style={{ width: '12px', height: '12px' }} />{v.attachments.length}
                                 </span>
                               )}
-                              <button onClick={() => setDetail(v)} className="btn btn-ghost btn-xs" title="عرض"><Eye className="w-3.5 h-3.5" /></button>
+
+                              {/* زر عرض التفاصيل */}
+                              <button onClick={() => setDetail(v)}
+                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <Eye style={{ width: '12px', height: '12px' }} /> عرض
+                              </button>
+
+                              {/* زر الإجراء التصحيحي — فقط للغير مطابق */}
                               {isNCR && (
-                                <button onClick={() => setNcrVisit(v)}
-                                  className={`btn btn-ghost btn-xs ${isOpen ? 'text-amber-500 hover:bg-amber-50' : 'text-emerald-500 hover:bg-emerald-50'}`}
-                                  title="الإجراء التصحيحي">
-                                  <ClipboardList className="w-3.5 h-3.5" />
+                                <button onClick={() => setCorrectiveVisit(v)}
+                                  style={{ padding: '4px 8px', borderRadius: '6px', border: `1px solid ${isOpen ? '#fcd34d' : '#86efac'}`, background: isOpen ? '#fffbeb' : '#ecfdf5', cursor: 'pointer', color: isOpen ? '#e6820a' : '#0ea77b', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <ClipboardList style={{ width: '12px', height: '12px' }} />
+                                  {isOpen ? 'إجراء تصحيحي' : 'مغلق'}
                                 </button>
                               )}
-                              {canEdit && <>
+
+                              {/* زر التعديل */}
+                              {canEdit && (
                                 <button onClick={() => { setEditVisit(v); loadProjects(); setShowModal(true) }}
-                                  className="btn btn-ghost btn-xs" title="تعديل"><Pencil className="w-3.5 h-3.5" /></button>
+                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                                  <Pencil style={{ width: '12px', height: '12px' }} />
+                                </button>
+                              )}
+
+                              {/* زر الحذف */}
+                              {canEdit && (
                                 <button onClick={() => handleDelete(v)}
-                                  className="btn btn-ghost btn-xs text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </>}
+                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
+                                  <Trash2 style={{ width: '12px', height: '12px' }} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -260,21 +390,27 @@ export default function VisitsPage() {
         </>
       )}
 
-      {/* Modals — تُحمَّل فقط عند الحاجة */}
+      {/* Modals */}
       {showModal && (
         <VisitModal visit={editVisit} projects={projects}
           onClose={() => { setShowModal(false); setEditVisit(null) }}
           onSave={handleSave} />
       )}
+
       {detailVisit && (
-        <VisitDetail visit={detailVisit}
+        <VisitDetail
+          visit={visits.find(v => v.id === detailVisit.id) || detailVisit}
           onClose={() => setDetail(null)}
-          onResolve={handleResolve} />
+          onResolve={handleResolve}
+        />
       )}
-      {ncrVisit && (
-        <NcrModal visit={ncrVisit}
-          onClose={() => setNcrVisit(null)}
-          onResolve={handleResolve} />
+
+      {correctiveVisit && (
+        <CorrectiveModal
+          visit={visits.find(v => v.id === correctiveVisit.id) || correctiveVisit}
+          onClose={() => setCorrectiveVisit(null)}
+          onSave={(report) => handleResolve(correctiveVisit.id, report)}
+        />
       )}
     </div>
   )
