@@ -451,6 +451,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   const [materials, setMaterials]   = useState<Material[]>([])
   // رصيد المشروع من project_materials (للصرف من مستودع مشاريع)
   const [projectBalances, setProjectBalances] = useState<Record<number, number>>({})
+  // وضع الصرف المباشر: بطاقات المواد مع حقول الكمية
+  const [directQtys, setDirectQtys] = useState<Record<number, string>>({})
   const [rows, setRows]             = useState([{ mat_id: '', qty: '', note: '' }])
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const attachRef = useRef<HTMLInputElement>(null)
@@ -478,8 +480,10 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   useEffect(() => {
     if (isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع')) {
       loadProjectBalances()
+      setDirectQtys({})
     } else {
       setProjectBalances({})
+      setDirectQtys({})
     }
   }, [form.project_id, form.warehouse_id, type])
 
@@ -513,7 +517,14 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   }
 
   async function handleSave() {
-    const validRows = rows.filter(r => r.mat_id && Number(r.qty) > 0)
+    // في وضع الصرف المباشر (مستودع مشاريع + مشروع محدد) — حوّل directQtys إلى rows
+    let effectiveRows = rows
+    if (type === 'صرف' && isProjectWh && form.project_id && Object.keys(directQtys).length > 0) {
+      effectiveRows = Object.entries(directQtys)
+        .filter(([, qty]) => Number(qty) > 0)
+        .map(([matId, qty]) => ({ mat_id: matId, qty, note: '' }))
+    }
+    const validRows = effectiveRows.filter(r => r.mat_id && Number(r.qty) > 0)
     if (validRows.length === 0) { toast.error('أضف مادة واحدة على الأقل بكمية صحيحة'); return }
 
     // التحقق من المشروع
@@ -704,7 +715,69 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
             </div>
           )}
 
-          {/* المواد */}
+          {/* المواد — وضع مباشر للصرف من مستودع مشاريع */}
+          {type === 'صرف' && isProjectWh && form.project_id && Object.keys(projectBalances).length > 0 ? (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={lbl}>مواد المشروع</label>
+                <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>أدخل الكمية المراد صرفها</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {materials.filter(m => (projectBalances[m.id] ?? 0) > 0 || directQtys[m.id]).map(m => {
+                  const balance = projectBalances[m.id] ?? 0
+                  const qty     = directQtys[m.id] || ''
+                  const qtyNum  = Number(qty)
+                  const isOver  = qtyNum > balance
+                  return (
+                    <div key={m.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '10px', alignItems: 'center', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${isOver ? '#fca5a5' : '#e5e7eb'}`, background: isOver ? '#fef2f2' : '#f9fafb' }}>
+                      {/* اسم المادة + الرصيد */}
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{m.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: balance > 0 ? '#0ea77b' : '#c81e1e', marginTop: '2px' }}>
+                          متاح: {balance} {m.unit}
+                        </div>
+                      </div>
+                      {/* زر صرف الكل */}
+                      <button type="button" onClick={() => setDirectQtys(prev => ({ ...prev, [m.id]: String(balance) }))}
+                        style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        صرف الكل
+                      </button>
+                      {/* حقل الكمية */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <input
+                          type="number" value={qty}
+                          onChange={e => setDirectQtys(prev => ({ ...prev, [m.id]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                          className="input" dir="ltr" min="0" max={balance}
+                          placeholder="0"
+                          style={{ width: '80px', fontSize: '0.875rem', borderColor: isOver ? '#fca5a5' : '', textAlign: 'center' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{m.unit}</span>
+                      </div>
+                      {/* زر مسح */}
+                      {qty && (
+                        <button type="button" onClick={() => setDirectQtys(prev => { const n = {...prev}; delete n[m.id]; return n })}
+                          style={{ padding: '5px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
+                          <X style={{ width: '13px', height: '13px' }} />
+                        </button>
+                      )}
+                      {isOver && (
+                        <div style={{ gridColumn: '1/-1', fontSize: '0.72rem', color: '#c81e1e' }}>
+                          ⚠️ الكمية تتجاوز الرصيد المتاح ({balance} {m.unit})
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {materials.filter(m => (projectBalances[m.id] ?? 0) > 0).length === 0 && (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '0.82rem', background: '#f9fafb', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                    لا توجد مواد مستلمة لهذا المشروع
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+          /* الوضع العادي — قائمة منسدلة */
           <div>
             <label style={{ ...lbl, marginBottom: '8px' }}>المواد</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -739,7 +812,6 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                         <X style={{ width: '13px', height: '13px' }} />
                       </button>
                     </div>
-                    {/* رصيد المشروع لهذه المادة */}
                     {showProjBal && (
                       <div style={{ fontSize: '0.72rem', color: projBal !== null && projBal <= 0 ? '#c81e1e' : '#0ea77b', paddingRight: '4px' }}>
                         رصيد المشروع: {projBal ?? 0} {mat?.unit}
@@ -754,6 +826,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
               </button>
             </div>
           </div>
+          )}
 
           {/* المرفق — فقط للاستلام والصرف */}
           {(type === 'استلام' || type === 'صرف') && (
