@@ -479,7 +479,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           {!po && (
-            <button onClick={() => { poStatusRef.current = 'مسودة'; handleSave() }}
+            <button onClick={() => { invStatusRef.current = 'مسودة'; handleSave()() }}
               disabled={saving || !form.vendor_id}
               style={{ padding:'8px 18px', borderRadius:'10px', border:'1px solid #e5e7eb', background:'white', cursor:'pointer', fontWeight:600, fontSize:'0.875rem', display:'flex', alignItems:'center', gap:'6px', color:'#6b7280' }}>
               <Save style={{ width:'14px', height:'14px' }} />
