@@ -387,7 +387,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
       delivery_to: form.delivery_to,
       warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
       subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: poStatusRef.current, notes: form.notes || null,
+      vat_rate: Number(form.vat_rate), status: poStatusRef.current || form.status, notes: form.notes || null,
     }
     let poId = po?.id
     if (po) {
@@ -455,6 +455,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
+          </div>
           <DeliveryField value={form.delivery_to} warehouseId={form.warehouse_id} projects={projects} warehouses={warehouses}
             onChange={(delivery, wh) => { set('delivery_to', delivery); set('warehouse_id', wh || '') }} />
           <ItemsTable items={items} onChange={setItems} />
@@ -590,7 +591,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
       delivery_to: form.delivery_to,
       warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
       subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: invStatusRef.current, notes: form.notes || null,
+      vat_rate: Number(form.vat_rate), status: invStatusRef.current || form.status, notes: form.notes || null,
     }
 
     let invId = invoice?.id
