@@ -40,6 +40,42 @@ type Project    = { id: number; name: string }
 type Employee   = { id: number; name: string }
 
 // ════════════════════════════════════════
+// دوال مساعدة للقيود المحاسبية
+// ════════════════════════════════════════
+async function getCashAccountCode(tenantId: string, accountId: number): Promise<string | null> {
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  return data?.code || null
+}
+
+async function getAccountId(tenantId: string, code: string): Promise<number | null> {
+  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
+  return data?.id || null
+}
+
+async function createJournalEntry(tenantId: string, params: {
+  date: string; description: string
+  referenceType: string; referenceId: number
+  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
+}) {
+  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
+  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
+  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
+  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
+  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
+    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
+    description: params.description, reference_type: params.referenceType,
+    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
+  }).select('id').single()
+  if (error || !entry) return null
+  await supabase.from('finance_journal_lines').insert(
+    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
+  )
+  return entry.id
+}
+
+// ════════════════════════════════════════
 // مودال: إضافة حساب نقدي
 // ════════════════════════════════════════
 function CashAccountModal({ account, tenantId, onClose, onSave }: {
@@ -77,8 +113,6 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
       if (account) {
         // ── تعديل حساب موجود ──
         await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
-
-        // تعديل الاسم في شجرة الحسابات إذا كان مربوطاً
         if (account.account_id) {
           await supabase.from('finance_accounts')
             .update({ name: form.name.trim(), notes: form.iban || form.account_no || null })
@@ -88,35 +122,24 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 
       } else {
         // ── إضافة حساب جديد ──
-
-        // 1. نجيب id حساب 1110 (الصندوق والبنوك)
         const { data: parent } = await supabase
-          .from('finance_accounts')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('code', '1110')
-          .single()
+          .from('finance_accounts').select('id')
+          .eq('tenant_id', tenantId).eq('code', '1110').single()
 
         let newAccountId: number | null = null
+        let newCode: string | null = null
 
         if (parent) {
-          // 2. نحسب عدد الحسابات الفرعية تحت 1110 لتوليد كود جديد
-          // نجلب أكبر كود فرعي موجود تحت 1110 ونضيف 1
           const { data: siblings } = await supabase
-            .from('finance_accounts')
-            .select('code')
-            .eq('tenant_id', tenantId)
-            .eq('parent_id', parent.id)
-            .order('code', { ascending: false })
-            .limit(1)
+            .from('finance_accounts').select('code')
+            .eq('tenant_id', tenantId).eq('parent_id', parent.id)
+            .order('code', { ascending: false }).limit(1)
 
           const lastCode = siblings?.[0]?.code ? parseInt(siblings[0].code) : 1110
-          const newCode = String(lastCode + 1)
+          newCode = String(lastCode + 1)
 
-          // 3. نضيف الحساب في شجرة الحسابات
           const { data: newAcc, error: accErr } = await supabase
-            .from('finance_accounts')
-            .insert({
+            .from('finance_accounts').insert({
               tenant_id:      tenantId,
               code:           newCode,
               name:           form.name.trim(),
@@ -129,23 +152,31 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
               normal_balance: 'مدين',
               is_active:      true,
               notes:          form.iban || form.account_no || null,
-            })
-            .select('id')
-            .single()
+            }).select('id').single()
 
-          if (!accErr && newAcc) {
-            newAccountId = newAcc.id
-          }
+          if (!accErr && newAcc) newAccountId = newAcc.id
         }
 
-        // 4. نضيف في finance_cash_accounts مع ربط account_id
         if (newAccountId) payload.account_id = newAccountId
-
         await supabase.from('finance_cash_accounts').insert(payload)
 
+        // ✅ قيد الرصيد الافتتاحي
+        if (newAccountId && newCode && Number(form.opening_balance) > 0) {
+          await createJournalEntry(tenantId, {
+            date:          new Date().toISOString().split('T')[0],
+            description:   `رصيد افتتاحي — ${form.name.trim()}`,
+            referenceType: 'رصيد افتتاحي',
+            referenceId:   newAccountId,
+            lines: [
+              { accountCode: newCode, debit: Number(form.opening_balance), credit: 0,                            description: `رصيد افتتاحي ${form.name.trim()}` },
+              { accountCode: '3110',  debit: 0,                            credit: Number(form.opening_balance), description: 'أرصدة افتتاحية' },
+            ]
+          })
+        }
+
         toast.success(newAccountId
-          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات تحت 1110'
-          : '✅ تمت الإضافة (تعذر إنشاء الحساب في الشجرة — تأكد من وجود حساب 1110)'
+          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات' + (Number(form.opening_balance) > 0 ? ' وسُجّل الرصيد الافتتاحي' : '')
+          : '✅ تمت الإضافة (تعذر إنشاء الحساب في الشجرة)'
         )
       }
 
@@ -164,7 +195,9 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
             <Building2 style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {account ? 'تعديل حساب نقدي' : 'إضافة حساب نقدي'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -203,6 +236,11 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
           <div>
             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الرصيد الافتتاحي</label>
             <input type="number" value={form.opening_balance} onChange={e => set('opening_balance', e.target.value)} className="input" dir="ltr" min="0" />
+            {!account && Number(form.opening_balance) > 0 && (
+              <div style={{ marginTop: '6px', fontSize: '0.75rem', color: '#0ea77b' }}>
+                ✅ سيُسجَّل قيد افتتاحي تلقائياً في الحسابات
+              </div>
+            )}
           </div>
           {!account && (
             <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1e40af' }}>
@@ -279,9 +317,7 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
     const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
 
-    // ── قيد محاسبي تلقائي ──
     if (trxData) {
-      // نجيب كود الحساب النقدي المختار
       const selectedCashAccount = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
       const cashAccountCode = selectedCashAccount?.account_id
         ? await getCashAccountCode(tenantId, selectedCashAccount.account_id)
@@ -324,7 +360,9 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
               : <ArrowDownRight style={{ width: '18px', height: '18px', color: '#c81e1e' }} />}
             {isReceipt ? 'إضافة مقبوض' : 'إضافة مدفوع'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -493,7 +531,9 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
             <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
             {custody ? 'تعديل عهدة' : 'إصدار عهدة موظف'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -623,14 +663,16 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
       <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700 }}>✅ تسوية عهدة — {custody.employee_name}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
             {[
-              { label: 'إجمالي العهدة',  value: custody.amount,          color: '#374151', bg: '#f3f4f6' },
-              { label: 'تم تسويته',      value: custody.settled_amount,  color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'المتبقي',        value: remaining,               color: '#c81e1e', bg: '#fef2f2' },
+              { label: 'إجمالي العهدة',  value: custody.amount,         color: '#374151', bg: '#f3f4f6' },
+              { label: 'تم تسويته',      value: custody.settled_amount, color: '#0ea77b', bg: '#ecfdf5' },
+              { label: 'المتبقي',        value: remaining,              color: '#c81e1e', bg: '#fef2f2' },
             ].map(s => (
               <div key={s.label} style={{ padding: '10px', background: s.bg, borderRadius: '8px' }}>
                 <div style={{ fontSize: '1.1rem', fontWeight: 700, color: s.color }}>{s.value.toLocaleString()}</div>
@@ -670,42 +712,6 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
       </div>
     </div>
   )
-}
-
-// ════════════════════════════════════════
-// دوال مساعدة للقيود المحاسبية
-// ════════════════════════════════════════
-async function getCashAccountCode(tenantId: string, accountId: number): Promise<string | null> {
-  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
-  return data?.code || null
-}
-
-async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
-  return data?.id || null
-}
-
-async function createJournalEntry(tenantId: string, params: {
-  date: string; description: string
-  referenceType: string; referenceId: number
-  lines: { accountCode: string; debit: number; credit: number; description?: string }[]
-}) {
-  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
-  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
-  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
-  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
-  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
-    description: params.description, reference_type: params.referenceType,
-    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
-  }).select('id').single()
-  if (error || !entry) return null
-  await supabase.from('finance_journal_lines').insert(
-    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
-  )
-  return entry.id
 }
 
 // ════════════════════════════════════════
@@ -764,9 +770,9 @@ export default function FinanceTreasuryPage() {
     setLoading(false)
   }
 
-  const totalIn      = transactions.filter(t => t.type === 'قبض').reduce((s, t) => s + Number(t.amount), 0)
-  const totalOut     = transactions.filter(t => t.type === 'صرف').reduce((s, t) => s + Number(t.amount), 0)
-  const netBalance   = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0)
+  const totalIn       = transactions.filter(t => t.type === 'قبض').reduce((s, t) => s + Number(t.amount), 0)
+  const totalOut      = transactions.filter(t => t.type === 'صرف').reduce((s, t) => s + Number(t.amount), 0)
+  const netBalance    = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0)
   const openCustodies = custodies.filter(c => c.status === 'مفتوحة').reduce((s, c) => s + Number(c.amount) - Number(c.settled_amount), 0)
 
   const receipts = transactions.filter(t => t.type === 'قبض')
@@ -788,8 +794,6 @@ export default function FinanceTreasuryPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -826,9 +830,9 @@ export default function FinanceTreasuryPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
           { label: 'الرصيد الإجمالي',  value: netBalance,    color: '#1a56db', bg: 'linear-gradient(135deg, #1a56db, #3b82f6)', white: true },
-          { label: 'إجمالي المقبوضات', value: totalIn,        color: '#0ea77b', bg: '#ecfdf5', white: false },
-          { label: 'إجمالي المدفوعات', value: totalOut,       color: '#c81e1e', bg: '#fef2f2', white: false },
-          { label: 'عهد مفتوحة',       value: openCustodies, color: '#e6820a', bg: '#fffbeb', white: false },
+          { label: 'إجمالي المقبوضات', value: totalIn,        color: '#0ea77b', bg: '#ecfdf5',                                  white: false },
+          { label: 'إجمالي المدفوعات', value: totalOut,       color: '#c81e1e', bg: '#fef2f2',                                  white: false },
+          { label: 'عهد مفتوحة',       value: openCustodies, color: '#e6820a', bg: '#fffbeb',                                  white: false },
         ].map(kpi => (
           <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
             <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.white ? 'white' : kpi.color }}>{kpi.value.toLocaleString()}</div>
@@ -858,7 +862,7 @@ export default function FinanceTreasuryPage() {
         </div>
       )}
 
-      {/* ══ الحركات ══ */}
+      {/* الحركات */}
       {(activeTab === 'transactions' || activeTab === 'receipts' || activeTab === 'payments') && (
         loading
           ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
@@ -927,7 +931,7 @@ export default function FinanceTreasuryPage() {
               </div>
       )}
 
-      {/* ══ عهد الموظفين ══ */}
+      {/* عهد الموظفين */}
       {activeTab === 'custody' && (
         loading
           ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
@@ -984,36 +988,34 @@ export default function FinanceTreasuryPage() {
               </div>
       )}
 
-      {/* ══ الحسابات النقدية ══ */}
+      {/* الحسابات النقدية */}
       {activeTab === 'accounts' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
-            {cashAccounts.map(ca => (
-              <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>
-                      {ca.account_type === 'صندوق' ? '💰' : '🏦'} {ca.name}
-                    </div>
-                    {ca.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{ca.bank_name}</div>}
-                    {ca.iban && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{ca.iban.substring(0, 14)}...</div>}
-                    {ca.account_id && (
-                      <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
-                    )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
+          {cashAccounts.map(ca => (
+            <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>
+                    {ca.account_type === 'صندوق' ? '💰' : '🏦'} {ca.name}
                   </div>
-                  <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs">
-                    <Pencil style={{ width: '13px', height: '13px' }} />
-                  </button>
+                  {ca.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{ca.bank_name}</div>}
+                  {ca.iban && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{ca.iban.substring(0, 14)}...</div>}
+                  {ca.account_id && (
+                    <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
+                  )}
                 </div>
-                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>الرصيد الحالي</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: (ca.balance || 0) >= 0 ? '#1a56db' : '#c81e1e' }}>
-                    {(ca.balance || 0).toLocaleString()} <span style={{ fontSize: '0.875rem', fontWeight: 400 }}>ر.س</span>
-                  </div>
+                <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs">
+                  <Pencil style={{ width: '13px', height: '13px' }} />
+                </button>
+              </div>
+              <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>الرصيد الحالي</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: (ca.balance || 0) >= 0 ? '#1a56db' : '#c81e1e' }}>
+                  {(ca.balance || 0).toLocaleString()} <span style={{ fontSize: '0.875rem', fontWeight: 400 }}>ر.س</span>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
