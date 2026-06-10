@@ -570,10 +570,23 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (!mat) continue
       const qty = Number(row.qty)
 
-      // تحقق من رصيد المستودع الإجمالي (للتحويل وللصرف من مستودع غير مشاريع)
-      if ((type === 'صرف' || type === 'تحويل') && !isProjectWh && mat.qty < qty) {
-        toast.error(`رصيد "${mat.name}" غير كافٍ — متاح: ${mat.qty} ${mat.unit}`)
-        setSaving(false); return
+      // تحقق من رصيد المستودع — يمنع الصرف بالسالب في جميع الأحوال
+      if (type === 'صرف' || type === 'تحويل') {
+        const available = isProjectWh && form.project_id
+          ? (projectBalances[mat.id] ?? 0)
+          : mat.qty
+        if (qty > available) {
+          toast.error(`⛔ لا يمكن الصرف — رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`)
+          setSaving(false); return
+        }
+      }
+      // منع الإرجاع للعميل بأكثر من الرصيد
+      if (type === 'إرجاع' && isProjectWh && form.project_id) {
+        const available = projectBalances[mat.id] ?? 0
+        if (qty > available) {
+          toast.error(`⛔ لا يمكن الإرجاع — رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`)
+          setSaving(false); return
+        }
       }
 
       let newQty = mat.qty
