@@ -351,17 +351,52 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   async function loadInventory() {
     if (!tenant || loadingInv) return
     setLoadingInv(true)
-    const { data } = await supabase.from('stock_ledger')
+
+    // أولاً: من project_materials (مستودعات نوع مشاريع)
+    const { data: pmData } = await supabase
+      .from('project_materials')
+      .select('*, material:materials(name, unit), warehouse:warehouses(name)')
+      .eq('tenant_id', tenant.id)
+      .eq('project_id', project.id)
+
+    if (pmData && pmData.length > 0) {
+      const result = pmData.map((pm: any) => ({
+        name:     pm.material?.name  || '—',
+        unit:     pm.material?.unit  || '—',
+        warehouse:pm.warehouse?.name || '—',
+        totalIn:  Number(pm.qty_received),
+        totalOut: Number(pm.qty_issued),
+        balance:  Number(pm.qty_balance),
+        loans:    0,
+      }))
+      setInventoryData(result)
+      setLoadingInv(false)
+      return
+    }
+
+    // fallback: من stock_ledger بالـ project_id أو project_name
+    const { data: ledger1 } = await supabase.from('stock_ledger')
+      .select('*').eq('project_id', project.id)
+      .order('created_at', { ascending: false })
+    const { data: ledger2 } = await supabase.from('stock_ledger')
       .select('*').eq('project_name', project.name)
       .order('created_at', { ascending: false })
-    const ledgerData = data || []
+
+    // دمج وإزالة التكرار بالـ id
+    const seen = new Set<number>()
+    const ledgerData = [...(ledger1 || []), ...(ledger2 || [])].filter((l: any) => {
+      if (seen.has(l.id)) return false
+      seen.add(l.id); return true
+    })
+
     const matMap: Record<string, any> = {}
     ledgerData.forEach((l: any) => {
-      if (!matMap[l.mat_name]) matMap[l.mat_name] = { name: l.mat_name, unit: l.unit, totalIn: 0, totalOut: 0, loans: 0 }
-      if (l.type === 'توريد')               matMap[l.mat_name].totalIn  += l.qty
-      if (l.type === 'صرف' && !l.is_loan)   matMap[l.mat_name].totalOut += l.qty
-      if (l.is_loan)                         matMap[l.mat_name].loans    += l.qty
+      if (!matMap[l.mat_name]) matMap[l.mat_name] = { name: l.mat_name, unit: l.unit, warehouse: l.wh_name || '—', totalIn: 0, totalOut: 0, loans: 0, balance: 0 }
+      if (l.type === 'استلام' || l.type === 'توريد') matMap[l.mat_name].totalIn  += Number(l.qty)
+      if (l.type === 'صرف' && !l.is_loan)            matMap[l.mat_name].totalOut += Number(l.qty)
+      if (l.is_loan)                                  matMap[l.mat_name].loans    += Number(l.qty)
     })
+    Object.values(matMap).forEach((m: any) => { m.balance = m.totalIn - m.totalOut })
     setInventoryData(Object.values(matMap))
     setLoadingInv(false)
   }
@@ -579,7 +614,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['المادة', 'الوحدة', 'وارد', 'صادر', 'عهدة', 'الرصيد'].map(h => (
+                    {['المادة', 'الوحدة', 'المستودع', 'مستلم', 'مصروف', 'الرصيد المتاح'].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem' }}>{h}</th>
                     ))}
                   </tr>
@@ -589,10 +624,10 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                     <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
                       <td style={{ padding: '10px 14px', fontWeight: 600 }}>{m.name}</td>
                       <td style={{ padding: '10px 14px', color: 'var(--text3)' }}>{m.unit}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: '0.82rem' }}>{m.warehouse}</td>
                       <td style={{ padding: '10px 14px', color: '#0ea77b', fontWeight: 600 }}>{m.totalIn}</td>
                       <td style={{ padding: '10px 14px', color: '#c81e1e', fontWeight: 600 }}>{m.totalOut}</td>
-                      <td style={{ padding: '10px 14px', color: '#e6820a', fontWeight: 600 }}>{m.loans}</td>
-                      <td style={{ padding: '10px 14px', fontWeight: 700 }}>{m.totalIn - m.totalOut}</td>
+                      <td style={{ padding: '10px 14px', fontWeight: 700, color: m.balance > 0 ? '#1a56db' : '#c81e1e' }}>{m.balance}</td>
                     </tr>
                   ))}
                 </tbody>
