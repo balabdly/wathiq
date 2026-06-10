@@ -539,15 +539,16 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     }
 
     // ══ التحقق من رصيد المشروع عند الصرف من مستودع مشاريع ══
-    if (type === 'صرف' && isProjectWh && form.project_id) {
+    if ((type === 'صرف' || type === 'إرجاع') && isProjectWh && form.project_id) {
       for (const row of validRows) {
         const mat     = materials.find(m => m.id === Number(row.mat_id))
         if (!mat) continue
         const balance = projectBalances[mat.id] ?? 0
         const qty     = Number(row.qty)
         if (qty > balance) {
+          const action = type === 'إرجاع' ? 'إرجاع' : 'صرف'
           toast.error(
-            `لا يمكن صرف "${mat.name}" — المستلم لهذا المشروع: ${balance} ${mat.unit}، المطلوب: ${qty} ${mat.unit}`
+            `لا يمكن ${action} "${mat.name}" — الرصيد المتاح للمشروع: ${balance} ${mat.unit}، المطلوب: ${qty} ${mat.unit}`
           )
           return
         }
@@ -576,9 +577,12 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       }
 
       let newQty = mat.qty
-      if (type === 'استلام')                      newQty = mat.qty + qty
-      if (type === 'صرف' || type === 'تحويل')     newQty = mat.qty - qty
-      if (type === 'إرجاع')                        newQty = mat.qty + qty
+      if (type === 'استلام')                                    newQty = mat.qty + qty
+      if (type === 'صرف' || type === 'تحويل')                  newQty = mat.qty - qty
+      // إرجاع من مستودع مشاريع = إرجاع للعميل (يقلل الكمية كالصرف)
+      // إرجاع من مستودع عادي = إرجاع للمستودع (يزيد الكمية)
+      if (type === 'إرجاع' && isProjectWh)                     newQty = mat.qty - qty
+      if (type === 'إرجاع' && !isProjectWh)                    newQty = mat.qty + qty
 
       // تحديث الكمية في materials
       await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
@@ -587,7 +591,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       await supabase.from('stock_ledger').insert({
         tenant_id:      tenantId,
         branch_id:      branchId,
-        type:           type === 'تحويل' ? 'نقل مخزني' : type,
+        type:           type === 'تحويل' ? 'نقل مخزني' : (type === 'إرجاع' && isProjectWh) ? 'إرجاع للعميل' : type,
         mat_name:       mat.name,
         unit:           mat.unit,
         qty,
@@ -1027,7 +1031,7 @@ export default function InventoryPage() {
         {[
           { type: 'استلام', emoji: '📥', icon: ArrowDownToLine, color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة للمستودع' },
           { type: 'صرف',    emoji: '📤', icon: ArrowUpFromLine, color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
-          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,       color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للمستودع' },
+          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,       color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للعميل / المستودع' },
           { type: 'تحويل',  emoji: '🔄', icon: ArrowLeftRight,  color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
         ].map(btn => (
           <button key={btn.type} onClick={() => setModal(btn.type as any)}
