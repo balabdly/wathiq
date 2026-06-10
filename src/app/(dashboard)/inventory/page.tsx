@@ -6,7 +6,7 @@ import {
   Plus, X, Save, Search, Pencil, Trash2, Download, Upload,
   ArrowDownToLine, ArrowUpFromLine, RotateCcw, ArrowLeftRight,
   ClipboardList, Package, Settings, BarChart3, Scale, FileSpreadsheet,
-  ChevronLeft, ChevronRight, Filter
+  ChevronLeft, ChevronRight, Filter, Paperclip
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -30,6 +30,12 @@ type LedgerEntry = {
   qty: number; qty_before: number; qty_after: number
   wh_name: string; project_name?: string; dispatch_note?: string
   vendor_name?: string; doc_code?: string; created_at: string
+  attachment_url?: string
+}
+type ProjectMaterial = {
+  id: number; project_id: number; material_id: number; warehouse_id: number
+  qty_received: number; qty_issued: number; qty_balance: number
+  material?: { name: string; unit: string; catalog_no?: string; sec_number?: string }
 }
 
 const UNITS = ['قطعة', 'متر', 'كجم', 'لتر', 'علبة', 'رول', 'طن', 'م²', 'م³', 'كيس', 'برميل', 'أمبير', 'متر كيبل']
@@ -98,8 +104,6 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
           </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {/* فورم إضافة/تعديل */}
           <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid var(--border)' }}>
             <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '10px' }}>
               {editId ? '✏️ تعديل مستودع' : '➕ إضافة مستودع جديد'}
@@ -123,14 +127,12 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
                   className="input" placeholder="مثال: الرياض — حي الصناعية" />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
-                  نمط المستودع
-                </label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>نمط المستودع</label>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   {[
-                    { val: 'عام',      desc: 'الاستلام للمستودع، الصرف يحدد المشروع',          color: '#6b7280', bg: '#f9fafb' },
-                    { val: 'مشاريع',   desc: 'الاستلام والصرف يطلبان مشروعاً إلزامياً',        color: '#1a56db', bg: '#eff6ff' },
-                    { val: 'مرن',      desc: 'تحديد المشروع اختياري في كل العمليات',            color: '#0ea77b', bg: '#ecfdf5' },
+                    { val: 'عام',    desc: 'الاستلام للمستودع، الصرف يحدد المشروع',       color: '#6b7280', bg: '#f9fafb' },
+                    { val: 'مشاريع', desc: 'الاستلام والصرف يطلبان مشروعاً إلزامياً',     color: '#1a56db', bg: '#eff6ff' },
+                    { val: 'مرن',    desc: 'تحديد المشروع اختياري في كل العمليات',         color: '#0ea77b', bg: '#ecfdf5' },
                   ].map(m => (
                     <button key={m.val} type="button" onClick={() => set('mode', m.val)}
                       style={{ flex: 1, padding: '8px 6px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', textAlign: 'center',
@@ -163,14 +165,10 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
               </div>
             </div>
           </div>
-
-          {/* قائمة المستودعات */}
           {loading ? (
             <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>جاري التحميل...</div>
           ) : warehouses.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', fontSize: '0.875rem' }}>
-              لا توجد مستودعات بعد
-            </div>
+            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af', fontSize: '0.875rem' }}>لا توجد مستودعات بعد</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
               {warehouses.map(w => (
@@ -217,8 +215,8 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
   tenantId: string; branchId: number; warehouses: Warehouse[]
   onClose: () => void; onSave: () => void
 }) {
-  const [tab, setTab]           = useState<'manual' | 'import'>('manual')
-  const [saving, setSaving]     = useState(false)
+  const [tab, setTab]             = useState<'manual' | 'import'>('manual')
+  const [saving, setSaving]       = useState(false)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
@@ -229,8 +227,8 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSaveManual() {
-    if (!form.name.trim())     { toast.error('اسم المادة مطلوب'); return }
-    if (!form.warehouse_id)    { toast.error('اختر المستودع'); return }
+    if (!form.name.trim())  { toast.error('اسم المادة مطلوب'); return }
+    if (!form.warehouse_id) { toast.error('اختر المستودع'); return }
     setSaving(true)
     const { error } = await supabase.from('materials').insert({
       tenant_id: tenantId, branch_id: branchId,
@@ -261,7 +259,6 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows: any[] = XLSX.utils.sheet_to_json(ws)
       if (rows.length === 0) { toast.error('الملف فارغ'); setImporting(false); return }
-
       const payload = rows.map(r => ({
         tenant_id: tenantId, branch_id: branchId,
         warehouse_id: Number(form.warehouse_id),
@@ -275,14 +272,12 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
         location: String(r['الموقع'] || r['location'] || '') || null,
         notes: String(r['ملاحظات'] || r['notes'] || '') || null,
       })).filter(r => r.name)
-
       if (payload.length === 0) { toast.error('لا توجد بيانات صالحة في الملف'); setImporting(false); return }
-
       const { error } = await supabase.from('materials').insert(payload)
       if (error) { toast.error('خطأ في الاستيراد: ' + error.message); setImporting(false); return }
       toast.success(`✅ تم استيراد ${payload.length} مادة`)
       onSave()
-    } catch (err) {
+    } catch {
       toast.error('خطأ في قراءة الملف')
     }
     setImporting(false)
@@ -315,13 +310,8 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
           </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* تبويبات */}
           <div style={{ display: 'flex', gap: '6px', background: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
-            {[
-              { id: 'manual', label: '✏️ إدخال يدوي' },
-              { id: 'import', label: '📄 رفع ملف Excel' },
-            ].map(t => (
+            {[{ id: 'manual', label: '✏️ إدخال يدوي' }, { id: 'import', label: '📄 رفع ملف Excel' }].map(t => (
               <button key={t.id} onClick={() => setTab(t.id as any)}
                 style={{ flex: 1, padding: '7px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
                   background: tab === t.id ? 'white' : 'transparent',
@@ -331,8 +321,6 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
               </button>
             ))}
           </div>
-
-          {/* اختيار المستودع (مشترك) */}
           <div>
             <label style={lbl}>المستودع <span style={{ color: '#c81e1e' }}>*</span></label>
             <select value={form.warehouse_id} onChange={e => set('warehouse_id', e.target.value)} className="select">
@@ -340,8 +328,6 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
               {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
-
-          {/* الإدخال اليدوي */}
           {tab === 'manual' && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -401,8 +387,6 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
               </div>
             </>
           )}
-
-          {/* رفع ملف */}
           {tab === 'import' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <button onClick={downloadTemplate}
@@ -441,6 +425,20 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
 }
 
 // ════════════════════════════════════
+// دالة مساعدة: رفع مرفق إلى Supabase Storage
+// ════════════════════════════════════
+async function uploadAttachment(file: File, tenantId: string): Promise<string | null> {
+  const ext      = file.name.split('.').pop()
+  const fileName = `${tenantId}/inventory/${Date.now()}.${ext}`
+  const { data, error } = await supabase.storage
+    .from('attachments')
+    .upload(fileName, file, { upsert: false })
+  if (error) { toast.error('فشل رفع الملف: ' + error.message); return null }
+  const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(fileName)
+  return urlData?.publicUrl || null
+}
+
+// ════════════════════════════════════
 // مودال: عملية (استلام/صرف/إرجاع/تحويل)
 // ════════════════════════════════════
 function OperationModal({ type, tenantId, branchId, warehouses, projects, onClose, onSave }: {
@@ -449,12 +447,17 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   warehouses: Warehouse[]; projects: any[]
   onClose: () => void; onSave: () => void
 }) {
-  const [saving, setSaving]     = useState(false)
-  const [materials, setMaterials] = useState<Material[]>([])
-  const [rows, setRows]         = useState([{ mat_id: '', qty: '', note: '' }])
-  const [form, setForm]         = useState({
+  const [saving, setSaving]         = useState(false)
+  const [materials, setMaterials]   = useState<Material[]>([])
+  // رصيد المشروع من project_materials (للصرف من مستودع مشاريع)
+  const [projectBalances, setProjectBalances] = useState<Record<number, number>>({})
+  const [rows, setRows]             = useState([{ mat_id: '', qty: '', note: '' }])
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const attachRef = useRef<HTMLInputElement>(null)
+  const [form, setForm] = useState({
     warehouse_id:    warehouses[0]?.id ? String(warehouses[0].id) : '',
     to_warehouse_id: '',
+    project_id:      '',
     project_name:    '',
     vendor_name:     '',
     doc_code:        '',
@@ -462,7 +465,23 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  // نمط المستودع المختار
+  const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
+  const whMode                   = selectedWh?.mode || 'عام'
+  const isProjectWh              = whMode === 'مشاريع'
+  const showProjectOnReceive     = whMode === 'مشاريع' || whMode === 'مرن'
+  const projectRequiredOnReceive = whMode === 'مشاريع'
+
   useEffect(() => { if (form.warehouse_id) loadMaterials() }, [form.warehouse_id])
+
+  // عند تغيير المشروع في مستودع مشاريع — حمّل أرصدة project_materials
+  useEffect(() => {
+    if (isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع')) {
+      loadProjectBalances()
+    } else {
+      setProjectBalances({})
+    }
+  }, [form.project_id, form.warehouse_id, type])
 
   async function loadMaterials() {
     const { data } = await supabase.from('materials')
@@ -470,23 +489,67 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     setMaterials(data || [])
   }
 
+  async function loadProjectBalances() {
+    if (!form.project_id) return
+    const { data } = await supabase
+      .from('project_materials')
+      .select('material_id, qty_balance')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', Number(form.project_id))
+      .eq('warehouse_id', Number(form.warehouse_id))
+    const map: Record<number, number> = {}
+    ;(data || []).forEach((pm: any) => { map[pm.material_id] = pm.qty_balance })
+    setProjectBalances(map)
+  }
+
   function setRow(i: number, k: string, v: string) {
     setRows(prev => { const next = [...prev]; next[i] = { ...next[i], [k]: v }; return next })
   }
 
-  // نمط المستودع المختار
-  const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
-  const whMode                   = selectedWh?.mode || 'عام'
-  const showProjectOnReceive     = whMode === 'مشاريع' || whMode === 'مرن'
-  const projectRequiredOnReceive = whMode === 'مشاريع'
+  function handleProjectChange(projectId: string) {
+    const proj = projects.find((p: any) => p.id === Number(projectId))
+    set('project_id', projectId)
+    set('project_name', proj?.name || '')
+  }
 
   async function handleSave() {
     const validRows = rows.filter(r => r.mat_id && Number(r.qty) > 0)
     if (validRows.length === 0) { toast.error('أضف مادة واحدة على الأقل بكمية صحيحة'); return }
-    if ((type === 'صرف' || type === 'إرجاع') && !form.project_name) { toast.error('اسم المشروع مطلوب'); return }
-    if (type === 'استلام' && projectRequiredOnReceive && !form.project_name) { toast.error('المشروع إلزامي لهذا المستودع'); return }
-    if (type === 'تحويل' && !form.to_warehouse_id) { toast.error('اختر المستودع المستلم'); return }
+
+    // التحقق من المشروع
+    if ((type === 'صرف' || type === 'إرجاع') && !form.project_id) {
+      toast.error('اسم المشروع مطلوب'); return
+    }
+    if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) {
+      toast.error('المشروع إلزامي لهذا المستودع'); return
+    }
+    if (type === 'تحويل' && !form.to_warehouse_id) {
+      toast.error('اختر المستودع المستلم'); return
+    }
+
+    // ══ التحقق من رصيد المشروع عند الصرف من مستودع مشاريع ══
+    if (type === 'صرف' && isProjectWh && form.project_id) {
+      for (const row of validRows) {
+        const mat     = materials.find(m => m.id === Number(row.mat_id))
+        if (!mat) continue
+        const balance = projectBalances[mat.id] ?? 0
+        const qty     = Number(row.qty)
+        if (qty > balance) {
+          toast.error(
+            `لا يمكن صرف "${mat.name}" — المستلم لهذا المشروع: ${balance} ${mat.unit}، المطلوب: ${qty} ${mat.unit}`
+          )
+          return
+        }
+      }
+    }
+
     setSaving(true)
+
+    // رفع المرفق إذا وُجد
+    let attachmentUrl: string | null = null
+    if (attachmentFile) {
+      attachmentUrl = await uploadAttachment(attachmentFile, tenantId)
+    }
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
 
@@ -495,31 +558,39 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (!mat) continue
       const qty = Number(row.qty)
 
-      if ((type === 'صرف' || type === 'تحويل') && mat.qty < qty) {
+      // تحقق من رصيد المستودع الإجمالي (للتحويل وللصرف من مستودع غير مشاريع)
+      if ((type === 'صرف' || type === 'تحويل') && !isProjectWh && mat.qty < qty) {
         toast.error(`رصيد "${mat.name}" غير كافٍ — متاح: ${mat.qty} ${mat.unit}`)
         setSaving(false); return
       }
 
       let newQty = mat.qty
-      if (type === 'استلام') newQty = mat.qty + qty
-      if (type === 'صرف'  || type === 'تحويل') newQty = mat.qty - qty
-      if (type === 'إرجاع') newQty = mat.qty + qty
+      if (type === 'استلام')                      newQty = mat.qty + qty
+      if (type === 'صرف' || type === 'تحويل')     newQty = mat.qty - qty
+      if (type === 'إرجاع')                        newQty = mat.qty + qty
 
-      // تحديث الكمية
+      // تحديث الكمية في materials
       await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
 
-      // تسجيل في سجل الحركات
+      // تسجيل في stock_ledger مع project_id و attachment_url
       await supabase.from('stock_ledger').insert({
-        tenant_id: tenantId, branch_id: branchId,
-        type: type === 'تحويل' ? 'نقل مخزني' : type,
-        mat_name: mat.name, unit: mat.unit, qty,
-        qty_before: mat.qty, qty_after: newQty,
-        wh_name: wh?.name || '',
-        project_name: form.project_name || null,
-        vendor_name: form.vendor_name || null,
-        doc_code: form.doc_code || null,
-        dispatch_note: row.note || null,
+        tenant_id:      tenantId,
+        branch_id:      branchId,
+        type:           type === 'تحويل' ? 'نقل مخزني' : type,
+        mat_name:       mat.name,
+        unit:           mat.unit,
+        qty,
+        qty_before:     mat.qty,
+        qty_after:      newQty,
+        wh_name:        wh?.name || '',
+        project_id:     form.project_id ? Number(form.project_id) : null,
+        project_name:   form.project_name || null,
+        vendor_name:    form.vendor_name || null,
+        doc_code:       form.doc_code || null,
+        dispatch_note:  row.note || null,
+        attachment_url: attachmentUrl,
       })
+      // الـ trigger في DB يتولى تحديث project_materials تلقائياً
 
       // لو تحويل — أضف في المستودع المستلم
       if (type === 'تحويل') {
@@ -533,10 +604,10 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
           await supabase.from('materials').insert({ ...rest, warehouse_id: Number(form.to_warehouse_id), qty })
         }
         await supabase.from('stock_ledger').insert({
-          tenant_id: tenantId, branch_id: branchId, type: 'توريد',
-          mat_name: mat.name, unit: mat.unit, qty,
+          tenant_id:  tenantId, branch_id: branchId, type: 'توريد',
+          mat_name:   mat.name, unit: mat.unit, qty,
           qty_before: existing?.qty || 0, qty_after: (existing?.qty || 0) + qty,
-          wh_name: toWh?.name || '',
+          wh_name:    toWh?.name || '',
           dispatch_note: `تحويل من ${wh?.name}`,
         })
       }
@@ -552,12 +623,12 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     'إرجاع':  { color: '#e6820a', bg: '#fffbeb' },
     'تحويل':  { color: '#1a56db', bg: '#eff6ff' },
   }
-  const tc = COLORS[type]
+  const tc  = COLORS[type]
   const lbl: React.CSSProperties = { display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '620px', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '640px', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ background: tc.bg, borderRadius: '10px 10px 0 0', margin: '-1px -1px 0' }}>
           <h3 style={{ fontWeight: 700, color: tc.color, fontSize: '1rem' }}>
             {type === 'استلام' ? '📥' : type === 'صرف' ? '📤' : type === 'إرجاع' ? '↩️' : '🔄'} {type} مواد
@@ -568,15 +639,20 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-          {/* المستودع */}
-          <div style={{ display: 'grid', gridTemplateColumns: type === 'تحويل' ? '1fr 1fr' : '1fr 1fr', gap: '10px' }}>
+          {/* الصف الأول: المستودع + المستودع المستلم/المشروع/المورد */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div>
               <label style={lbl}>{type === 'تحويل' ? 'المستودع المرسل' : 'المستودع'} *</label>
               <select value={form.warehouse_id} onChange={e => set('warehouse_id', e.target.value)} className="select">
                 <option value="">— اختر —</option>
-                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} {w.mode === 'مشاريع' ? '🏗️' : w.mode === 'مرن' ? '🔀' : ''}
+                  </option>
+                ))}
               </select>
             </div>
+
             {type === 'تحويل' ? (
               <div>
                 <label style={lbl}>المستودع المستلم *</label>
@@ -588,9 +664,9 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
             ) : (type === 'صرف' || type === 'إرجاع') ? (
               <div>
                 <label style={lbl}>المشروع *</label>
-                <select value={form.project_name} onChange={e => set('project_name', e.target.value)} className="select">
+                <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
                   <option value="">— اختر المشروع —</option>
-                  {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
             ) : (
@@ -609,46 +685,69 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                 المشروع {projectRequiredOnReceive && <span style={{ color: '#c81e1e' }}>*</span>}
                 {!projectRequiredOnReceive && <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}> (اختياري)</span>}
               </label>
-              <select value={form.project_name} onChange={e => set('project_name', e.target.value)} className="select">
+              <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
                 <option value="">— اختر المشروع —</option>
-                {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              {whMode === 'مشاريع' && (
+              {isProjectWh && (
                 <div style={{ marginTop: '5px', fontSize: '0.72rem', color: '#1a56db' }}>
                   🏗️ هذا المستودع مخصص للمشاريع — تحديد المشروع إلزامي
                 </div>
               )}
             </div>
           )}
-          <div style={{ display: 'none' }}>
-          </div>
+
+          {/* تنبيه رصيد المشروع عند الصرف من مستودع مشاريع */}
+          {type === 'صرف' && isProjectWh && form.project_id && (
+            <div style={{ padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', fontSize: '0.78rem', color: '#1a56db' }}>
+              🏗️ سيتم التحقق من رصيد هذا المشروع — لا يمكن صرف أكثر مما استُلم له
+            </div>
+          )}
 
           {/* المواد */}
           <div>
             <label style={{ ...lbl, marginBottom: '8px' }}>المواد</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {rows.map((row, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '6px', alignItems: 'center' }}>
-                  <select value={row.mat_id} onChange={e => setRow(i, 'mat_id', e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
-                    <option value="">— اختر مادة —</option>
-                    {materials.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} {type !== 'استلام' ? `(${m.qty} ${m.unit})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <input type="number" value={row.qty} onChange={e => setRow(i, 'qty', e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
-                    className="input" dir="ltr" min="0" placeholder="الكمية" style={{ fontSize: '0.82rem' }} />
-                  <input value={row.note} onChange={e => setRow(i, 'note', e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
-                    className="input" placeholder="ملاحظة" style={{ fontSize: '0.78rem' }} />
-                  <button onClick={() => setRows(prev => prev.filter((_, j) => j !== i))}
-                    style={{ padding: '6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: rows.length === 1 ? 'none' : 'flex' }}>
-                    <X style={{ width: '13px', height: '13px' }} />
-                  </button>
-                </div>
-              ))}
+              {rows.map((row, i) => {
+                const mat        = materials.find(m => m.id === Number(row.mat_id))
+                const projBal    = mat ? (projectBalances[mat.id] ?? null) : null
+                const showProjBal = type === 'صرف' && isProjectWh && form.project_id && mat
+                return (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                      <select value={row.mat_id} onChange={e => setRow(i, 'mat_id', e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
+                        <option value="">— اختر مادة —</option>
+                        {materials.map(m => {
+                          const bal = isProjectWh && form.project_id && type === 'صرف'
+                            ? (projectBalances[m.id] ?? 0)
+                            : m.qty
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({bal} {m.unit})
+                            </option>
+                          )
+                        })}
+                      </select>
+                      <input type="number" value={row.qty} onChange={e => setRow(i, 'qty', e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                        className="input" dir="ltr" min="0" placeholder="الكمية" style={{ fontSize: '0.82rem' }} />
+                      <input value={row.note} onChange={e => setRow(i, 'note', e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                        className="input" placeholder="ملاحظة" style={{ fontSize: '0.78rem' }} />
+                      <button onClick={() => setRows(prev => prev.filter((_, j) => j !== i))}
+                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: rows.length === 1 ? 'none' : 'flex' }}>
+                        <X style={{ width: '13px', height: '13px' }} />
+                      </button>
+                    </div>
+                    {/* رصيد المشروع لهذه المادة */}
+                    {showProjBal && (
+                      <div style={{ fontSize: '0.72rem', color: projBal !== null && projBal <= 0 ? '#c81e1e' : '#0ea77b', paddingRight: '4px' }}>
+                        رصيد المشروع: {projBal ?? 0} {mat?.unit}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
               <button onClick={() => setRows(prev => [...prev, { mat_id: '', qty: '', note: '' }])}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '7px', border: `1px dashed ${tc.color}`, background: tc.bg, color: tc.color, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, width: 'fit-content' }}>
                 <Plus style={{ width: '13px', height: '13px' }} /> إضافة مادة أخرى
@@ -656,11 +755,39 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
             </div>
           </div>
 
+          {/* المرفق — فقط للاستلام والصرف */}
+          {(type === 'استلام' || type === 'صرف') && (
+            <div>
+              <label style={lbl}>
+                <Paperclip style={{ width: '13px', height: '13px', display: 'inline', marginLeft: '5px' }} />
+                إرفاق مستند
+                <span style={{ fontWeight: 400, color: '#9ca3af', fontSize: '0.72rem', marginRight: '6px' }}>(اختياري — أذن استلام، وصل توريد...)</span>
+              </label>
+              <div
+                onClick={() => attachRef.current?.click()}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '8px', border: `1px dashed ${attachmentFile ? tc.color : '#d1d5db'}`, background: attachmentFile ? tc.bg : '#fafafa', cursor: 'pointer', fontSize: '0.82rem', color: attachmentFile ? tc.color : '#6b7280' }}>
+                <input ref={attachRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  onChange={e => setAttachmentFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }} />
+                <Paperclip style={{ width: '16px', height: '16px' }} />
+                {attachmentFile ? attachmentFile.name : 'اختر ملف PDF أو صورة'}
+                {attachmentFile && (
+                  <button onClick={e => { e.stopPropagation(); setAttachmentFile(null); if (attachRef.current) attachRef.current.value = '' }}
+                    style={{ marginRight: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '0' }}>
+                    <X style={{ width: '14px', height: '14px' }} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: tc.color }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : null}
+            {saving
+              ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              : null}
             تأكيد {type}
           </button>
         </div>
@@ -677,8 +804,7 @@ export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [projects,   setProjects]   = useState<any[]>([])
 
-  // المودالات
-  const [modal, setModal] = useState<'setup' | 'define' | 'materials' | 'ledger' | 'inventory_check' | 'settlement' | 'استلام' | 'صرف' | 'إرجاع' | 'تحويل' | null>(null)
+  const [modal, setModal] = useState<'setup' | 'define' | 'materials' | 'ledger' | 'inventory_check' | 'استلام' | 'صرف' | 'إرجاع' | 'تحويل' | null>(null)
 
   // عرض المواد
   const [materials,     setMaterials]     = useState<Material[]>([])
@@ -722,12 +848,10 @@ export default function InventoryPage() {
       .select('*, warehouse:warehouses(name)', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('name').range(from, from + PAGE_SIZE - 1)
-
     if (matWh)     q = q.eq('warehouse_id', Number(matWh))
     if (matSearch) q = q.or(`name.ilike.%${matSearch}%,catalog_no.ilike.%${matSearch}%,sec_number.ilike.%${matSearch}%`)
     if (matQtyFilter === 'with')    q = q.gt('qty', 0)
     if (matQtyFilter === 'without') q = q.lte('qty', 0)
-
     const { data, count } = await q
     setMaterials(data || [])
     setMatTotal(count || 0)
@@ -744,11 +868,9 @@ export default function InventoryPage() {
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
-
     if (ledgerDate) q = q.gte('created_at', ledgerDate).lte('created_at', ledgerDate + 'T23:59:59')
     if (ledgerMat)  q = q.ilike('mat_name', `%${ledgerMat}%`)
     if (ledgerType) q = q.eq('type', ledgerType)
-
     const { data, count } = await q
     setLedger(data || [])
     setLedgerTotal(count || 0)
@@ -783,16 +905,16 @@ export default function InventoryPage() {
     setModal(null)
   }
 
-  const matTotalPages = Math.ceil(matTotal / PAGE_SIZE)
+  const matTotalPages    = Math.ceil(matTotal / PAGE_SIZE)
   const ledgerTotalPages = Math.ceil(ledgerTotal / PAGE_SIZE)
 
   const TYPE_COLOR: Record<string, string> = {
-    'توريد':      'badge-green',
-    'استلام':     'badge-green',
-    'صرف':        'badge-red',
-    'نقل مخزني':  'badge-blue',
-    'إرجاع':      'badge-amber',
-    'تسوية جرد':  'badge-purple',
+    'توريد':     'badge-green',
+    'استلام':    'badge-green',
+    'صرف':       'badge-red',
+    'نقل مخزني': 'badge-blue',
+    'إرجاع':     'badge-amber',
+    'تسوية جرد': 'badge-purple',
   }
 
   return (
@@ -804,19 +926,18 @@ export default function InventoryPage() {
           <Package style={{ width: '20px', height: '20px', color: '#1a56db' }} />
           إدارة المخزون
         </h1>
-
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {[
-            { id: 'setup',            label: 'إعداد المستودع',      icon: Settings,       color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
-            { id: 'define',           label: 'تعريف المواد',         icon: Package,        color: '#0ea77b', bg: '#ecfdf5', border: '#bbf7d0' },
-            { id: 'materials',        label: 'عرض المواد',           icon: ClipboardList,  color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
-            { id: 'ledger',           label: 'الحركات اليومية',      icon: BarChart3,      color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
-            { id: 'inventory_check',  label: 'جرد المستودع',        icon: Scale,          color: '#e6820a', bg: '#fffbeb', border: '#fde68a' },
+            { id: 'setup',           label: 'إعداد المستودع',   icon: Settings,      color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb' },
+            { id: 'define',          label: 'تعريف المواد',      icon: Package,       color: '#0ea77b', bg: '#ecfdf5', border: '#bbf7d0' },
+            { id: 'materials',       label: 'عرض المواد',        icon: ClipboardList, color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
+            { id: 'ledger',          label: 'الحركات اليومية',   icon: BarChart3,     color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+            { id: 'inventory_check', label: 'جرد المستودع',      icon: Scale,         color: '#e6820a', bg: '#fffbeb', border: '#fde68a' },
           ].map(btn => (
             <button key={btn.id} onClick={() => {
               setModal(btn.id as any)
-              if (btn.id === 'materials')  loadMaterials(1)
-              if (btn.id === 'ledger')     loadLedger(1)
+              if (btn.id === 'materials') loadMaterials(1)
+              if (btn.id === 'ledger')    loadLedger(1)
             }}
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', border: `1px solid ${btn.border}`, background: btn.bg, color: btn.color, cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', transition: 'all 0.15s' }}
               onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
@@ -828,22 +949,16 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* ══ الجزء السفلي — الأزرار الرئيسية (نصف الصفحة) ══ */}
+      {/* ══ الجزء السفلي — الأزرار الرئيسية ══ */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: '14px', height: '280px' }}>
         {[
           { type: 'استلام', emoji: '📥', icon: ArrowDownToLine, color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة للمستودع' },
-          { type: 'صرف',    emoji: '📤', icon: ArrowUpFromLine,  color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
-          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,        color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للمستودع' },
-          { type: 'تحويل',  emoji: '🔄', icon: ArrowLeftRight,   color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
+          { type: 'صرف',    emoji: '📤', icon: ArrowUpFromLine, color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
+          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,       color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للمستودع' },
+          { type: 'تحويل',  emoji: '🔄', icon: ArrowLeftRight,  color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
         ].map(btn => (
-          <button key={btn.type}
-            onClick={() => setModal(btn.type as any)}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              padding: '20px 16px', borderRadius: '16px', border: `2px solid ${btn.border}`,
-              background: btn.bg, color: btn.color, cursor: 'pointer',
-              transition: 'all 0.2s', fontWeight: 700,
-            }}
+          <button key={btn.type} onClick={() => setModal(btn.type as any)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '20px 16px', borderRadius: '16px', border: `2px solid ${btn.border}`, background: btn.bg, color: btn.color, cursor: 'pointer', transition: 'all 0.2s', fontWeight: 700 }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 20px ${btn.color}25` }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
             <span style={{ fontSize: '2.2rem', lineHeight: 1 }}>{btn.emoji}</span>
@@ -856,7 +971,7 @@ export default function InventoryPage() {
       {/* ══ مودال: إعداد المستودع ══ */}
       {modal === 'setup' && tenant && activeBranch && (
         <WarehouseSetupModal tenantId={tenant.id} branchId={activeBranch.id}
-          onClose={() => setModal(null)} onSave={() => { loadBase() }} />
+          onClose={() => setModal(null)} onSave={() => loadBase()} />
       )}
 
       {/* ══ مودال: تعريف المواد ══ */}
@@ -926,9 +1041,7 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>{(m as any).warehouse?.name || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem' }}>{m.unit}</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>
-                          {m.qty}
-                        </td>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>{m.qty}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af' }}>{m.reorder}</td>
                         <td style={{ padding: '8px 12px' }}>
                           <span className={`badge ${m.qty <= 0 ? 'badge-red' : m.qty <= m.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
@@ -941,7 +1054,6 @@ export default function InventoryPage() {
                 </table>
               )}
             </div>
-            {/* Pagination */}
             {matTotalPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg2)' }}>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>
@@ -977,7 +1089,6 @@ export default function InventoryPage() {
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
-            {/* فلاتر */}
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca3af', marginBottom: '3px' }}>التاريخ</label>
@@ -1011,14 +1122,14 @@ export default function InventoryPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg2)', position: 'sticky', top: 0 }}>
-                      {['التاريخ', 'النوع', 'المادة', 'المستودع', 'المشروع', 'الكمية', 'قبل', 'بعد', 'ملاحظة'].map(h => (
+                      {['التاريخ', 'النوع', 'المادة', 'المستودع', 'المشروع', 'الكمية', 'قبل', 'بعد', 'ملاحظة', 'مرفق'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {ledger.length === 0 ? (
-                      <tr><td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد حركات</td></tr>
+                      <tr><td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد حركات</td></tr>
                     ) : ledger.map(l => (
                       <tr key={l.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
@@ -1041,13 +1152,20 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 12px', fontSize: '0.72rem', color: 'var(--text3)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {l.dispatch_note || l.vendor_name || '—'}
                         </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          {l.attachment_url ? (
+                            <a href={l.attachment_url} target="_blank" rel="noopener noreferrer"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#1a56db', fontSize: '0.72rem', textDecoration: 'none' }}>
+                              <Paperclip style={{ width: '12px', height: '12px' }} /> عرض
+                            </a>
+                          ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
             </div>
-            {/* Pagination */}
             {ledgerTotalPages > 1 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg2)' }}>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>
@@ -1096,7 +1214,6 @@ export default function InventoryPage() {
                   تحميل المواد
                 </button>
               </div>
-
               {checkItems.length > 0 && (
                 <div style={{ overflowY: 'auto', maxHeight: '400px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -1132,7 +1249,6 @@ export default function InventoryPage() {
                   </table>
                 </div>
               )}
-
               {checkItems.length > 0 && (
                 <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.82rem', color: '#92400e', border: '1px solid #fde68a' }}>
                   🔔 الخلايا الصفراء تعني وجود فروقات — عدّل الكمية الفعلية ثم اضغط "حفظ الجرد"
@@ -1158,7 +1274,7 @@ export default function InventoryPage() {
             tenantId={tenant.id} branchId={activeBranch.id}
             warehouses={warehouses} projects={projects}
             onClose={() => setModal(null)}
-            onSave={() => { setModal(null) }} />
+            onSave={() => setModal(null)} />
         )
       ))}
     </div>
