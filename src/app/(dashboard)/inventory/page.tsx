@@ -720,21 +720,14 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         }
       }
 
-      // في مستودع مشاريع: الرصيد الحقيقي من project_materials
-      // في مستودع عادي: الرصيد من materials.qty
-      const matCurrentQty = Number(matsMap[mat.id]?.qty ?? mat.qty)
-      const projBalance   = (isProjectWh && form.project_id) ? (projectBalances[mat.id] ?? 0) : matCurrentQty
+      // الكمية الحالية من DB (freshMats)
+      const matCurrentQty = Number(matsMap[Number(row.mat_id)]?.qty ?? mat.qty)
+      // رصيد المشروع من project_materials
+      const projBalance = (isProjectWh && form.project_id) ? (projectBalances[mat.id] ?? 0) : matCurrentQty
 
-      // الكمية الجديدة في materials
-      let newQty = matCurrentQty
-      if (type === 'استلام')             newQty = matCurrentQty + qty
-      if (type === 'صرف' || type === 'تحويل') newQty = matCurrentQty - qty
-      if (type === 'إرجاع' && isProjectWh)    newQty = matCurrentQty - qty
-      if (type === 'إرجاع' && !isProjectWh)   newQty = matCurrentQty + qty
-
-      // تحقق: في مستودع مشاريع نتحقق من رصيد المشروع
+      // تحقق من الرصيد قبل الحسم
       if (type === 'صرف' || type === 'تحويل') {
-        const avail = isProjectWh && form.project_id ? projBalance : matCurrentQty
+        const avail = (isProjectWh && form.project_id) ? projBalance : matCurrentQty
         if (qty > avail) {
           toast.error(`⛔ الكمية غير كافية — "${mat.name}" المتاح: ${avail} ${mat.unit}`)
           setSaving(false); return
@@ -744,6 +737,13 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         toast.error(`⛔ لا يمكن الإرجاع — "${mat.name}" المتاح: ${projBalance} ${mat.unit}`)
         setSaving(false); return
       }
+
+      // حساب الكمية الجديدة في materials.qty (الإجمالي)
+      let newQty = matCurrentQty
+      if (type === 'استلام')                                    newQty = matCurrentQty + qty
+      if (type === 'صرف' || type === 'تحويل')                  newQty = matCurrentQty - qty
+      if (type === 'إرجاع' && isProjectWh)                     newQty = matCurrentQty - qty
+      if (type === 'إرجاع' && !isProjectWh)                    newQty = matCurrentQty + qty
 
       // تحديث الكمية في materials
       await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
