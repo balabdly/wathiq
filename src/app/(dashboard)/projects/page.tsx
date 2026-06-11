@@ -479,6 +479,32 @@ export default function ProjectsPage() {
     if (!tenant || !activeBranch) return
     let error: any = null
 
+    // ══ فحص شروط الاكتمال عند تغيير الحالة لـ "مكتمل" ══
+    const existingProject = projects.find(p => p.id === (data as any).id)
+    if (data.status === 'مكتمل' && existingProject?.status !== 'مكتمل') {
+      const blockers: string[] = []
+
+      const { data: openTasks } = await supabase
+        .from('project_tasks').select('id')
+        .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
+        .neq('status', 'مغلقة').neq('status', 'مكتملة')
+      if ((openTasks?.length || 0) > 0)
+        blockers.push(`${openTasks!.length} مهمة مفتوحة لم تُغلق`)
+
+      const { data: openNCR } = await supabase
+        .from('visits').select('id')
+        .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
+        .eq('specs', 'غير مطابق').is('resolved_report', null)
+      if ((openNCR?.length || 0) > 0)
+        blockers.push(`${openNCR!.length} زيارة غير مطابقة (NCR) مفتوحة`)
+
+      if (blockers.length > 0) {
+        const msg = ['⛔ لا يمكن إغلاق المشروع:'].concat(blockers.map(b => '• ' + b)).join(String.fromCharCode(10))
+        toast.error(msg, { duration: 8000, style: { whiteSpace: 'pre-line' } })
+        return
+      }
+    }
+
     // تطبيق النسبة التلقائية حسب الحالة
     const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress }
