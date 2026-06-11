@@ -627,15 +627,10 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         .eq('tenant_id', tenantId)
         .eq('warehouse_id', Number(form.warehouse_id))
     ])
-    // الرصيد الحقيقي = أقل قيمة بين رصيد المشروع والكمية الفعلية في المستودع
-    const matQtyMap: Record<number, number> = {}
-    ;(matRes.data || []).forEach((m: any) => { matQtyMap[m.id] = Number(m.qty) })
+    // الرصيد المتاح للصرف = qty_balance من project_materials (qty_received - qty_issued)
     const map: Record<number, number> = {}
     ;(pmRes.data || []).forEach((pm: any) => {
-      const projBal = Number(pm.qty_balance)
-      const matQty  = matQtyMap[pm.material_id] ?? projBal
-      // الرصيد المتاح = لا يمكن أن يتجاوز الكمية الموجودة فعلاً في المستودع
-      map[pm.material_id] = Math.min(projBal, matQty)
+      map[pm.material_id] = Number(pm.qty_balance)
     })
     setProjectBalances(map)
   }
@@ -760,7 +755,11 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (type === 'إرجاع' && !isProjectWh)                    newQty = matCurrentQty + qty
 
       // تحديث الكمية في materials
-      await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
+      // في مستودع مشاريع: materials.qty يتبع project_materials تلقائياً عبر الـ trigger
+      // نحدّث materials.qty فقط إذا كان الناتج >= 0
+      if (newQty >= 0) {
+        await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
+      }
 
       // تسجيل في stock_ledger مع project_id و attachment_url
       await supabase.from('stock_ledger').insert({
