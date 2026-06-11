@@ -720,13 +720,19 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         }
       }
 
-      let newQty = mat.qty
-      if (type === 'استلام')                                    newQty = mat.qty + qty
-      if (type === 'صرف' || type === 'تحويل')                  newQty = mat.qty - qty
-      // إرجاع من مستودع مشاريع = إرجاع للعميل (يقلل الكمية كالصرف)
-      // إرجاع من مستودع عادي = إرجاع للمستودع (يزيد الكمية)
-      if (type === 'إرجاع' && isProjectWh)                     newQty = mat.qty - qty
-      if (type === 'إرجاع' && !isProjectWh)                    newQty = mat.qty + qty
+      // نجلب الكمية الحالية من freshMats (من DB مباشرة) لضمان الدقة
+      const currentQty = Number(matsMap[mat.id]?.qty ?? mat.qty)
+      let newQty = currentQty
+      if (type === 'استلام')                                    newQty = currentQty + qty
+      if (type === 'صرف' || type === 'تحويل')                  newQty = currentQty - qty
+      if (type === 'إرجاع' && isProjectWh)                     newQty = currentQty - qty
+      if (type === 'إرجاع' && !isProjectWh)                    newQty = currentQty + qty
+
+      // تحقق نهائي قبل الحفظ
+      if ((type === 'صرف' || type === 'تحويل' || (type === 'إرجاع' && isProjectWh)) && newQty < 0) {
+        toast.error(`⛔ الكمية غير كافية — "${mat.name}" المتاح: ${currentQty} ${mat.unit}`)
+        setSaving(false); return
+      }
 
       // تحديث الكمية في materials
       await supabase.from('materials').update({ qty: newQty }).eq('id', mat.id)
@@ -739,7 +745,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         mat_name:       mat.name,
         unit:           mat.unit,
         qty,
-        qty_before:     mat.qty,
+        qty_before:     currentQty,
         qty_after:      newQty,
         wh_name:        wh?.name || '',
         project_id:     form.project_id ? Number(form.project_id) : null,
