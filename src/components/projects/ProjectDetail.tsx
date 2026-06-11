@@ -325,6 +325,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'history'>('info')
   const [tasks,        setTasks]        = useState<any[]>([])
   const [engineers,    setEngineers]    = useState<{ id: number; name: string; job_title?: string }[]>([])
+  const [engLoaded,    setEngLoaded]    = useState(false)
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [editTask,     setEditTask]     = useState<any | null>(null)
@@ -409,7 +410,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
   useEffect(() => {
     if (!tenant) return
-    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف']
+    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف', 'مشرف مشروع', 'مهندس ميداني']
     supabase.from('hr_employees')
       .select('id, name, job_title')
       .eq('tenant_id', tenant.id)
@@ -418,9 +419,11 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       .then(({ data }) => {
         const all = data || []
         const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
+        // إذا لم يوجد موظفون هندسيون — أظهر الكل
         setEngineers(eng.length > 0 ? eng : all)
+        setEngLoaded(true)
       })
-  }, [tenant?.id])
+  }, [tenant?.id, project.id])
 
   async function loadTasks() {
     if (!tenant || loadingTasks) return
@@ -740,9 +743,9 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
-                  {engineers.length === 0 ? (
+                  {!engLoaded ? (
                     <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
-                      className="input" placeholder="اسم المسؤول" />
+                      className="input" placeholder="جاري التحميل..." disabled />
                   ) : (
                     <select value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))} className="select">
                       <option value="">— اختر المسؤول —</option>
