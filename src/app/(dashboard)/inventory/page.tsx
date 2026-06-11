@@ -584,6 +584,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     vendor_name:     '',
     doc_code:        '',
     date:            new Date().toISOString().split('T')[0],
+    return_type:     '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -667,6 +668,9 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     }
     if (type === 'تحويل' && !form.to_warehouse_id) {
       toast.error('اختر المستودع المستلم'); return
+    }
+    if (type === 'إرجاع' && !form.return_type) {
+      toast.error('يجب تحديد نوع الإرجاع (فائض أو سكراب)'); return
     }
 
     // ══ التحقق من رصيد المشروع عند الصرف من مستودع مشاريع ══
@@ -776,7 +780,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         project_name:   form.project_name || null,
         vendor_name:    form.vendor_name || null,
         doc_code:       form.doc_code || null,
-        dispatch_note:  row.note || null,
+        dispatch_note:  type === 'إرجاع' ? (form.return_type + (row.note ? ' — ' + row.note : '')) : (row.note || null),
         attachment_url: attachmentUrl,
       })
       // الـ trigger في DB يتولى تحديث project_materials تلقائياً
@@ -1245,7 +1249,7 @@ export default function InventoryPage() {
         {[
           { type: 'استلام', emoji: '📥', icon: ArrowDownToLine, color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة للمستودع' },
           { type: 'صرف',    emoji: '📤', icon: ArrowUpFromLine, color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف مواد لمشروع أو جهة' },
-          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,       color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد للعميل / المستودع' },
+          { type: 'إرجاع',  emoji: '↩️', icon: RotateCcw,       color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع مواد فائضة أو سكراب للعميل' },
           { type: 'تحويل',  emoji: '🔄', icon: ArrowLeftRight,  color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
         ].map(btn => (
           <button key={btn.type} onClick={() => setModal(btn.type as any)}
