@@ -295,8 +295,8 @@ function ManageTypesModal({ tenantId, onClose }: {
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove, onNote }: {
-  p: Project; canEdit: boolean
+function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote }: {
+  p: Project; canEdit: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
 }) {
@@ -316,6 +316,22 @@ function KanbanCard({ p, canEdit, onView, onEdit, onDelete, onMove, onNote }: {
         {p.code && <span className="badge badge-gray" style={{ fontSize: '0.65rem' }}>{p.code}</span>}
         {p.type && <span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{TYPE_NAME[p.type] || p.type}</span>}
       </div>
+
+      {/* إشعار الموانع */}
+      {blockers && (blockers.tasks > 0 || blockers.ncr > 0) && (
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '5px' }}>
+          {blockers.tasks > 0 && (
+            <span style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '10px', background: '#fef2f2', color: '#c81e1e', fontWeight: 600, border: '1px solid #fecaca' }}>
+              ⚠️ {blockers.tasks} مهمة مفتوحة
+            </span>
+          )}
+          {blockers.ncr > 0 && (
+            <span style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '10px', background: '#fffbeb', color: '#e6820a', fontWeight: 600, border: '1px solid #fcd34d' }}>
+              🔴 {blockers.ncr} NCR مفتوحة
+            </span>
+          )}
+        </div>
+      )}
 
       {/* الاسم */}
       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1a1a2e', marginBottom: '4px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
@@ -414,6 +430,26 @@ export default function ProjectsPage() {
   const [showManageTypes, setShowManageTypes] = useState(false)
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
+  const [projectBlockers, setProjectBlockers] = useState<Record<number, { tasks: number; ncr: number }>>({})
+
+  async function loadProjectBlockers(projectIds: number[]) {
+    if (!tenant || projectIds.length === 0) return
+    const [tasksRes, ncrRes] = await Promise.all([
+      supabase.from('project_tasks').select('project_id')
+        .eq('tenant_id', tenant.id)
+        .in('project_id', projectIds)
+        .not('status', 'in', '("مغلقة","مكتملة")'),
+      supabase.from('visits').select('project_id')
+        .eq('tenant_id', tenant.id)
+        .in('project_id', projectIds)
+        .eq('specs', 'غير مطابق')
+        .is('resolved_report', null),
+    ])
+    const map: Record<number, { tasks: number; ncr: number }> = {}
+    ;(tasksRes.data || []).forEach((t: any) => { if (!map[t.project_id]) map[t.project_id] = { tasks: 0, ncr: 0 }; map[t.project_id].tasks++ })
+    ;(ncrRes.data || []).forEach((v: any) => { if (!map[v.project_id]) map[v.project_id] = { tasks: 0, ncr: 0 }; map[v.project_id].ncr++ })
+    setProjectBlockers(map)
+  }
 
   useEffect(() => { loadProjects() }, [tenant?.id, activeBranch?.id])
 
@@ -422,8 +458,12 @@ export default function ProjectsPage() {
     if (!tenant || !activeBranch) return
     if (projects.length === 0) setLoading(true)
     const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
-    setProjects(data || [])
+    const loaded = data || []
+    setProjects(loaded)
     setLoading(false)
+    // تحميل موانع الإغلاق للمشاريع النشطة
+    const activeIds = loaded.filter((p: any) => p.status !== 'مكتمل' && p.status !== 'ملغي').map((p: any) => p.id)
+    if (activeIds.length > 0) loadProjectBlockers(activeIds)
   }
 
   // ✅ إصلاح handleSave — insert للجديد، update للتعديل
@@ -491,20 +531,49 @@ export default function ProjectsPage() {
     const newStatus = COLUMNS[newIdx].id as ProjectStatus
 
     if (newStatus === 'مكتمل') {
+      const blockers: string[] = []
+
+      // 1. فحص المرفقات المطلوبة
       const { data: attachments } = await supabase
         .from('project_attachments').select('category')
         .eq('project_id', p.id).eq('tenant_id', tenant?.id)
       const uploadedCategories = (attachments || []).map((a: any) => a.category)
       const missing = REQUIRED_DOC_CATEGORIES.filter(c => !uploadedCategories.includes(c))
       if (missing.length > 0) {
-        const missingLabels = missing.map(c => {
-          const labels: Record<string, string> = {
-            'مخططات': '📐 مخططات المشروع', 'رخصة بلدية': '📋 رخصة البلدية',
-            'إخلاء بلدية': '📋 إخلاء البلدية', 'مستخلصات': '📄 المستخلص', 'فواتير': '🧾 الفاتورة',
-          }
-          return labels[c] || c
-        })
-        toast.error('⛔ لا يمكن إغلاق المشروع. الناقص: ' + missingLabels.join(' | '), { duration: 6000 })
+        const labels: Record<string, string> = {
+          'مخططات': '📐 مخططات', 'رخصة بلدية': '📋 رخصة بلدية',
+          'إخلاء بلدية': '📋 إخلاء بلدية', 'مستخلصات': '📄 مستخلص', 'فواتير': '🧾 فاتورة',
+        }
+        blockers.push(`مرفقات ناقصة: ${missing.map(c => labels[c] || c).join('، ')}`)
+      }
+
+      // 2. فحص المهام المفتوحة
+      const { data: openTasks } = await supabase
+        .from('project_tasks').select('id', { count: 'exact' })
+        .eq('project_id', p.id).eq('tenant_id', tenant?.id)
+        .not('status', 'in', '("مغلقة","مكتملة")')
+      const openTasksCount = openTasks?.length || 0
+      if (openTasksCount > 0) {
+        blockers.push(`${openTasksCount} مهمة مفتوحة لم تُغلق`)
+      }
+
+      // 3. فحص الزيارات غير المطابقة المفتوحة
+      const { data: openNCR } = await supabase
+        .from('visits').select('id', { count: 'exact' })
+        .eq('project_id', p.id).eq('tenant_id', tenant?.id)
+        .eq('specs', 'غير مطابق').is('resolved_report', null)
+      const openNCRCount = openNCR?.length || 0
+      if (openNCRCount > 0) {
+        blockers.push(`${openNCRCount} زيارة غير مطابقة (NCR) مفتوحة`)
+      }
+
+      if (blockers.length > 0) {
+        toast.error(
+          '⛔ لا يمكن إغلاق المشروع:
+' + blockers.map(b => `• ${b}`).join('
+'),
+          { duration: 8000, style: { whiteSpace: 'pre-line' } }
+        )
         return
       }
     }
@@ -681,7 +750,7 @@ export default function ProjectsPage() {
                     <div style={{ padding: '24px', textAlign: 'center', color: '#d1d5db', fontSize: '0.8rem' }}>لا توجد مشاريع</div>
                   ) : (
                     colProjects.map(p => (
-                      <KanbanCard key={p.id} p={p} canEdit={!!canEdit}
+                      <KanbanCard key={p.id} p={p} canEdit={!!canEdit} blockers={projectBlockers[p.id]}
                         onView={() => setDetail(p)}
                         onEdit={() => { setEditProject(p); setShowModal(true) }}
                         onDelete={() => handleDelete(p)}

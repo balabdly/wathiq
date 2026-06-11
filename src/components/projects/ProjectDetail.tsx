@@ -322,7 +322,12 @@ function ProgressUpdater({ project, tenant, onRefresh }: { project: Project; ten
 // ══════════════════════════════════════
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'history'>('info')
+  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'history'>('info')
+  const [tasks,        setTasks]        = useState<any[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [editTask,     setEditTask]     = useState<any | null>(null)
+  const [taskForm,     setTaskForm]     = useState({ title: '', assignee: '', priority: 'متوسط', due_date: '', notes: '' })
   const [inventoryData, setInventoryData] = useState<any[]>([])
   const [loadingInv, setLoadingInv]   = useState(false)
   const [visitsData,  setVisitsData]  = useState<any[]>([])
@@ -401,11 +406,59 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     setLoadingInv(false)
   }
 
+  async function loadTasks() {
+    if (!tenant || loadingTasks) return
+    setLoadingTasks(true)
+    const { data } = await supabase.from('project_tasks')
+      .select('*').eq('tenant_id', tenant.id).eq('project_id', project.id)
+      .order('created_at', { ascending: false })
+    setTasks(data || [])
+    setLoadingTasks(false)
+  }
+
+  async function saveTask() {
+    if (!taskForm.title.trim()) { return }
+    const payload = {
+      tenant_id:  tenant!.id,
+      project_id: project.id,
+      title:      taskForm.title.trim(),
+      assignee:   taskForm.assignee || null,
+      priority:   taskForm.priority,
+      due_date:   taskForm.due_date || null,
+      notes:      taskForm.notes || null,
+      status:     editTask?.status || 'مفتوحة',
+    }
+    if (editTask) {
+      await supabase.from('project_tasks').update(payload).eq('id', editTask.id)
+    } else {
+      await supabase.from('project_tasks').insert(payload)
+    }
+    setShowTaskForm(false)
+    setEditTask(null)
+    setTaskForm({ title: '', assignee: '', priority: 'متوسط', due_date: '', notes: '' })
+    loadTasks()
+  }
+
+  async function closeTask(id: number) {
+    await supabase.from('project_tasks').update({ status: 'مغلقة', completed_at: new Date().toISOString() }).eq('id', id)
+    loadTasks()
+  }
+
+  async function deleteTask(id: number) {
+    if (!confirm('حذف هذه المهمة؟')) return
+    await supabase.from('project_tasks').delete().eq('id', id)
+    loadTasks()
+  }
+
+  const openTasks   = tasks.filter(t => t.status !== 'مغلقة' && t.status !== 'مكتملة')
+  const closedTasks = tasks.filter(t => t.status === 'مغلقة' || t.status === 'مكتملة')
+
   const TABS = [
     { id: 'info',        label: '📋 المعلومات'  },
     { id: 'attachments', label: '📎 المرفقات'   },
     { id: 'visits',      label: '🔍 الزيارات'   },
     { id: 'inventory',   label: '📦 المخزون'    },
+    { id: 'tasks',       label: '✅ المهام'       },
     { id: 'history',     label: '📜 السجل'       },
   ]
 
@@ -462,7 +515,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id}
-            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory(); if (t.id === 'visits') loadVisits() }}
+            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory(); if (t.id === 'visits') loadVisits(); if (t.id === 'tasks') loadTasks() }}
             style={{
               padding: '10px 18px', fontSize: '0.875rem', fontWeight: 600,
               border: 'none', background: 'none', cursor: 'pointer',
@@ -638,6 +691,133 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       )}
 
       {/* Tab: السجل */}
+      {/* ══ تاب المهام ══ */}
+      {activeTab === 'tasks' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* رأس + زر إضافة */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>
+                {openTasks.length > 0
+                  ? <span style={{ color: '#c81e1e', fontWeight: 600 }}>⚠️ {openTasks.length} مهمة مفتوحة</span>
+                  : <span style={{ color: '#0ea77b', fontWeight: 600 }}>✅ لا توجد مهام مفتوحة</span>}
+              </span>
+            </div>
+            <button onClick={() => { setShowTaskForm(true); setEditTask(null); setTaskForm({ title: '', assignee: '', priority: 'متوسط', due_date: '', notes: '' }) }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+              + إضافة مهمة
+            </button>
+          </div>
+
+          {/* فورم إضافة/تعديل مهمة */}
+          {showTaskForm && (
+            <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '16px', border: '1px solid #bfdbfe', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#1a56db' }}>
+                {editTask ? '✏️ تعديل مهمة' : '➕ مهمة جديدة'}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>عنوان المهمة *</label>
+                  <input value={taskForm.title} onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+                    className="input" placeholder="وصف المهمة..." />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
+                  <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
+                    className="input" placeholder="اسم المسؤول" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الأولوية</label>
+                  <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="select">
+                    {['عالية', 'متوسط', 'منخفضة'].map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>تاريخ الاستحقاق</label>
+                  <input type="date" value={taskForm.due_date} onChange={e => setTaskForm(f => ({ ...f, due_date: e.target.value }))} className="input" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
+                  <textarea value={taskForm.notes} onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+                    className="input" style={{ minHeight: '60px', resize: 'none' }} placeholder="تفاصيل إضافية..." />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button onClick={() => { setShowTaskForm(false); setEditTask(null) }}
+                  className="btn btn-ghost" style={{ fontSize: '0.82rem' }}>إلغاء</button>
+                <button onClick={saveTask} disabled={!taskForm.title.trim()}
+                  className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
+                  {editTask ? 'حفظ التعديل' : 'إضافة المهمة'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* قائمة المهام المفتوحة */}
+          {loadingTasks ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '30px' }}>
+              <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', background: '#f9fafb', borderRadius: '12px', border: '1px solid var(--border)' }}>
+              لا توجد مهام لهذا المشروع
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* المهام المفتوحة */}
+              {openTasks.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#c81e1e', padding: '4px 0' }}>مهام مفتوحة ({openTasks.length})</div>
+                  {openTasks.map(t => {
+                    const isOverdue = t.due_date && new Date(t.due_date) < new Date()
+                    const PRIORITY_COLOR: Record<string, string> = { 'عالية': '#c81e1e', 'متوسط': '#e6820a', 'منخفضة': '#6b7280' }
+                    return (
+                      <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '10px', background: 'white', border: `1px solid ${isOverdue ? '#fca5a5' : '#e5e7eb'}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{t.title}</div>
+                          <div style={{ display: 'flex', gap: '10px', marginTop: '4px', flexWrap: 'wrap' }}>
+                            {t.assignee && <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>👤 {t.assignee}</span>}
+                            {t.due_date && <span style={{ fontSize: '0.72rem', color: isOverdue ? '#c81e1e' : '#9ca3af' }}>📅 {t.due_date}</span>}
+                            <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: '10px', background: '#fef2f2', color: PRIORITY_COLOR[t.priority] || '#6b7280', fontWeight: 600 }}>{t.priority}</span>
+                          </div>
+                        </div>
+                        <button onClick={() => closeTask(t.id)}
+                          style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid #86efac', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          ✓ إغلاق
+                        </button>
+                        <button onClick={() => { setEditTask(t); setTaskForm({ title: t.title, assignee: t.assignee || '', priority: t.priority || 'متوسط', due_date: t.due_date || '', notes: t.notes || '' }); setShowTaskForm(true) }}
+                          style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', fontSize: '0.75rem' }}>✏️</button>
+                        <button onClick={() => deleteTask(t.id)}
+                          style={{ padding: '5px 8px', borderRadius: '7px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', fontSize: '0.75rem' }}>🗑️</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* المهام المغلقة */}
+              {closedTasks.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0ea77b', padding: '4px 0' }}>مهام مغلقة ({closedTasks.length})</div>
+                  {closedTasks.map(t => (
+                    <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', borderRadius: '10px', background: '#f9fafb', border: '1px solid #e5e7eb', opacity: 0.7 }}>
+                      <span style={{ color: '#0ea77b', fontSize: '1rem' }}>✅</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.82rem', textDecoration: 'line-through', color: '#9ca3af' }}>{t.title}</div>
+                        {t.assignee && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>👤 {t.assignee}</div>}
+                      </div>
+                      <button onClick={() => deleteTask(t.id)}
+                        style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', fontSize: '0.72rem' }}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'history' && (
         <div className="card" style={{ padding: '16px' }}>
           {(!project.history || project.history.length === 0) ? (
