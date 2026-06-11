@@ -683,7 +683,34 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
     for (const row of validRows) {
       const mat = materials.find(m => String(m.id) === String(row.mat_id))
-      if (!mat) continue
+      if (!mat) {
+        // محاولة بديلة: البحث مباشرة من قاعدة البيانات
+        const { data: matData } = await supabase.from('materials')
+          .select('*').eq('id', Number(row.mat_id)).single()
+        if (!matData) { toast.error('لم يتم العثور على المادة'); setSaving(false); return }
+        // استخدام matData مباشرة
+        const qty2 = Number(row.qty)
+        let newQty2 = matData.qty
+        if (type === 'استلام')                                   newQty2 = matData.qty + qty2
+        if (type === 'صرف' || type === 'تحويل')                 newQty2 = matData.qty - qty2
+        if (type === 'إرجاع' && isProjectWh)                    newQty2 = matData.qty - qty2
+        if (type === 'إرجاع' && !isProjectWh)                   newQty2 = matData.qty + qty2
+        await supabase.from('materials').update({ qty: newQty2 }).eq('id', matData.id)
+        await supabase.from('stock_ledger').insert({
+          tenant_id: tenantId, branch_id: branchId,
+          type: type === 'تحويل' ? 'نقل مخزني' : (type === 'إرجاع' && isProjectWh) ? 'إرجاع للعميل' : type,
+          mat_name: matData.name, unit: matData.unit, qty: qty2,
+          qty_before: matData.qty, qty_after: newQty2,
+          wh_name: wh?.name || '',
+          project_id: form.project_id ? Number(form.project_id) : null,
+          project_name: form.project_name || null,
+          vendor_name: form.vendor_name || null,
+          doc_code: form.doc_code || null,
+          dispatch_note: row.note || null,
+          attachment_url: attachmentUrl,
+        })
+        continue
+      }
       const qty = Number(row.qty)
 
       // تحقق من رصيد المستودع — يمنع الصرف بالسالب في جميع الأحوال
