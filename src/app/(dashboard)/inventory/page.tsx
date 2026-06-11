@@ -1198,13 +1198,16 @@ export default function InventoryPage() {
   const ledgerTotalPages = Math.ceil(ledgerTotal / PAGE_SIZE)
 
   const TYPE_COLOR: Record<string, string> = {
-    'توريد':     'badge-green',
-    'استلام':    'badge-green',
-    'صرف':       'badge-red',
-    'نقل مخزني': 'badge-blue',
-    'إرجاع':     'badge-amber',
-    'تسوية جرد': 'badge-purple',
+    'توريد':          'badge-green',
+    'استلام':         'badge-green',
+    'صرف':            'badge-red',
+    'نقل مخزني':      'badge-blue',
+    'إرجاع':          'badge-amber',
+    'إرجاع للعميل':   'badge-amber',
+    'تسوية جرد':      'badge-purple',
   }
+  // أنواع تُعدّ خصماً (سالب)
+  const DEBIT_TYPES = ['صرف', 'نقل مخزني', 'إرجاع للعميل']
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minHeight: '100vh' }}>
@@ -1423,7 +1426,7 @@ export default function InventoryPage() {
                 <label style={{ display: 'block', fontSize: '0.72rem', color: '#9ca3af', marginBottom: '3px' }}>نوع الحركة</label>
                 <select value={ledgerType} onChange={e => setLedgerType(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
                   <option value="">الكل</option>
-                  {['توريد', 'استلام', 'صرف', 'إرجاع', 'نقل مخزني', 'تسوية جرد'].map(t => <option key={t}>{t}</option>)}
+                  {['توريد', 'استلام', 'صرف', 'إرجاع', 'إرجاع للعميل', 'نقل مخزني', 'تسوية جرد'].map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div style={{ paddingTop: '18px' }}>
@@ -1463,8 +1466,8 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.mat_name}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>{l.wh_name || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#1a56db' }}>{l.project_name || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: ['صرف', 'نقل مخزني'].includes(l.type) ? '#c81e1e' : '#0ea77b' }}>
-                          {['صرف', 'نقل مخزني'].includes(l.type) ? '-' : '+'}{l.qty} {l.unit}
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: DEBIT_TYPES.includes(l.type) ? '#c81e1e' : '#0ea77b' }}>
+                          {DEBIT_TYPES.includes(l.type) ? '-' : '+'}{l.qty} {l.unit}
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af', direction: 'ltr' }}>{l.qty_before}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', fontWeight: 600, direction: 'ltr' }}>{l.qty_after}</td>
