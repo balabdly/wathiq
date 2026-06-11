@@ -388,25 +388,66 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
             </>
           )}
           {tab === 'import' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button onClick={downloadTemplate}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, width: 'fit-content' }}>
-                <Download style={{ width: '15px', height: '15px' }} />
-                تحميل Template الاستيراد (CSV)
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              {/* خطوة 1 — تحميل النموذج */}
+              <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '14px', border: '1px solid #86efac' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0ea77b', marginBottom: '10px' }}>
+                  الخطوة 1 — حمّل النموذج الجاهز
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={downloadTemplate}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '8px', border: '1px solid #86efac', background: 'white', color: '#0ea77b', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                    <Download style={{ width: '14px', height: '14px' }} />
+                    تحميل نموذج CSV
+                  </button>
+                  <button onClick={() => {
+                    // إنشاء Excel بنفس الأعمدة
+                    import('xlsx').then(XLSX => {
+                      const headers = [['رقم الكتالوج', 'SEC Number', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات']]
+                      const example = [['CAT-001', 'SEC-123', 'كيبل نحاس 16مم', 'متر', '100', '20', 'خاص', 'رف A1', '']]
+                      const ws = XLSX.utils.aoa_to_sheet([...headers, ...example])
+                      const wb = XLSX.utils.book_new()
+                      XLSX.utils.book_append_sheet(wb, ws, 'المواد')
+                      XLSX.writeFile(wb, 'template-materials.xlsx')
+                    })
+                  }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '8px', border: '1px solid #86efac', background: 'white', color: '#0ea77b', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                    <FileSpreadsheet style={{ width: '14px', height: '14px' }} />
+                    تحميل نموذج Excel
+                  </button>
+                </div>
+              </div>
+
+              {/* أعمدة الملف */}
               <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '12px', border: '1px solid #fde68a', fontSize: '0.8rem', color: '#92400e' }}>
                 <div style={{ fontWeight: 700, marginBottom: '6px' }}>📋 أعمدة الملف المطلوبة:</div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {['رقم الكتالوج', 'SEC Number', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات'].map(col => (
-                    <span key={col} style={{ padding: '2px 8px', background: 'white', borderRadius: '4px', border: '1px solid #fde68a', fontSize: '0.75rem' }}>{col}</span>
+                  {['رقم الكتالوج', 'SEC Number', 'اسم المادة *', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات'].map(col => (
+                    <span key={col} style={{ padding: '2px 8px', background: 'white', borderRadius: '4px', border: `1px solid ${col.includes('*') ? '#fca5a5' : '#fde68a'}`, fontSize: '0.75rem', color: col.includes('*') ? '#c81e1e' : '#92400e', fontWeight: col.includes('*') ? 700 : 400 }}>{col}</span>
                   ))}
                 </div>
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '20px', borderRadius: '10px', border: '2px dashed #d1d5db', cursor: 'pointer', background: '#fafafa', justifyContent: 'center', fontSize: '0.875rem', color: '#6b7280' }}>
-                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} style={{ display: 'none' }} />
-                <FileSpreadsheet style={{ width: '24px', height: '24px', color: '#0ea77b' }} />
-                {importing ? 'جاري الاستيراد...' : 'اختر ملف Excel أو CSV'}
-              </label>
+
+              {/* خطوة 2 — رفع الملف */}
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1a56db', marginBottom: '8px' }}>
+                  الخطوة 2 — ارفع الملف بعد التعبئة
+                </div>
+                <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '24px', borderRadius: '12px', border: `2px dashed ${importing ? '#1a56db' : '#d1d5db'}`, cursor: 'pointer', background: importing ? '#eff6ff' : '#fafafa', transition: 'all 0.2s' }}>
+                  <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImport} style={{ display: 'none' }} />
+                  <FileSpreadsheet style={{ width: '32px', height: '32px', color: importing ? '#1a56db' : '#9ca3af' }} />
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: importing ? '#1a56db' : '#374151' }}>
+                      {importing ? '⏳ جاري الاستيراد...' : 'اسحب الملف هنا أو اضغط للاختيار'}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>
+                      يدعم: Excel (.xlsx, .xls) و CSV
+                    </div>
+                  </div>
+                </label>
+              </div>
+
             </div>
           )}
         </div>
@@ -436,6 +477,81 @@ async function uploadAttachment(file: File, tenantId: string): Promise<string | 
   if (error) { toast.error('فشل رفع الملف: ' + error.message); return null }
   const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(fileName)
   return urlData?.publicUrl || null
+}
+
+// ════════════════════════════════════
+// دالة طباعة وصل العملية
+// ════════════════════════════════════
+function printOperationReceipt({ type, warehouseName, projectName, date, rows, vendorName, docCode, attachmentUrl }: {
+  type: string; warehouseName: string; projectName: string; date: string
+  rows: { name: string; unit: string; qty: number; note: string }[]
+  vendorName: string; docCode: string; attachmentUrl: string
+}) {
+  const win = window.open('', '_blank', 'width=700,height=600')
+  if (!win) return
+  const isReceipt = type === 'استلام'
+  const color = isReceipt ? '#0ea77b' : '#c81e1e'
+  const title = isReceipt ? 'وصل استلام مواد' : 'أذن صرف مواد'
+  const rowsHtml = rows.map((r, i) => `
+    <tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#f8fafc'}">
+      <td style="padding:8px 10px">${r.name}</td>
+      <td style="padding:8px 10px;text-align:center">${r.qty}</td>
+      <td style="padding:8px 10px;text-align:center;color:#6b7280">${r.unit}</td>
+      <td style="padding:8px 10px;color:#6b7280">${r.note || '—'}</td>
+    </tr>`).join('')
+
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>${title}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;padding:24px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid ${color}}
+  .badge{background:${color};color:white;padding:10px 18px;border-radius:10px;text-align:center}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  thead tr{background:${color};color:white}
+  th{padding:9px 10px;text-align:right;font-size:13px}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px}
+  .info-item{background:#f8fafc;padding:8px 12px;border-radius:8px}
+  .info-label{color:#9ca3af;font-size:11px;margin-bottom:2px}
+  .info-value{font-weight:600}
+  .footer{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px}
+  .sign-box{border-top:1px solid #e5e7eb;padding-top:8px;text-align:center;color:#6b7280}
+  @media print{.noprint{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body>
+<div class="header">
+  <div>
+    <div style="font-size:22px;font-weight:800;color:${color}">${title}</div>
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px">${new Date().toLocaleString('ar-SA')}</div>
+  </div>
+  <div class="badge">
+    <div style="font-size:11px;opacity:0.85">${type}</div>
+    <div style="font-size:15px;font-weight:800">${date}</div>
+  </div>
+</div>
+
+<div class="info-grid">
+  <div class="info-item"><div class="info-label">المستودع</div><div class="info-value">${warehouseName}</div></div>
+  ${projectName ? `<div class="info-item"><div class="info-label">المشروع</div><div class="info-value">${projectName}</div></div>` : ''}
+  ${vendorName ? `<div class="info-item"><div class="info-label">المورد / الجهة</div><div class="info-value">${vendorName}</div></div>` : ''}
+  ${docCode ? `<div class="info-item"><div class="info-label">رقم الوثيقة</div><div class="info-value" style="direction:ltr">${docCode}</div></div>` : ''}
+</div>
+
+<table>
+  <thead><tr><th>اسم المادة</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th>ملاحظة</th></tr></thead>
+  <tbody>${rowsHtml}</tbody>
+</table>
+
+<div class="footer">
+  <div class="sign-box">توقيع المستلم</div>
+  <div class="sign-box">توقيع المسلّم</div>
+</div>
+
+<div class="noprint" style="text-align:center;padding:16px;margin-top:16px;border-top:1px solid #e5e7eb">
+  <button onclick="window.print()" style="padding:10px 28px;background:${color};color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة</button>
+  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
+</div>
+</body></html>`)
+  win.document.close()
 }
 
 // ════════════════════════════════════
@@ -642,7 +758,28 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     }
 
     toast.success(`✅ تمت عملية ${type} بنجاح`)
-    onSave(); setSaving(false)
+    setSaving(false)
+
+    // طباعة وصل العملية
+    if (type === 'استلام' || type === 'صرف') {
+      const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
+      const proj = projects.find((p: any) => p.id === Number(form.project_id))
+      printOperationReceipt({
+        type,
+        warehouseName: wh?.name || '',
+        projectName:   proj?.name || form.project_name || '',
+        date:          form.date,
+        rows:          validRows.map(r => {
+          const mat = materials.find(m => m.id === Number(r.mat_id))
+          return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
+        }),
+        vendorName:    form.vendor_name || '',
+        docCode:       form.doc_code || '',
+        attachmentUrl: attachmentUrl || '',
+      })
+    }
+
+    onSave()
   }
 
   const COLORS: Record<string, { color: string; bg: string }> = {
