@@ -1083,7 +1083,7 @@ export default function InventoryPage() {
         id: pm.material?.id, name: pm.material?.name || '—', unit: pm.material?.unit || '—',
         catalog_no: pm.material?.catalog_no, sec_number: pm.material?.sec_number,
         qty: pm.qty_balance, qty_received: pm.qty_received, qty_issued: pm.qty_issued,
-        reorder: 0, warehouse: { name: pm.warehouse?.name || '—' }, project_name: proj?.name || '',
+        reorder: 0, warehouse_id: pm.warehouse_id, warehouse: { name: pm.warehouse?.name || '—' }, project_name: proj?.name || '',
       }))
       const filtered = matSearch ? mapped.filter((m: any) => (m.name || '').includes(matSearch)) : mapped
       setMaterials(filtered); setMatTotal(filtered.length); setMatPage(1)
