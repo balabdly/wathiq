@@ -325,7 +325,6 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'history'>('info')
   const [tasks,        setTasks]        = useState<any[]>([])
   const [engineers,    setEngineers]    = useState<{ id: number; name: string; job_title?: string }[]>([])
-  const [engLoaded,    setEngLoaded]    = useState(false)
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [editTask,     setEditTask]     = useState<any | null>(null)
@@ -410,7 +409,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
   useEffect(() => {
     if (!tenant) return
-    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف', 'مشرف مشروع', 'مهندس ميداني']
+    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف']
     supabase.from('hr_employees')
       .select('id, name, job_title')
       .eq('tenant_id', tenant.id)
@@ -419,19 +418,24 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       .then(({ data }) => {
         const all = data || []
         const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
-        // إذا لم يوجد موظفون هندسيون — أظهر الكل
         setEngineers(eng.length > 0 ? eng : all)
-        setEngLoaded(true)
       })
-  }, [tenant?.id, project.id])
+  }, [tenant?.id])
 
   async function loadTasks() {
     if (!tenant || loadingTasks) return
     setLoadingTasks(true)
-    const { data } = await supabase.from('project_tasks')
-      .select('*').eq('tenant_id', tenant.id).eq('project_id', project.id)
-      .order('created_at', { ascending: false })
-    setTasks(data || [])
+
+    // جلب الموظفين مع المهام في نفس الوقت
+    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف', 'مشرف مشروع', 'مهندس ميداني', 'مهندس كهرباء']
+    const [tasksRes, empRes] = await Promise.all([
+      supabase.from('project_tasks').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('created_at', { ascending: false }),
+      supabase.from('hr_employees').select('id, name, job_title').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+    ])
+    setTasks(tasksRes.data || [])
+    const all = empRes.data || []
+    const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
+    setEngineers(eng.length > 0 ? eng : all)
     setLoadingTasks(false)
   }
 
@@ -743,9 +747,9 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
-                  {!engLoaded ? (
+                  {engineers.length === 0 ? (
                     <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
-                      className="input" placeholder="جاري التحميل..." disabled />
+                      className="input" placeholder="اسم المسؤول" />
                   ) : (
                     <select value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))} className="select">
                       <option value="">— اختر المسؤول —</option>
