@@ -568,12 +568,8 @@ export default function ProjectsPage() {
       }
 
       if (blockers.length > 0) {
-        toast.error(
-          '⛔ لا يمكن إغلاق المشروع:
-' + blockers.map(b => `• ${b}`).join('
-'),
-          { duration: 8000, style: { whiteSpace: 'pre-line' } }
-        )
+        const msg = ['⛔ لا يمكن إغلاق المشروع:'].concat(blockers.map((b: string) => '• ' + b)).join(String.fromCharCode(10))
+        toast.error(msg, { duration: 8000, style: { whiteSpace: 'pre-line' } })
         return
       }
     }
