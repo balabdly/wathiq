@@ -685,9 +685,16 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
 
+    // جلب بيانات المواد مباشرة من DB لضمان الدقة
+    const matIds = validRows.map(r => Number(r.mat_id)).filter(Boolean)
+    const { data: freshMats } = await supabase.from('materials')
+      .select('*').in('id', matIds).eq('tenant_id', tenantId)
+    const matsMap: Record<number, any> = {}
+    ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
+
     for (const row of validRows) {
-      const mat = materials.find(m => String(m.id) === String(row.mat_id))
-      if (!mat) continue
+      const mat = matsMap[Number(row.mat_id)] || materials.find(m => String(m.id) === String(row.mat_id))
+      if (!mat) { toast.error('لم يتم العثور على المادة رقم ' + row.mat_id); setSaving(false); return }
       const qty = Number(row.qty)
 
       // تحقق من رصيد المستودع — يمنع الصرف بالسالب في جميع الأحوال
