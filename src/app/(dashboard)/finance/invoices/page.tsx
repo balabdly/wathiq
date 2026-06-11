@@ -1163,8 +1163,9 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
 
   useEffect(() => {
     supabase.from('finance_cash_accounts')
-      .select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
-      .then(({ data }) => setCashAccounts(data || []))
+      .select('*, fa:finance_accounts(code)')
+      .eq('tenant_id', tenantId).eq('is_active', true).order('name')
+      .then(({ data }) => setCashAccounts((data || []).map((a: any) => ({ ...a, account_code: a.fa?.code }))))
   }, [])
 
   const bankAccounts    = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
@@ -1172,7 +1173,8 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
   const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
 
   function getDebitAccountCode(): string {
-    if (selectedAccount?.account_id) return String(selectedAccount.account_id)
+    // account_code = كود الحساب الحقيقي من finance_accounts
+    if (selectedAccount?.account_code) return selectedAccount.account_code
     if (form.payment_method === 'نقداً') return '1111'
     return '1120'
   }
