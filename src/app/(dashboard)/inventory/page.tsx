@@ -720,17 +720,28 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         }
       }
 
-      // نجلب الكمية الحالية من freshMats (من DB مباشرة) لضمان الدقة
-      const currentQty = Number(matsMap[mat.id]?.qty ?? mat.qty)
-      let newQty = currentQty
-      if (type === 'استلام')                                    newQty = currentQty + qty
-      if (type === 'صرف' || type === 'تحويل')                  newQty = currentQty - qty
-      if (type === 'إرجاع' && isProjectWh)                     newQty = currentQty - qty
-      if (type === 'إرجاع' && !isProjectWh)                    newQty = currentQty + qty
+      // في مستودع مشاريع: الرصيد الحقيقي من project_materials
+      // في مستودع عادي: الرصيد من materials.qty
+      const matCurrentQty = Number(matsMap[mat.id]?.qty ?? mat.qty)
+      const projBalance   = (isProjectWh && form.project_id) ? (projectBalances[mat.id] ?? 0) : matCurrentQty
 
-      // تحقق نهائي قبل الحفظ
-      if ((type === 'صرف' || type === 'تحويل' || (type === 'إرجاع' && isProjectWh)) && newQty < 0) {
-        toast.error(`⛔ الكمية غير كافية — "${mat.name}" المتاح: ${currentQty} ${mat.unit}`)
+      // الكمية الجديدة في materials
+      let newQty = matCurrentQty
+      if (type === 'استلام')             newQty = matCurrentQty + qty
+      if (type === 'صرف' || type === 'تحويل') newQty = matCurrentQty - qty
+      if (type === 'إرجاع' && isProjectWh)    newQty = matCurrentQty - qty
+      if (type === 'إرجاع' && !isProjectWh)   newQty = matCurrentQty + qty
+
+      // تحقق: في مستودع مشاريع نتحقق من رصيد المشروع
+      if (type === 'صرف' || type === 'تحويل') {
+        const avail = isProjectWh && form.project_id ? projBalance : matCurrentQty
+        if (qty > avail) {
+          toast.error(`⛔ الكمية غير كافية — "${mat.name}" المتاح: ${avail} ${mat.unit}`)
+          setSaving(false); return
+        }
+      }
+      if (type === 'إرجاع' && isProjectWh && qty > projBalance) {
+        toast.error(`⛔ لا يمكن الإرجاع — "${mat.name}" المتاح: ${projBalance} ${mat.unit}`)
         setSaving(false); return
       }
 
@@ -745,7 +756,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         mat_name:       mat.name,
         unit:           mat.unit,
         qty,
-        qty_before:     currentQty,
+        qty_before:     matCurrentQty,
         qty_after:      newQty,
         wh_name:        wh?.name || '',
         project_id:     form.project_id ? Number(form.project_id) : null,
