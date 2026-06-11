@@ -637,6 +637,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   }
 
   async function handleSave() {
+    console.log('🔴 handleSave START', { type, directQtys, rows, form })
     // في وضع الصرف المباشر (مستودع مشاريع + مشروع محدد) — حوّل directQtys إلى rows
     let effectiveRows = rows
     if (type === 'صرف' && isProjectWh && form.project_id && Object.keys(directQtys).length > 0) {
@@ -645,6 +646,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         .map(([matId, qty]) => ({ mat_id: matId, qty, note: '' }))
     }
     const validRows = effectiveRows.filter(r => r.mat_id && Number(r.qty) > 0)
+    console.log('🔴 effectiveRows:', effectiveRows, '| validRows:', validRows)
     if (validRows.length === 0) { toast.error('أضف مادة واحدة على الأقل بكمية صحيحة'); return }
 
     // التحقق من المشروع
@@ -691,9 +693,11 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       .select('*').in('id', matIds).eq('tenant_id', tenantId)
     const matsMap: Record<number, any> = {}
     ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
+    console.log('🔴 freshMats:', freshMats, '| matsMap keys:', Object.keys(matsMap))
 
     for (const row of validRows) {
       const mat = matsMap[Number(row.mat_id)] || materials.find(m => String(m.id) === String(row.mat_id))
+      console.log('🔴 row:', row, '| mat found:', mat?.name, '| matsMap key:', Number(row.mat_id))
       if (!mat) { toast.error('لم يتم العثور على المادة رقم ' + row.mat_id); setSaving(false); return }
       const qty = Number(row.qty)
 
