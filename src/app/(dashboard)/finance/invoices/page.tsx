@@ -61,7 +61,7 @@ type Company = {
 type Project     = { id: number; name: string }
 type CashAccount = {
   id: number; name: string; account_type: string
-  bank_name?: string; account_no?: string; iban?: string; account_id?: string
+  bank_name?: string; account_no?: string; iban?: string; account_id?: string; account_code?: string
 }
 
 const INV_STATUS_COLOR: Record<string, string> = {
