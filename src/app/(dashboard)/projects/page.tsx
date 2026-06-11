@@ -442,6 +442,7 @@ export default function ProjectsPage() {
     // تطبيق النسبة التلقائية حسب الحالة
     const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress }
+    delete (payload as any).value
 
     if ((payload as any).id) {
       const { id, ...rest } = payload as any
