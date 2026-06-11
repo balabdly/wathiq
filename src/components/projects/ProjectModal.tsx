@@ -106,7 +106,6 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
       engineer:        form.engineer        || undefined,
       estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : undefined,
       actual_value:    form.actual_value    ? parseFloat(form.actual_value)    : undefined,
-      value:           form.estimated_value ? parseFloat(form.estimated_value) : undefined,
       progress:        form.progress,
       start_date:      form.start_date      || undefined,
       end_date:        form.end_date        || undefined,
