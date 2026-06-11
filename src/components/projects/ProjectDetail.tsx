@@ -324,6 +324,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const { currentUser, tenant } = useStore()
   const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'history'>('info')
   const [tasks,        setTasks]        = useState<any[]>([])
+  const [engineers,    setEngineers]    = useState<{ id: number; name: string; job_title?: string }[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [editTask,     setEditTask]     = useState<any | null>(null)
@@ -405,6 +406,21 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     setInventoryData(Object.values(matMap))
     setLoadingInv(false)
   }
+
+  useEffect(() => {
+    if (!tenant) return
+    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف']
+    supabase.from('hr_employees')
+      .select('id, name, job_title')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => {
+        const all = data || []
+        const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
+        setEngineers(eng.length > 0 ? eng : all)
+      })
+  }, [tenant?.id])
 
   async function loadTasks() {
     if (!tenant || loadingTasks) return
@@ -724,8 +740,17 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
-                  <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
-                    className="input" placeholder="اسم المسؤول" />
+                  {engineers.length === 0 ? (
+                    <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
+                      className="input" placeholder="اسم المسؤول" />
+                  ) : (
+                    <select value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))} className="select">
+                      <option value="">— اختر المسؤول —</option>
+                      {engineers.map(m => (
+                        <option key={m.id} value={m.name}>{m.name}{m.job_title ? ` — ${m.job_title}` : ''}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الأولوية</label>
