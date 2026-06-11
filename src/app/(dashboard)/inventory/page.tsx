@@ -615,14 +615,28 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
   async function loadProjectBalances() {
     if (!form.project_id) return
-    const { data } = await supabase
-      .from('project_materials')
-      .select('material_id, qty_balance')
-      .eq('tenant_id', tenantId)
-      .eq('project_id', Number(form.project_id))
-      .eq('warehouse_id', Number(form.warehouse_id))
+    // جلب رصيد المشروع + الكمية الفعلية في المستودع
+    const [pmRes, matRes] = await Promise.all([
+      supabase.from('project_materials')
+        .select('material_id, qty_balance')
+        .eq('tenant_id', tenantId)
+        .eq('project_id', Number(form.project_id))
+        .eq('warehouse_id', Number(form.warehouse_id)),
+      supabase.from('materials')
+        .select('id, qty')
+        .eq('tenant_id', tenantId)
+        .eq('warehouse_id', Number(form.warehouse_id))
+    ])
+    // الرصيد الحقيقي = أقل قيمة بين رصيد المشروع والكمية الفعلية في المستودع
+    const matQtyMap: Record<number, number> = {}
+    ;(matRes.data || []).forEach((m: any) => { matQtyMap[m.id] = Number(m.qty) })
     const map: Record<number, number> = {}
-    ;(data || []).forEach((pm: any) => { map[pm.material_id] = pm.qty_balance })
+    ;(pmRes.data || []).forEach((pm: any) => {
+      const projBal = Number(pm.qty_balance)
+      const matQty  = matQtyMap[pm.material_id] ?? projBal
+      // الرصيد المتاح = لا يمكن أن يتجاوز الكمية الموجودة فعلاً في المستودع
+      map[pm.material_id] = Math.min(projBal, matQty)
+    })
     setProjectBalances(map)
   }
 
