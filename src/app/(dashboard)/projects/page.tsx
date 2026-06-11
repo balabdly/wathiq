@@ -438,7 +438,7 @@ export default function ProjectsPage() {
       supabase.from('project_tasks').select('project_id')
         .eq('tenant_id', tenant.id)
         .in('project_id', projectIds)
-        .not('status', 'in', '("مغلقة","مكتملة")'),
+        .neq('status', 'مغلقة').neq('status', 'مكتملة'),
       supabase.from('visits').select('project_id')
         .eq('tenant_id', tenant.id)
         .in('project_id', projectIds)
@@ -551,7 +551,7 @@ export default function ProjectsPage() {
       const { data: openTasks } = await supabase
         .from('project_tasks').select('id', { count: 'exact' })
         .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-        .not('status', 'in', '("مغلقة","مكتملة")')
+        .neq('status', 'مغلقة').neq('status', 'مكتملة')
       const openTasksCount = openTasks?.length || 0
       if (openTasksCount > 0) {
         blockers.push(`${openTasksCount} مهمة مفتوحة لم تُغلق`)
