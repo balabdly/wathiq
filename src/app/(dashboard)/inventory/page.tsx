@@ -555,6 +555,23 @@ function printOperationReceipt({ type, warehouseName, projectName, date, rows, v
 }
 
 // ════════════════════════════════════
+// دالة طباعة وصل العملية
+// ════════════════════════════════════
+function printOperationReceipt({ type, warehouseName, projectName, date, rows, vendorName, docCode }: {
+  type: string; warehouseName: string; projectName: string; date: string
+  rows: { name: string; unit: string; qty: number; note: string }[]
+  vendorName: string; docCode: string
+}) {
+  const win = window.open('', '_blank', 'width=700,height=600')
+  if (!win) return
+  const color = type === 'استلام' ? '#0ea77b' : '#c81e1e'
+  const title = type === 'استلام' ? 'وصل استلام مواد' : 'أذن صرف مواد'
+  const rowsHtml = rows.map((r, i) => `<tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#f8fafc'}"><td style="padding:8px 10px">${r.name}</td><td style="padding:8px 10px;text-align:center">${r.qty}</td><td style="padding:8px 10px;text-align:center;color:#6b7280">${r.unit}</td><td style="padding:8px 10px;color:#6b7280">${r.note||'—'}</td></tr>`).join('')
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${title}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',sans-serif;color:#1a1a2e;direction:rtl;padding:24px}.header{display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid ${color}}.badge{background:${color};color:white;padding:10px 18px;border-radius:10px;text-align:center}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:${color};color:white}th{padding:9px 10px;text-align:right;font-size:13px}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px}.info-item{background:#f8fafc;padding:8px 12px;border-radius:8px}.footer{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px}.sign-box{border-top:1px solid #e5e7eb;padding-top:8px;text-align:center;color:#6b7280}@media print{.noprint{display:none}body{print-color-adjust:exact}}</style></head><body><div class="header"><div><div style="font-size:22px;font-weight:800;color:${color}">${title}</div><div style="font-size:12px;color:#9ca3af;margin-top:4px">${new Date().toLocaleString('ar-SA')}</div></div><div class="badge"><div style="font-size:11px">${type}</div><div style="font-size:15px;font-weight:800">${date}</div></div></div><div class="info-grid">${warehouseName?`<div class="info-item"><div style="color:#9ca3af;font-size:11px">المستودع</div><div style="font-weight:600">${warehouseName}</div></div>`:''} ${projectName?`<div class="info-item"><div style="color:#9ca3af;font-size:11px">المشروع</div><div style="font-weight:600">${projectName}</div></div>`:''} ${vendorName?`<div class="info-item"><div style="color:#9ca3af;font-size:11px">المورد</div><div style="font-weight:600">${vendorName}</div></div>`:''} ${docCode?`<div class="info-item"><div style="color:#9ca3af;font-size:11px">رقم الوثيقة</div><div style="font-weight:600;direction:ltr">${docCode}</div></div>`:''}</div><table><thead><tr><th>اسم المادة</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th>ملاحظة</th></tr></thead><tbody>${rowsHtml}</tbody></table><div class="footer"><div class="sign-box">توقيع المستلم</div><div class="sign-box">توقيع المسلّم</div></div><div class="noprint" style="text-align:center;padding:16px;margin-top:16px;border-top:1px solid #e5e7eb"><button onclick="window.print()" style="padding:10px 28px;background:${color};color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">طباعة</button><button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button></div></body></html>`)
+  win.document.close()
+}
+
+// ════════════════════════════════════
 // مودال: عملية (استلام/صرف/إرجاع/تحويل)
 // ════════════════════════════════════
 function OperationModal({ type, tenantId, branchId, warehouses, projects, onClose, onSave }: {
@@ -657,7 +674,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     // ══ التحقق من رصيد المشروع عند الصرف من مستودع مشاريع ══
     if ((type === 'صرف' || type === 'إرجاع') && isProjectWh && form.project_id) {
       for (const row of validRows) {
-        const mat     = materials.find(m => m.id === Number(row.mat_id))
+        const mat     = materials.find(m => String(m.id) === String(row.mat_id))
         if (!mat) continue
         const balance = projectBalances[mat.id] ?? 0
         const qty     = Number(row.qty)
@@ -683,34 +700,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
     for (const row of validRows) {
       const mat = materials.find(m => String(m.id) === String(row.mat_id))
-      if (!mat) {
-        // محاولة بديلة: البحث مباشرة من قاعدة البيانات
-        const { data: matData } = await supabase.from('materials')
-          .select('*').eq('id', Number(row.mat_id)).single()
-        if (!matData) { toast.error('لم يتم العثور على المادة'); setSaving(false); return }
-        // استخدام matData مباشرة
-        const qty2 = Number(row.qty)
-        let newQty2 = matData.qty
-        if (type === 'استلام')                                   newQty2 = matData.qty + qty2
-        if (type === 'صرف' || type === 'تحويل')                 newQty2 = matData.qty - qty2
-        if (type === 'إرجاع' && isProjectWh)                    newQty2 = matData.qty - qty2
-        if (type === 'إرجاع' && !isProjectWh)                   newQty2 = matData.qty + qty2
-        await supabase.from('materials').update({ qty: newQty2 }).eq('id', matData.id)
-        await supabase.from('stock_ledger').insert({
-          tenant_id: tenantId, branch_id: branchId,
-          type: type === 'تحويل' ? 'نقل مخزني' : (type === 'إرجاع' && isProjectWh) ? 'إرجاع للعميل' : type,
-          mat_name: matData.name, unit: matData.unit, qty: qty2,
-          qty_before: matData.qty, qty_after: newQty2,
-          wh_name: wh?.name || '',
-          project_id: form.project_id ? Number(form.project_id) : null,
-          project_name: form.project_name || null,
-          vendor_name: form.vendor_name || null,
-          doc_code: form.doc_code || null,
-          dispatch_note: row.note || null,
-          attachment_url: attachmentUrl,
-        })
-        continue
-      }
+      if (!mat) continue
       const qty = Number(row.qty)
 
       // تحقق من رصيد المستودع — يمنع الصرف بالسالب في جميع الأحوال
@@ -963,7 +953,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
             <label style={{ ...lbl, marginBottom: '8px' }}>المواد</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {rows.map((row, i) => {
-                const mat        = materials.find(m => m.id === Number(row.mat_id))
+                const mat        = materials.find(m => String(m.id) === String(row.mat_id))
                 const projBal    = mat ? (projectBalances[mat.id] ?? null) : null
                 const showProjBal = type === 'صرف' && isProjectWh && form.project_id && mat
                 return (
@@ -1100,7 +1090,6 @@ export default function InventoryPage() {
     if (!tenant || matViewMode === 'none') return
     setMatLoading(true)
     const from = (page - 1) * PAGE_SIZE
-
     if (matViewMode === 'project' && matProjectId) {
       const { data } = await supabase.from('project_materials')
         .select('*, material:materials(id, name, unit, catalog_no, sec_number), warehouse:warehouses(name)')
@@ -1110,13 +1099,13 @@ export default function InventoryPage() {
         id: pm.material?.id, name: pm.material?.name || '—', unit: pm.material?.unit || '—',
         catalog_no: pm.material?.catalog_no, sec_number: pm.material?.sec_number,
         qty: pm.qty_balance, qty_received: pm.qty_received, qty_issued: pm.qty_issued,
-        reorder: 0, warehouse_id: pm.warehouse_id, warehouse: { name: pm.warehouse?.name || '—' }, project_name: proj?.name || '',
+        reorder: 0, warehouse_id: pm.warehouse_id,
+        warehouse: { name: pm.warehouse?.name || '—' }, project_name: proj?.name || '',
       }))
       const filtered = matSearch ? mapped.filter((m: any) => (m.name || '').includes(matSearch)) : mapped
-      setMaterials(filtered); setMatTotal(filtered.length); setMatPage(1)
+      setMaterials(filtered as any); setMatTotal(filtered.length); setMatPage(1)
       setMatLoading(false); return
     }
-
     let q = supabase.from('materials')
       .select('*, warehouse:warehouses(name)', { count: 'exact' })
       .eq('tenant_id', tenant.id)
@@ -1269,7 +1258,7 @@ export default function InventoryPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 {([{ id: 'all', label: '📦 كل المواد', color: '#1a56db' }, { id: 'warehouse', label: '🏪 مستودع محدد', color: '#0ea77b' }, { id: 'project', label: '🏗️ مشروع محدد', color: '#7c3aed' }] as const).map(opt => (
                   <button key={opt.id} onClick={() => { setMatViewMode(opt.id); setMaterials([]); setMatTotal(0) }}
-                    style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, textAlign: 'center',
+                    style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
                       borderColor: matViewMode === opt.id ? opt.color : '#e5e7eb',
                       background: matViewMode === opt.id ? '#f0f9ff' : 'white',
                       color: matViewMode === opt.id ? opt.color : '#9ca3af' }}>
@@ -1325,7 +1314,7 @@ export default function InventoryPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg2)', position: 'sticky', top: 0 }}>
-                      {(matViewMode === 'project' ? ['رقم الكتالوج', 'اسم المادة', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد'] : ['رقم الكتالوج', 'SEC', 'اسم المادة', 'المستودع', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة']).map(h => (
+                      {['رقم الكتالوج', 'SEC', 'اسم المادة', 'المستودع', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -1338,23 +1327,17 @@ export default function InventoryPage() {
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db' }}>{m.catalog_no || '—'}</td>
-                        {matViewMode !== 'project' && <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#9ca3af' }}>{(m as any).sec_number || '—'}</td>}
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#9ca3af' }}>{(m as any).sec_number || '—'}</td>
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>{(m as any).warehouse?.name || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem' }}>{m.unit}</td>
-                        {matViewMode === 'project' ? (<>
-                          <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0ea77b' }}>{(m as any).qty_received ?? m.qty}</td>
-                          <td style={{ padding: '8px 12px', fontWeight: 700, color: '#c81e1e' }}>{(m as any).qty_issued ?? 0}</td>
-                          <td style={{ padding: '8px 12px', fontWeight: 700, color: Number(m.qty) > 0 ? '#1a56db' : '#c81e1e' }}>{m.qty}</td>
-                        </>) : (<>
-                          <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>{m.qty}</td>
-                          <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af' }}>{m.reorder}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span className={`badge ${m.qty <= 0 ? 'badge-red' : m.qty <= m.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
-                              {m.qty <= 0 ? 'نفدت' : m.qty <= m.reorder ? 'منخفض' : 'طبيعي'}
-                            </span>
-                          </td>
-                        </>)}
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>{m.qty}</td>
+                        <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af' }}>{m.reorder}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span className={`badge ${m.qty <= 0 ? 'badge-red' : m.qty <= m.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
+                            {m.qty <= 0 ? 'نفدت' : m.qty <= m.reorder ? 'منخفض' : 'طبيعي'}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
