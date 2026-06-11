@@ -682,7 +682,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
 
     for (const row of validRows) {
-      const mat = materials.find(m => m.id === Number(row.mat_id))
+      const mat = materials.find(m => String(m.id) === String(row.mat_id))
       if (!mat) continue
       const qty = Number(row.qty)
 
@@ -770,7 +770,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         projectName:   proj?.name || form.project_name || '',
         date:          form.date,
         rows:          validRows.map(r => {
-          const mat = materials.find(m => m.id === Number(r.mat_id))
+          const mat = materials.find(m => String(m.id) === String(r.mat_id))
           return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
         }),
         vendorName:    form.vendor_name || '',
@@ -1040,6 +1040,8 @@ export default function InventoryPage() {
   const [matSearch,     setMatSearch]     = useState('')
   const [matWh,         setMatWh]         = useState('')
   const [matQtyFilter,  setMatQtyFilter]  = useState<'all' | 'with' | 'without'>('all')
+  const [matViewMode,   setMatViewMode]   = useState<'none' | 'all' | 'warehouse' | 'project'>('none')
+  const [matProjectId,  setMatProjectId]  = useState('')
   const [matLoading,    setMatLoading]    = useState(false)
 
   // الحركات
@@ -1068,9 +1070,26 @@ export default function InventoryPage() {
   }
 
   async function loadMaterials(page = 1) {
-    if (!tenant) return
+    if (!tenant || matViewMode === 'none') return
     setMatLoading(true)
     const from = (page - 1) * PAGE_SIZE
+
+    if (matViewMode === 'project' && matProjectId) {
+      const { data } = await supabase.from('project_materials')
+        .select('*, material:materials(id, name, unit, catalog_no, sec_number), warehouse:warehouses(name)')
+        .eq('tenant_id', tenant.id).eq('project_id', Number(matProjectId))
+      const proj = projects.find((p: any) => p.id === Number(matProjectId))
+      const mapped = (data || []).map((pm: any) => ({
+        id: pm.material?.id, name: pm.material?.name || '—', unit: pm.material?.unit || '—',
+        catalog_no: pm.material?.catalog_no, sec_number: pm.material?.sec_number,
+        qty: pm.qty_balance, qty_received: pm.qty_received, qty_issued: pm.qty_issued,
+        reorder: 0, warehouse: { name: pm.warehouse?.name || '—' }, project_name: proj?.name || '',
+      }))
+      const filtered = matSearch ? mapped.filter((m: any) => (m.name || '').includes(matSearch)) : mapped
+      setMaterials(filtered); setMatTotal(filtered.length); setMatPage(1)
+      setMatLoading(false); return
+    }
+
     let q = supabase.from('materials')
       .select('*, warehouse:warehouses(name)', { count: 'exact' })
       .eq('tenant_id', tenant.id)
@@ -1080,9 +1099,7 @@ export default function InventoryPage() {
     if (matQtyFilter === 'with')    q = q.gt('qty', 0)
     if (matQtyFilter === 'without') q = q.lte('qty', 0)
     const { data, count } = await q
-    setMaterials(data || [])
-    setMatTotal(count || 0)
-    setMatPage(page)
+    setMaterials(data || []); setMatTotal(count || 0); setMatPage(page)
     setMatLoading(false)
   }
 
@@ -1221,29 +1238,59 @@ export default function InventoryPage() {
                 <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
-                <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#9ca3af' }} />
-                <input value={matSearch} onChange={e => setMatSearch(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && loadMaterials(1)}
-                  placeholder="بحث باسم أو رقم كتالوج أو SEC..." className="input"
-                  style={{ paddingRight: '30px', width: '250px', fontSize: '0.82rem' }} />
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {([{ id: 'all', label: '📦 كل المواد', color: '#1a56db' }, { id: 'warehouse', label: '🏪 مستودع محدد', color: '#0ea77b' }, { id: 'project', label: '🏗️ مشروع محدد', color: '#7c3aed' }] as const).map(opt => (
+                  <button key={opt.id} onClick={() => { setMatViewMode(opt.id); setMaterials([]); setMatTotal(0) }}
+                    style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, textAlign: 'center',
+                      borderColor: matViewMode === opt.id ? opt.color : '#e5e7eb',
+                      background: matViewMode === opt.id ? '#f0f9ff' : 'white',
+                      color: matViewMode === opt.id ? opt.color : '#9ca3af' }}>
+                    {opt.label}
+                  </button>
+                ))}
               </div>
-              <select value={matWh} onChange={e => setMatWh(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
-                <option value="">كل المستودعات</option>
-                {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-              <select value={matQtyFilter} onChange={e => setMatQtyFilter(e.target.value as any)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
-                <option value="all">كل المواد</option>
-                <option value="with">لها كميات</option>
-                <option value="without">بدون كمية</option>
-              </select>
-              <button onClick={() => loadMaterials(1)} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '7px 14px' }}>
-                <Filter style={{ width: '13px', height: '13px' }} /> بحث
-              </button>
+              {matViewMode !== 'none' && (
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#9ca3af' }} />
+                    <input value={matSearch} onChange={e => setMatSearch(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && loadMaterials(1)}
+                      placeholder="بحث باسم..." className="input"
+                      style={{ paddingRight: '30px', width: '180px', fontSize: '0.82rem' }} />
+                  </div>
+                  {matViewMode === 'warehouse' && (
+                    <select value={matWh} onChange={e => setMatWh(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
+                      <option value="">كل المستودعات</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  )}
+                  {matViewMode === 'project' && (
+                    <select value={matProjectId} onChange={e => setMatProjectId(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem', minWidth: '180px' }}>
+                      <option value="">— اختر المشروع —</option>
+                      {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                  {matViewMode === 'all' && (
+                    <select value={matQtyFilter} onChange={e => setMatQtyFilter(e.target.value as any)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
+                      <option value="all">كل المواد</option>
+                      <option value="with">لها كميات</option>
+                      <option value="without">بدون كمية</option>
+                    </select>
+                  )}
+                  <button onClick={() => loadMaterials(1)} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '7px 14px' }}>
+                    <Filter style={{ width: '13px', height: '13px' }} /> عرض
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              {matLoading ? (
+              {matViewMode === 'none' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '60px', color: '#9ca3af', gap: '10px' }}>
+                  <div style={{ fontSize: '2.5rem' }}>📦</div>
+                  <div style={{ fontWeight: 600 }}>اختر طريقة العرض أعلاه للبدء</div>
+                </div>
+              ) : matLoading ? (
                 <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
                   <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
                 </div>
@@ -1251,7 +1298,7 @@ export default function InventoryPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg2)', position: 'sticky', top: 0 }}>
-                      {['رقم الكتالوج', 'SEC', 'اسم المادة', 'المستودع', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة'].map(h => (
+                      {(matViewMode === 'project' ? ['رقم الكتالوج', 'اسم المادة', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد'] : ['رقم الكتالوج', 'SEC', 'اسم المادة', 'المستودع', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة']).map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
@@ -1264,17 +1311,23 @@ export default function InventoryPage() {
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db' }}>{m.catalog_no || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#9ca3af' }}>{(m as any).sec_number || '—'}</td>
+                        {matViewMode !== 'project' && <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#9ca3af' }}>{(m as any).sec_number || '—'}</td>}
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>{(m as any).warehouse?.name || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem' }}>{m.unit}</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>{m.qty}</td>
-                        <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af' }}>{m.reorder}</td>
-                        <td style={{ padding: '8px 12px' }}>
-                          <span className={`badge ${m.qty <= 0 ? 'badge-red' : m.qty <= m.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
-                            {m.qty <= 0 ? 'نفدت' : m.qty <= m.reorder ? 'منخفض' : 'طبيعي'}
-                          </span>
-                        </td>
+                        {matViewMode === 'project' ? (<>
+                          <td style={{ padding: '8px 12px', fontWeight: 700, color: '#0ea77b' }}>{(m as any).qty_received ?? m.qty}</td>
+                          <td style={{ padding: '8px 12px', fontWeight: 700, color: '#c81e1e' }}>{(m as any).qty_issued ?? 0}</td>
+                          <td style={{ padding: '8px 12px', fontWeight: 700, color: Number(m.qty) > 0 ? '#1a56db' : '#c81e1e' }}>{m.qty}</td>
+                        </>) : (<>
+                          <td style={{ padding: '8px 12px', fontWeight: 700, color: m.qty <= 0 ? '#c81e1e' : m.qty <= m.reorder ? '#e6820a' : '#0ea77b' }}>{m.qty}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af' }}>{m.reorder}</td>
+                          <td style={{ padding: '8px 12px' }}>
+                            <span className={`badge ${m.qty <= 0 ? 'badge-red' : m.qty <= m.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
+                              {m.qty <= 0 ? 'نفدت' : m.qty <= m.reorder ? 'منخفض' : 'طبيعي'}
+                            </span>
+                          </td>
+                        </>)}
                       </tr>
                     ))}
                   </tbody>
