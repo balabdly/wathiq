@@ -28,23 +28,54 @@ const VISIT_TYPES = [
 function CorrectiveModal({ visit, onClose, onSave }: {
   visit: Visit
   onClose: () => void
-  onSave: (report: string) => Promise<void>
+  onSave: (report: string, attachments: string[]) => Promise<void>
 }) {
-  const [report,  setReport]  = useState(visit.resolved_report || '')
-  const [saving,  setSaving]  = useState(false)
+  const [report,      setReport]      = useState(visit.resolved_report || '')
+  const [files,       setFiles]       = useState<File[]>([])
+  const [previews,    setPreviews]    = useState<string[]>([])
+  const [uploading,   setUploading]   = useState(false)
+  const [saving,      setSaving]      = useState(false)
   const isClosed = !!visit.resolved_report
+
+  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files || [])
+    setFiles(prev => [...prev, ...selected])
+    selected.forEach(f => {
+      const reader = new FileReader()
+      reader.onload = ev => setPreviews(prev => [...prev, ev.target?.result as string])
+      reader.readAsDataURL(f)
+    })
+  }
+
+  function removeFile(i: number) {
+    setFiles(prev => prev.filter((_, idx) => idx !== i))
+    setPreviews(prev => prev.filter((_, idx) => idx !== i))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!report.trim()) { toast.error('أدخل تقرير الإجراء التصحيحي'); return }
     setSaving(true)
-    await onSave(report.trim())
+    setUploading(files.length > 0)
+    // رفع المرفقات إلى Supabase Storage
+    const uploadedUrls: string[] = []
+    for (const file of files) {
+      const ext  = file.name.split('.').pop()
+      const path = `ncr/${visit.id}/${Date.now()}.${ext}`
+      const { data, error } = await supabase.storage.from('attachments').upload(path, file, { upsert: true })
+      if (!error && data) {
+        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(data.path)
+        uploadedUrls.push(urlData.publicUrl)
+      }
+    }
+    setUploading(false)
+    await onSave(report.trim(), uploadedUrls)
     setSaving(false)
   }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 60 }}>
-      <div className="modal-box" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ background: isClosed ? '#ecfdf5' : '#fffbeb', borderRadius: '10px 10px 0 0', margin: '-1px -1px 0' }}>
           <h3 style={{ fontWeight: 700, color: isClosed ? '#0ea77b' : '#e6820a', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ClipboardList style={{ width: '18px', height: '18px' }} />
@@ -74,32 +105,74 @@ function CorrectiveModal({ visit, onClose, onSave }: {
 
             {/* إذا كانت مغلقة — عرض فقط */}
             {isClosed ? (
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>تقرير الإجراء التصحيحي:</div>
-                <div style={{ padding: '12px 14px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac', fontSize: '0.875rem', lineHeight: 1.7 }}>
-                  {visit.resolved_report}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>تقرير الإجراء التصحيحي:</div>
+                  <div style={{ padding: '12px 14px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac', fontSize: '0.875rem', lineHeight: 1.7 }}>
+                    {visit.resolved_report}
+                  </div>
                 </div>
+                {(visit as any).ncr_attachments?.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>📎 المرفقات:</div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {(visit as any).ncr_attachments.map((url: string, i: number) => (
+                        <a key={i} href={url} target="_blank" rel="noreferrer"
+                          style={{ display: 'block', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {visit.resolved_by && (
-                  <div style={{ marginTop: '8px', fontSize: '0.75rem', color: '#9ca3af' }}>
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
                     ✅ أُغلق بواسطة: {visit.resolved_by}
                     {visit.resolved_date && ` — ${formatDate(visit.resolved_date)}`}
                   </div>
                 )}
               </div>
             ) : (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
-                  تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span>
-                </label>
-                <textarea
-                  value={report}
-                  onChange={e => setReport(e.target.value)}
-                  className="input"
-                  style={{ minHeight: '120px', resize: 'none' }}
-                  placeholder="صف الإجراء التصحيحي المتخذ لإغلاق هذه المخالفة..."
-                  autoFocus
-                />
-              </div>
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
+                    تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span>
+                  </label>
+                  <textarea
+                    value={report}
+                    onChange={e => setReport(e.target.value)}
+                    className="input"
+                    style={{ minHeight: '120px', resize: 'none' }}
+                    placeholder="صف الإجراء التصحيحي المتخذ لإغلاق هذه المخالفة..."
+                    autoFocus
+                  />
+                </div>
+
+                {/* المرفقات */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px' }}>
+                    📎 صور ومرفقات <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#9ca3af' }}>(اختياري — صور، PDF)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: '2px dashed #e5e7eb', cursor: 'pointer', fontSize: '0.82rem', color: '#6b7280', background: '#f8fafc' }}>
+                    <Camera style={{ width: '16px', height: '16px', color: '#1a56db' }} />
+                    اختر صور أو ملفات
+                    <input type="file" multiple accept="image/*,.pdf" onChange={handleFiles} style={{ display: 'none' }} />
+                  </label>
+                  {previews.length > 0 && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                      {previews.map((src, i) => (
+                        <div key={i} style={{ position: 'relative', width: '72px', height: '72px' }}>
+                          <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)' }} />
+                          <button type="button" onClick={() => removeFile(i)}
+                            style={{ position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#c81e1e', color: 'white', border: 'none', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
@@ -112,7 +185,7 @@ function CorrectiveModal({ visit, onClose, onSave }: {
                 {saving
                   ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
                   : <Save style={{ width: '14px', height: '14px' }} />}
-                إغلاق NCR
+                {uploading ? 'جاري الرفع...' : 'إغلاق NCR'}
               </button>
             )}
           </div>
@@ -155,10 +228,7 @@ export default function VisitsPage() {
   }
 
   async function handleDelete(v: Visit) {
-    if (currentUser?.role !== 'admin') {
-      toast.error('⛔ الحذف متاح للمدير فقط')
-      return
-    }
+    if (currentUser?.role !== 'admin') { toast.error('⛔ الحذف متاح للمدير فقط'); return }
     if (!confirm('حذف هذه الزيارة نهائياً؟ لا يمكن التراجع.')) return
     await visitsApi.delete(v.id)
     await loadVisits()
@@ -173,7 +243,6 @@ export default function VisitsPage() {
       branch_id:  activeBranch.id,
       project_id: data.project_id ? Number(data.project_id) : null,
     }
-    // إزالة undefined لتجنب رفض Supabase
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
     const { error } = await visitsApi.upsert(payload)
     if (error) { toast.error(`حدث خطأ: ${(error as any)?.message}`); return }
@@ -182,18 +251,20 @@ export default function VisitsPage() {
     toast.success(editVisit ? 'تم التعديل' : 'تم إضافة الزيارة')
   }
 
-  async function handleResolve(id: number, report: string) {
+  async function handleResolve(id: number, report: string, attachments: string[] = []) {
     if (!tenant) return
-    const { error } = await visitsApi.upsert({
-      id,
-      tenant_id:       tenant.id,
-      resolved_report: report,
-      resolved_date:   new Date().toISOString().split('T')[0],
-      resolved_by:     currentUser?.name || '',
-      status:          'مغلق',
-      specs:           'مطابق',
-    })
-    if (error) { toast.error('خطأ في الحفظ: ' + (error as any)?.message); return }
+    const { error } = await supabase.from('visits')
+      .update({
+        resolved_report:  report,
+        resolved_date:    new Date().toISOString().split('T')[0],
+        resolved_by:      currentUser?.name || '',
+        status:           'مغلق',
+        specs:            'مطابق',
+        ncr_attachments:  attachments.length > 0 ? attachments : undefined,
+      })
+      .eq('id', id)
+      .eq('tenant_id', tenant.id)
+    if (error) { toast.error('خطأ في الحفظ: ' + error.message); return }
     await loadVisits()
     setCorrectiveVisit(null)
     setDetail(null)
@@ -378,10 +449,9 @@ export default function VisitsPage() {
                                 </button>
                               )}
 
-                              {/* زر الحذف — للأدمن فقط */}
+                              {/* زر الحذف */}
                               {currentUser?.role === 'admin' && (
-                                <button onClick={() => handleDelete(v)}
-                                  title="حذف (أدمن فقط)"
+                                <button onClick={() => handleDelete(v)} title="حذف (أدمن فقط)"
                                   style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
                                   <Trash2 style={{ width: '12px', height: '12px' }} />
                                 </button>
@@ -418,7 +488,7 @@ export default function VisitsPage() {
         <CorrectiveModal
           visit={visits.find(v => v.id === correctiveVisit.id) || correctiveVisit}
           onClose={() => setCorrectiveVisit(null)}
-          onSave={(report) => handleResolve(correctiveVisit.id, report)}
+          onSave={(report, attachments) => handleResolve(correctiveVisit.id, report, attachments)}
         />
       )}
     </div>
