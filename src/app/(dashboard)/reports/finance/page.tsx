@@ -212,12 +212,18 @@ export default function ReportsFinancePage() {
       //   تمويلية: قروض، توزيعات، رأس مال
       // ══════════════════════════════════════════════════════
 
-      // جلب الحسابات النقدية (الصندوق والبنوك)
-      const { data: cashAccs } = await supabase.from('finance_accounts')
+      // جلب الحسابات النقدية — الصندوق والبنوك تحت حساب 1110
+      // نجلب الحسابات غير الأب تحت نوع أصول بكود يبدأ بـ 111
+      const { data: allCashAccs } = await supabase.from('finance_accounts')
         .select('id, code, name')
         .eq('tenant_id', tenant.id)
         .eq('account_type', 'أصول')
-        .gte('code', '1111').lte('code', '1119') // الصندوق والبنوك
+        .eq('is_parent', false)
+        .like('code', '111%')
+      const cashAccs = (allCashAccs || []).filter((a: any) => {
+        const c = Number(a.code)
+        return c >= 1111 && c <= 1119
+      })
 
       if (!cashAccs?.length) {
         toast.error('لم يتم العثور على حسابات نقدية — تأكد من وجود حسابات ضمن 1111-1119')
