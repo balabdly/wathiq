@@ -1452,6 +1452,12 @@ export default function InventoryPage() {
                             {m.qty <= 0 ? 'نفدت' : m.qty <= m.reorder ? 'منخفض' : 'طبيعي'}
                           </span>
                         </td>
+                        <td style={{ padding: '8px 6px' }}>
+                          <button onClick={() => toggleMaterial(m.id, m.is_active !== false)}
+                            style={{ padding: '4px 8px', borderRadius: '6px', border: `1px solid ${m.is_active !== false ? '#fecaca' : '#bbf7d0'}`, background: m.is_active !== false ? '#fef2f2' : '#ecfdf5', color: m.is_active !== false ? '#c81e1e' : '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                            {m.is_active !== false ? 'تعطيل' : 'تفعيل'}
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1548,7 +1554,7 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.mat_name}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--text3)' }}>{l.wh_name || '—'}</td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#1a56db' }}>{l.project_name || '—'}</td>
-                        <td style={{ padding: '8px 12px', fontWeight: 700, color: DEBIT_TYPES.includes(l.type) ? '#c81e1e' : '#0ea77b' }}>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: l.type === 'إرجاع للعميل' ? '#e6820a' : DEBIT_TYPES.includes(l.type) ? '#c81e1e' : '#0ea77b' }}>
                           {DEBIT_TYPES.includes(l.type) ? '-' : '+'}{l.qty} {l.unit}
                         </td>
                         <td style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#9ca3af', direction: 'ltr' }}>{l.qty_before}</td>
