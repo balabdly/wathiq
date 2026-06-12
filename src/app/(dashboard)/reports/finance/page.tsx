@@ -188,40 +188,115 @@ export default function ReportsFinancePage() {
       setExtra({ balanced: Math.abs(totAssets - (totLiab + totEquity + netIncome)) < 1 })
 
     } else if (selected === 'cashflow') {
-      // التدفقات النقدية — حركة الحسابات النقدية (أصول نقدية فقط)
+      // ══════════════════════════════════════════════════════
+      // قائمة التدفقات النقدية حسب IAS 7
+      // الحسابات النقدية: الصندوق والبنوك (1111-1115 تحت 1110)
+      // التصنيف حسب reference_type:
+      //   تشغيلية: تحصيل فواتير، دفع موردين، مصروفات، رواتب
+      //   استثمارية: شراء/بيع أصول ثابتة
+      //   تمويلية: قروض، توزيعات، رأس مال
+      // ══════════════════════════════════════════════════════
+
+      // تصنيف أنواع القيود
+      const OPERATING_TYPES  = ['تحصيل فاتورة', 'دفع مورد', 'مصروف', 'رواتب', 'إشعار دائن', 'مرتجع مشتريات', 'ضريبة']
+      const INVESTING_TYPES  = ['شراء أصل', 'بيع أصل', 'استثمار']
+      const FINANCING_TYPES  = ['قرض', 'سداد قرض', 'توزيعات', 'رأس مال', 'رصيد افتتاحي']
+
+      function classifyFlow(refType: string | null): string {
+        const t = refType || ''
+        if (OPERATING_TYPES.some(x => t.includes(x)))  return 'تشغيلية'
+        if (INVESTING_TYPES.some(x => t.includes(x)))  return 'استثمارية'
+        if (FINANCING_TYPES.some(x => t.includes(x)))  return 'تمويلية'
+        return 'تشغيلية' // افتراضي
+      }
+
+      // جلب الحسابات النقدية (الصندوق والبنوك)
       const { data: cashAccs } = await supabase.from('finance_accounts')
-        .select('id, code, name, account_class').eq('tenant_id', tenant.id)
-        .eq('account_type', 'أصول').ilike('account_class', '%نقد%')
-      // جلب القيود
+        .select('id, code, name')
+        .eq('tenant_id', tenant.id)
+        .eq('account_type', 'أصول')
+        .gte('code', '1111').lte('code', '1119') // الصندوق والبنوك
+
+      if (!cashAccs?.length) {
+        toast.error('لم يتم العثور على حسابات نقدية — تأكد من وجود حسابات ضمن 1111-1119')
+        setLoading(false); return
+      }
+
+      const cashIds = new Set(cashAccs.map((a: any) => a.id))
+
+      // جلب القيود في الفترة
       const { data: entries } = await supabase.from('finance_journal_entries')
         .select('id, entry_date, description, reference_type')
         .eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
+        .order('entry_date')
+
       if (!entries?.length) { setResults([]); setLoading(false); return }
+
       const entryIds = entries.map((e: any) => e.id)
-      const cashIds  = new Set((cashAccs || []).map((a: any) => a.id))
-      const { data: lines } = await supabase.from('finance_journal_lines')
-        .select('entry_id, account_id, debit, credit').in('entry_id', entryIds)
       const entryMap: Record<number, any> = {}
       entries.forEach((e: any) => { entryMap[e.id] = e })
-      // جمع التدفقات حسب نوع المرجع
-      const flows: any[] = []
-      const grouped: Record<string, { in: number; out: number }> = {}
-      ;(lines || []).filter((l: any) => cashIds.has(l.account_id)).forEach((l: any) => {
+
+      // جلب السطور المتعلقة بالحسابات النقدية
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('entry_id, account_id, debit, credit')
+        .in('entry_id', entryIds)
+        .in('account_id', [...cashIds])
+
+      // رصيد أول المدة النقدي
+      const openCashData = await fetchAccountBalances(tenant.id, fDateFrom, undefined, ['أصول'])
+      const openCash = openCashData
+        .filter(a => cashIds.has(a.id))
+        .reduce((s, a) => s + a.balance, 0)
+
+      // تجميع التدفقات حسب الفئة والنوع
+      const flowMap: Record<string, Record<string, { inflow: number; outflow: number; items: any[] }>> = {
+        'تشغيلية':   {},
+        'استثمارية': {},
+        'تمويلية':   {},
+      }
+
+      ;(lines || []).forEach((l: any) => {
         const e = entryMap[l.entry_id]
         if (!e) return
-        const type = e.reference_type || 'أخرى'
-        if (!grouped[type]) grouped[type] = { in: 0, out: 0 }
-        grouped[type].in  += Number(l.debit  || 0)
-        grouped[type].out += Number(l.credit || 0)
+        const category = classifyFlow(e.reference_type)
+        const refType  = e.reference_type || 'أخرى'
+        if (!flowMap[category][refType]) flowMap[category][refType] = { inflow: 0, outflow: 0, items: [] }
+        flowMap[category][refType].inflow  += Number(l.debit  || 0)
+        flowMap[category][refType].outflow += Number(l.credit || 0)
+        flowMap[category][refType].items.push({ date: e.entry_date, desc: e.description, debit: Number(l.debit || 0), credit: Number(l.credit || 0) })
       })
-      Object.entries(grouped).forEach(([type, v]) => {
-        flows.push({ type, inflow: (v as any).in, outflow: (v as any).out, net: (v as any).in - (v as any).out })
-      })
-      setResults(flows)
+
+      // بناء النتائج
+      const flowRows: any[] = []
+      const totals = { operating: 0, investing: 0, financing: 0 }
+
+      for (const [category, types] of Object.entries(flowMap)) {
+        let catTotal = 0
+        for (const [refType, data] of Object.entries(types)) {
+          const net = data.inflow - data.outflow
+          catTotal += net
+          flowRows.push({ category, refType, inflow: data.inflow, outflow: data.outflow, net, isTotal: false })
+        }
+        if (Object.keys(types).length > 0) {
+          flowRows.push({ category, refType: `إجمالي ${category}`, inflow: 0, outflow: 0, net: catTotal, isTotal: true })
+          if (category === 'تشغيلية')   totals.operating  = catTotal
+          if (category === 'استثمارية') totals.investing  = catTotal
+          if (category === 'تمويلية')   totals.financing  = catTotal
+        }
+      }
+
+      const netCash    = totals.operating + totals.investing + totals.financing
+      const closeCash  = openCash + netCash
+
+      setResults(flowRows)
+      setExtra({ openCash, netCash, closeCash, cashAccounts: cashAccs.map((a: any) => a.name).join('، ') })
       setSummary({
-        'إجمالي التدفقات الداخلة': flows.reduce((s, f) => s + f.inflow, 0),
-        'إجمالي التدفقات الخارجة': flows.reduce((s, f) => s + f.outflow, 0),
-        'صافي التدفق النقدي': flows.reduce((s, f) => s + f.net, 0),
+        'رصيد النقد أول المدة':        openCash,
+        'صافي تدفق تشغيلي':           totals.operating,
+        'صافي تدفق استثماري':          totals.investing,
+        'صافي تدفق تمويلي':            totals.financing,
+        'صافي التغير في النقد':        netCash,
+        'رصيد النقد آخر المدة':        closeCash,
       })
 
     } else if (selected === 'equity') {
@@ -672,23 +747,70 @@ export default function ReportsFinancePage() {
 
               {/* ══ التدفقات النقدية ══ */}
               {selected === 'cashflow' && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead><tr style={{ background: '#ecfeff' }}>
-                    {['نوع التدفق', 'التدفقات الداخلة', 'التدفقات الخارجة', 'صافي التدفق'].map(h => (
-                      <th key={h} style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc' }}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {results.map((r: any, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '10px 16px', fontWeight: 600 }}>{r.type}</td>
-                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(r.inflow)}</td>
-                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#c81e1e' }}>{fmt(r.outflow)}</td>
-                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontWeight: 700, color: r.net >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(r.net)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{ padding: '20px' }}>
+                  {extra?.cashAccounts && (
+                    <div style={{ marginBottom: '12px', fontSize: '0.78rem', color: '#6b7280', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px' }}>
+                      💰 الحسابات النقدية: {extra.cashAccounts}
+                    </div>
+                  )}
+                  {/* رصيد أول المدة */}
+                  {extra && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 16px', background: '#f0f9ff', borderRadius: '8px', marginBottom: '8px', fontWeight: 700, fontSize: '0.875rem' }}>
+                      <span>رصيد النقد أول المدة — {fDateFrom}</span>
+                      <span style={{ fontFamily: 'monospace', color: '#0891b2' }}>{fmt(extra.openCash)} ر.س</span>
+                    </div>
+                  )}
+                  {/* التدفقات مقسمة بالفئات */}
+                  {['تشغيلية', 'استثمارية', 'تمويلية'].map(category => {
+                    const catRows = results.filter((r: any) => r.category === category)
+                    if (!catRows.length) return null
+                    const colorMap: Record<string, string> = { 'تشغيلية': '#0ea77b', 'استثمارية': '#1a56db', 'تمويلية': '#7c3aed' }
+                    const bgMap:    Record<string, string> = { 'تشغيلية': '#ecfdf5', 'استثمارية': '#eff6ff', 'تمويلية': '#f5f3ff' }
+                    const color = colorMap[category]; const bg = bgMap[category]
+                    return (
+                      <div key={category} style={{ marginBottom: '12px', border: '1px solid #e5e7eb', borderRadius: '10px', overflow: 'hidden' }}>
+                        <div style={{ padding: '10px 16px', background: bg, fontWeight: 700, color, fontSize: '0.875rem' }}>
+                          التدفقات {category}
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                          <thead><tr style={{ background: '#fafafa' }}>
+                            {['نوع العملية', 'تدفق داخل', 'تدفق خارج', 'صافي'].map(h => (
+                              <th key={h} style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 600, color: '#9ca3af', borderBottom: '1px solid #f1f5f9', fontSize: '0.75rem' }}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {catRows.map((r: any, i) => (
+                              <tr key={i} style={{ borderBottom: '1px solid #f9fafb', background: r.isTotal ? bg : 'white' }}>
+                                <td style={{ padding: '8px 14px', fontWeight: r.isTotal ? 700 : 400, color: r.isTotal ? color : '#374151', paddingRight: r.isTotal ? '14px' : '24px' }}>{r.refType}</td>
+                                <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: r.isTotal ? 700 : 400 }}>{!r.isTotal && r.inflow > 0 ? fmt(r.inflow) : ''}</td>
+                                <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#c81e1e', fontWeight: r.isTotal ? 700 : 400 }}>{!r.isTotal && r.outflow > 0 ? fmt(r.outflow) : ''}</td>
+                                <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 700, color: r.net >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(r.net)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
+                  })}
+                  {/* الملخص النهائي */}
+                  {extra && (
+                    <div style={{ border: '2px solid #0891b2', borderRadius: '10px', overflow: 'hidden', marginTop: '8px' }}>
+                      <div style={{ padding: '10px 16px', background: '#0891b2', color: 'white', fontWeight: 700, textAlign: 'center' }}>
+                        ملخص قائمة التدفقات النقدية
+                      </div>
+                      {[
+                        { label: 'رصيد النقد أول المدة', value: extra.openCash,  color: '#0891b2' },
+                        { label: 'صافي التغير في النقد',  value: extra.netCash,   color: extra.netCash  >= 0 ? '#0ea77b' : '#c81e1e' },
+                        { label: 'رصيد النقد آخر المدة', value: extra.closeCash, color: extra.closeCash >= 0 ? '#0ea77b' : '#c81e1e' },
+                      ].map((row, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < 2 ? '1px solid #e5e7eb' : 'none', background: i === 2 ? '#ecfeff' : 'white' }}>
+                          <span style={{ fontWeight: i === 2 ? 700 : 400 }}>{row.label}</span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: row.color }}>{fmt(row.value)} ر.س</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ══ التغير في حقوق الملكية ══ */}
