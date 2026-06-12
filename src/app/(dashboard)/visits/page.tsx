@@ -155,7 +155,11 @@ export default function VisitsPage() {
   }
 
   async function handleDelete(v: Visit) {
-    if (!confirm('حذف هذه الزيارة؟')) return
+    if (currentUser?.role !== 'admin') {
+      toast.error('⛔ الحذف متاح للمدير فقط')
+      return
+    }
+    if (!confirm('حذف هذه الزيارة نهائياً؟ لا يمكن التراجع.')) return
     await visitsApi.delete(v.id)
     await loadVisits()
     toast.success('تم الحذف')
@@ -163,10 +167,15 @@ export default function VisitsPage() {
 
   async function handleSave(data: Partial<Visit>) {
     if (!tenant || !activeBranch) return
-    const { error } = await visitsApi.upsert({
-      ...data, tenant_id: tenant.id, branch_id: activeBranch.id,
-      project_id: data.project_id ? Number(data.project_id) : undefined,
-    })
+    const payload: any = {
+      ...data,
+      tenant_id:  tenant.id,
+      branch_id:  activeBranch.id,
+      project_id: data.project_id ? Number(data.project_id) : null,
+    }
+    // إزالة undefined لتجنب رفض Supabase
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
+    const { error } = await visitsApi.upsert(payload)
     if (error) { toast.error(`حدث خطأ: ${(error as any)?.message}`); return }
     await loadVisits()
     setShowModal(false); setEditVisit(null)
@@ -179,17 +188,16 @@ export default function VisitsPage() {
       id,
       tenant_id:       tenant.id,
       resolved_report: report,
-      resolved_date:   new Date().toLocaleDateString('ar-EG'),
+      resolved_date:   new Date().toISOString().split('T')[0],
       resolved_by:     currentUser?.name || '',
       status:          'مغلق',
+      specs:           'مطابق',
     })
-    if (error) { toast.error('خطأ في الحفظ'); return }
-
-    // تحديث الـ state مباشرة بدون إغلاق المودال أولاً
+    if (error) { toast.error('خطأ في الحفظ: ' + (error as any)?.message); return }
     await loadVisits()
     setCorrectiveVisit(null)
     setDetail(null)
-    toast.success('✅ تم إغلاق NCR بنجاح')
+    toast.success('✅ تم إغلاق NCR — الزيارة أصبحت مطابقة')
   }
 
   const openNCR = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
@@ -370,9 +378,10 @@ export default function VisitsPage() {
                                 </button>
                               )}
 
-                              {/* زر الحذف */}
-                              {canEdit && (
+                              {/* زر الحذف — للأدمن فقط */}
+                              {currentUser?.role === 'admin' && (
                                 <button onClick={() => handleDelete(v)}
+                                  title="حذف (أدمن فقط)"
                                   style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
                                   <Trash2 style={{ width: '12px', height: '12px' }} />
                                 </button>
