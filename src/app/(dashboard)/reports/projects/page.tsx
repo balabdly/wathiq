@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { BarChart2, FileText, DollarSign, Activity, ChevronDown, Search, X, Download } from 'lucide-react'
@@ -74,6 +74,8 @@ const REPORTS = [
 const PROJECT_STATUSES = ['تحت التخطيط', 'تحت التنفيذ', 'متوقف', 'مكتمل', 'ملغى']
 const PROJECT_TYPES_DEFAULT = ['إنشاء', 'صيانة', 'تطوير', 'استشارات', 'توريد']
 
+// جلب أنواع المشاريع الفعلية من DB
+
 export default function ReportsProjectsPage() {
   const { tenant, activeBranch } = useStore()
   const [selected,    setSelected]    = useState<string | null>(null)
@@ -83,6 +85,14 @@ export default function ReportsProjectsPage() {
 
   // فلاتر
   const [fType,      setFType]      = useState('')
+  const [projTypes,  setProjTypes]  = useState<string[]>(PROJECT_TYPES_DEFAULT)
+
+  useEffect(() => {
+    if (!tenant) return
+    supabase.from('project_types').select('name').eq('tenant_id', tenant.id).then(({ data }) => {
+      if (data && data.length > 0) setProjTypes(data.map((t: any) => t.name))
+    })
+  }, [tenant?.id])
   const [fStatus,    setFStatus]    = useState('')
   const [fDateFrom,  setFDateFrom]  = useState('')
   const [fDateTo,    setFDateTo]    = useState('')
@@ -95,7 +105,7 @@ export default function ReportsProjectsPage() {
     setResults([])
 
     let q = supabase.from('projects')
-      .select('*, project_type:project_types(name)')
+      .select('*')
       .eq('tenant_id', tenant.id)
 
     if (activeBranch?.id) q = q.eq('branch_id', activeBranch.id)
@@ -112,7 +122,7 @@ export default function ReportsProjectsPage() {
     if (selected === 'by_type') {
       const grouped: Record<string, { count: number; value: number; projects: any[] }> = {}
       projects.forEach(p => {
-        const t = p.project_type?.name || p.type || 'غير محدد'
+        const t = p.type || 'غير محدد'
         if (!grouped[t]) grouped[t] = { count: 0, value: 0, projects: [] }
         grouped[t].count++
         grouped[t].value += Number(p.estimated_value || 0)
@@ -123,7 +133,7 @@ export default function ReportsProjectsPage() {
     } else if (selected === 'by_value') {
       setResults(projects.map(p => ({
         name: p.name,
-        type: p.project_type?.name || p.type || '—',
+        type: p.type || '—',
         status: p.status,
         estimated: Number(p.estimated_value || 0),
         actual: Number(p.actual_value || 0),
@@ -161,7 +171,7 @@ export default function ReportsProjectsPage() {
       )
       setResults(delayed.map(p => ({
         name: p.name,
-        type: p.project_type?.name || p.type || '—',
+        type: p.type || '—',
         status: p.status,
         end_date: p.end_date,
         days_late: Math.floor((new Date().getTime() - new Date(p.end_date).getTime()) / 86400000),
@@ -250,7 +260,7 @@ export default function ReportsProjectsPage() {
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>نوع المشروع</label>
                 <select value={fType} onChange={e => setFType(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '150px' }}>
                   <option value="">كل الأنواع</option>
-                  {PROJECT_TYPES_DEFAULT.map(t => <option key={t}>{t}</option>)}
+                  {projTypes.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
             )}
