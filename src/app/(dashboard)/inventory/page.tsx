@@ -930,12 +930,28 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                 </select>
               </div>
             ) : (type === 'صرف' || type === 'إرجاع') ? (
-              <div>
-                <label style={lbl}>المشروع *</label>
-                <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
-                  <option value="">— اختر المشروع —</option>
-                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <label style={lbl}>المشروع *</label>
+                  <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
+                    <option value="">— اختر المشروع —</option>
+                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                {type === 'إرجاع' && (
+                  <div>
+                    <label style={lbl}>نوع الإرجاع <span style={{ color: '#c81e1e' }}>*</span></label>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      {([{ val: 'فائض', emoji: '📦', desc: 'مواد صالحة لم تُستخدم', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac' }, { val: 'سكراب', emoji: '🗑️', desc: 'مواد تالفة أو غير صالحة', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5' }] as const).map(opt => (
+                        <button key={opt.val} type="button" onClick={() => set('return_type', opt.val)}
+                          style={{ flex: 1, padding: '10px', borderRadius: '10px', border: `2px solid ${form.return_type === opt.val ? opt.color : '#e5e7eb'}`, background: form.return_type === opt.val ? opt.bg : 'white', cursor: 'pointer', textAlign: 'center', color: form.return_type === opt.val ? opt.color : '#9ca3af' }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{opt.emoji} {opt.val}</div>
+                          <div style={{ fontSize: '0.72rem', marginTop: '3px', opacity: 0.8 }}>{opt.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div>
