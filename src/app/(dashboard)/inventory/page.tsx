@@ -536,16 +536,16 @@ async function uploadAttachment(file: File, tenantId: string): Promise<string | 
 // ════════════════════════════════════
 // دالة طباعة وصل العملية
 // ════════════════════════════════════
-function printOperationReceipt({ type, warehouseName, projectName, date, rows, vendorName, docCode, attachmentUrl }: {
+function printOperationReceipt({ type, warehouseName, projectName, date, rows, vendorName, docCode, bookingNo, clientName, txnNumber }: {
   type: string; warehouseName: string; projectName: string; date: string
   rows: { name: string; unit: string; qty: number; note: string }[]
-  vendorName: string; docCode: string; attachmentUrl: string
+  vendorName?: string; docCode?: string; bookingNo?: string; clientName?: string; txnNumber?: string
 }) {
   const win = window.open('', '_blank', 'width=700,height=600')
   if (!win) return
   const isReceipt = type === 'استلام'
-  const color = isReceipt ? '#0ea77b' : '#c81e1e'
-  const title = isReceipt ? 'وصل استلام مواد' : 'أذن صرف مواد'
+  const color = isReceipt ? '#0ea77b' : type === 'إرجاع' ? '#e6820a' : '#c81e1e'
+  const title = isReceipt ? 'وصل استلام مواد' : type === 'إرجاع' ? 'وصل إرجاع مواد' : 'أذن صرف مواد'
   const rowsHtml = rows.map((r, i) => `
     <tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#f8fafc'}">
       <td style="padding:8px 10px">${r.name}</td>
@@ -576,30 +576,29 @@ function printOperationReceipt({ type, warehouseName, projectName, date, rows, v
   <div>
     <div style="font-size:22px;font-weight:800;color:${color}">${title}</div>
     <div style="font-size:12px;color:#9ca3af;margin-top:4px">${new Date().toLocaleString('ar-SA')}</div>
+    ${txnNumber ? `<div style="font-size:13px;color:${color};font-weight:700;margin-top:4px;direction:ltr">${txnNumber}</div>` : ''}
   </div>
   <div class="badge">
     <div style="font-size:11px;opacity:0.85">${type}</div>
     <div style="font-size:15px;font-weight:800">${date}</div>
   </div>
 </div>
-
 <div class="info-grid">
-  <div class="info-item"><div class="info-label">المستودع</div><div class="info-value">${warehouseName}</div></div>
+  ${warehouseName ? `<div class="info-item"><div class="info-label">المستودع</div><div class="info-value">${warehouseName}</div></div>` : ''}
   ${projectName ? `<div class="info-item"><div class="info-label">المشروع</div><div class="info-value">${projectName}</div></div>` : ''}
-  ${vendorName ? `<div class="info-item"><div class="info-label">المورد / الجهة</div><div class="info-value">${vendorName}</div></div>` : ''}
+  ${clientName ? `<div class="info-item"><div class="info-label">العميل</div><div class="info-value">${clientName}</div></div>` : ''}
+  ${bookingNo ? `<div class="info-item"><div class="info-label">رقم الحجز</div><div class="info-value" style="direction:ltr">${bookingNo}</div></div>` : ''}
+  ${vendorName ? `<div class="info-item"><div class="info-label">المورد</div><div class="info-value">${vendorName}</div></div>` : ''}
   ${docCode ? `<div class="info-item"><div class="info-label">رقم الوثيقة</div><div class="info-value" style="direction:ltr">${docCode}</div></div>` : ''}
 </div>
-
 <table>
   <thead><tr><th>اسم المادة</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th>ملاحظة</th></tr></thead>
   <tbody>${rowsHtml}</tbody>
 </table>
-
 <div class="footer">
   <div class="sign-box">توقيع المستلم</div>
   <div class="sign-box">توقيع المسلّم</div>
 </div>
-
 <div class="noprint" style="text-align:center;padding:16px;margin-top:16px;border-top:1px solid #e5e7eb">
   <button onclick="window.print()" style="padding:10px 28px;background:${color};color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة</button>
   <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
@@ -637,6 +636,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     project_name:    '',
     vendor_name:     '',
     doc_code:        '',
+    booking_no:      '',
+    client_name:     '',
     date:            new Date().toISOString().split('T')[0],
     return_type:     '',
   })
@@ -666,6 +667,17 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     const { data } = await supabase.from('materials')
       .select('*').eq('tenant_id', tenantId).eq('warehouse_id', Number(form.warehouse_id)).order('name')
     setMaterials(data || [])
+  }
+
+  // جلب اسم العميل من آخر استلام لنفس المشروع
+  async function loadClientName(projectId: string) {
+    if (!projectId) return
+    const { data } = await supabase.from('stock_ledger')
+      .select('client_name').eq('tenant_id', tenantId)
+      .eq('project_id', Number(projectId)).eq('type', 'استلام')
+      .not('client_name', 'is', null)
+      .order('id', { ascending: false }).limit(1).maybeSingle()
+    if (data?.client_name) set('client_name', data.client_name)
   }
 
   async function loadProjectBalances() {
@@ -834,6 +846,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         project_name:   form.project_name || null,
         vendor_name:    form.vendor_name || null,
         doc_code:       form.doc_code || null,
+        booking_no:     form.booking_no || null,
+        client_name:    form.client_name || null,
         dispatch_note:  type === 'إرجاع' ? (form.return_type + (row.note ? ' — ' + row.note : '')) : (row.note || null),
         attachment_url: attachmentUrl,
       })
@@ -878,7 +892,9 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         }),
         vendorName:    form.vendor_name || '',
         docCode:       form.doc_code || '',
-        attachmentUrl: attachmentUrl || '',
+        bookingNo:     form.booking_no || '',
+        clientName:    form.client_name || '',
+        txnNumber:     lastTxn?.txn_number || '',
       })
     }
 
@@ -938,6 +954,11 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                     {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
+                {(type === 'صرف' || type === 'إرجاع') && form.client_name && (
+                  <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #86efac', fontSize: '0.82rem', color: '#0ea77b' }}>
+                    👤 العميل: <strong>{form.client_name}</strong>
+                  </div>
+                )}
                 {type === 'إرجاع' && (
                   <div>
                     <label style={lbl}>نوع الإرجاع <span style={{ color: '#c81e1e' }}>*</span></label>
@@ -954,10 +975,29 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                 )}
               </div>
             ) : (
-              <div>
-                <label style={lbl}>المورد / رقم الوثيقة</label>
-                <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)}
-                  className="input" placeholder="اسم المورد أو رقم الإذن" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={lbl}>المورد</label>
+                    <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)}
+                      className="input" placeholder="اسم المورد" />
+                  </div>
+                  <div>
+                    <label style={lbl}>اسم العميل</label>
+                    <input value={form.client_name} onChange={e => set('client_name', e.target.value)}
+                      className="input" placeholder="اسم العميل" />
+                  </div>
+                  <div>
+                    <label style={lbl}>رقم الحجز</label>
+                    <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)}
+                      className="input" dir="ltr" placeholder="Booking No." />
+                  </div>
+                  <div>
+                    <label style={lbl}>رقم الوثيقة</label>
+                    <input value={form.doc_code} onChange={e => set('doc_code', e.target.value)}
+                      className="input" dir="ltr" placeholder="Doc No." />
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -1159,6 +1199,7 @@ export default function InventoryPage() {
   const [matSearch,     setMatSearch]     = useState('')
   const [matWh,         setMatWh]         = useState('')
   const [matQtyFilter,  setMatQtyFilter]  = useState<'all' | 'with' | 'without'>('all')
+  const [matActiveFilter, setMatActiveFilter] = useState<'active' | 'inactive' | 'all'>('active')
   const [matViewMode,   setMatViewMode]   = useState<'none' | 'all' | 'warehouse' | 'project'>('none')
   const [matProjectId,  setMatProjectId]  = useState('')
   const [matLoading,    setMatLoading]    = useState(false)
@@ -1216,6 +1257,8 @@ export default function InventoryPage() {
     if (matSearch) q = q.or(`name.ilike.%${matSearch}%,catalog_no.ilike.%${matSearch}%,sec_number.ilike.%${matSearch}%,mat_code.ilike.%${matSearch}%,item_code.ilike.%${matSearch}%`)
     if (matQtyFilter === 'with')    q = q.gt('qty', 0)
     if (matQtyFilter === 'without') q = q.lte('qty', 0)
+    if (matActiveFilter === 'active')   q = q.eq('is_active', true)
+    if (matActiveFilter === 'inactive') q = q.eq('is_active', false)
     const { data, count } = await q
     setMaterials(data || []); setMatTotal(count || 0); setMatPage(page)
     setMatLoading(false)
@@ -1401,11 +1444,18 @@ export default function InventoryPage() {
                     </select>
                   )}
                   {matViewMode === 'all' && (
-                    <select value={matQtyFilter} onChange={e => setMatQtyFilter(e.target.value as any)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
-                      <option value="all">كل المواد</option>
-                      <option value="with">لها كميات</option>
-                      <option value="without">بدون كمية</option>
-                    </select>
+                    <>
+                      <select value={matQtyFilter} onChange={e => setMatQtyFilter(e.target.value as any)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
+                        <option value="all">كل المواد</option>
+                        <option value="with">لها كميات</option>
+                        <option value="without">بدون كمية</option>
+                      </select>
+                      <select value={(matActiveFilter as string) || 'active'} onChange={e => (setMatActiveFilter as any)(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
+                        <option value="active">النشطة فقط</option>
+                        <option value="inactive">المعطلة فقط</option>
+                        <option value="all">الكل</option>
+                      </select>
+                    </>
                   )}
                   <button onClick={() => loadMaterials(1)} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '7px 14px' }}>
                     <Filter style={{ width: '13px', height: '13px' }} /> عرض
@@ -1547,6 +1597,9 @@ export default function InventoryPage() {
                         <td style={{ padding: '8px 12px', fontSize: '0.72rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
                           {l.created_at ? new Date(l.created_at).toLocaleDateString('ar-SA') : '—'}
                           <div style={{ fontSize: '0.65rem' }}>{l.created_at ? new Date(l.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                        </td>
+                        <td style={{ padding: '8px 6px', fontFamily: 'monospace', fontSize: '0.7rem', color: '#7c3aed', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {(l as any).txn_number || '—'}
                         </td>
                         <td style={{ padding: '8px 12px' }}>
                           <span className={`badge ${TYPE_COLOR[l.type] || 'badge-gray'}`} style={{ fontSize: '0.68rem' }}>{l.type}</span>
