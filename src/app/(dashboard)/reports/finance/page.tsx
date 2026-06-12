@@ -670,7 +670,8 @@ export default function ReportsFinancePage() {
     const skip = ['tenant_id', 'branch_id', 'lines']
     const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
     const rows = results.map(r => headers.map(h => String((r as any)[h] ?? '')).join(','))
-    const blob = new Blob([String.fromCharCode(0xFEFF) + [headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' })
+    const NL2 = String.fromCharCode(10)
+    const blob = new Blob([String.fromCharCode(0xFEFF) + [headers.join(','), ...rows].join(NL2)], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
     a.download = (report?.title || 'تقرير') + '.csv'; a.click()
   }
