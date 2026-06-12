@@ -482,7 +482,6 @@ export default function VisitsPage() {
         <VisitDetail
           visit={visits.find(v => v.id === detailVisit.id) || detailVisit}
           onClose={() => setDetail(null)}
-          onResolve={handleResolve}
         />
       )}
 
