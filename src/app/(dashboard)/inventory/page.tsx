@@ -480,18 +480,7 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
               </div>
               <div>
                 <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '3px' }}>باركود</div>
-                <svg id="barcode-svg" style={{ display: 'block' }}></svg>
-                <script dangerouslySetInnerHTML={{ __html: `
-                  (function() {
-                    try {
-                      var svg = document.getElementById('barcode-svg');
-                      if (svg && window.JsBarcode) {
-                        JsBarcode(svg, '${savedMat.barcode}', { format: 'CODE128', width: 2, height: 40, displayValue: true, fontSize: 10 });
-                      }
-                    } catch(e) {}
-                  })();
-                `}} />
-              </div>
+                <svg id="barcode-svg" style={{ display: 'block' }}></svg></div>
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
               <button onClick={() => {
