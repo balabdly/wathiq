@@ -57,14 +57,14 @@ export default function ReportsInventoryPage() {
     setLoading(true); setResults([])
 
     let q = supabase.from('stock_ledger')
-      .select('*, material:materials(name, unit)')
+      .select('*')
       .eq('tenant_id', tenant.id)
 
-    if (fWh)       q = q.eq('wh_name', warehouses.find(w => w.id === Number(fWh))?.name || fWh)
+    if (fWh)       q = q.eq('wh_name', warehouses.find((w: any) => w.id === Number(fWh))?.name || '')
     if (fDateFrom) q = q.gte('created_at', fDateFrom)
     if (fDateTo)   q = q.lte('created_at', fDateTo + 'T23:59:59')
     if (fProject)  q = q.eq('project_id', Number(fProject))
-    if (fMat)      q = q.eq('mat_name', materials.find(m => m.id === Number(fMat))?.name || fMat)
+    if (fMat)      q = q.eq('mat_name', materials.find((m: any) => m.id === Number(fMat))?.name || '')
 
     if (selected === 'movements') {
       if (fType) q = q.eq('type', fType)
@@ -73,11 +73,11 @@ export default function ReportsInventoryPage() {
 
     } else if (selected === 'balance') {
       const { data: mats } = await supabase.from('materials')
-        .select('id, name, unit, qty, warehouse:warehouses(name)')
+        .select('id, name, unit, qty, reorder, warehouse_id, warehouse:warehouses(name)')
         .eq('tenant_id', tenant.id).eq('is_active', true)
         .order('name')
       let filtered = mats || []
-      if (fWh) filtered = filtered.filter((m: any) => m.warehouse?.name === warehouses.find(w => w.id === Number(fWh))?.name)
+      if (fWh) filtered = filtered.filter((m: any) => m.warehouse_id === Number(fWh))
       if (fMat) filtered = filtered.filter((m: any) => m.id === Number(fMat))
       setResults(filtered)
 
@@ -297,8 +297,8 @@ export default function ReportsInventoryPage() {
                       const pct = r.qty_received > 0 ? Math.round(r.qty_issued / r.qty_received * 100) : 0
                       return (
                         <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1a56db' }}>{r.project?.name || '—'}</td>
-                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{r.material?.name || '—'}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1a56db' }}>{r.project_name || '—'}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{r.mat_name || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#6b7280' }}>{r.warehouse?.name || '—'}</td>
                           <td style={{ padding: '10px 14px', color: '#9ca3af' }}>{r.material?.unit || '—'}</td>
                           <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: 700 }}>{fmt(r.qty_received)}</td>
