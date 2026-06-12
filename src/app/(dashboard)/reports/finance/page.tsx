@@ -242,7 +242,7 @@ export default function ReportsFinancePage() {
       const { data: lines } = await supabase.from('finance_journal_lines')
         .select('entry_id, account_id, debit, credit')
         .in('entry_id', entryIds)
-        .in('account_id', [...cashIds])
+        .in('account_id', Array.from(cashIds))
 
       // رصيد أول المدة النقدي
       const openCashData = await fetchAccountBalances(tenant.id, fDateFrom, undefined, ['أصول'])
