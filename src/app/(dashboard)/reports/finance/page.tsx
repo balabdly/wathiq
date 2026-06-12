@@ -2,72 +2,113 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { DollarSign, Search, X, Download } from 'lucide-react'
+import { DollarSign, Search, X, Download, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ═══════════════════════════════════════
-// تعريف مجموعات التقارير
-// ═══════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// قواعد المحاسبة حسب IFRS
+// الرصيد الطبيعي لكل نوع حساب
+// ═══════════════════════════════════════════════════
+const DEBIT_NORMAL  = ['أصول', 'مصروفات']   // رصيد = debit - credit
+const CREDIT_NORMAL = ['خصوم', 'حقوق ملكية', 'إيرادات'] // رصيد = credit - debit
+
+function calcBalance(accountType: string, debit: number, credit: number): number {
+  if (DEBIT_NORMAL.includes(accountType))  return debit - credit
+  if (CREDIT_NORMAL.includes(accountType)) return credit - debit
+  return debit - credit
+}
+
+// ═══════════════════════════════════════════════════
+// دالة جلب أرصدة الحسابات — العمود الفقري لكل التقارير
+// cumulative: true = تراكمي حتى التاريخ | false = حركة الفترة فقط
+// ═══════════════════════════════════════════════════
+async function fetchAccountBalances(
+  tenantId: string,
+  dateTo: string,
+  dateFrom?: string,
+  accountTypes?: string[]
+) {
+  // جلب القيود ضمن النطاق
+  let q = supabase.from('finance_journal_entries')
+    .select('id').eq('tenant_id', tenantId).lte('entry_date', dateTo)
+  if (dateFrom) q = q.gte('entry_date', dateFrom)
+  const { data: entries } = await q
+  if (!entries?.length) return []
+
+  const entryIds = entries.map((e: any) => e.id)
+
+  // جلب سطور القيود
+  const { data: lines } = await supabase.from('finance_journal_lines')
+    .select('account_id, debit, credit')
+    .in('entry_id', entryIds)
+  if (!lines?.length) return []
+
+  // تجميع على مستوى الحساب
+  const map: Record<number, { debit: number; credit: number }> = {}
+  lines.forEach((l: any) => {
+    if (!map[l.account_id]) map[l.account_id] = { debit: 0, credit: 0 }
+    map[l.account_id].debit  += Number(l.debit  || 0)
+    map[l.account_id].credit += Number(l.credit || 0)
+  })
+
+  // جلب الحسابات
+  let accQ = supabase.from('finance_accounts')
+    .select('id, code, name, account_type, account_class, normal_balance, is_parent, parent_id')
+    .eq('tenant_id', tenantId).eq('is_active', true).order('code')
+  if (accountTypes?.length) accQ = accQ.in('account_type', accountTypes)
+  const { data: accounts } = await accQ
+
+  return (accounts || []).map((a: any) => ({
+    ...a,
+    debit:   map[a.id]?.debit  || 0,
+    credit:  map[a.id]?.credit || 0,
+    balance: calcBalance(a.account_type, map[a.id]?.debit || 0, map[a.id]?.credit || 0),
+  }))
+}
+
+// ═══════════════════════════════════════════════════
+// مجموعات التقارير
+// ═══════════════════════════════════════════════════
 const REPORT_GROUPS = [
   {
-    id: 'financial_statements',
-    label: 'القوائم المالية',
-    color: '#1a56db',
-    bg: '#eff6ff',
-    border: '#bfdbfe',
+    id: 'statements', label: 'القوائم المالية', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe',
     reports: [
-      { id: 'income',        title: 'قائمة الدخل',                    icon: '📈', desc: 'الإيرادات والمصروفات وصافي الربح' },
-      { id: 'balance_sheet', title: 'قائمة المركز المالي',            icon: '🏦', desc: 'الأصول والخصوم وحقوق الملكية' },
-      { id: 'cashflow',      title: 'قائمة التدفقات النقدية',         icon: '💧', desc: 'التدفقات التشغيلية والاستثمارية والتمويلية' },
-      { id: 'equity',        title: 'قائمة التغير في حقوق الملكية',   icon: '📊', desc: 'التغيرات في رأس المال وحقوق الملكية' },
+      { id: 'income',        title: 'قائمة الدخل',                   icon: '📈', desc: 'الإيرادات والمصروفات وصافي الربح / الخسارة' },
+      { id: 'balance_sheet', title: 'قائمة المركز المالي',           icon: '🏦', desc: 'الأصول = الخصوم + حقوق الملكية' },
+      { id: 'cashflow',      title: 'قائمة التدفقات النقدية',        icon: '💧', desc: 'التدفقات التشغيلية والاستثمارية والتمويلية' },
+      { id: 'equity',        title: 'التغير في حقوق الملكية',        icon: '📊', desc: 'رأس المال والأرباح المحتجزة والتوزيعات' },
     ]
   },
   {
-    id: 'sales',
-    label: 'المبيعات',
-    color: '#0ea77b',
-    bg: '#ecfdf5',
-    border: '#86efac',
+    id: 'sales', label: 'المبيعات والذمم', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac',
     reports: [
-      { id: 'sales_detail',  title: 'تقرير المبيعات التفصيلي',        icon: '🧾', desc: 'الفواتير مفصلة بالعميل والمبلغ والحالة' },
-      { id: 'sales_client',  title: 'مبيعات حسب العميل',              icon: '👤', desc: 'إجمالي مبيعات كل عميل خلال الفترة' },
-      { id: 'aging',         title: 'تقرير أعمار الديون',             icon: '⏳', desc: 'تحليل الذمم المدينة حسب عمر الدين' },
-      { id: 'statement',     title: 'كشف حساب عميل',                  icon: '📋', desc: 'كشف مفصل لعميل محدد بالمدفوعات والمستحقات' },
+      { id: 'sales_detail',  title: 'تقرير المبيعات التفصيلي',       icon: '🧾', desc: 'الفواتير مفصلة بالعميل والمبلغ' },
+      { id: 'sales_summary', title: 'ملخص المبيعات حسب العميل',      icon: '👤', desc: 'إجمالي مبيعات كل عميل' },
+      { id: 'aging',         title: 'تقرير أعمار الديون',            icon: '⏳', desc: '0-30 / 31-60 / 61-90 / +90 يوم' },
+      { id: 'statement',     title: 'كشف حساب عميل',                 icon: '📋', desc: 'الفواتير والمدفوعات والرصيد' },
     ]
   },
   {
-    id: 'purchases',
-    label: 'المشتريات',
-    color: '#7c3aed',
-    bg: '#f5f3ff',
-    border: '#ddd6fe',
+    id: 'purchases', label: 'المشتريات والموردون', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe',
     reports: [
-      { id: 'purchases_detail', title: 'تقرير المشتريات التفصيلي',    icon: '🛒', desc: 'أوامر الشراء مفصلة بالمورد والتاريخ' },
-      { id: 'purchases_vendor', title: 'مشتريات حسب المورد',          icon: '🏭', desc: 'إجمالي مشتريات كل مورد' },
+      { id: 'purchases_detail',  title: 'تقرير المشتريات التفصيلي', icon: '🛒', desc: 'أوامر الشراء مفصلة' },
+      { id: 'purchases_summary', title: 'ملخص المشتريات حسب المورد', icon: '🏭', desc: 'إجمالي مشتريات كل مورد' },
     ]
   },
   {
-    id: 'tax',
-    label: 'الضريبة',
-    color: '#6366f1',
-    bg: '#eef2ff',
-    border: '#c7d2fe',
+    id: 'tax', label: 'الضريبة', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe',
     reports: [
-      { id: 'tax_sales',     title: 'ضريبة المبيعات',                 icon: '🧾', desc: 'إجمالي ضريبة القيمة المضافة على المبيعات' },
-      { id: 'tax_purchases', title: 'ضريبة المشتريات',               icon: '📋', desc: 'إجمالي ضريبة القيمة المضافة على المشتريات' },
-      { id: 'tax_journal',   title: 'دفتر اليومية الضريبية',          icon: '📔', desc: 'كل المعاملات الضريبية في الفترة' },
+      { id: 'tax_sales',     title: 'تقرير ضريبة المبيعات',          icon: '🧾', desc: 'الوعاء الضريبي وضريبة المبيعات' },
+      { id: 'tax_purchases', title: 'تقرير ضريبة المشتريات',         icon: '📋', desc: 'ضريبة المدخلات القابلة للاسترداد' },
+      { id: 'tax_net',       title: 'صافي الضريبة المستحقة',         icon: '⚖️', desc: 'ضريبة المبيعات - ضريبة المشتريات' },
     ]
   },
   {
-    id: 'accounting',
-    label: 'الحسابات والقيود',
-    color: '#0891b2',
-    bg: '#ecfeff',
-    border: '#a5f3fc',
+    id: 'accounting', label: 'الحسابات والقيود', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc',
     reports: [
-      { id: 'trial',         title: 'ميزان المراجعة',                  icon: '⚖️', desc: 'أرصدة جميع الحسابات أول وآخر المدة' },
-      { id: 'ledger',        title: 'دفتر الأستاذ',                    icon: '📒', desc: 'حركة حساب محدد خلال فترة زمنية' },
-      { id: 'journal',       title: 'دفتر اليومية',                    icon: '📗', desc: 'سجل القيود اليومية مرتبة بالتاريخ' },
+      { id: 'trial',   title: 'ميزان المراجعة',    icon: '⚖️', desc: 'أرصدة أول المدة + الحركة + آخر المدة' },
+      { id: 'ledger',  title: 'دفتر الأستاذ',      icon: '📒', desc: 'حركة حساب محدد مع رصيد متراكم' },
+      { id: 'journal', title: 'دفتر اليومية',      icon: '📗', desc: 'القيود اليومية مرتبة بالتاريخ' },
     ]
   },
 ]
@@ -75,113 +116,209 @@ const REPORT_GROUPS = [
 const thisYear = new Date().getFullYear()
 const firstOfYear = `${thisYear}-01-01`
 const today = new Date().toISOString().split('T')[0]
+const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function ReportsFinancePage() {
   const { tenant, activeBranch } = useStore()
-  const [selected,   setSelected]   = useState<string | null>(null)
-  const [loading,    setLoading]    = useState(false)
-  const [results,    setResults]    = useState<any[]>([])
-  const [accounts,   setAccounts]   = useState<any[]>([])
-  const [clients,    setClients]    = useState<any[]>([])
-  const [loaded,     setLoaded]     = useState(false)
-  const [fDateFrom,  setFDateFrom]  = useState(firstOfYear)
-  const [fDateTo,    setFDateTo]    = useState(today)
-  const [fAccount,   setFAccount]   = useState('')
-  const [fClient,    setFClient]    = useState('')
-  const [summary,    setSummary]    = useState<any>(null)
+  const [selected,  setSelected]  = useState<string | null>(null)
+  const [loading,   setLoading]   = useState(false)
+  const [results,   setResults]   = useState<any[]>([])
+  const [accounts,  setAccounts]  = useState<any[]>([])
+  const [clients,   setClients]   = useState<any[]>([])
+  const [loaded,    setLoaded]    = useState(false)
+  const [fDateFrom, setFDateFrom] = useState(firstOfYear)
+  const [fDateTo,   setFDateTo]   = useState(today)
+  const [fAccount,  setFAccount]  = useState('')
+  const [fClient,   setFClient]   = useState('')
+  const [summary,   setSummary]   = useState<any>(null)
+  const [extra,     setExtra]     = useState<any>(null) // بيانات إضافية (مثل رصيد أول المدة في ميزان المراجعة)
 
-  const allReports = REPORT_GROUPS.flatMap(g => g.reports.map(r => ({ ...r, groupColor: g.color, groupBg: g.bg })))
+  const allReports = REPORT_GROUPS.flatMap(g => g.reports.map(r => ({ ...r, groupColor: g.color, groupBg: g.bg, groupLabel: g.label })))
   const report = allReports.find(r => r.id === selected)
 
   useEffect(() => {
     if (!tenant || loaded) return
     Promise.all([
-      supabase.from('finance_accounts').select('id, code, name, account_type').eq('tenant_id', tenant.id).eq('is_active', true).order('code'),
+      supabase.from('finance_accounts').select('id, code, name, account_type').eq('tenant_id', tenant.id).eq('is_active', true).eq('is_parent', false).order('code'),
       supabase.from('finance_clients').select('id, name').eq('tenant_id', tenant.id).order('name'),
-    ]).then(([accRes, clientRes]) => {
-      setAccounts(accRes.data || [])
-      setClients(clientRes.data || [])
-      setLoaded(true)
-    })
+    ]).then(([a, c]) => { setAccounts(a.data || []); setClients(c.data || []); setLoaded(true) })
   }, [tenant?.id])
-
-  const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   async function runReport() {
     if (!tenant || !selected) return
-    setLoading(true); setResults([]); setSummary(null)
+    setLoading(true); setResults([]); setSummary(null); setExtra(null)
 
-    // ──────── المبيعات ────────
-    if (selected === 'sales_detail') {
+    // ══════════════════════════════════════════
+    // القوائم المالية
+    // ══════════════════════════════════════════
+    if (selected === 'income') {
+      // قائمة الدخل — حركة الفترة فقط
+      const data = await fetchAccountBalances(tenant.id, fDateTo, fDateFrom, ['إيرادات', 'مصروفات'])
+      const revenues = data.filter(a => a.account_type === 'إيرادات' && a.balance !== 0)
+      const expenses = data.filter(a => a.account_type === 'مصروفات' && a.balance !== 0)
+      const totRev = revenues.reduce((s, a) => s + a.balance, 0)
+      const totExp = expenses.reduce((s, a) => s + a.balance, 0)
+      setResults([
+        ...revenues.map(a => ({ ...a, section: 'إيرادات' })),
+        ...expenses.map(a => ({ ...a, section: 'مصروفات' })),
+      ])
+      setSummary({ revenues: totRev, expenses: totExp, net: totRev - totExp })
+
+    } else if (selected === 'balance_sheet') {
+      // المركز المالي — تراكمي حتى fDateTo (بدون dateFrom)
+      // صافي الربح للفترة من بداية السنة حتى fDateTo
+      const [bsData, incomeData] = await Promise.all([
+        fetchAccountBalances(tenant.id, fDateTo, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
+        fetchAccountBalances(tenant.id, fDateTo, firstOfYear, ['إيرادات', 'مصروفات']),
+      ])
+      const netIncome = incomeData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
+                      - incomeData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+      const assets      = bsData.filter(a => a.account_type === 'أصول'         && a.balance !== 0)
+      const liabilities = bsData.filter(a => a.account_type === 'خصوم'         && a.balance !== 0)
+      const equity      = bsData.filter(a => a.account_type === 'حقوق ملكية'   && a.balance !== 0)
+      setResults([
+        ...assets.map(a      => ({ ...a, section: 'أصول' })),
+        ...liabilities.map(a => ({ ...a, section: 'خصوم' })),
+        ...equity.map(a      => ({ ...a, section: 'حقوق الملكية' })),
+      ])
+      const totAssets = assets.reduce((s, a) => s + a.balance, 0)
+      const totLiab   = liabilities.reduce((s, a) => s + a.balance, 0)
+      const totEquity = equity.reduce((s, a) => s + a.balance, 0)
+      setSummary({ totalAssets: totAssets, totalLiabilities: totLiab, totalEquity: totEquity, netIncome })
+      setExtra({ balanced: Math.abs(totAssets - (totLiab + totEquity + netIncome)) < 1 })
+
+    } else if (selected === 'cashflow') {
+      // التدفقات النقدية — حركة الحسابات النقدية (أصول نقدية فقط)
+      const { data: cashAccs } = await supabase.from('finance_accounts')
+        .select('id, code, name, account_class').eq('tenant_id', tenant.id)
+        .eq('account_type', 'أصول').ilike('account_class', '%نقد%')
+      // جلب القيود
+      const { data: entries } = await supabase.from('finance_journal_entries')
+        .select('id, entry_date, description, reference_type')
+        .eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
+      if (!entries?.length) { setResults([]); setLoading(false); return }
+      const entryIds = entries.map((e: any) => e.id)
+      const cashIds  = new Set((cashAccs || []).map((a: any) => a.id))
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('entry_id, account_id, debit, credit').in('entry_id', entryIds)
+      const entryMap: Record<number, any> = {}
+      entries.forEach((e: any) => { entryMap[e.id] = e })
+      // جمع التدفقات حسب نوع المرجع
+      const flows: any[] = []
+      const grouped: Record<string, { in: number; out: number }> = {}
+      ;(lines || []).filter((l: any) => cashIds.has(l.account_id)).forEach((l: any) => {
+        const e = entryMap[l.entry_id]
+        if (!e) return
+        const type = e.reference_type || 'أخرى'
+        if (!grouped[type]) grouped[type] = { in: 0, out: 0 }
+        grouped[type].in  += Number(l.debit  || 0)
+        grouped[type].out += Number(l.credit || 0)
+      })
+      Object.entries(grouped).forEach(([type, v]) => {
+        flows.push({ type, inflow: (v as any).in, outflow: (v as any).out, net: (v as any).in - (v as any).out })
+      })
+      setResults(flows)
+      setSummary({
+        'إجمالي التدفقات الداخلة': flows.reduce((s, f) => s + f.inflow, 0),
+        'إجمالي التدفقات الخارجة': flows.reduce((s, f) => s + f.outflow, 0),
+        'صافي التدفق النقدي': flows.reduce((s, f) => s + f.net, 0),
+      })
+
+    } else if (selected === 'equity') {
+      // التغير في حقوق الملكية
+      const [openData, periodData] = await Promise.all([
+        fetchAccountBalances(tenant.id, fDateFrom, undefined, ['حقوق ملكية', 'إيرادات', 'مصروفات']),
+        fetchAccountBalances(tenant.id, fDateTo,   fDateFrom,  ['حقوق ملكية', 'إيرادات', 'مصروفات']),
+      ])
+      const openEquity   = openData.filter(a => a.account_type === 'حقوق ملكية').reduce((s, a) => s + a.balance, 0)
+      const openNetInc   = openData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
+                         - openData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+      const periodNetInc = periodData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
+                         - periodData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+      const closeEquity  = openEquity + openNetInc + periodNetInc
+      setResults([
+        { item: 'رصيد أول المدة — حقوق الملكية', amount: openEquity },
+        { item: 'صافي الربح المحتجز (قبل الفترة)', amount: openNetInc },
+        { item: 'صافي ربح الفترة', amount: periodNetInc },
+        { item: 'رصيد آخر المدة — حقوق الملكية', amount: closeEquity },
+      ])
+      setSummary({ 'رصيد أول المدة': openEquity + openNetInc, 'صافي ربح الفترة': periodNetInc, 'رصيد آخر المدة': closeEquity })
+
+    // ══════════════════════════════════════════
+    // المبيعات
+    // ══════════════════════════════════════════
+    } else if (selected === 'sales_detail' || selected === 'statement') {
       let q = supabase.from('finance_invoices').select('*')
         .eq('tenant_id', tenant.id).gte('invoice_date', fDateFrom).lte('invoice_date', fDateTo)
       if (fClient) q = q.eq('client_id', Number(fClient))
-      const { data } = await q.order('invoice_date', { ascending: false })
+      const { data, error } = await q.order('invoice_date', { ascending: false })
+      if (error) { toast.error('خطأ: ' + error.message); setLoading(false); return }
       setResults(data || [])
       setSummary({
         'عدد الفواتير': (data || []).length,
         'إجمالي قبل الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-        'إجمالي الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
-        'الإجمالي الكلي': (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
+        'ضريبة القيمة المضافة': (data || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
+        'الإجمالي شامل الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
       })
 
-    } else if (selected === 'sales_client') {
-      const { data } = await supabase.from('finance_invoices').select('client_name, client_id, subtotal, vat_amount, total_amount, status')
+    } else if (selected === 'sales_summary') {
+      const { data, error } = await supabase.from('finance_invoices').select('client_name, subtotal, vat_amount, total_amount, status')
         .eq('tenant_id', tenant.id).gte('invoice_date', fDateFrom).lte('invoice_date', fDateTo)
+      if (error) { toast.error('خطأ'); setLoading(false); return }
       const grouped: Record<string, any> = {}
       ;(data || []).forEach((r: any) => {
         const k = r.client_name || 'غير محدد'
-        if (!grouped[k]) grouped[k] = { client: k, count: 0, subtotal: 0, vat: 0, total: 0, paid: 0, pending: 0 }
+        if (!grouped[k]) grouped[k] = { client: k, count: 0, subtotal: 0, vat: 0, total: 0, paid: 0, due: 0 }
         grouped[k].count++
         grouped[k].subtotal += Number(r.subtotal || 0)
-        grouped[k].vat += Number(r.vat_amount || 0)
-        grouped[k].total += Number(r.total_amount || 0)
-        r.status === 'مدفوعة' ? grouped[k].paid += Number(r.total_amount || 0) : grouped[k].pending += Number(r.total_amount || 0)
+        grouped[k].vat      += Number(r.vat_amount || 0)
+        grouped[k].total    += Number(r.total_amount || 0)
+        r.status === 'مدفوعة' ? grouped[k].paid += Number(r.total_amount || 0) : grouped[k].due += Number(r.total_amount || 0)
       })
       setResults(Object.values(grouped).sort((a, b) => b.total - a.total))
+      setSummary({
+        'إجمالي المبيعات': Object.values(grouped).reduce((s: number, r: any) => s + r.total, 0),
+        'المحصّل': Object.values(grouped).reduce((s: number, r: any) => s + r.paid, 0),
+        'المستحق': Object.values(grouped).reduce((s: number, r: any) => s + r.due, 0),
+      })
 
     } else if (selected === 'aging') {
-      const { data } = await supabase.from('finance_invoices').select('*')
+      const { data, error } = await supabase.from('finance_invoices').select('*')
         .eq('tenant_id', tenant.id).neq('status', 'مدفوعة').order('invoice_date')
+      if (error) { toast.error('خطأ'); setLoading(false); return }
       const now = new Date()
       const aged = (data || []).map((inv: any) => {
         const days = Math.floor((now.getTime() - new Date(inv.invoice_date).getTime()) / 86400000)
-        return { ...inv, days, bucket: days <= 30 ? '0-30 يوم' : days <= 60 ? '31-60 يوم' : days <= 90 ? '61-90 يوم' : 'أكثر من 90 يوم' }
+        return {
+          ...inv, days,
+          bucket: days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '+90'
+        }
       })
       setResults(aged)
-      const buckets: Record<string, number> = {}
+      const buckets: Record<string, number> = { '0-30': 0, '31-60': 0, '61-90': 0, '+90': 0 }
       aged.forEach(r => { buckets[r.bucket] = (buckets[r.bucket] || 0) + Number(r.total_amount || 0) })
-      setSummary(buckets)
+      setSummary({ ...buckets, 'الإجمالي': aged.reduce((s, r) => s + Number(r.total_amount || 0), 0) })
 
-    } else if (selected === 'statement') {
-      const { data } = await supabase.from('finance_invoices').select('*')
-        .eq('tenant_id', tenant.id)
-        .eq(fClient ? 'client_id' : 'tenant_id', fClient ? Number(fClient) : tenant.id)
-        .gte('invoice_date', fDateFrom).lte('invoice_date', fDateTo)
-        .order('invoice_date')
-      setResults(data || [])
-      setSummary({
-        'إجمالي الفواتير': (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
-        'المدفوع': (data || []).filter((r: any) => r.status === 'مدفوعة').reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
-        'المستحق': (data || []).filter((r: any) => r.status !== 'مدفوعة').reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
-      })
-
-    // ──────── المشتريات ────────
+    // ══════════════════════════════════════════
+    // المشتريات
+    // ══════════════════════════════════════════
     } else if (selected === 'purchases_detail') {
-      const { data } = await supabase.from('finance_purchase_orders').select('*')
+      const { data, error } = await supabase.from('finance_purchase_orders').select('*')
         .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo)
         .order('po_date', { ascending: false })
+      if (error) { toast.error('خطأ'); setLoading(false); return }
       setResults(data || [])
       setSummary({
         'عدد أوامر الشراء': (data || []).length,
         'إجمالي قبل الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-        'إجمالي الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
+        'ضريبة القيمة المضافة': (data || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
         'الإجمالي': (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
       })
 
-    } else if (selected === 'purchases_vendor') {
-      const { data } = await supabase.from('finance_purchase_orders').select('vendor_name, subtotal, vat_amount, total_amount')
+    } else if (selected === 'purchases_summary') {
+      const { data, error } = await supabase.from('finance_purchase_orders').select('vendor_name, subtotal, vat_amount, total_amount')
         .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo)
+      if (error) { toast.error('خطأ'); setLoading(false); return }
       const grouped: Record<string, any> = {}
       ;(data || []).forEach((r: any) => {
         const k = r.vendor_name || 'غير محدد'
@@ -191,109 +328,140 @@ export default function ReportsFinancePage() {
       })
       setResults(Object.values(grouped).sort((a, b) => b.total - a.total))
 
-    // ──────── الضريبة ────────
-    } else if (selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_journal') {
-      const table = selected !== 'tax_purchases' ? 'finance_invoices' : 'finance_purchase_orders'
-      const dateCol = selected !== 'tax_purchases' ? 'invoice_date' : 'po_date'
-      const { data } = await supabase.from(table).select('*')
-        .eq('tenant_id', tenant.id).gte(dateCol, fDateFrom).lte(dateCol, fDateTo)
-        .gt('vat_amount', 0).order(dateCol)
-      setResults(data || [])
-      setSummary({
-        'الوعاء الضريبي': (data || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-        'الضريبة 15%': (data || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
-        'الإجمالي شامل الضريبة': (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
-      })
+    // ══════════════════════════════════════════
+    // الضريبة
+    // ══════════════════════════════════════════
+    } else if (selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_net') {
+      const isPurch = selected === 'tax_purchases'
+      const table   = isPurch ? 'finance_purchase_orders' : 'finance_invoices'
+      const dateCol = isPurch ? 'po_date' : 'invoice_date'
+      const { data: salesData } = await supabase.from(table).select('*')
+        .eq('tenant_id', tenant.id).gte(dateCol, fDateFrom).lte(dateCol, fDateTo).gt('vat_amount', 0).order(dateCol)
 
-    // ──────── الحسابات ────────
-    } else if (selected === 'trial') {
-      const { data: accs } = await supabase.from('finance_accounts')
-        .select('id, code, name, account_type, normal_balance').eq('tenant_id', tenant.id).eq('is_active', true).order('code')
-      // جلب مجموع المدين والدائن لكل حساب
-      const { data: lines } = await supabase.from('finance_journal_lines').select('account_id, debit, credit')
-      // جلب entry_ids ضمن الفترة
-      const { data: entries } = await supabase.from('finance_journal_entries')
-        .select('id').eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
-      const entryIds = new Set((entries || []).map((e: any) => e.id))
-      const map: Record<number, { debit: number; credit: number }> = {}
-      ;(lines || []).filter((l: any) => entryIds.has(l.entry_id)).forEach((l: any) => {
-        if (!map[l.account_id]) map[l.account_id] = { debit: 0, credit: 0 }
-        map[l.account_id].debit  += Number(l.debit  || 0)
-        map[l.account_id].credit += Number(l.credit || 0)
-      })
-      setResults((accs || []).map((a: any) => ({
-        ...a,
-        debit:   map[a.id]?.debit  || 0,
-        credit:  map[a.id]?.credit || 0,
-        balance: (map[a.id]?.debit || 0) - (map[a.id]?.credit || 0),
-      })).filter((a: any) => a.debit > 0 || a.credit > 0))
-
-    } else if (selected === 'ledger' || selected === 'journal') {
-      const { data: entries } = await supabase.from('finance_journal_entries')
-        .select('id, entry_number, entry_date, description, reference_type, total_debit, total_credit, status')
-        .eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
-        .order('entry_date')
-      if (!entries?.length) { setResults([]); setLoading(false); return }
-
-      if (selected === 'ledger' && fAccount) {
-        const entryIds = entries.map((e: any) => e.id)
-        const { data: lines } = await supabase.from('finance_journal_lines')
-          .select('*, entry:finance_journal_entries(entry_number, entry_date, description)')
-          .eq('account_id', Number(fAccount)).in('entry_id', entryIds)
-        setResults(lines || [])
-        setSummary({
-          'إجمالي المدين': (lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0), 0),
-          'إجمالي الدائن': (lines || []).reduce((s: number, l: any) => s + Number(l.credit || 0), 0),
-        })
-      } else {
-        setResults(entries)
-        setSummary({
-          'عدد القيود': entries.length,
-          'إجمالي المدين': entries.reduce((s: number, e: any) => s + Number(e.total_debit || 0), 0),
-          'إجمالي الدائن': entries.reduce((s: number, e: any) => s + Number(e.total_credit || 0), 0),
-        })
-      }
-
-    // ──────── القوائم المالية ────────
-    } else if (selected === 'income' || selected === 'balance_sheet') {
-      const { data: accs } = await supabase.from('finance_accounts')
-        .select('id, code, name, account_type, normal_balance').eq('tenant_id', tenant.id).eq('is_active', true)
-      const { data: entries } = await supabase.from('finance_journal_entries')
-        .select('id').eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
-      const entryIds = new Set((entries || []).map((e: any) => e.id))
-      const { data: lines } = await supabase.from('finance_journal_lines').select('account_id, debit, credit')
-      const map: Record<number, number> = {}
-      ;(lines || []).filter((l: any) => entryIds.has(l.entry_id)).forEach((l: any) => {
-        if (!map[l.account_id]) map[l.account_id] = 0
-        map[l.account_id] += Number(l.debit || 0) - Number(l.credit || 0)
-      })
-      const accWithBal = (accs || []).map((a: any) => ({ ...a, balance: Math.abs(map[a.id] || 0) }))
-
-      if (selected === 'income') {
-        const revenues = accWithBal.filter((a: any) => a.account_type === 'إيرادات' && (map[a.id] || 0) !== 0)
-        const expenses = accWithBal.filter((a: any) => a.account_type === 'مصروفات' && (map[a.id] || 0) !== 0)
-        const totRev = revenues.reduce((s: number, a: any) => s + a.balance, 0)
-        const totExp = expenses.reduce((s: number, a: any) => s + a.balance, 0)
-        setResults([...revenues.map((a: any) => ({ ...a, section: 'إيرادات' })), ...expenses.map((a: any) => ({ ...a, section: 'مصروفات' }))])
-        setSummary({ 'إجمالي الإيرادات': totRev, 'إجمالي المصروفات': totExp, 'صافي الربح': totRev - totExp })
-      } else {
-        const assets      = accWithBal.filter((a: any) => a.account_type === 'أصول')
-        const liabilities = accWithBal.filter((a: any) => a.account_type === 'خصوم')
-        const equity      = accWithBal.filter((a: any) => a.account_type === 'حقوق الملكية')
+      if (selected === 'tax_net') {
+        // صافي الضريبة
+        const { data: purchData } = await supabase.from('finance_purchase_orders').select('vat_amount, subtotal, total_amount')
+          .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo).gt('vat_amount', 0)
+        const salesVat = (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
+        const purchVat = (purchData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
         setResults([
-          ...assets.map((a: any) => ({ ...a, section: 'أصول' })),
-          ...liabilities.map((a: any) => ({ ...a, section: 'خصوم' })),
-          ...equity.map((a: any) => ({ ...a, section: 'حقوق الملكية' })),
+          { item: 'ضريبة المبيعات (مخرجات)',     amount: salesVat,           type: 'credit' },
+          { item: 'ضريبة المشتريات (مدخلات)',     amount: purchVat,           type: 'debit'  },
+          { item: 'صافي الضريبة المستحقة للدفع', amount: salesVat - purchVat, type: 'net'    },
         ])
+        setSummary({ 'ضريبة المبيعات': salesVat, 'ضريبة المشتريات': purchVat, 'الصافي المستحق': salesVat - purchVat })
+      } else {
+        setResults(salesData || [])
         setSummary({
-          'إجمالي الأصول': assets.reduce((s: number, a: any) => s + a.balance, 0),
-          'إجمالي الخصوم': liabilities.reduce((s: number, a: any) => s + a.balance, 0),
-          'حقوق الملكية': equity.reduce((s: number, a: any) => s + a.balance, 0),
+          'الوعاء الضريبي': (salesData || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
+          'الضريبة 15%': (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
+          'الإجمالي': (salesData || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
         })
       }
-    } else {
-      // cashflow و equity — بيانات غير كافية حالياً
-      toast('هذا التقرير يحتاج بيانات إضافية — قريباً', { icon: '⚙️' })
+
+    // ══════════════════════════════════════════
+    // الحسابات والقيود
+    // ══════════════════════════════════════════
+    } else if (selected === 'trial') {
+      // ميزان المراجعة: أول المدة (تراكمي قبل fDateFrom) + الحركة + آخر المدة
+      const [openData, periodData] = await Promise.all([
+        fetchAccountBalances(tenant.id, fDateFrom, undefined),
+        fetchAccountBalances(tenant.id, fDateTo, fDateFrom),
+      ])
+      const openMap: Record<number, number> = {}
+      openData.forEach(a => { openMap[a.id] = a.balance })
+
+      const periodMap: Record<string, any> = {}
+      periodData.forEach(a => { periodMap[a.id] = a })
+
+      // جمع كل الحسابات
+      const allIds = new Set([...openData.map(a => a.id), ...periodData.map(a => a.id)])
+      const { data: allAccs } = await supabase.from('finance_accounts')
+        .select('id, code, name, account_type').eq('tenant_id', tenant.id).eq('is_active', true).order('code')
+
+      const rows = (allAccs || []).map((a: any) => {
+        const open   = openMap[a.id] || 0
+        const debit  = periodMap[a.id]?.debit  || 0
+        const credit = periodMap[a.id]?.credit || 0
+        const close  = open + calcBalance(a.account_type, debit, credit)
+        return { ...a, open, debit, credit, close }
+      }).filter(a => a.open !== 0 || a.debit !== 0 || a.credit !== 0)
+
+      setResults(rows)
+      setSummary({
+        'إجمالي أول المدة مدين': rows.filter(r => r.open > 0).reduce((s, r) => s + r.open, 0),
+        'إجمالي أول المدة دائن': rows.filter(r => r.open < 0).reduce((s, r) => s + Math.abs(r.open), 0),
+        'إجمالي مدين الفترة':    rows.reduce((s, r) => s + r.debit,  0),
+        'إجمالي دائن الفترة':    rows.reduce((s, r) => s + r.credit, 0),
+        'إجمالي آخر المدة مدين': rows.filter(r => r.close > 0).reduce((s, r) => s + r.close, 0),
+        'إجمالي آخر المدة دائن': rows.filter(r => r.close < 0).reduce((s, r) => s + Math.abs(r.close), 0),
+      })
+
+    } else if (selected === 'ledger') {
+      if (!fAccount) { toast.error('اختر حساباً'); setLoading(false); return }
+      const acc = accounts.find(a => a.id === Number(fAccount))
+      // رصيد أول المدة
+      const openData = await fetchAccountBalances(tenant.id, fDateFrom, undefined, undefined)
+      const openBalance = openData.find(a => a.id === Number(fAccount))?.balance || 0
+      // سطور الفترة
+      const { data: entries } = await supabase.from('finance_journal_entries')
+        .select('id, entry_number, entry_date, description, reference_type')
+        .eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo).order('entry_date')
+      if (!entries?.length) { setResults([]); setLoading(false); return }
+      const entryIds = entries.map((e: any) => e.id)
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('entry_id, debit, credit, description').eq('account_id', Number(fAccount)).in('entry_id', entryIds)
+      const entryMap: Record<number, any> = {}
+      entries.forEach((e: any) => { entryMap[e.id] = e })
+      // بناء الأستاذ مع رصيد متراكم
+      let runningBalance = openBalance
+      const ledgerRows = (lines || []).map((l: any) => {
+        const e = entryMap[l.entry_id]
+        const lineBalance = calcBalance(acc?.account_type || 'أصول', Number(l.debit || 0), Number(l.credit || 0))
+        runningBalance += lineBalance
+        return {
+          date:        e?.entry_date,
+          entry_no:    e?.entry_number,
+          description: l.description || e?.description,
+          ref_type:    e?.reference_type,
+          debit:       Number(l.debit  || 0),
+          credit:      Number(l.credit || 0),
+          balance:     runningBalance,
+        }
+      })
+      setResults(ledgerRows)
+      setSummary({
+        'رصيد أول المدة':   openBalance,
+        'إجمالي المدين':   ledgerRows.reduce((s, r) => s + r.debit,  0),
+        'إجمالي الدائن':   ledgerRows.reduce((s, r) => s + r.credit, 0),
+        'رصيد آخر المدة':  runningBalance,
+      })
+      setExtra({ accountName: acc?.name || '' })
+
+    } else if (selected === 'journal') {
+      const { data: entries, error } = await supabase.from('finance_journal_entries')
+        .select('id, entry_number, entry_date, description, reference_type, total_debit, total_credit, status')
+        .eq('tenant_id', tenant.id).gte('entry_date', fDateFrom).lte('entry_date', fDateTo).order('entry_date')
+      if (error) { toast.error('خطأ'); setLoading(false); return }
+      // جلب سطور كل قيد
+      const entryIds = (entries || []).map((e: any) => e.id)
+      const { data: lines } = entryIds.length
+        ? await supabase.from('finance_journal_lines').select('entry_id, account_id, debit, credit, description').in('entry_id', entryIds)
+        : { data: [] }
+      const { data: accsMap } = await supabase.from('finance_accounts').select('id, code, name').eq('tenant_id', tenant.id)
+      const accById: Record<number, any> = {}
+      ;(accsMap || []).forEach((a: any) => { accById[a.id] = a })
+      const linesByEntry: Record<number, any[]> = {}
+      ;(lines || []).forEach((l: any) => {
+        if (!linesByEntry[l.entry_id]) linesByEntry[l.entry_id] = []
+        linesByEntry[l.entry_id].push({ ...l, account: accById[l.account_id] })
+      })
+      setResults((entries || []).map((e: any) => ({ ...e, lines: linesByEntry[e.id] || [] })))
+      setSummary({
+        'عدد القيود': (entries || []).length,
+        'إجمالي المدين': (entries || []).reduce((s: number, e: any) => s + Number(e.total_debit || 0), 0),
+        'إجمالي الدائن': (entries || []).reduce((s: number, e: any) => s + Number(e.total_credit || 0), 0),
+      })
     }
 
     setLoading(false)
@@ -301,7 +469,7 @@ export default function ReportsFinancePage() {
 
   function exportCSV() {
     if (!results.length) return
-    const skip = ['tenant_id', 'branch_id']
+    const skip = ['tenant_id', 'branch_id', 'lines']
     const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
     const rows = results.map(r => headers.map(h => String((r as any)[h] ?? '')).join(','))
     const blob = new Blob(['\uFEFF' + [headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -309,34 +477,30 @@ export default function ReportsFinancePage() {
     a.download = `${report?.title || 'تقرير'}.csv`; a.click()
   }
 
-  const needsAccount  = ['ledger']
-  const needsClient   = ['sales_detail', 'statement']
-  const needsDateOnly = ['cashflow', 'equity', 'income', 'balance_sheet']
+  const showClientFilter  = ['sales_detail', 'statement', 'sales_summary', 'aging'].includes(selected || '')
+  const showAccountFilter = ['ledger'].includes(selected || '')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* Header */}
       <div>
         <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <DollarSign style={{ width: '22px', height: '22px', color: '#0ea77b' }} /> التقارير المالية
         </h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>اختر المجموعة ثم التقرير المطلوب</p>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>مبنية وفق معايير IFRS</p>
       </div>
 
       {/* المجموعات */}
       {REPORT_GROUPS.map(group => (
         <div key={group.id}>
-          {/* عنوان المجموعة */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
             <div style={{ width: '4px', height: '20px', borderRadius: '2px', background: group.color }} />
-            <span style={{ fontWeight: 700, fontSize: '0.9rem', color: group.color }}>{group.label}</span>
+            <span style={{ fontWeight: 700, fontSize: '0.875rem', color: group.color }}>{group.label}</span>
           </div>
-
-          {/* بطاقات التقارير */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px', marginBottom: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '10px' }}>
             {group.reports.map(r => (
-              <button key={r.id} onClick={() => { setSelected(r.id); setResults([]); setSummary(null) }}
+              <button key={r.id} onClick={() => { setSelected(r.id); setResults([]); setSummary(null); setExtra(null) }}
                 style={{ textAlign: 'right', padding: '14px', borderRadius: '10px', border: `2px solid ${selected === r.id ? group.color : group.border}`, background: selected === r.id ? group.bg : 'white', cursor: 'pointer', transition: 'all 0.15s' }}>
                 <div style={{ fontSize: '1.2rem', marginBottom: '4px' }}>{r.icon}</div>
                 <div style={{ fontWeight: 700, fontSize: '0.82rem', color: selected === r.id ? group.color : '#1a1a2e', marginBottom: '3px' }}>{r.title}</div>
@@ -347,47 +511,50 @@ export default function ReportsFinancePage() {
         </div>
       ))}
 
-      {/* الفلاتر والنتائج */}
+      {/* منطقة الفلاتر والنتائج */}
       {selected && report && (
         <div style={{ background: 'white', borderRadius: '14px', border: '1px solid var(--border)', overflow: 'hidden' }}>
 
           {/* رأس */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: (report as any).groupBg || '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontWeight: 700, color: (report as any).groupColor || '#374151', fontSize: '0.9rem' }}>{report.icon} {report.title}</div>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: (report as any).groupBg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700, color: (report as any).groupColor, fontSize: '0.9rem' }}>
+              {report.icon} {report.title}
+              {extra?.accountName && <span style={{ fontWeight: 400, color: '#6b7280', marginRight: '8px' }}>— {extra.accountName}</span>}
+            </div>
             <button onClick={() => { setSelected(null); setResults([]); setSummary(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
               <X style={{ width: '16px', height: '16px' }} />
             </button>
           </div>
 
           {/* الفلاتر */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', background: '#fafafa' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label>
               <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label>
               <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
             </div>
-            {needsClient.includes(selected) && (
+            {showClientFilter && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>العميل</label>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>العميل</label>
                 <select value={fClient} onChange={e => setFClient(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '160px' }}>
                   <option value="">كل العملاء</option>
                   {clients.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             )}
-            {needsAccount.includes(selected) && (
+            {showAccountFilter && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>الحساب</label>
-                <select value={fAccount} onChange={e => setFAccount(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '180px' }}>
-                  <option value="">كل الحسابات</option>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>الحساب <span style={{ color: '#c81e1e' }}>*</span></label>
+                <select value={fAccount} onChange={e => setFAccount(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '200px' }}>
+                  <option value="">— اختر حساباً —</option>
                   {accounts.map((a: any) => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
                 </select>
               </div>
             )}
-            <button onClick={runReport} disabled={loading} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
+            <button onClick={runReport} disabled={loading} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 18px' }}>
               {loading
                 ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
                 : <Search style={{ width: '14px', height: '14px' }} />}
@@ -400,18 +567,26 @@ export default function ReportsFinancePage() {
             )}
           </div>
 
-          {/* ملخص */}
-          {summary && Object.keys(summary).length > 0 && (
+          {/* ملخص الأرقام الرئيسية */}
+          {summary && (
             <div style={{ padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid var(--border)', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-              {Object.entries(summary).map(([k, v]) => (
-                <div key={k}>
-                  <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: '2px' }}>{k}</div>
-                  <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.9rem',
-                    color: k === 'صافي الربح' ? (Number(v) >= 0 ? '#0ea77b' : '#c81e1e') : k.includes('مستحق') ? '#c81e1e' : '#1a1a2e' }}>
-                    {typeof v === 'number' ? Number(v).toLocaleString('ar-SA', { minimumFractionDigits: 2 }) + ' ر.س' : String(v)}
+              {Object.entries(summary).map(([k, v]) => {
+                const isNeg = typeof v === 'number' && v < 0
+                const isNet = k.includes('صافي') || k.includes('الصافي')
+                return (
+                  <div key={k}>
+                    <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginBottom: '2px' }}>{k}</div>
+                    <div style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '0.875rem', color: isNet ? (isNeg ? '#c81e1e' : '#0ea77b') : '#1a1a2e' }}>
+                      {typeof v === 'number' ? fmt(v) + ' ر.س' : String(v)}
+                    </div>
                   </div>
+                )
+              })}
+              {extra?.balanced !== undefined && (
+                <div style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: extra.balanced ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
+                  {extra.balanced ? '✅ الميزانية متوازنة' : '⚠️ الميزانية غير متوازنة'}
                 </div>
-              ))}
+              )}
             </div>
           )}
 
@@ -419,11 +594,142 @@ export default function ReportsFinancePage() {
           {results.length > 0 && (
             <div style={{ overflowX: 'auto' }}>
 
-              {/* فواتير المبيعات التفصيلية */}
+              {/* ══ قائمة الدخل ══ */}
+              {selected === 'income' && summary && (
+                <div style={{ padding: '20px', maxWidth: '680px', margin: '0 auto' }}>
+                  <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
+                      قائمة الدخل — من {fDateFrom} إلى {fDateTo}
+                    </div>
+                    {['إيرادات', 'مصروفات'].map(section => {
+                      const items = results.filter(r => r.section === section)
+                      const total = items.reduce((s, r) => s + r.balance, 0)
+                      const color = section === 'إيرادات' ? '#0ea77b' : '#c81e1e'
+                      return (
+                        <div key={section}>
+                          <div style={{ padding: '10px 16px', background: section === 'إيرادات' ? '#ecfdf5' : '#fef2f2', fontWeight: 700, color, borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>{section}</div>
+                          {items.map((r, i) => (
+                            <div key={i} style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem' }}>
+                              <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(r.balance)}</span>
+                            </div>
+                          ))}
+                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                            <span>إجمالي {section}</span>
+                            <span style={{ fontFamily: 'monospace', color }}>{fmt(total)}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1rem', background: summary.net >= 0 ? '#ecfdf5' : '#fef2f2', borderTop: '2px solid #e5e7eb' }}>
+                      <span>صافي {summary.net >= 0 ? 'الربح' : 'الخسارة'}</span>
+                      <span style={{ fontFamily: 'monospace', color: summary.net >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(Math.abs(summary.net))} ر.س</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ══ قائمة المركز المالي ══ */}
+              {selected === 'balance_sheet' && (
+                <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto' }}>
+                  <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
+                      قائمة المركز المالي — {fDateTo}
+                    </div>
+                    {[
+                      { section: 'أصول',           color: '#0ea77b', bg: '#ecfdf5' },
+                      { section: 'خصوم',           color: '#c81e1e', bg: '#fef2f2' },
+                      { section: 'حقوق الملكية',   color: '#7c3aed', bg: '#f5f3ff' },
+                    ].map(({ section, color, bg }) => {
+                      const items = results.filter(r => r.section === section)
+                      const total = items.reduce((s, r) => s + r.balance, 0)
+                      return (
+                        <div key={section}>
+                          <div style={{ padding: '10px 16px', background: bg, fontWeight: 700, color, borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>{section}</div>
+                          {items.map((r, i) => (
+                            <div key={i} style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem' }}>
+                              <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(r.balance)}</span>
+                            </div>
+                          ))}
+                          {/* صافي الربح ضمن حقوق الملكية */}
+                          {section === 'حقوق الملكية' && summary?.netIncome !== 0 && (
+                            <div style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', background: '#fafafa' }}>
+                              <span style={{ color: '#6b7280', fontStyle: 'italic' }}>صافي ربح الفترة</span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: summary.netIncome >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(summary.netIncome)}</span>
+                            </div>
+                          )}
+                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                            <span>إجمالي {section}</span>
+                            <span style={{ fontFamily: 'monospace', color }}>{fmt(section === 'حقوق الملكية' ? total + (summary?.netIncome || 0) : total)}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ══ التدفقات النقدية ══ */}
+              {selected === 'cashflow' && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#ecfeff' }}>
+                    {['نوع التدفق', 'التدفقات الداخلة', 'التدفقات الخارجة', 'صافي التدفق'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 16px', fontWeight: 600 }}>{r.type}</td>
+                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(r.inflow)}</td>
+                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', color: '#c81e1e' }}>{fmt(r.outflow)}</td>
+                        <td style={{ padding: '10px 16px', fontFamily: 'monospace', fontWeight: 700, color: r.net >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(r.net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* ══ التغير في حقوق الملكية ══ */}
+              {selected === 'equity' && (
+                <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+                  <div style={{ border: '1px solid #ddd6fe', borderRadius: '12px', overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px', background: '#7c3aed', color: 'white', textAlign: 'center', fontWeight: 700 }}>
+                      قائمة التغير في حقوق الملكية — من {fDateFrom} إلى {fDateTo}
+                    </div>
+                    {results.map((r: any, i) => (
+                      <div key={i} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6', background: i === results.length - 1 ? '#f5f3ff' : 'white', fontWeight: i === results.length - 1 ? 700 : 400 }}>
+                        <span style={{ fontSize: '0.875rem' }}>{r.item}</span>
+                        <span style={{ fontFamily: 'monospace', color: r.amount >= 0 ? '#7c3aed' : '#c81e1e', fontWeight: 700 }}>{fmt(r.amount)} ر.س</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ══ صافي الضريبة ══ */}
+              {selected === 'tax_net' && (
+                <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
+                  <div style={{ border: '1px solid #c7d2fe', borderRadius: '12px', overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px', background: '#6366f1', color: 'white', textAlign: 'center', fontWeight: 700 }}>
+                      صافي الضريبة المستحقة — من {fDateFrom} إلى {fDateTo}
+                    </div>
+                    {results.map((r: any, i) => (
+                      <div key={i} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6', background: r.type === 'net' ? '#eef2ff' : 'white', fontWeight: r.type === 'net' ? 800 : 400 }}>
+                        <span>{r.item}</span>
+                        <span style={{ fontFamily: 'monospace', color: r.type === 'net' ? (r.amount >= 0 ? '#c81e1e' : '#0ea77b') : '#374151', fontWeight: 700 }}>{fmt(r.amount)} ر.س</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ══ فواتير المبيعات ══ */}
               {(selected === 'sales_detail' || selected === 'statement') && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#f8fafc' }}>
-                    {['رقم الفاتورة', 'التاريخ', 'العميل', 'المشروع', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'الحالة'].map(h => (
+                    {['رقم الفاتورة', 'التاريخ', 'الاستحقاق', 'العميل', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'الحالة'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -431,9 +737,9 @@ export default function ReportsFinancePage() {
                     {results.map((r: any, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#1a56db' }}>{r.invoice_number}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{r.invoice_date}</td>
+                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.invoice_date}</td>
+                        <td style={{ padding: '9px 14px', color: r.due_date < today && r.status !== 'مدفوعة' ? '#c81e1e' : '#6b7280' }}>{r.due_date || '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.client_name || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.project_id || '—'}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace' }}>{fmt(r.subtotal)}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#6366f1' }}>{fmt(r.vat_amount)}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#0ea77b' }}>{fmt(r.total_amount)}</td>
@@ -446,11 +752,11 @@ export default function ReportsFinancePage() {
                 </table>
               )}
 
-              {/* مبيعات حسب العميل */}
-              {selected === 'sales_client' && (
+              {/* ══ ملخص مبيعات حسب العميل ══ */}
+              {selected === 'sales_summary' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#ecfdf5' }}>
-                    {['العميل', 'عدد الفواتير', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'مدفوع', 'مستحق'].map(h => (
+                    {['العميل', 'عدد الفواتير', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'المحصّل', 'المستحق'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #86efac' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -461,20 +767,29 @@ export default function ReportsFinancePage() {
                         <td style={{ padding: '9px 14px', textAlign: 'center' }}>{r.count}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace' }}>{fmt(r.subtotal)}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#6366f1' }}>{fmt(r.vat)}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#0ea77b' }}>{fmt(r.total)}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(r.total)}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(r.paid)}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: r.pending > 0 ? '#c81e1e' : '#9ca3af', fontWeight: r.pending > 0 ? 700 : 400 }}>{fmt(r.pending)}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: r.due > 0 ? '#c81e1e' : '#9ca3af', fontWeight: r.due > 0 ? 700 : 400 }}>{fmt(r.due)}</td>
                       </tr>
                     ))}
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td style={{ padding: '9px 14px' }}>الإجمالي</td>
+                      <td style={{ padding: '9px 14px', textAlign: 'center' }}>{results.reduce((s: number, r: any) => s + r.count, 0)}</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace' }}>{fmt(results.reduce((s: number, r: any) => s + r.subtotal, 0))}</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#6366f1' }}>{fmt(results.reduce((s: number, r: any) => s + r.vat, 0))}</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(results.reduce((s: number, r: any) => s + r.total, 0))}</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(results.reduce((s: number, r: any) => s + r.paid, 0))}</td>
+                      <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#c81e1e' }}>{fmt(results.reduce((s: number, r: any) => s + r.due, 0))}</td>
+                    </tr>
                   </tbody>
                 </table>
               )}
 
-              {/* أعمار الديون */}
+              {/* ══ أعمار الديون ══ */}
               {selected === 'aging' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#fef2f2' }}>
-                    {['رقم الفاتورة', 'التاريخ', 'العميل', 'المبلغ', 'الأيام', 'الفئة'].map(h => (
+                    {['رقم الفاتورة', 'تاريخ الفاتورة', 'تاريخ الاستحقاق', 'العميل', 'المبلغ', 'الأيام', 'الفئة'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #fecaca' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -483,11 +798,12 @@ export default function ReportsFinancePage() {
                       <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{r.invoice_number}</td>
                         <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.invoice_date}</td>
+                        <td style={{ padding: '9px 14px', color: '#c81e1e' }}>{r.due_date || '—'}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.client_name || '—'}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#c81e1e' }}>{fmt(r.total_amount)}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 700, color: r.days > 90 ? '#c81e1e' : '#e6820a' }}>{r.days} يوم</td>
                         <td style={{ padding: '9px 14px' }}>
-                          <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: r.days > 90 ? '#fef2f2' : '#fffbeb', color: r.days > 90 ? '#c81e1e' : '#e6820a' }}>{r.bucket}</span>
+                          <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: 700, background: r.bucket === '+90' ? '#fef2f2' : '#fffbeb', color: r.bucket === '+90' ? '#c81e1e' : '#e6820a' }}>{r.bucket} يوم</span>
                         </td>
                       </tr>
                     ))}
@@ -495,7 +811,7 @@ export default function ReportsFinancePage() {
                 </table>
               )}
 
-              {/* المشتريات التفصيلية */}
+              {/* ══ المشتريات التفصيلية ══ */}
               {selected === 'purchases_detail' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#f5f3ff' }}>
@@ -519,11 +835,11 @@ export default function ReportsFinancePage() {
                 </table>
               )}
 
-              {/* مشتريات حسب المورد */}
-              {selected === 'purchases_vendor' && (
+              {/* ══ ملخص مشتريات حسب المورد ══ */}
+              {selected === 'purchases_summary' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#f5f3ff' }}>
-                    {['المورد', 'عدد أوامر الشراء', 'قبل الضريبة', 'الضريبة', 'الإجمالي'].map(h => (
+                    {['المورد', 'عدد الأوامر', 'قبل الضريبة', 'الضريبة', 'الإجمالي'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #ddd6fe' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -541,11 +857,11 @@ export default function ReportsFinancePage() {
                 </table>
               )}
 
-              {/* الضريبة */}
-              {(selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_journal') && (
+              {/* ══ الضريبة (مبيعات أو مشتريات) ══ */}
+              {(selected === 'tax_sales' || selected === 'tax_purchases') && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead><tr style={{ background: '#eef2ff' }}>
-                    {['الرقم', 'التاريخ', selected === 'tax_purchases' ? 'المورد' : 'العميل', 'الوعاء الضريبي', 'نسبة الضريبة', 'مبلغ الضريبة', 'الإجمالي'].map(h => (
+                    {['الرقم', 'التاريخ', selected === 'tax_purchases' ? 'المورد' : 'العميل', 'الوعاء الضريبي', 'النسبة', 'الضريبة', 'الإجمالي'].map(h => (
                       <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #c7d2fe' }}>{h}</th>
                     ))}
                   </tr></thead>
@@ -565,157 +881,142 @@ export default function ReportsFinancePage() {
                 </table>
               )}
 
-              {/* ميزان المراجعة */}
+              {/* ══ ميزان المراجعة ══ */}
               {selected === 'trial' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead><tr style={{ background: '#ecfeff' }}>
-                    {['كود', 'اسم الحساب', 'النوع', 'مجموع المدين', 'مجموع الدائن', 'الرصيد'].map(h => (
-                      <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc' }}>{h}</th>
-                    ))}
-                  </tr></thead>
+                  <thead>
+                    <tr style={{ background: '#ecfeff' }}>
+                      <th rowSpan={2} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc', borderLeft: '1px solid #a5f3fc' }}>كود</th>
+                      <th rowSpan={2} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc', borderLeft: '1px solid #a5f3fc' }}>اسم الحساب</th>
+                      <th rowSpan={2} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc', borderLeft: '1px solid #a5f3fc' }}>النوع</th>
+                      <th colSpan={2} style={{ padding: '6px 14px', textAlign: 'center', fontWeight: 600, color: '#0891b2', borderBottom: '1px solid #a5f3fc', borderLeft: '1px solid #a5f3fc', fontSize: '0.75rem' }}>رصيد أول المدة</th>
+                      <th colSpan={2} style={{ padding: '6px 14px', textAlign: 'center', fontWeight: 600, color: '#7c3aed', borderBottom: '1px solid #a5f3fc', borderLeft: '1px solid #a5f3fc', fontSize: '0.75rem' }}>حركة الفترة</th>
+                      <th colSpan={2} style={{ padding: '6px 14px', textAlign: 'center', fontWeight: 600, color: '#0ea77b', borderBottom: '1px solid #a5f3fc', fontSize: '0.75rem' }}>رصيد آخر المدة</th>
+                    </tr>
+                    <tr style={{ background: '#f0fafe' }}>
+                      {['مدين', 'دائن', 'مدين', 'دائن', 'مدين', 'دائن'].map((h, i) => (
+                        <th key={i} style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 500, color: '#9ca3af', borderBottom: '1px solid #a5f3fc', fontSize: '0.72rem', borderLeft: i === 1 || i === 3 ? '1px solid #a5f3fc' : 'none' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
                     {results.map((r: any, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0891b2', fontWeight: 700 }}>{r.code}</td>
-                        <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.name}</td>
-                        <td style={{ padding: '9px 14px', color: '#9ca3af' }}>{r.account_type}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#1a56db' }}>{fmt(r.debit)}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(r.credit)}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: r.balance >= 0 ? '#1a56db' : '#c81e1e' }}>
-                          {Math.abs(r.balance).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} {r.balance >= 0 ? 'م' : 'د'}
-                        </td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#0891b2', fontWeight: 700 }}>{r.code}</td>
+                        <td style={{ padding: '8px 14px', fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ padding: '8px 14px', color: '#9ca3af', fontSize: '0.72rem' }}>{r.account_type}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#0891b2' }}>{r.open > 0 ? fmt(r.open) : '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#0891b2' }}>{r.open < 0 ? fmt(Math.abs(r.open)) : '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#7c3aed' }}>{r.debit  > 0 ? fmt(r.debit)  : '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#7c3aed' }}>{r.credit > 0 ? fmt(r.credit) : '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', fontWeight: 700, color: '#0ea77b' }}>{r.close > 0 ? fmt(r.close)          : '—'}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'monospace', textAlign: 'center', fontWeight: 700, color: '#c81e1e' }}>{r.close < 0 ? fmt(Math.abs(r.close)) : '—'}</td>
                       </tr>
                     ))}
-                    <tr style={{ background: '#f0f9ff', fontWeight: 700 }}>
-                      <td colSpan={3} style={{ padding: '10px 14px' }}>الإجمالي</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#1a56db' }}>{fmt(results.reduce((s, r) => s + r.debit, 0))}</td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(results.reduce((s, r) => s + r.credit, 0))}</td>
-                      <td />
+                    <tr style={{ background: '#f0fafe', fontWeight: 700 }}>
+                      <td colSpan={3} style={{ padding: '9px 14px' }}>الإجمالي</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#0891b2' }}>{fmt(results.filter(r => r.open > 0).reduce((s, r) => s + r.open, 0))}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#0891b2' }}>{fmt(results.filter(r => r.open < 0).reduce((s, r) => s + Math.abs(r.open), 0))}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#7c3aed' }}>{fmt(results.reduce((s, r) => s + r.debit,  0))}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#7c3aed' }}>{fmt(results.reduce((s, r) => s + r.credit, 0))}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#0ea77b' }}>{fmt(results.filter(r => r.close > 0).reduce((s, r) => s + r.close, 0))}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'monospace', textAlign: 'center', color: '#c81e1e' }}>{fmt(results.filter(r => r.close < 0).reduce((s, r) => s + Math.abs(r.close), 0))}</td>
                     </tr>
                   </tbody>
                 </table>
               )}
 
-              {/* دفتر الأستاذ */}
-              {selected === 'ledger' && fAccount && (
+              {/* ══ دفتر الأستاذ ══ */}
+              {selected === 'ledger' && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
-                    {['التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن'].map(h => (
-                      <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  <thead><tr style={{ background: '#ecfeff' }}>
+                    {['التاريخ', 'رقم القيد', 'البيان', 'النوع', 'مدين', 'دائن', 'الرصيد'].map(h => (
+                      <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #a5f3fc' }}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
-                    {results.map((r: any, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.entry?.entry_date}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0891b2' }}>{r.entry?.entry_number}</td>
-                        <td style={{ padding: '9px 14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || r.entry?.description || '—'}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#1a56db', fontWeight: r.debit > 0 ? 700 : 400 }}>{r.debit > 0 ? fmt(r.debit) : '—'}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: r.credit > 0 ? 700 : 400 }}>{r.credit > 0 ? fmt(r.credit) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {/* دفتر اليومية */}
-              {(selected === 'journal' || (selected === 'ledger' && !fAccount)) && (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead><tr style={{ background: '#f8fafc' }}>
-                    {['رقم القيد', 'التاريخ', 'البيان', 'المرجع', 'إجمالي المدين', 'إجمالي الدائن', 'الحالة'].map(h => (
-                      <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody>
-                    {results.map((r: any, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#0891b2' }}>{r.entry_number}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.entry_date}</td>
-                        <td style={{ padding: '9px 14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.description || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#9ca3af', fontSize: '0.72rem' }}>{r.reference_type || '—'}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#1a56db', fontWeight: 700 }}>{fmt(r.total_debit)}</td>
-                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: 700 }}>{fmt(r.total_credit)}</td>
-                        <td style={{ padding: '9px 14px' }}><span className="badge badge-green" style={{ fontSize: '0.68rem' }}>{r.status}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {/* القوائم المالية — قائمة الدخل */}
-              {selected === 'income' && (
-                <div style={{ padding: '20px' }}>
-                  <div style={{ maxWidth: '640px', margin: '0 auto', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{ padding: '14px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
-                      قائمة الدخل — {fDateFrom} إلى {fDateTo}
-                    </div>
-                    {['إيرادات', 'مصروفات'].map(section => {
-                      const items = results.filter((r: any) => r.section === section)
-                      const total = items.reduce((s: number, r: any) => s + r.balance, 0)
-                      return (
-                        <div key={section}>
-                          <div style={{ padding: '10px 16px', background: section === 'إيرادات' ? '#ecfdf5' : '#fef2f2', fontWeight: 700, color: section === 'إيرادات' ? '#0ea77b' : '#c81e1e', borderBottom: '1px solid var(--border)' }}>{section}</div>
-                          {items.map((r: any, i) => (
-                            <div key={i} style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', fontSize: '0.82rem' }}>
-                              <span>{r.code} — {r.name}</span>
-                              <span style={{ fontFamily: 'monospace' }}>{fmt(r.balance)}</span>
-                            </div>
-                          ))}
-                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <span>إجمالي {section}</span>
-                            <span style={{ fontFamily: 'monospace', color: section === 'إيرادات' ? '#0ea77b' : '#c81e1e' }}>{fmt(total)}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                    {/* رصيد أول المدة */}
                     {summary && (
-                      <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, fontSize: '1rem', background: summary['صافي الربح'] >= 0 ? '#ecfdf5' : '#fef2f2' }}>
-                        <span>صافي الربح / الخسارة</span>
-                        <span style={{ fontFamily: 'monospace', color: summary['صافي الربح'] >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(summary['صافي الربح'])} ر.س</span>
-                      </div>
+                      <tr style={{ background: '#f0f9ff' }}>
+                        <td colSpan={4} style={{ padding: '9px 14px', fontWeight: 700, color: '#0891b2' }}>رصيد أول المدة — {fDateFrom}</td>
+                        <td style={{ padding: '9px 14px' }} />
+                        <td style={{ padding: '9px 14px' }} />
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: summary['رصيد أول المدة'] >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(Math.abs(summary['رصيد أول المدة']))}</td>
+                      </tr>
                     )}
-                  </div>
+                    {results.map((r: any, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '9px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{r.date}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0891b2' }}>{r.entry_no}</td>
+                        <td style={{ padding: '9px 14px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description || '—'}</td>
+                        <td style={{ padding: '9px 14px', color: '#9ca3af', fontSize: '0.72rem' }}>{r.ref_type || '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#1a56db', fontWeight: r.debit  > 0 ? 700 : 400 }}>{r.debit  > 0 ? fmt(r.debit)  : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: r.credit > 0 ? 700 : 400 }}>{r.credit > 0 ? fmt(r.credit) : '—'}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: r.balance >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(Math.abs(r.balance))}</td>
+                      </tr>
+                    ))}
+                    {/* رصيد آخر المدة */}
+                    {summary && (
+                      <tr style={{ background: '#f0f9ff', fontWeight: 700 }}>
+                        <td colSpan={4} style={{ padding: '9px 14px', color: '#0891b2' }}>رصيد آخر المدة — {fDateTo}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#1a56db' }}>{fmt(summary['إجمالي المدين'])}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(summary['إجمالي الدائن'])}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: summary['رصيد آخر المدة'] >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(Math.abs(summary['رصيد آخر المدة']))}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+
+              {/* ══ دفتر اليومية ══ */}
+              {selected === 'journal' && (
+                <div style={{ padding: '0' }}>
+                  {results.map((entry: any, i) => (
+                    <div key={i} style={{ borderBottom: '2px solid #f1f5f9', padding: '12px 20px' }}>
+                      {/* رأس القيد */}
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '8px', fontSize: '0.82rem' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0891b2' }}>{entry.entry_number}</span>
+                        <span style={{ color: '#6b7280' }}>{entry.entry_date}</span>
+                        <span style={{ flex: 1, fontWeight: 600 }}>{entry.description}</span>
+                        <span style={{ fontSize: '0.72rem', color: '#9ca3af', background: '#f8fafc', padding: '2px 8px', borderRadius: '6px' }}>{entry.reference_type}</span>
+                      </div>
+                      {/* سطور القيد */}
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                        <tbody>
+                          {(entry.lines || []).map((l: any, j: number) => (
+                            <tr key={j} style={{ borderBottom: '1px solid #f9fafb' }}>
+                              <td style={{ padding: '5px 10px', paddingRight: l.debit > 0 ? '10px' : '30px', color: '#374151' }}>
+                                {l.account?.code} — {l.account?.name}
+                              </td>
+                              <td style={{ padding: '5px 10px', textAlign: 'left', fontFamily: 'monospace', color: '#1a56db', fontWeight: l.debit > 0 ? 700 : 400, width: '140px' }}>
+                                {l.debit > 0 ? fmt(l.debit) : ''}
+                              </td>
+                              <td style={{ padding: '5px 10px', textAlign: 'left', fontFamily: 'monospace', color: '#0ea77b', fontWeight: l.credit > 0 ? 700 : 400, width: '140px' }}>
+                                {l.credit > 0 ? fmt(l.credit) : ''}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: '#f8fafc' }}>
+                            <td style={{ padding: '5px 10px', fontWeight: 600, color: '#6b7280' }}>الإجمالي</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'left', fontFamily: 'monospace', fontWeight: 700, color: '#1a56db' }}>{fmt(entry.total_debit)}</td>
+                            <td style={{ padding: '5px 10px', textAlign: 'left', fontFamily: 'monospace', fontWeight: 700, color: '#0ea77b' }}>{fmt(entry.total_credit)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* قائمة المركز المالي */}
-              {selected === 'balance_sheet' && (
-                <div style={{ padding: '20px' }}>
-                  <div style={{ maxWidth: '640px', margin: '0 auto', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{ padding: '14px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
-                      قائمة المركز المالي — {fDateTo}
-                    </div>
-                    {['أصول', 'خصوم', 'حقوق الملكية'].map(section => {
-                      const items = results.filter((r: any) => r.section === section)
-                      const total = items.reduce((s: number, r: any) => s + r.balance, 0)
-                      const color = section === 'أصول' ? '#0ea77b' : section === 'خصوم' ? '#c81e1e' : '#7c3aed'
-                      const bg = section === 'أصول' ? '#ecfdf5' : section === 'خصوم' ? '#fef2f2' : '#f5f3ff'
-                      return (
-                        <div key={section}>
-                          <div style={{ padding: '10px 16px', background: bg, fontWeight: 700, color, borderBottom: '1px solid var(--border)' }}>{section}</div>
-                          {items.map((r: any, i) => (
-                            <div key={i} style={{ padding: '8px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', fontSize: '0.82rem' }}>
-                              <span>{r.code} — {r.name}</span>
-                              <span style={{ fontFamily: 'monospace' }}>{fmt(r.balance)}</span>
-                            </div>
-                          ))}
-                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid var(--border)' }}>
-                            <span>إجمالي {section}</span>
-                            <span style={{ fontFamily: 'monospace', color }}>{fmt(total)}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
           {results.length === 0 && !loading && (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>💰</div>
-              اضغط "عرض التقرير" لتحميل البيانات
+            <div style={{ padding: '50px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>💰</div>
+              <div style={{ fontWeight: 600 }}>اضغط "عرض التقرير" لتحميل البيانات</div>
             </div>
           )}
         </div>
