@@ -1,27 +1,16 @@
 'use client'
-import { useState } from 'react'
-import { X, AlertTriangle, CheckCircle2, Camera } from 'lucide-react'
+import { X, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import type { Visit } from '@/types'
 import PhotoUploader from './PhotoUploader'
 
-export default function VisitDetail({ visit, onClose, onResolve }: {
+export default function VisitDetail({ visit, onClose }: {
   visit: Visit
   onClose: () => void
-  onResolve: (id: number, report: string) => Promise<void>
+
 }) {
-  const [resolving, setResolving] = useState(false)
-  const [report, setReport] = useState('')
   const isNCR  = visit.specs === 'غير مطابق'
   const isOpen = !visit.resolved_report
-
-  async function handleResolveSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!report.trim()) return
-    setResolving(true)
-    await onResolve(visit.id, report)
-    setResolving(false)
-  }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -80,15 +69,9 @@ export default function VisitDetail({ visit, onClose, onResolve }: {
             />
           )}
           {isNCR && isOpen && (
-            <form onSubmit={handleResolveSubmit} className="border-t border-gray-100 pt-4 space-y-3">
-              <div className="font-semibold text-sm text-gray-700">إغلاق NCR</div>
-              <textarea value={report} onChange={e => setReport(e.target.value)}
-                className="input min-h-[80px] resize-none" placeholder="تقرير الإجراء التصحيحي المنفذ..." required />
-              <button type="submit" disabled={resolving} className="btn btn-success w-full justify-center">
-                {resolving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                تأكيد إغلاق NCR
-              </button>
-            </form>
+            <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '12px 14px', border: '1px solid #fcd34d', fontSize: '0.82rem', color: '#e6820a', fontWeight: 600 }}>
+              ⚠️ هذه الزيارة تحتاج إجراء تصحيحي — استخدم زر "إجراء تصحيحي" في قائمة الزيارات
+            </div>
           )}
           {isNCR && !isOpen && visit.resolved_report && (
             <div>

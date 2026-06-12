@@ -55,19 +55,23 @@ export default function VisitModal({ visit, projects, onClose, onSave }: {
     e.preventDefault()
     if (!form.engineer.trim()) return
     setSaving(true)
-    await onSave({
+    const payload: Partial<Visit> = {
       ...(visit ? { id: visit.id } : {}),
-      type:       form.type,
-      date:       form.date,
-      engineer:   form.engineer,
-      project_id: form.project_id || undefined,
-      location:   form.location   || undefined,
-      specs:      form.specs,
-      status:     form.specs === 'مطابق' ? 'مغلق' : 'مفتوح',
-      corrective: form.specs === 'غير مطابق' ? form.corrective : undefined,
-      notes:      form.notes      || undefined,
+      type:        form.type,
+      date:        form.date,
+      engineer:    form.engineer,
+      project_id:  form.project_id || undefined,
+      location:    form.location   || undefined,
+      notes:       form.notes      || undefined,
       attachments: photos.length > 0 ? photos.map(p => ({ name: p.name, data: p.data })) : undefined,
-    })
+    }
+    // specs و corrective فقط عند الإضافة الجديدة
+    if (!visit) {
+      payload.specs      = form.specs
+      payload.status     = form.specs === 'مطابق' ? 'مغلق' : 'مفتوح'
+      payload.corrective = form.specs === 'غير مطابق' ? form.corrective : undefined
+    }
+    await onSave(payload)
     setSaving(false)
   }
 
@@ -150,33 +154,35 @@ export default function VisitModal({ visit, projects, onClose, onSave }: {
               </div>
             </div>
 
-            {/* نتيجة الفحص */}
-            <div>
-              <label style={lbl}>نتيجة الفحص</label>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {(['مطابق', 'غير مطابق'] as const).map(s => (
-                  <button key={s} type="button" onClick={() => set('specs', s)}
-                    style={{
-                      flex: 1, padding: '10px', borderRadius: '10px', fontSize: '0.875rem',
-                      fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                      border: `2px solid ${form.specs === s
-                        ? s === 'مطابق' ? '#0ea77b' : '#c81e1e'
-                        : '#e5e7eb'}`,
-                      background: form.specs === s
-                        ? s === 'مطابق' ? '#ecfdf5' : '#fef2f2'
-                        : 'white',
-                      color: form.specs === s
-                        ? s === 'مطابق' ? '#0ea77b' : '#c81e1e'
-                        : '#9ca3af',
-                    }}>
-                    {s === 'مطابق' ? '✅' : '❌'} {s}
-                  </button>
-                ))}
+            {/* نتيجة الفحص — فقط عند الإضافة الجديدة */}
+            {!visit && (
+              <div>
+                <label style={lbl}>نتيجة الفحص</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {(['مطابق', 'غير مطابق'] as const).map(s => (
+                    <button key={s} type="button" onClick={() => set('specs', s)}
+                      style={{
+                        flex: 1, padding: '10px', borderRadius: '10px', fontSize: '0.875rem',
+                        fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                        border: `2px solid ${form.specs === s
+                          ? s === 'مطابق' ? '#0ea77b' : '#c81e1e'
+                          : '#e5e7eb'}`,
+                        background: form.specs === s
+                          ? s === 'مطابق' ? '#ecfdf5' : '#fef2f2'
+                          : 'white',
+                        color: form.specs === s
+                          ? s === 'مطابق' ? '#0ea77b' : '#c81e1e'
+                          : '#9ca3af',
+                      }}>
+                      {s === 'مطابق' ? '✅' : '❌'} {s}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* الإجراء التصحيحي — عند غير مطابق */}
-            {form.specs === 'غير مطابق' && (
+            {/* وصف المخالفة — فقط عند الإضافة وغير مطابق */}
+            {!visit && form.specs === 'غير مطابق' && (
               <div>
                 <label style={lbl}>وصف المخالفة / الإجراء التصحيحي المطلوب</label>
                 <textarea value={form.corrective} onChange={e => set('corrective', e.target.value)}

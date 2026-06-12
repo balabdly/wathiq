@@ -228,7 +228,8 @@ export default function VisitsPage() {
   }
 
   async function handleDelete(v: Visit) {
-    if (currentUser?.role !== 'admin') { toast.error('⛔ الحذف متاح للمدير فقط'); return }
+    console.log('🔴 currentUser role:', currentUser?.role, currentUser)
+    if (currentUser?.role !== 'admin') { toast.error(`⛔ الحذف للأدمن — دورك: ${currentUser?.role}`); return }
     if (!confirm('حذف هذه الزيارة نهائياً؟ لا يمكن التراجع.')) return
     await visitsApi.delete(v.id)
     await loadVisits()
@@ -432,24 +433,25 @@ export default function VisitsPage() {
                                 <Eye style={{ width: '12px', height: '12px' }} /> عرض
                               </button>
 
-                              {/* زر الإجراء التصحيحي — فقط للغير مطابق */}
+                              {/* زر الإجراء التصحيحي — للغير مطابق فقط */}
                               {isNCR && (
                                 <button onClick={() => setCorrectiveVisit(v)}
                                   style={{ padding: '4px 8px', borderRadius: '6px', border: `1px solid ${isOpen ? '#fcd34d' : '#86efac'}`, background: isOpen ? '#fffbeb' : '#ecfdf5', cursor: 'pointer', color: isOpen ? '#e6820a' : '#0ea77b', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
                                   <ClipboardList style={{ width: '12px', height: '12px' }} />
-                                  {isOpen ? 'إجراء تصحيحي' : 'مغلق'}
+                                  {isOpen ? 'إجراء تصحيحي' : '✅ مغلق'}
                                 </button>
                               )}
 
-                              {/* زر التعديل */}
+                              {/* زر التعديل — للوصف فقط */}
                               {canEdit && (
                                 <button onClick={() => { setEditVisit(v); loadProjects(); setShowModal(true) }}
-                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
+                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}
+                                  title="تعديل الوصف فقط">
                                   <Pencil style={{ width: '12px', height: '12px' }} />
                                 </button>
                               )}
 
-                              {/* زر الحذف */}
+                              {/* زر الحذف — للأدمن فقط */}
                               {currentUser?.role === 'admin' && (
                                 <button onClick={() => handleDelete(v)} title="حذف (أدمن فقط)"
                                   style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
