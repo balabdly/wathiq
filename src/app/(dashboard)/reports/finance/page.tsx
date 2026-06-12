@@ -113,6 +113,21 @@ const REPORT_GROUPS = [
   },
 ]
 
+// ══════════════════════════════════════════════════
+// تصنيف التدفقات النقدية حسب IAS 7
+// ══════════════════════════════════════════════════
+const OPERATING_TYPES = ['تحصيل فاتورة', 'دفع مورد', 'مصروف', 'رواتب', 'إشعار دائن', 'مرتجع مشتريات', 'ضريبة']
+const INVESTING_TYPES = ['شراء أصل', 'بيع أصل', 'استثمار']
+const FINANCING_TYPES = ['قرض', 'سداد قرض', 'توزيعات', 'رأس مال', 'رصيد افتتاحي']
+
+function classifyFlow(refType: string | null): string {
+  const t = refType || ''
+  if (OPERATING_TYPES.some(x => t.includes(x))) return 'تشغيلية'
+  if (INVESTING_TYPES.some(x => t.includes(x))) return 'استثمارية'
+  if (FINANCING_TYPES.some(x => t.includes(x))) return 'تمويلية'
+  return 'تشغيلية'
+}
+
 const thisYear = new Date().getFullYear()
 const firstOfYear = `${thisYear}-01-01`
 const today = new Date().toISOString().split('T')[0]
@@ -196,19 +211,6 @@ export default function ReportsFinancePage() {
       //   استثمارية: شراء/بيع أصول ثابتة
       //   تمويلية: قروض، توزيعات، رأس مال
       // ══════════════════════════════════════════════════════
-
-      // تصنيف أنواع القيود
-      const OPERATING_TYPES  = ['تحصيل فاتورة', 'دفع مورد', 'مصروف', 'رواتب', 'إشعار دائن', 'مرتجع مشتريات', 'ضريبة']
-      const INVESTING_TYPES  = ['شراء أصل', 'بيع أصل', 'استثمار']
-      const FINANCING_TYPES  = ['قرض', 'سداد قرض', 'توزيعات', 'رأس مال', 'رصيد افتتاحي']
-
-      function classifyFlow(refType: string | null): string {
-        const t = refType || ''
-        if (OPERATING_TYPES.some(x => t.includes(x)))  return 'تشغيلية'
-        if (INVESTING_TYPES.some(x => t.includes(x)))  return 'استثمارية'
-        if (FINANCING_TYPES.some(x => t.includes(x)))  return 'تمويلية'
-        return 'تشغيلية' // افتراضي
-      }
 
       // جلب الحسابات النقدية (الصندوق والبنوك)
       const { data: cashAccs } = await supabase.from('finance_accounts')
