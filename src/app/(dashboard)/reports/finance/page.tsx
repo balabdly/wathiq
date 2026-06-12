@@ -308,24 +308,57 @@ export default function ReportsFinancePage() {
       })
 
     } else if (selected === 'equity') {
-      // التغير في حقوق الملكية
+      // ══════════════════════════════════════════════
+      // قائمة التغير في حقوق الملكية حسب IAS 1
+      // تعرض كل مكوّن على حدة مع التغيرات
+      // ══════════════════════════════════════════════
       const [openData, periodData] = await Promise.all([
         fetchAccountBalances(tenant.id, fDateFrom, undefined, ['حقوق ملكية', 'إيرادات', 'مصروفات']),
         fetchAccountBalances(tenant.id, fDateTo,   fDateFrom,  ['حقوق ملكية', 'إيرادات', 'مصروفات']),
       ])
-      const openEquity   = openData.filter(a => a.account_type === 'حقوق ملكية').reduce((s, a) => s + a.balance, 0)
-      const openNetInc   = openData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
-                         - openData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
-      const periodNetInc = periodData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
-                         - periodData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
-      const closeEquity  = openEquity + openNetInc + periodNetInc
-      setResults([
-        { item: 'رصيد أول المدة — حقوق الملكية', amount: openEquity },
-        { item: 'صافي الربح المحتجز (قبل الفترة)', amount: openNetInc },
-        { item: 'صافي ربح الفترة', amount: periodNetInc },
-        { item: 'رصيد آخر المدة — حقوق الملكية', amount: closeEquity },
-      ])
-      setSummary({ 'رصيد أول المدة': openEquity + openNetInc, 'صافي ربح الفترة': periodNetInc, 'رصيد آخر المدة': closeEquity })
+      // مكوّنات حقوق الملكية (كل حساب بمفرده)
+      const equityAccs = openData.filter(a => a.account_type === 'حقوق ملكية')
+      // صافي ربح الفترة السابقة (الأرباح المحتجزة)
+      const prevNetIncome = openData.filter(a => a.account_type === 'إيرادات').reduce((s,a) => s+a.balance,0)
+                          - openData.filter(a => a.account_type === 'مصروفات').reduce((s,a) => s+a.balance,0)
+      // صافي ربح الفترة الحالية
+      const currNetIncome = periodData.filter(a => a.account_type === 'إيرادات').reduce((s,a) => s+a.balance,0)
+                           - periodData.filter(a => a.account_type === 'مصروفات').reduce((s,a) => s+a.balance,0)
+      // تغيرات حقوق الملكية في الفترة
+      const periodEquityMap: Record<number, number> = {}
+      periodData.filter(a => a.account_type === 'حقوق ملكية').forEach(a => { periodEquityMap[a.id] = a.balance })
+
+      const rows: any[] = []
+      let totalOpen = 0, totalChange = 0, totalClose = 0
+
+      // إضافة كل مكوّن
+      equityAccs.forEach(a => {
+        const open   = a.balance
+        const change = periodEquityMap[a.id] || 0
+        const close  = open + change
+        totalOpen   += open; totalChange += change; totalClose += close
+        rows.push({ component: a.name, code: a.code, open, change, close, isTotal: false })
+      })
+
+      // الأرباح المحتجزة (صافي الأرباح التراكمية السابقة)
+      if (prevNetIncome !== 0) {
+        const closeRetained = prevNetIncome + currNetIncome
+        totalOpen   += prevNetIncome; totalChange += currNetIncome; totalClose += closeRetained
+        rows.push({ component: 'الأرباح المحتجزة', code: '', open: prevNetIncome, change: currNetIncome, close: closeRetained, isTotal: false, isRetained: true })
+      } else if (currNetIncome !== 0) {
+        totalChange += currNetIncome; totalClose += currNetIncome
+        rows.push({ component: 'صافي ربح الفترة', code: '', open: 0, change: currNetIncome, close: currNetIncome, isTotal: false, isRetained: true })
+      }
+
+      // سطر الإجمالي
+      rows.push({ component: 'إجمالي حقوق الملكية', code: '', open: totalOpen, change: totalChange, close: totalClose, isTotal: true })
+
+      setResults(rows)
+      setSummary({
+        'إجمالي أول المدة': totalOpen,
+        'صافي ربح الفترة':  currNetIncome,
+        'إجمالي آخر المدة': totalClose,
+      })
 
     // ══════════════════════════════════════════
     // المبيعات
@@ -644,9 +677,14 @@ export default function ReportsFinancePage() {
               عرض التقرير
             </button>
             {results.length > 0 && (
-              <button onClick={exportCSV} className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '8px 12px' }}>
-                <Download style={{ width: '14px', height: '14px' }} /> تصدير CSV
-              </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={exportExcel} className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '7px 10px', color: '#0ea77b', borderColor: '#86efac' }}>
+                  <Download style={{ width: '13px', height: '13px' }} /> Excel
+                </button>
+                <button onClick={exportPDF} className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '7px 10px', color: '#c81e1e', borderColor: '#fecaca' }}>
+                  <Printer style={{ width: '13px', height: '13px' }} /> PDF
+                </button>
+              </div>
             )}
           </div>
 
@@ -823,15 +861,32 @@ export default function ReportsFinancePage() {
 
               {/* ══ التغير في حقوق الملكية ══ */}
               {selected === 'equity' && (
-                <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+                <div style={{ padding: '20px' }}>
                   <div style={{ border: '1px solid #ddd6fe', borderRadius: '12px', overflow: 'hidden' }}>
                     <div style={{ padding: '12px 16px', background: '#7c3aed', color: 'white', textAlign: 'center', fontWeight: 700 }}>
                       قائمة التغير في حقوق الملكية — من {fDateFrom} إلى {fDateTo}
                     </div>
+                    {/* رأس الجدول */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '8px 16px', background: '#f5f3ff', fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed', borderBottom: '1px solid #ddd6fe' }}>
+                      <span>المكوّن</span>
+                      <span style={{ textAlign: 'center' }}>رصيد أول المدة</span>
+                      <span style={{ textAlign: 'center' }}>التغير خلال الفترة</span>
+                      <span style={{ textAlign: 'center' }}>رصيد آخر المدة</span>
+                    </div>
                     {results.map((r: any, i) => (
-                      <div key={i} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6', background: i === results.length - 1 ? '#f5f3ff' : 'white', fontWeight: i === results.length - 1 ? 700 : 400 }}>
-                        <span style={{ fontSize: '0.875rem' }}>{r.item}</span>
-                        <span style={{ fontFamily: 'monospace', color: r.amount >= 0 ? '#7c3aed' : '#c81e1e', fontWeight: 700 }}>{fmt(r.amount)} ر.س</span>
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', padding: '10px 16px', borderBottom: '1px solid #f3f4f6', background: r.isTotal ? '#f5f3ff' : r.isRetained ? '#fafafa' : 'white', fontWeight: r.isTotal ? 700 : 400, fontSize: '0.82rem' }}>
+                        <span style={{ color: r.isTotal ? '#7c3aed' : r.isRetained ? '#0ea77b' : '#374151' }}>
+                          {r.code ? `${r.code} — ` : ''}{r.component}
+                        </span>
+                        <span style={{ textAlign: 'center', fontFamily: 'monospace', color: r.open >= 0 ? '#374151' : '#c81e1e' }}>
+                          {r.open !== 0 ? fmt(r.open) : '—'}
+                        </span>
+                        <span style={{ textAlign: 'center', fontFamily: 'monospace', color: r.change >= 0 ? '#0ea77b' : '#c81e1e', fontWeight: r.change !== 0 ? 700 : 400 }}>
+                          {r.change !== 0 ? (r.change > 0 ? '+' : '') + fmt(r.change) : '—'}
+                        </span>
+                        <span style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: r.close >= 0 ? '#7c3aed' : '#c81e1e' }}>
+                          {fmt(r.close)}
+                        </span>
                       </div>
                     ))}
                   </div>
