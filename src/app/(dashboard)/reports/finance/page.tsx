@@ -604,9 +604,8 @@ export default function ReportsFinancePage() {
       const v = r[h]
       return typeof v === 'number' ? v : String(v ?? '')
     }))
-    const csvContent = [arabicHeaders.join('	'), ...rows.map((r: any[]) => r.join('	'))].join('
-')
-    const blob = new Blob(['﻿' + csvContent], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const csvContent = [arabicHeaders.join(String.fromCharCode(9)), ...rows.map((r: any[]) => r.join(String.fromCharCode(9)))].join(String.fromCharCode(10))
+    const blob = new Blob([String.fromCharCode(0xFEFF) + csvContent], { type: 'application/vnd.ms-excel;charset=utf-8' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     a.download = (report?.title || 'تقرير') + '.xls'
