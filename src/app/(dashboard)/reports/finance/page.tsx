@@ -583,6 +583,65 @@ export default function ReportsFinancePage() {
     setLoading(false)
   }
 
+  function exportExcel() {
+    if (!results.length) return
+    const skip = ['tenant_id', 'branch_id', 'lines', 'isTotal', 'isRetained', 'section', 'items']
+    const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
+    const labelMap: Record<string, string> = {
+      code:'الكود',name:'الاسم',account_type:'النوع',debit:'مدين',credit:'دائن',balance:'الرصيد',
+      open:'أول المدة',close:'آخر المدة',change:'التغير',component:'المكوّن',
+      invoice_number:'رقم الفاتورة',invoice_date:'التاريخ',client_name:'العميل',
+      subtotal:'قبل الضريبة',vat_amount:'الضريبة',total_amount:'الإجمالي',status:'الحالة',
+      vendor_name:'المورد',po_number:'رقم أمر الشراء',po_date:'تاريخ الأمر',
+      entry_number:'رقم القيد',entry_date:'تاريخ القيد',description:'البيان',
+      total_debit:'إجمالي مدين',total_credit:'إجمالي دائن',
+      category:'الفئة',refType:'نوع التدفق',inflow:'تدفق داخل',outflow:'تدفق خارج',net:'الصافي',
+      client:'العميل',vendor:'المورد',count:'العدد',total:'الإجمالي',paid:'مدفوع',due:'مستحق',
+      days:'الأيام',bucket:'الفئة',
+    }
+    const arabicHeaders = headers.map(h => labelMap[h] || h)
+    const rows = results.map(r => headers.map(h => {
+      const v = (r as any)[h]
+      return typeof v === 'number' ? v : String(v ?? '')
+    }))
+    const csvContent = [arabicHeaders.join('	'), ...rows.map(r => r.join('	'))].join('
+')
+    const blob = new Blob(['﻿' + csvContent], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+    a.download = `${report?.title || 'تقرير'}.xls`; a.click()
+  }
+
+  function exportPDF() {
+    if (!results.length) return
+    const win = window.open('', '_blank', 'width=900,height=700')
+    if (!win) return
+    const skip = ['tenant_id', 'branch_id', 'lines', 'isTotal', 'isRetained', 'section', 'items']
+    const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
+    const labelMap: Record<string, string> = {
+      code:'الكود',name:'الاسم',account_type:'النوع',debit:'مدين',credit:'دائن',balance:'الرصيد',
+      open:'أول المدة',close:'آخر المدة',change:'التغير',component:'المكوّن',
+      invoice_number:'رقم الفاتورة',invoice_date:'التاريخ',client_name:'العميل',
+      subtotal:'قبل الضريبة',vat_amount:'الضريبة',total_amount:'الإجمالي',status:'الحالة',
+      vendor_name:'المورد',po_number:'رقم أمر الشراء',po_date:'تاريخ الأمر',
+      entry_number:'رقم القيد',entry_date:'تاريخ القيد',description:'البيان',
+      total_debit:'إجمالي مدين',total_credit:'إجمالي دائن',
+      category:'الفئة',refType:'نوع التدفق',inflow:'تدفق داخل',outflow:'تدفق خارج',net:'الصافي',
+    }
+    const arabicHeaders = headers.map(h => labelMap[h] || h)
+    const rowsHtml = results.map((r, i) => {
+      const cells = headers.map(h => {
+        const v = (r as any)[h]
+        const isNum = typeof v === 'number' && h !== 'count'
+        return `<td style="padding:6px 10px;border:1px solid #e5e7eb;${isNum?'text-align:center;font-family:monospace':''}">${isNum?Number(v).toLocaleString('ar-SA',{minimumFractionDigits:2}):String(v??'—')}</td>`
+      }).join('')
+      return `<tr style="background:${i%2===0?'white':'#f8fafc'}">${cells}</tr>`
+    }).join('')
+    const headersHtml = arabicHeaders.map(h => `<th style="padding:8px 10px;background:#1a56db;color:white;border:1px solid #1a56db;font-weight:600">${h}</th>`).join('')
+    const summaryHtml = summary ? `<div style="margin-bottom:16px;display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;padding:12px;border-radius:8px;font-size:12px">${Object.entries(summary).map(([k,v])=>`<div><div style="color:#9ca3af">${k}</div><div style="font-weight:700">${typeof v==='number'?Number(v).toLocaleString('ar-SA',{minimumFractionDigits:2})+' ر.س':String(v)}</div></div>`).join('')}</div>` : ''
+    win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${report?.title}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Segoe UI',Tahoma,sans-serif;padding:24px;color:#1a1a2e;direction:rtl;font-size:13px}h1{font-size:18px;margin-bottom:4px;color:#1a56db}h2{font-size:12px;color:#9ca3af;margin-bottom:16px;font-weight:400}table{width:100%;border-collapse:collapse}@media print{.noprint{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><h1>${report?.title}</h1><h2>الفترة: ${fDateFrom} — ${fDateTo}</h2>${summaryHtml}<table><thead><tr>${headersHtml}</tr></thead><tbody>${rowsHtml}</tbody></table><div class="noprint" style="text-align:center;padding:16px;margin-top:16px;border-top:1px solid #e5e7eb"><button onclick="window.print()" style="padding:10px 28px;background:#1a56db;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;margin-left:10px">🖨️ طباعة / PDF</button><button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button></div></body></html>`)
+    win.document.close()
+  }
+
   function exportCSV() {
     if (!results.length) return
     const skip = ['tenant_id', 'branch_id', 'lines']
