@@ -286,7 +286,7 @@ export default function ReportsFinancePage() {
           flowRows.push({ category, refType, inflow: data.inflow, outflow: data.outflow, net, isTotal: false })
         }
         if (Object.keys(types).length > 0) {
-          flowRows.push({ category, refType: `إجمالي ${category}`, inflow: 0, outflow: 0, net: catTotal, isTotal: true })
+          flowRows.push({ category, refType: 'إجمالي ' + category, inflow: 0, outflow: 0, net: catTotal, isTotal: true })
           if (category === 'تشغيلية')   totals.operating  = catTotal
           if (category === 'استثمارية') totals.investing  = catTotal
           if (category === 'تمويلية')   totals.financing  = catTotal
@@ -665,14 +665,14 @@ export default function ReportsFinancePage() {
     win.document.close()
   }
 
-    function exportCSV() {
+  function exportCSV() {
     if (!results.length) return
     const skip = ['tenant_id', 'branch_id', 'lines']
     const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
     const rows = results.map(r => headers.map(h => String((r as any)[h] ?? '')).join(','))
-    const blob = new Blob(['\uFEFF' + [headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([String.fromCharCode(0xFEFF) + [headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
-    a.download = `${report?.title || 'تقرير'}.csv`; a.click()
+    a.download = (report?.title || 'تقرير') + '.csv'; a.click()
   }
 
   const showClientFilter  = ['sales_detail', 'statement', 'sales_summary', 'aging'].includes(selected || '')
