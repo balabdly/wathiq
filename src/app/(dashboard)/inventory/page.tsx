@@ -878,6 +878,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     setSaving(false)
 
     // طباعة وصل العملية
+    const { data: lastTxn } = await supabase.from('stock_ledger')
+      .select('txn_number').eq('tenant_id', tenantId).order('id', { ascending: false }).limit(1).maybeSingle()
     if (type === 'استلام' || type === 'صرف') {
       const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
       const proj = projects.find((p: any) => p.id === Number(form.project_id))
