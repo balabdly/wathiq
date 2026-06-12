@@ -212,6 +212,16 @@ function WarehouseSetupModal({ tenantId, branchId, onClose, onSave }: {
 // ════════════════════════════════════
 // مودال: تعريف المواد
 // ════════════════════════════════════
+function printBarcode(name: string, matCode: string, barcode: string) {
+  const win = window.open('', '_blank', 'width=400,height=350')
+  if (!win) return
+  const scriptTag = '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></scr' + 'ipt>'
+  const runScript = '<scr' + 'ipt>JsBarcode("#bc","' + barcode + '",{format:"CODE128",width:2,height:60,displayValue:true});</scr' + 'ipt>'
+  win.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>باركود</title>' + scriptTag + '</head><body style="display:flex;flex-direction:column;align-items:center;padding:20px;font-family:sans-serif"><div style="font-weight:700;margin-bottom:8px">' + name + '</div><svg id="bc"></svg><div style="font-size:12px;color:#666;margin-top:6px">' + matCode + '</div>' + runScript + '<div class="noprint" style="margin-top:12px"><button onclick="window.print()" style="padding:8px 20px;background:#0ea77b;color:white;border:none;border-radius:6px;cursor:pointer">طباعة</button></div><style>@media print{.noprint{display:none}}</style></body></html>')
+  win.document.close()
+}
+
+// ════════════════════════════════════
 function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave }: {
   tenantId: string; branchId: number; warehouses: Warehouse[]
   onClose: () => void; onSave: () => void
@@ -483,21 +493,8 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
                 <svg id="barcode-svg" style={{ display: 'block' }}></svg></div>
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
-              <button onClick={() => {
-                const win = window.open('', '_blank', 'width=400,height=300')
-                if (!win) return
-                win.document.write(\`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>باركود</title>
-                <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script></head>
-                <body style="display:flex;flex-direction:column;align-items:center;padding:20px;font-family:sans-serif">
-                  <div style="font-weight:700;margin-bottom:8px">\${savedMat.name}</div>
-                  <svg id="bc"></svg>
-                  <div style="font-size:12px;color:#666;margin-top:6px">\${savedMat.mat_code}</div>
-                  <script>JsBarcode("#bc","\${savedMat.barcode}",{format:"CODE128",width:2,height:60,displayValue:true});<\/script>
-                  <div class="noprint" style="margin-top:12px"><button onclick="window.print()" style="padding:8px 20px;background:#0ea77b;color:white;border:none;border-radius:6px;cursor:pointer">طباعة</button></div>
-                  <style>@media print{.noprint{display:none}}</style>
-                </body></html>\`)
-                win.document.close()
-              }} style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #86efac', background: 'white', color: '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+              <button onClick={() => printBarcode(savedMat!.name, savedMat!.mat_code, savedMat!.barcode)}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #86efac', background: 'white', color: '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
                 🖨️ طباعة الباركود
               </button>
               <button onClick={() => setSavedMat(null)}
