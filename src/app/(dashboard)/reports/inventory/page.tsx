@@ -1,298 +1,359 @@
 'use client'
-
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
-import { ArrowRight, Package, ChevronDown, ChevronUp, Download, Search, Eye, EyeOff, Printer } from 'lucide-react'
+import { Package, Search, X, Download } from 'lucide-react'
+import toast from 'react-hot-toast'
 
-function exportExcel(filename: string, title: string, company: string, headers: string[], rows: (string | number)[][]) {
-  const esc = (s: any) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  let xml = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>'
-  xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Styles>'
-  xml += '<Style ss:ID="h"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1a56db" ss:Pattern="Solid"/></Style>'
-  xml += '<Style ss:ID="t"><Font ss:Bold="1" ss:Size="13" ss:Color="#1a56db"/></Style>'
-  xml += '<Style ss:ID="e"><Interior ss:Color="#f8fafc" ss:Pattern="Solid"/></Style></Styles>'
-  xml += `<Worksheet ss:Name="${esc(title.substring(0,31))}"><Table>`
-  xml += `<Row><Cell ss:StyleID="t"><Data ss:Type="String">${esc(company)} — ${esc(title)}</Data></Cell></Row>`
-  xml += `<Row><Cell><Data ss:Type="String">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')} | عدد السجلات: ${rows.length}</Data></Cell></Row><Row/>`
-  xml += '<Row>' + headers.map(h => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(h)}</Data></Cell>`).join('') + '</Row>'
-  rows.forEach((row, i) => { xml += '<Row>' + row.map(c => { const v = c ?? ''; return `<Cell ss:StyleID="${i%2===0?'e':''}"><Data ss:Type="${typeof v==='number'?'Number':'String'}">${esc(v)}</Data></Cell>` }).join('') + '</Row>' })
-  xml += '</Table></Worksheet></Workbook>'
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿'+xml],{type:'application/vnd.ms-excel;charset=utf-8'})); a.download = `${filename}.xls`; document.body.appendChild(a); a.click(); document.body.removeChild(a)
-}
+const REPORTS = [
+  { id: 'movements',   title: 'تقرير حركة المواد',              icon: '🔄', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', desc: 'جميع حركات المواد (استلام، صرف، إرجاع، تحويل) مع فلترة متقدمة', filters: ['material', 'wh', 'type', 'date_range', 'project'] },
+  { id: 'balance',     title: 'تقرير أرصدة المستودعات',         icon: '🏪', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', desc: 'الكمية الحالية لكل مادة في كل مستودع', filters: ['wh', 'material'] },
+  { id: 'project_mat', title: 'تقرير مواد المشاريع',            icon: '🏗️', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', desc: 'المواد المستلمة والمصروفة والمتبقية لكل مشروع', filters: ['project', 'material'] },
+  { id: 'bookings',    title: 'تقرير أرقام الحجوزات',           icon: '📋', color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc', desc: 'جميع الاستلامات مع أرقام الحجوزات وأسماء العملاء', filters: ['date_range', 'project'] },
+  { id: 'docs',        title: 'تقرير أرقام الوثائق',            icon: '📄', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d', desc: 'سجل الوثائق المرتبطة بحركات المواد', filters: ['date_range', 'wh'] },
+  { id: 'returns',     title: 'تقرير إرجاعات المشاريع',         icon: '↩️', color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', desc: 'جميع إرجاعات المواد للعميل (فائض وسكراب) مع التفاصيل', filters: ['project', 'date_range'] },
+  { id: 'transfers',   title: 'تقرير التحويلات بين المستودعات', icon: '🔃', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', desc: 'حركات نقل المواد بين المستودعات', filters: ['wh', 'date_range'] },
+]
 
-function exportPDF(title: string, company: string, headers: string[], rows: (string|number)[][]) {
-  const w = window.open('','_blank'); if(!w) return
-  w.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>${title}</title><style>body{font-family:Tahoma,Arial,sans-serif;margin:20px;direction:rtl;font-size:12px}.hdr{border-bottom:3px solid #1a56db;padding-bottom:10px;margin-bottom:16px}.co{font-size:17px;font-weight:bold;color:#1a56db}table{width:100%;border-collapse:collapse;margin-top:12px}th{background:#1a56db;color:white;padding:7px 10px;text-align:right;border:1px solid #1349b8}td{padding:6px 10px;border:1px solid #e5e7eb}tr:nth-child(even){background:#f8fafc}@media print{body{margin:0}}</style></head><body><div class="hdr"><div class="co">${company}</div><div>${title}</div><div style="font-size:10px;color:#6b7280">تاريخ الطباعة: ${new Date().toLocaleDateString('ar-EG')} | عدد السجلات: ${rows.length}</div></div><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c??''}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`)
-  w.document.close()
-}
-
-function ReportTable({ title, headers, rows, exportName, loading, emptyMsg, company }: {
-  title: string; headers: {key:string;label:string;sortable?:boolean}[]; rows: Record<string,any>[]
-  exportName: string; loading?: boolean; emptyMsg?: string; company?: string
-}) {
-  const [visible, setVisible] = useState(false)
-  const [sort, setSort] = useState<{key:string;dir:'asc'|'desc'}|null>(null)
-  const [search, setSearch] = useState('')
-  const filtered = rows.filter(r => !search || Object.values(r).some(v => String(v||'').toLowerCase().includes(search.toLowerCase())))
-  const sorted = sort ? [...filtered].sort((a,b) => {
-    const av=a[sort.key],bv=b[sort.key]
-    if(typeof av==='number'&&typeof bv==='number') return sort.dir==='asc'?av-bv:bv-av
-    return sort.dir==='asc'?String(av||'').localeCompare(String(bv||''),'ar'):String(bv||'').localeCompare(String(av||''),'ar')
-  }) : filtered
-  return (
-    <div className="card overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
-          <span className="badge badge-gray text-xs">{rows.length} سجل</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {visible && (<>
-            <div className="relative"><Search className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2"/><input value={search} onChange={e=>setSearch(e.target.value)} className="input pr-8 py-1.5 text-xs w-36" placeholder="بحث..."/></div>
-            <button onClick={()=>exportExcel(exportName,title,company||'وثيق ERP',headers.map(h=>h.label),sorted.map(r=>headers.map(h=>r[h.key]??'')))} className="btn btn-ghost btn-sm gap-1 border border-emerald-200 text-emerald-600 hover:bg-emerald-50"><Download className="w-3.5 h-3.5"/> Excel</button>
-            <button onClick={()=>exportPDF(title,company||'وثيق ERP',headers.map(h=>h.label),sorted.map(r=>headers.map(h=>r[h.key]??'')))} className="btn btn-ghost btn-sm gap-1 border border-red-200 text-red-500 hover:bg-red-50"><Printer className="w-3.5 h-3.5"/> PDF</button>
-          </>)}
-          <button onClick={()=>setVisible(!visible)} className={`btn btn-sm gap-1.5 ${visible?'btn-primary':'btn-ghost border border-primary-200 text-primary-600 hover:bg-primary-50'}`}>
-            {visible?<EyeOff className="w-3.5 h-3.5"/>:<Eye className="w-3.5 h-3.5"/>}{visible?'إخفاء':'عرض'}
-          </button>
-        </div>
-      </div>
-      {visible && <div className="overflow-x-auto">
-        {loading ? <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin"/></div>
-        : sorted.length===0 ? <div className="text-center py-10 text-gray-400 text-sm">{emptyMsg||'لا توجد بيانات'}</div>
-        : <table className="w-full text-sm">
-            <thead><tr className="bg-gray-50 border-b border-gray-100">
-              {headers.map(h=><th key={h.key} onClick={()=>h.sortable&&setSort(s=>s?.key===h.key?{key:h.key,dir:s.dir==='asc'?'desc':'asc'}:{key:h.key,dir:'asc'})} className={`text-right px-4 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap ${h.sortable?'cursor-pointer hover:text-primary-600 select-none':''}`}>
-                <span className="flex items-center gap-1">{h.label}{h.sortable&&sort?.key===h.key&&(sort.dir==='asc'?<ChevronUp className="w-3 h-3"/>:<ChevronDown className="w-3 h-3"/>)}</span>
-              </th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-gray-50">
-              {sorted.map((row,i)=><tr key={i} className="hover:bg-gray-50/50">{headers.map(h=><td key={h.key} className="px-4 py-2.5 text-gray-700 whitespace-nowrap">{row[h.key]??'—'}</td>)}</tr>)}
-            </tbody>
-          </table>}
-      </div>}
-    </div>
-  )
-}
-
-function ReportGroup({ title, color, children, defaultOpen=false }: { title:string; color:string; children:React.ReactNode; defaultOpen?:boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="card overflow-hidden">
-      <button onClick={()=>setOpen(!open)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{background:color+'18'}}><Package className="w-4 h-4" style={{color}}/></div>
-          <span className="font-bold text-gray-800 text-sm">{title}</span>
-        </div>
-        {open?<ChevronUp className="w-4 h-4 text-gray-400"/>:<ChevronDown className="w-4 h-4 text-gray-400"/>}
-      </button>
-      {open && <div className="px-5 pb-5 space-y-3 border-t border-gray-100 pt-4">{children}</div>}
-    </div>
-  )
-}
-
-export default function InventoryReportsPage() {
+export default function ReportsInventoryPage() {
   const { tenant, activeBranch } = useStore()
-  const router = useRouter()
-  const company = (tenant as any)?.name || 'وثيق ERP'
-  const tid = tenant?.id; const bid = activeBranch?.id
-
-  const [materials, setMaterials] = useState<any[]>([])
-  const [ledger, setLedger] = useState<any[]>([])
+  const [selected,   setSelected]   = useState<string | null>(null)
+  const [loading,    setLoading]    = useState(false)
+  const [results,    setResults]    = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
-  const [loaded, setLoaded] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [materials,  setMaterials]  = useState<any[]>([])
+  const [projects,   setProjects]   = useState<any[]>([])
+  const [loaded,     setLoaded]     = useState(false)
 
-  const loadData = useCallback(async () => {
-    if (!tid) return
-    setIsLoading(true)
-    try {
-      const [m, l, w] = await Promise.all([
-        supabase.from('materials').select('*').eq('tenant_id', tid).eq('branch_id', bid).order('name'),
-        supabase.from('stock_ledger').select('*').eq('tenant_id', tid).eq('branch_id', bid).order('created_at', { ascending: false }).limit(2000),
-        supabase.from('warehouses').select('*').eq('tenant_id', tid).eq('branch_id', bid),
-      ])
-      setMaterials(m.data || []); setLedger(l.data || []); setWarehouses(w.data || [])
-      setLoaded(true)
-    } catch(e){ console.error(e) }
-    setIsLoading(false)
-  }, [tid, bid])
+  const [fMat,      setFMat]      = useState('')
+  const [fWh,       setFWh]       = useState('')
+  const [fType,     setFType]     = useState('')
+  const [fProject,  setFProject]  = useState('')
+  const [fDateFrom, setFDateFrom] = useState('')
+  const [fDateTo,   setFDateTo]   = useState('')
 
-  useEffect(() => { loadData() }, [loadData])
+  const report = REPORTS.find(r => r.id === selected)
 
-  const fmt = (n: number) => (n||0).toLocaleString('ar-SA', {minimumFractionDigits:2})
+  async function loadFiltersData() {
+    if (loaded || !tenant) return
+    const [whRes, matRes, projRes] = await Promise.all([
+      supabase.from('warehouses').select('id, name').eq('tenant_id', tenant.id),
+      supabase.from('materials').select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
+    ])
+    setWarehouses(whRes.data || [])
+    setMaterials(matRes.data || [])
+    setProjects(projRes.data || [])
+    setLoaded(true)
+  }
+
+  async function selectReport(id: string) {
+    setSelected(id); setResults([])
+    await loadFiltersData()
+  }
+
+  async function runReport() {
+    if (!tenant || !selected) return
+    setLoading(true); setResults([])
+
+    let q = supabase.from('stock_ledger')
+      .select('*, material:materials(name, unit)')
+      .eq('tenant_id', tenant.id)
+
+    if (fWh)       q = q.eq('wh_name', warehouses.find(w => w.id === Number(fWh))?.name || fWh)
+    if (fDateFrom) q = q.gte('created_at', fDateFrom)
+    if (fDateTo)   q = q.lte('created_at', fDateTo + 'T23:59:59')
+    if (fProject)  q = q.eq('project_id', Number(fProject))
+    if (fMat)      q = q.eq('mat_name', materials.find(m => m.id === Number(fMat))?.name || fMat)
+
+    if (selected === 'movements') {
+      if (fType) q = q.eq('type', fType)
+      const { data } = await q.order('created_at', { ascending: false }).limit(500)
+      setResults(data || [])
+
+    } else if (selected === 'balance') {
+      const { data: mats } = await supabase.from('materials')
+        .select('id, name, unit, qty, warehouse:warehouses(name)')
+        .eq('tenant_id', tenant.id).eq('is_active', true)
+        .order('name')
+      let filtered = mats || []
+      if (fWh) filtered = filtered.filter((m: any) => m.warehouse?.name === warehouses.find(w => w.id === Number(fWh))?.name)
+      if (fMat) filtered = filtered.filter((m: any) => m.id === Number(fMat))
+      setResults(filtered)
+
+    } else if (selected === 'project_mat') {
+      let pmQ = supabase.from('project_materials')
+        .select('*, material:materials(name, unit), project:projects(name), warehouse:warehouses(name)')
+        .eq('tenant_id', tenant.id)
+      if (fProject) pmQ = pmQ.eq('project_id', Number(fProject))
+      const { data } = await pmQ
+      setResults(data || [])
+
+    } else if (selected === 'bookings') {
+      const { data } = await q.eq('type', 'استلام').not('booking_no', 'is', null).order('created_at', { ascending: false }).limit(500)
+      setResults((data || []).filter((r: any) => r.booking_no))
+
+    } else if (selected === 'docs') {
+      const { data } = await q.not('doc_code', 'is', null).order('created_at', { ascending: false }).limit(500)
+      setResults((data || []).filter((r: any) => r.doc_code))
+
+    } else if (selected === 'returns') {
+      const { data } = await q.eq('type', 'إرجاع للعميل').order('created_at', { ascending: false }).limit(500)
+      setResults(data || [])
+
+    } else if (selected === 'transfers') {
+      const { data } = await q.eq('type', 'نقل مخزني').order('created_at', { ascending: false }).limit(500)
+      setResults(data || [])
+    }
+
+    setLoading(false)
+  }
+
+  function exportCSV() {
+    if (!results.length) return
+    const skip = ['material', 'project', 'warehouse', 'id', 'tenant_id', 'branch_id']
+    const headers = Object.keys(results[0]).filter(k => !skip.includes(k))
+    const rows = results.map(r => headers.map(h => String(r[h] ?? '')).join(','))
+    const csv = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+    a.download = `${report?.title}.csv`; a.click()
+  }
+
+  const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA')
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
 
-  // 1. قائمة المواد الكاملة
-  const matList = materials.map(m => ({
-    'اسم المادة': m.name,
-    'المصدر': m.source || '—',
-    'SEC Number': m.sec_number || '—',
-    'رقم الكتالوج': m.catalog_no || '—',
-    'الكمية الحالية': m.qty,
-    'حد الأمان': m.reorder,
-    'الوحدة': m.unit,
-    'الحالة': m.qty <= 0 ? '⛔ نفدت' : m.qty <= m.reorder ? '⚠️ منخفض' : '✅ طبيعي',
-    'الموقع': m.location || '—',
-    'المستودع': warehouses.find(w => w.id === m.warehouse_id)?.name || '—',
-  }))
-
-  // 2. المواد تحت حد الأمان
-  const lowStock = materials.filter(m => m.qty <= m.reorder && m.source !== 'كهرباء').map(m => ({
-    'اسم المادة': m.name,
-    'المصدر': m.source || '—',
-    'الكمية الحالية': m.qty,
-    'حد الأمان': m.reorder,
-    'النقص': Math.max(m.reorder - m.qty, 0),
-    'الوحدة': m.unit,
-    'الحالة': m.qty <= 0 ? '⛔ نفدت' : '⚠️ منخفض',
-  }))
-
-  // 3. حركة المخزون
-  const ledgerList = ledger.map((l: any) => ({
-    'اسم المادة': l.mat_name,
-    'نوع الحركة': l.type,
-    'الكمية': l.qty,
-    'الوحدة': l.unit || '—',
-    'المستودع': l.wh_name || '—',
-    'المشروع': l.project_name || '—',
-    'الكمية قبل': l.qty_before,
-    'الكمية بعد': l.qty_after,
-    'التاريخ': fmtDate(l.created_at),
-  }))
-
-  // 4. ملخص الحركة حسب المادة
-  const ledgerByMat = (() => {
-    const map: Record<string, { in: number; out: number; unit: string }> = {}
-    ledger.forEach((l: any) => {
-      if (!map[l.mat_name]) map[l.mat_name] = { in: 0, out: 0, unit: l.unit || '—' }
-      if (l.type === 'توريد' || l.type === 'استلام') map[l.mat_name].in += Number(l.qty || 0)
-      else map[l.mat_name].out += Number(l.qty || 0)
-    })
-    return Object.entries(map).map(([name, v]) => ({
-      'المادة': name,
-      'إجمالي الوارد': v.in,
-      'إجمالي الصادر': v.out,
-      'الرصيد': v.in - v.out,
-      'الوحدة': v.unit,
-    }))
-  })()
-
-  // 5. عهدة المشاريع
-  const projectCustody = (() => {
-    const map: Record<string, Record<string, { in: number; out: number; unit: string }>> = {}
-    ledger.forEach((l: any) => {
-      if (!l.project_name) return
-      if (!map[l.project_name]) map[l.project_name] = {}
-      if (!map[l.project_name][l.mat_name]) map[l.project_name][l.mat_name] = { in: 0, out: 0, unit: l.unit || '—' }
-      if (l.type === 'توريد' || l.type === 'استلام') map[l.project_name][l.mat_name].in += Number(l.qty||0)
-      else map[l.project_name][l.mat_name].out += Number(l.qty||0)
-    })
-    const rows: any[] = []
-    Object.entries(map).forEach(([proj, mats]) => {
-      Object.entries(mats).forEach(([mat, v]) => {
-        rows.push({ 'المشروع': proj, 'المادة': mat, 'الوارد': v.in, 'الصادر': v.out, 'المتبقي': v.in - v.out, 'الوحدة': v.unit })
-      })
-    })
-    return rows
-  })()
+  const TYPE_COLOR: Record<string, string> = {
+    'استلام': '#0ea77b', 'صرف': '#c81e1e', 'إرجاع للعميل': '#e6820a',
+    'نقل مخزني': '#1a56db', 'إرجاع': '#e6820a',
+  }
 
   return (
-    <div className="space-y-5 fade-in">
-      <div className="flex items-center gap-3">
-        <button onClick={() => router.push('/reports')} className="btn btn-ghost btn-sm gap-1.5 text-gray-500 hover:text-gray-700">
-          <ArrowRight className="w-4 h-4"/> التقارير
-        </button>
-        <span className="text-gray-300">/</span>
-        <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-          <Package className="w-5 h-5 text-primary-500"/> تقارير المخزون
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div>
+        <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Package style={{ width: '22px', height: '22px', color: '#0ea77b' }} /> تقارير المخزون
         </h1>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>اختر التقرير لعرض محددات البحث</p>
       </div>
 
-      <ReportGroup title="📦 قائمة المواد" color="#d97706" defaultOpen>
-        <div>
-          <ReportTable title="جميع المواد" exportName="قائمة-المواد" company={company} loading={isLoading}
-            headers={[
-              {key:'اسم المادة',label:'اسم المادة',sortable:true},
-              {key:'المصدر',label:'المصدر',sortable:true},
-              {key:'SEC Number',label:'SEC Number',sortable:true},
-              {key:'رقم الكتالوج',label:'رقم الكتالوج',sortable:true},
-              {key:'الكمية الحالية',label:'الكمية الحالية',sortable:true},
-              {key:'حد الأمان',label:'حد الأمان',sortable:true},
-              {key:'الوحدة',label:'الوحدة',sortable:false},
-              {key:'الحالة',label:'الحالة',sortable:true},
-              {key:'المستودع',label:'المستودع',sortable:true},
-            ]}
-            rows={matList}
-          />
-        </div>
-      </ReportGroup>
+      {/* البطاقات */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
+        {REPORTS.map(r => (
+          <button key={r.id} onClick={() => selectReport(r.id)}
+            style={{ textAlign: 'right', padding: '16px', borderRadius: '12px', border: `2px solid ${selected === r.id ? r.color : r.border}`, background: selected === r.id ? r.bg : 'white', cursor: 'pointer', transition: 'all 0.15s' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>{r.icon}</div>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: selected === r.id ? r.color : '#1a1a2e', marginBottom: '4px' }}>{r.title}</div>
+            <div style={{ fontSize: '0.75rem', color: '#9ca3af', lineHeight: 1.5 }}>{r.desc}</div>
+          </button>
+        ))}
+      </div>
 
-      <ReportGroup title="⚠️ المواد تحت حد الأمان" color="#dc2626">
-        <div>
-          <ReportTable title={`المواد تحت حد الأمان (${lowStock.length})`} exportName="مواد-تحت-الحد" company={company} loading={isLoading}
-            emptyMsg="✅ جميع المواد فوق حد الأمان"
-            headers={[
-              {key:'اسم المادة',label:'اسم المادة',sortable:true},
-              {key:'المصدر',label:'المصدر',sortable:true},
-              {key:'الكمية الحالية',label:'الكمية الحالية',sortable:true},
-              {key:'حد الأمان',label:'حد الأمان',sortable:true},
-              {key:'النقص',label:'النقص',sortable:true},
-              {key:'الوحدة',label:'الوحدة',sortable:false},
-              {key:'الحالة',label:'الحالة',sortable:true},
-            ]}
-            rows={lowStock}
-          />
-        </div>
-      </ReportGroup>
+      {/* الفلاتر والنتائج */}
+      {selected && report && (
+        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: report.bg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontWeight: 700, color: report.color }}>{report.icon} {report.title}</div>
+            <button onClick={() => { setSelected(null); setResults([]) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+              <X style={{ width: '16px', height: '16px' }} />
+            </button>
+          </div>
 
-      <ReportGroup title="🔄 حركة المخزون" color="#0891b2">
-        <div>
-          <ReportTable title="سجل حركة المخزون" exportName="حركة-المخزون" company={company} loading={isLoading}
-            headers={[
-              {key:'اسم المادة',label:'اسم المادة',sortable:true},
-              {key:'نوع الحركة',label:'نوع الحركة',sortable:true},
-              {key:'الكمية',label:'الكمية',sortable:true},
-              {key:'الوحدة',label:'الوحدة',sortable:false},
-              {key:'المستودع',label:'المستودع',sortable:true},
-              {key:'المشروع',label:'المشروع',sortable:true},
-              {key:'الكمية قبل',label:'الكمية قبل',sortable:false},
-              {key:'الكمية بعد',label:'الكمية بعد',sortable:false},
-              {key:'التاريخ',label:'التاريخ',sortable:true},
-            ]}
-            rows={ledgerList}
-          />
-          <ReportTable title="ملخص الحركة حسب المادة" exportName="ملخص-حركة-المواد" company={company} loading={isLoading}
-            headers={[
-              {key:'المادة',label:'المادة',sortable:true},
-              {key:'إجمالي الوارد',label:'إجمالي الوارد',sortable:true},
-              {key:'إجمالي الصادر',label:'إجمالي الصادر',sortable:true},
-              {key:'الرصيد',label:'الرصيد',sortable:true},
-              {key:'الوحدة',label:'الوحدة',sortable:false},
-            ]}
-            rows={ledgerByMat}
-          />
-        </div>
-      </ReportGroup>
+          {/* الفلاتر */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            {report.filters.includes('material') && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>المادة</label>
+                <select value={fMat} onChange={e => setFMat(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '160px' }}>
+                  <option value="">كل المواد</option>
+                  {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+            )}
+            {report.filters.includes('wh') && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>المستودع</label>
+                <select value={fWh} onChange={e => setFWh(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '150px' }}>
+                  <option value="">كل المستودعات</option>
+                  {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+            )}
+            {report.filters.includes('type') && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>نوع الحركة</label>
+                <select value={fType} onChange={e => setFType(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
+                  <option value="">كل الحركات</option>
+                  {['استلام', 'صرف', 'إرجاع للعميل', 'نقل مخزني'].map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+            {report.filters.includes('project') && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>المشروع</label>
+                <select value={fProject} onChange={e => setFProject(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '160px' }}>
+                  <option value="">كل المشاريع</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+            {report.filters.includes('date_range') && (
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label>
+                  <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label>
+                  <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+                </div>
+              </>
+            )}
+            <button onClick={runReport} disabled={loading} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
+              {loading ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Search style={{ width: '14px', height: '14px' }} />}
+              عرض التقرير
+            </button>
+            {results.length > 0 && (
+              <button onClick={exportCSV} className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '8px 12px' }}>
+                <Download style={{ width: '14px', height: '14px' }} /> تصدير CSV
+              </button>
+            )}
+          </div>
 
-      <ReportGroup title="📁 عهدة المشاريع" color="#7c3aed">
-        <div>
-          <ReportTable title="المواد حسب المشروع" exportName="عهدة-المشاريع" company={company} loading={isLoading}
-            emptyMsg="لا توجد حركات مرتبطة بمشاريع"
-            headers={[
-              {key:'المشروع',label:'المشروع',sortable:true},
-              {key:'المادة',label:'المادة',sortable:true},
-              {key:'الوارد',label:'الوارد',sortable:true},
-              {key:'الصادر',label:'الصادر',sortable:true},
-              {key:'المتبقي',label:'المتبقي',sortable:true},
-              {key:'الوحدة',label:'الوحدة',sortable:false},
-            ]}
-            rows={projectCustody}
-          />
+          {/* النتائج */}
+          {results.length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+
+              {/* حركة المواد + إرجاعات + تحويلات */}
+              {(selected === 'movements' || selected === 'returns' || selected === 'transfers') && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['الرقم', 'التاريخ', 'النوع', 'المادة', 'الكمية', 'المستودع', 'المشروع', 'العميل', 'الحجز', 'الوثيقة', 'ملاحظة'].map(h => (
+                      <th key={h} style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#7c3aed' }}>{r.txn_number || '—'}</td>
+                        <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#6b7280' }}>{fmtDate(r.created_at)}</td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ background: TYPE_COLOR[r.type] + '20', color: TYPE_COLOR[r.type] || '#6b7280', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, fontSize: '0.72rem' }}>{r.type}</span>
+                        </td>
+                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{r.mat_name}</td>
+                        <td style={{ padding: '8px 12px', fontWeight: 700, color: TYPE_COLOR[r.type] || '#374151' }}>{r.qty} {r.unit}</td>
+                        <td style={{ padding: '8px 12px', color: '#6b7280' }}>{r.wh_name}</td>
+                        <td style={{ padding: '8px 12px', color: '#1a56db' }}>{r.project_name || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#374151' }}>{r.client_name || '—'}</td>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.72rem' }}>{r.booking_no || '—'}</td>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.72rem' }}>{r.doc_code || '—'}</td>
+                        <td style={{ padding: '8px 12px', color: '#9ca3af', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.dispatch_note || r.note || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                    <td colSpan={4} style={{ padding: '10px 12px' }}>الإجمالي: {results.length} حركة</td>
+                    <td colSpan={7} />
+                  </tr></tfoot>
+                </table>
+              )}
+
+              {/* الأرصدة */}
+              {selected === 'balance' && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['اسم المادة', 'المستودع', 'الوحدة', 'الكمية الحالية', 'الحالة'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 16px', fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ padding: '10px 16px', color: '#6b7280' }}>{r.warehouse?.name || '—'}</td>
+                        <td style={{ padding: '10px 16px', color: '#9ca3af' }}>{r.unit}</td>
+                        <td style={{ padding: '10px 16px', fontWeight: 700, fontFamily: 'monospace', color: r.qty <= 0 ? '#c81e1e' : '#0ea77b' }}>{fmt(r.qty)}</td>
+                        <td style={{ padding: '10px 16px' }}>
+                          <span className={`badge ${r.qty <= 0 ? 'badge-red' : r.qty <= r.reorder ? 'badge-amber' : 'badge-green'}`} style={{ fontSize: '0.68rem' }}>
+                            {r.qty <= 0 ? 'نفدت' : r.qty <= r.reorder ? 'منخفض' : 'طبيعي'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* مواد المشاريع */}
+              {selected === 'project_mat' && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['المشروع', 'المادة', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'المتبقي', 'نسبة الصرف'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i) => {
+                      const pct = r.qty_received > 0 ? Math.round(r.qty_issued / r.qty_received * 100) : 0
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1a56db' }}>{r.project?.name || '—'}</td>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{r.material?.name || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#6b7280' }}>{r.warehouse?.name || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: '#9ca3af' }}>{r.material?.unit || '—'}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: 700 }}>{fmt(r.qty_received)}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#c81e1e', fontWeight: 700 }}>{fmt(r.qty_issued)}</td>
+                          <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(r.qty_balance)}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div style={{ flex: 1, height: '6px', background: '#f1f5f9', borderRadius: '3px', minWidth: '60px' }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: pct >= 90 ? '#c81e1e' : '#1a56db', borderRadius: '3px' }} />
+                              </div>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>{pct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {/* الحجوزات والوثائق */}
+              {(selected === 'bookings' || selected === 'docs') && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#f8fafc' }}>
+                    {['الرقم المسلسل', 'التاريخ', selected === 'bookings' ? 'رقم الحجز' : 'رقم الوثيقة', 'العميل', 'المادة', 'الكمية', 'المستودع', 'المشروع'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>{r.txn_number || '—'}</td>
+                        <td style={{ padding: '10px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
+                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: report.color }}>{selected === 'bookings' ? r.booking_no : r.doc_code}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: 600 }}>{r.client_name || '—'}</td>
+                        <td style={{ padding: '10px 14px' }}>{r.mat_name}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: 700 }}>{r.qty} {r.unit}</td>
+                        <td style={{ padding: '10px 14px', color: '#6b7280' }}>{r.wh_name}</td>
+                        <td style={{ padding: '10px 14px', color: '#1a56db' }}>{r.project_name || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {results.length === 0 && !loading && (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📦</div>
+              اضغط "عرض التقرير" لتحميل البيانات
+            </div>
+          )}
         </div>
-      </ReportGroup>
+      )}
     </div>
   )
 }

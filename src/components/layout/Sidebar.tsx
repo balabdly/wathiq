@@ -246,6 +246,7 @@ export default function Sidebar() {
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings')
+  const inReports  = pathname.startsWith('/reports')
   const inFinance  = pathname.startsWith('/finance')
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
@@ -253,6 +254,7 @@ export default function Sidebar() {
   const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
   const [hrOpen,       setHrOpen]       = useState(inHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
+  const [reportsOpen,  setReportsOpen]  = useState(pathname.startsWith('/reports'))
   const [financeOpen,  setFinanceOpen]  = useState(inFinance)
 
   return (
@@ -369,7 +371,16 @@ export default function Sidebar() {
 
         <Divider />
 
-        {hasReports && <StandaloneLink href="/reports" label="التقارير" icon={IC.reports} active={pathname.startsWith('/reports')} />}
+        {hasReports && (
+          <NavSection label="التقارير" icon={IC.reports}
+            isActive={inReports} isOpen={reportsOpen} onToggle={() => setReportsOpen(o => !o)}>
+            <SubLink href="/reports/projects"  label="تقارير المشاريع"  icon={IC.projects}   active={pathname.startsWith('/reports/projects')} />
+            <SubLink href="/reports/inventory" label="تقارير المخزون"   icon={IC.inventory}  active={pathname.startsWith('/reports/inventory')} />
+            <SubLink href="/reports/qhse"      label="تقارير QHSE"      icon={IC.shield}     active={pathname.startsWith('/reports/qhse')} />
+            <SubLink href="/reports/hr"        label="تقارير الموارد البشرية" icon={IC.hr}   active={pathname.startsWith('/reports/hr')} />
+            <SubLink href="/reports/finance"   label="تقارير المالية"   icon={IC.finance}    active={pathname.startsWith('/reports/finance')} />
+          </NavSection>
+        )}
 
         {isAdmin && (
           <>
