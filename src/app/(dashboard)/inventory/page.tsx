@@ -21,6 +21,7 @@ type Warehouse = {
 type Material = {
   id: number; warehouse_id: number; catalog_no?: string
   sec_number?: string; name: string; unit: string
+  mat_code?: string; item_code?: string; barcode?: string
   qty: number; reorder: number; source?: string
   location?: string; notes?: string; project_name?: string
   warehouse?: { name: string }
@@ -217,12 +218,13 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
 }) {
   const [tab, setTab]             = useState<'manual' | 'import'>('manual')
   const [saving, setSaving]       = useState(false)
+  const [savedMat, setSavedMat]   = useState<{ name: string; mat_code: string; barcode: string } | null>(null)
   const [importing, setImporting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
     catalog_no: '', sec_number: '', name: '', unit: 'قطعة',
     qty: '0', reorder: '5', warehouse_id: warehouses[0]?.id ? String(warehouses[0].id) : '',
-    source: 'خاص', location: '', notes: '',
+    source: 'خاص', location: '', notes: '', item_code: '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -235,6 +237,7 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
       warehouse_id: Number(form.warehouse_id),
       catalog_no: form.catalog_no || null,
       sec_number: form.sec_number || null,
+      item_code:  form.item_code || null,
       name: form.name.trim(), unit: form.unit,
       qty: Number(form.qty), reorder: Number(form.reorder),
       source: form.source,
@@ -242,8 +245,12 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
       notes: form.notes || null,
     })
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success('✅ تمت إضافة المادة')
-    setForm({ catalog_no: '', sec_number: '', name: '', unit: 'قطعة', qty: '0', reorder: '5', warehouse_id: form.warehouse_id, source: 'خاص', location: '', notes: '' })
+    // جلب mat_code الذي وُلِّد تلقائياً
+    const { data: newMat } = await supabase.from('materials')
+      .select('mat_code, barcode, name').eq('tenant_id', tenantId).order('id', { ascending: false }).limit(1).single()
+    if (newMat) setSavedMat({ name: newMat.name, mat_code: newMat.mat_code, barcode: newMat.barcode })
+    toast.success('✅ تمت إضافة المادة — كود: ' + (newMat?.mat_code || ''))
+    setForm({ catalog_no: '', sec_number: '', name: '', unit: 'قطعة', qty: '0', reorder: '5', warehouse_id: form.warehouse_id, source: 'خاص', location: '', notes: '', item_code: '' })
     onSave()
     setSaving(false)
   }
@@ -264,6 +271,7 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
         warehouse_id: Number(form.warehouse_id),
         catalog_no: String(r['رقم الكتالوج'] || r['catalog_no'] || ''),
         sec_number: String(r['SEC Number'] || r['sec_number'] || '') || null,
+        item_code:  String(r['كود المادة'] || r['item_code'] || '') || null,
         name: String(r['اسم المادة'] || r['name'] || ''),
         unit: String(r['الوحدة'] || r['unit'] || 'قطعة'),
         qty: Number(r['الكمية'] || r['qty'] || 0),
@@ -285,7 +293,7 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
   }
 
   function downloadTemplate() {
-    const headers = ['رقم الكتالوج', 'SEC Number', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات']
+    const headers = ['رقم الكتالوج', 'SEC Number', 'كود المادة', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات']
     const example = ['CAT-001', 'SEC-123', 'كيبل نحاس 16مم', 'متر', '100', '20', 'خاص', 'رف A1', '']
     const csv = [headers.join(','), example.join(',')].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -342,6 +350,12 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
                   <input value={form.sec_number} onChange={e => set('sec_number', e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
                     className="input" dir="ltr" placeholder="اختياري" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={lbl}>كود المادة <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#9ca3af' }}>(كود الشركة أو المورد — اختياري)</span></label>
+                  <input value={form.item_code} onChange={e => set('item_code', e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                    className="input" dir="ltr" placeholder="مثال: ITM-2024-001" />
                 </div>
               </div>
               <div>
@@ -404,8 +418,8 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
                   <button onClick={() => {
                     // إنشاء Excel بنفس الأعمدة
                     import('xlsx').then(XLSX => {
-                      const headers = [['رقم الكتالوج', 'SEC Number', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات']]
-                      const example = [['CAT-001', 'SEC-123', 'كيبل نحاس 16مم', 'متر', '100', '20', 'خاص', 'رف A1', '']]
+                      const headers = [['رقم الكتالوج', 'SEC Number', 'كود المادة', 'اسم المادة', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات']]
+                      const example = [['CAT-001', 'SEC-123', 'ITM-001', 'كيبل نحاس 16مم', 'متر', '100', '20', 'خاص', 'رف A1', '']]
                       const ws = XLSX.utils.aoa_to_sheet([...headers, ...example])
                       const wb = XLSX.utils.book_new()
                       XLSX.utils.book_append_sheet(wb, ws, 'المواد')
@@ -423,7 +437,7 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
               <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '12px', border: '1px solid #fde68a', fontSize: '0.8rem', color: '#92400e' }}>
                 <div style={{ fontWeight: 700, marginBottom: '6px' }}>📋 أعمدة الملف المطلوبة:</div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {['رقم الكتالوج', 'SEC Number', 'اسم المادة *', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات'].map(col => (
+                  {['رقم الكتالوج', 'SEC Number', 'كود المادة', 'اسم المادة *', 'الوحدة', 'الكمية', 'حد الأمان', 'المصدر', 'الموقع', 'ملاحظات'].map(col => (
                     <span key={col} style={{ padding: '2px 8px', background: 'white', borderRadius: '4px', border: `1px solid ${col.includes('*') ? '#fca5a5' : '#fde68a'}`, fontSize: '0.75rem', color: col.includes('*') ? '#c81e1e' : '#92400e', fontWeight: col.includes('*') ? 700 : 400 }}>{col}</span>
                   ))}
                 </div>
@@ -451,6 +465,60 @@ function MaterialsDefineModal({ tenantId, branchId, warehouses, onClose, onSave 
             </div>
           )}
         </div>
+        {/* عرض الباركود بعد الحفظ */}
+        {savedMat && (
+          <div style={{ margin: '0 20px 12px', background: '#f0fdf4', borderRadius: '12px', padding: '14px', border: '1px solid #86efac', textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, color: '#0ea77b', marginBottom: '8px', fontSize: '0.875rem' }}>
+              ✅ تمت إضافة "{savedMat.name}"
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '3px' }}>رقم المادة</div>
+                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1rem', color: '#1a56db', background: 'white', padding: '4px 12px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                  {savedMat.mat_code}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '3px' }}>باركود</div>
+                <svg id="barcode-svg" style={{ display: 'block' }}></svg>
+                <script dangerouslySetInnerHTML={{ __html: `
+                  (function() {
+                    try {
+                      var svg = document.getElementById('barcode-svg');
+                      if (svg && window.JsBarcode) {
+                        JsBarcode(svg, '${savedMat.barcode}', { format: 'CODE128', width: 2, height: 40, displayValue: true, fontSize: 10 });
+                      }
+                    } catch(e) {}
+                  })();
+                `}} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
+              <button onClick={() => {
+                const win = window.open('', '_blank', 'width=400,height=300')
+                if (!win) return
+                win.document.write(\`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>باركود</title>
+                <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script></head>
+                <body style="display:flex;flex-direction:column;align-items:center;padding:20px;font-family:sans-serif">
+                  <div style="font-weight:700;margin-bottom:8px">\${savedMat.name}</div>
+                  <svg id="bc"></svg>
+                  <div style="font-size:12px;color:#666;margin-top:6px">\${savedMat.mat_code}</div>
+                  <script>JsBarcode("#bc","\${savedMat.barcode}",{format:"CODE128",width:2,height:60,displayValue:true});<\/script>
+                  <div class="noprint" style="margin-top:12px"><button onclick="window.print()" style="padding:8px 20px;background:#0ea77b;color:white;border:none;border-radius:6px;cursor:pointer">طباعة</button></div>
+                  <style>@media print{.noprint{display:none}}</style>
+                </body></html>\`)
+                win.document.close()
+              }} style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #86efac', background: 'white', color: '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
+                🖨️ طباعة الباركود
+              </button>
+              <button onClick={() => setSavedMat(null)}
+                style={{ padding: '6px 14px', borderRadius: '8px', border: '1px solid #e5e7eb', background: 'white', color: '#6b7280', cursor: 'pointer', fontSize: '0.78rem' }}>
+                إخفاء
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إغلاق</button>
           {tab === 'manual' && (
@@ -1143,7 +1211,7 @@ export default function InventoryPage() {
       .eq('tenant_id', tenant.id)
       .order('name').range(from, from + PAGE_SIZE - 1)
     if (matWh)     q = q.eq('warehouse_id', Number(matWh))
-    if (matSearch) q = q.or(`name.ilike.%${matSearch}%,catalog_no.ilike.%${matSearch}%,sec_number.ilike.%${matSearch}%`)
+    if (matSearch) q = q.or(`name.ilike.%${matSearch}%,catalog_no.ilike.%${matSearch}%,sec_number.ilike.%${matSearch}%,mat_code.ilike.%${matSearch}%,item_code.ilike.%${matSearch}%`)
     if (matQtyFilter === 'with')    q = q.gt('qty', 0)
     if (matQtyFilter === 'without') q = q.lte('qty', 0)
     const { data, count } = await q
@@ -1361,6 +1429,7 @@ export default function InventoryPage() {
                       <tr key={m.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>{(m as any).mat_code || '—'}</td>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db' }}>{m.catalog_no || '—'}</td>
                         <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#9ca3af' }}>{(m as any).sec_number || '—'}</td>
                         <td style={{ padding: '8px 12px', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</td>
