@@ -21,7 +21,7 @@ type Warehouse = {
 type Material = {
   id: number; warehouse_id: number; catalog_no?: string
   sec_number?: string; name: string; unit: string
-  mat_code?: string; item_code?: string; barcode?: string
+  mat_code?: string; item_code?: string; barcode?: string; is_active?: boolean
   qty: number; reorder: number; source?: string
   location?: string; notes?: string; project_name?: string
   warehouse?: { name: string }
@@ -1210,7 +1210,7 @@ export default function InventoryPage() {
     }
     let q = supabase.from('materials')
       .select('*, warehouse:warehouses(name)', { count: 'exact' })
-      .eq('tenant_id', tenant.id)
+      .eq('tenant_id', tenant.id).eq('is_active', true)
       .order('name').range(from, from + PAGE_SIZE - 1)
     if (matWh)     q = q.eq('warehouse_id', Number(matWh))
     if (matSearch) q = q.or(`name.ilike.%${matSearch}%,catalog_no.ilike.%${matSearch}%,sec_number.ilike.%${matSearch}%,mat_code.ilike.%${matSearch}%,item_code.ilike.%${matSearch}%`)
@@ -1219,6 +1219,14 @@ export default function InventoryPage() {
     const { data, count } = await q
     setMaterials(data || []); setMatTotal(count || 0); setMatPage(page)
     setMatLoading(false)
+  }
+
+  async function toggleMaterial(id: number, currentActive: boolean) {
+    const action = currentActive ? 'تعطيل' : 'تفعيل'
+    if (!confirm(`${action} هذه المادة؟`)) return
+    await supabase.from('materials').update({ is_active: !currentActive }).eq('id', id)
+    loadMaterials(matPage)
+    toast.success(`تم ${action} المادة`)
   }
 
   async function loadLedger(page = 1) {
