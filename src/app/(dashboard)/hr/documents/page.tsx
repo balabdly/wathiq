@@ -259,7 +259,12 @@ export default function DocumentsPage() {
         .order('employee_number'),
     ])
     setDocs(docsRes.data || [])
-    setHrEmployees(empRes.data || [])
+    setHrEmployees((empRes.data || []).map((e: any) => ({
+      id: e.id,
+      employee_id: e.employee_id,
+      employee_number: e.employee_number,
+      employee: Array.isArray(e.employee) ? e.employee[0] : e.employee,
+    })))
     setLoading(false)
   }
 
