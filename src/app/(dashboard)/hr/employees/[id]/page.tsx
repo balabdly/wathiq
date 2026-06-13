@@ -136,7 +136,7 @@ function LetterModal({ emp, tenant, onClose }: {
   * { margin:0;padding:0;box-sizing:border-box }
   body { font-family:'Arial',sans-serif;font-size:14px;color:#111;background:white;padding:40px;direction:rtl }
   .header { display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a56db;padding-bottom:16px;margin-bottom:28px }
-  .logo { max-height:70px;max-width:200px;object-fit:contain }
+  .logo { max-height:90px;max-width:220px;object-fit:contain;image-rendering:high-quality }
   .company-info { text-align:left;font-size:12px;color:#555;line-height:1.8 }
   .meta { display:flex;justify-content:space-between;margin-bottom:20px;font-size:12px;color:#555 }
   .title { text-align:center;font-size:18px;font-weight:bold;margin:24px 0;text-decoration:underline;color:#111 }
