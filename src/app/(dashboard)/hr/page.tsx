@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
@@ -1377,6 +1378,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 // ══════════════════════════════════════
 export default function HRPage() {
   const { tenant, currentUser } = useStore()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<'employees' | 'terminations' | 'joboffers'>('employees')
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [managers, setManagers] = useState<any[]>([])
@@ -1824,9 +1826,9 @@ export default function HRPage() {
                           <td style={{ padding: '12px 14px', textAlign: 'center' }}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button
-                                onClick={() => setViewEmp(emp)}
+                                onClick={() => router.push(`/hr/employees/${emp.id}`)}
                                 className="btn btn-ghost btn-xs"
-                                title="عرض البيانات"
+                                title="ملف الموظف الشامل"
                                 style={{ color: '#1a56db' }}>
                                 <Eye style={{ width: '14px', height: '14px' }} />
                               </button>
