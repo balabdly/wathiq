@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut, Building2, Briefcase, FileText, Printer, Download } from 'lucide-react'
+import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut, Building2, Briefcase, FileText, Printer, Download, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type HREmployee = {
@@ -1383,23 +1383,27 @@ export default function HRPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editEmp, setEditEmp] = useState<HREmployee | null>(null)
+  const [viewEmp, setViewEmp] = useState<HREmployee | null>(null)
+  const [listMode, setListMode] = useState<'idle' | 'search' | 'all'>('idle')
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [stats, setStats] = useState({ total: 0, active: 0, saudi: 0, expats: 0, totalSalaries: 0 })
+  const PAGE_SIZE = 20
   const isAdmin = currentUser?.role === 'مدير عام'
   const now = new Date()
 
-  useEffect(() => { load() }, [tenant?.id])
+  useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
-  async function load() {
+  async function loadStats() {
     if (!tenant) return
-    setLoading(true)
-    const [hrRes, mgRes, deptRes] = await Promise.all([
-      // ✅ إصلاح: إضافة فلتر tenant_id + is_active لجلب الموظفين الصحيحين فقط
+    const [statsRes, mgRes, deptRes] = await Promise.all([
       supabase
         .from('hr_employees')
-        .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
-        .eq('tenant_id', tenant.id)
-        .order('id'),
+        .select('nationality, basic_salary, housing_allow, transport_allow, other_allow, is_active')
+        .eq('tenant_id', tenant.id),
       supabase
         .from('employees')
         .select('id, name, role')
@@ -1412,10 +1416,56 @@ export default function HRPage() {
         .eq('tenant_id', tenant.id)
         .order('name'),
     ])
-    setHREmployees(hrRes.data || [])
+    const all = statsRes.data || []
+    setStats({
+      total: all.length,
+      active: all.filter(e => e.is_active).length,
+      saudi: all.filter(e => e.nationality === 'سعودي').length,
+      expats: all.filter(e => e.nationality !== 'سعودي').length,
+      totalSalaries: all.reduce((s, e) => s + (e.basic_salary || 0) + (e.housing_allow || 0) + (e.transport_allow || 0) + (e.other_allow || 0), 0),
+    })
     setManagers(mgRes.data || [])
     setDepartments((deptRes.data || []) as Department[])
+  }
+
+  async function doSearch(q: string) {
+    if (!tenant || !q.trim()) return
+    setLoading(true)
+    setListMode('search')
+    setSearch(q)
+    const { data } = await supabase
+      .from('hr_employees')
+      .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
+      .eq('tenant_id', tenant.id)
+      .or(`employee_number.eq.${q},first_name.ilike.%${q}%,family_name.ilike.%${q}%,father_name.ilike.%${q}%`)
+      .order('employee_number', { ascending: true })
+      .limit(50)
+    setHREmployees(data || [])
     setLoading(false)
+  }
+
+  async function loadAll(p = 1) {
+    if (!tenant) return
+    setLoading(true)
+    setListMode('all')
+    setPage(p)
+    const from = (p - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    const { data, count } = await supabase
+      .from('hr_employees')
+      .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .order('employee_number', { ascending: true })
+      .range(from, to)
+    setHREmployees(data || [])
+    setTotalCount(count || 0)
+    setLoading(false)
+  }
+
+  async function load() {
+    if (listMode === 'search') await doSearch(search)
+    else if (listMode === 'all') await loadAll(page)
+    await loadStats()
   }
 
   async function handleSave(data: any) {
@@ -1522,15 +1572,12 @@ export default function HRPage() {
     }
   }
 
-  const filtered = hrEmployees.filter(e =>
-    !search || e.employee?.name?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const totalSalaries = hrEmployees.reduce((s, e) =>
-    s + e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow, 0)
-  const active = hrEmployees.filter(e => e.is_active).length
-  const saudiCount = hrEmployees.filter(e => e.nationality === 'سعودي').length
-  const expats = hrEmployees.filter(e => e.nationality !== 'سعودي').length
+  // الحسابات تأتي من stats (الإحصائيات الخفيفة) لا من الجدول المحمّل
+  const totalSalaries = stats.totalSalaries
+  const active = stats.active
+  const saudiCount = stats.saudi
+  const expats = stats.expats
+  const filtered = hrEmployees  // الفلترة تتم في Supabase مباشرة
 
   const TABS = [
     { id: 'employees',    label: '👥 ملفات الموظفين',   color: '#1a56db' },
@@ -1581,17 +1628,41 @@ export default function HRPage() {
             ))}
           </div>
 
-          {/* شريط البحث + زر إضافة */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="input"
-                style={{ paddingRight: '36px', width: '240px' }}
-                placeholder="بحث باسم الموظف..."
-              />
+          {/* شريط البحث + أزرار + إضافة */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* حقل البحث */}
+              <div style={{ position: 'relative' }}>
+                <Search style={{ width: '16px', height: '16px', color: 'var(--text3)', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                <input
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') doSearch(searchInput) }}
+                  className="input"
+                  style={{ paddingRight: '36px', width: '240px' }}
+                  placeholder="بحث بالاسم أو الرقم..."
+                />
+              </div>
+              <button
+                onClick={() => doSearch(searchInput)}
+                className="btn btn-primary btn-sm"
+                disabled={!searchInput.trim()}>
+                بحث
+              </button>
+              <button
+                onClick={() => { loadAll(1); setSearchInput('') }}
+                className="btn btn-ghost btn-sm"
+                style={{ border: '1px solid var(--border)' }}>
+                <Users style={{ width: '14px', height: '14px' }} /> عرض الكل ({stats.total})
+              </button>
+              {listMode !== 'idle' && (
+                <button
+                  onClick={() => { setListMode('idle'); setHREmployees([]); setSearchInput(''); setSearch('') }}
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--text3)', fontSize: '0.78rem' }}>
+                  ✕ إخفاء القائمة
+                </button>
+              )}
             </div>
             {isAdmin && (
               <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary">
@@ -1601,21 +1672,24 @@ export default function HRPage() {
           </div>
 
           {/* قائمة الموظفين */}
-          {loading ? (
+          {listMode === 'idle' ? (
+            <div className="card" style={{ padding: '48px', textAlign: 'center' }}>
+              <Users style={{ width: '44px', height: '44px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>ابحث باسم أو رقم الموظف، أو اضغط "عرض الكل"</p>
+              {isAdmin && (
+                <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary btn-sm">
+                  <Plus style={{ width: '14px', height: '14px' }} /> إضافة موظف جديد
+                </button>
+              )}
+            </div>
+          ) : loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
               <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <Users style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p style={{ color: 'var(--text3)' }}>
-                {search ? 'لا توجد نتائج للبحث' : 'لا يوجد موظفون بعد'}
-              </p>
-              {isAdmin && !search && (
-                <button onClick={() => { setEditEmp(null); setShowModal(true) }} className="btn btn-primary" style={{ marginTop: '16px' }}>
-                  <Plus style={{ width: '16px', height: '16px' }} /> إضافة أول موظف
-                </button>
-              )}
+              <p style={{ color: 'var(--text3)' }}>لا توجد نتائج</p>
             </div>
           ) : (
             <div className="card" style={{ overflow: 'hidden' }}>
@@ -1632,7 +1706,7 @@ export default function HRPage() {
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>صافي الراتب</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>GOSI</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الحالة</th>
-                      {isAdmin && <th style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إجراء</th>}
+                      <th style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>إجراء</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1747,32 +1821,135 @@ export default function HRPage() {
                           </td>
 
                           {/* إجراء */}
-                          {isAdmin && (
-                            <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button
-                                onClick={() => { setEditEmp(emp); setShowModal(true) }}
+                                onClick={() => setViewEmp(emp)}
                                 className="btn btn-ghost btn-xs"
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                                title="عرض البيانات"
+                                style={{ color: '#1a56db' }}>
+                                <Eye style={{ width: '14px', height: '14px' }} />
                               </button>
-                            </td>
-                          )}
+                              {isAdmin && (
+                                <button
+                                  onClick={() => { setEditEmp(emp); setShowModal(true) }}
+                                  className="btn btn-ghost btn-xs"
+                                  title="تعديل"
+                                  style={{ color: '#e6820a' }}>
+                                  <Pencil style={{ width: '14px', height: '14px' }} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
-              {/* Footer */}
-              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', fontSize: '0.78rem', color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>إجمالي الموظفين: <strong>{filtered.length}</strong></span>
-                <span>إجمالي الرواتب الصافية: <strong style={{ color: '#0ea77b' }}>
-                  {filtered.reduce((s, e) => {
-                    const tot = e.basic_salary + e.housing_allow + e.transport_allow + e.other_allow
-                    const g = calcGOSI(e.nationality, e.basic_salary, e.housing_allow)
-                    return s + tot - (e.gosi_enrolled ? g.employeeDeduction : 0)
-                  }, 0).toLocaleString()} ر.س
-                </strong></span>
+              {/* Footer + Pagination */}
+              <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg2)', fontSize: '0.78rem', color: 'var(--text3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <span>
+                  {listMode === 'all'
+                    ? <>عرض <strong>{filtered.length}</strong> من <strong>{totalCount}</strong> موظف</>
+                    : <>نتائج البحث: <strong>{filtered.length}</strong></>}
+                </span>
+                {listMode === 'all' && totalCount > PAGE_SIZE && (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <button
+                      onClick={() => loadAll(page - 1)}
+                      disabled={page === 1}
+                      className="btn btn-ghost btn-xs"
+                      style={{ padding: '4px 10px' }}>
+                      ‹ السابق
+                    </button>
+                    <span style={{ padding: '0 8px', fontWeight: 600 }}>
+                      {page} / {Math.ceil(totalCount / PAGE_SIZE)}
+                    </span>
+                    <button
+                      onClick={() => loadAll(page + 1)}
+                      disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                      className="btn btn-ghost btn-xs"
+                      style={{ padding: '4px 10px' }}>
+                      التالي ›
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Modal عرض بيانات الموظف */}
+          {viewEmp && (
+            <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setViewEmp(null)}>
+              <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
+                <div className="modal-header">
+                  <h3 style={{ fontWeight: 700 }}>بيانات الموظف</h3>
+                  <button onClick={() => setViewEmp(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+                </div>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* رأس البطاقة */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px', background: 'var(--bg2)', borderRadius: '12px' }}>
+                    <div style={{
+                      width: '52px', height: '52px', borderRadius: '14px', flexShrink: 0,
+                      background: viewEmp.nationality === 'سعودي' ? '#eff6ff' : '#fffbeb',
+                      color: viewEmp.nationality === 'سعودي' ? '#1a56db' : '#e6820a',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '1.4rem',
+                    }}>
+                      {viewEmp.employee?.name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '1rem' }}>{viewEmp.employee?.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text3)', marginTop: '2px' }}>{viewEmp.job_title} — {viewEmp.department}</div>
+                      {viewEmp.employee_number && (
+                        <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '6px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace', marginTop: '4px', display: 'inline-block' }}>
+                          #{viewEmp.employee_number}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* البيانات في شبكة */}
+                  {[
+                    { label: 'رقم الهوية / الإقامة', value: viewEmp.national_id },
+                    { label: 'الجنسية', value: viewEmp.nationality },
+                    { label: 'تاريخ الميلاد', value: viewEmp.birth_date ? formatDate(viewEmp.birth_date) : '—' },
+                    { label: 'الجنس', value: viewEmp.gender },
+                    { label: 'الحالة الاجتماعية', value: viewEmp.marital_status },
+                    { label: 'تاريخ التعيين', value: viewEmp.hire_date ? formatDate(viewEmp.hire_date) : '—' },
+                    { label: 'نوع العقد', value: viewEmp.contract_type },
+                    { label: 'المدير المباشر', value: viewEmp.direct_manager ? `#${viewEmp.direct_manager}` : '—' },
+                    { label: 'الراتب الأساسي', value: `${viewEmp.basic_salary?.toLocaleString()} ر.س` },
+                    { label: 'بدل السكن', value: `${viewEmp.housing_allow?.toLocaleString()} ر.س` },
+                    { label: 'بدل النقل', value: `${viewEmp.transport_allow?.toLocaleString()} ر.س` },
+                    { label: 'بدلات أخرى', value: `${viewEmp.other_allow?.toLocaleString()} ر.س` },
+                    { label: 'البنك', value: viewEmp.bank_name || '—' },
+                    { label: 'IBAN', value: viewEmp.iban || '—' },
+                    ...(viewEmp.nationality !== 'سعودي' ? [
+                      { label: 'رقم الإقامة', value: viewEmp.iqama_number || '—' },
+                      { label: 'انتهاء الإقامة', value: viewEmp.iqama_expiry ? formatDate(viewEmp.iqama_expiry) : '—' },
+                    ] : []),
+                  ].map(row => (
+                    <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px', alignItems: 'center', borderBottom: '1px solid var(--bg2)', paddingBottom: '8px' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{row.label}</span>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{row.value || '—'}</span>
+                    </div>
+                  ))}
+                  {viewEmp.notes && (
+                    <div style={{ padding: '10px', background: 'var(--bg2)', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text3)' }}>
+                      <strong>ملاحظات: </strong>{viewEmp.notes}
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  {isAdmin && (
+                    <button onClick={() => { setEditEmp(viewEmp); setViewEmp(null); setShowModal(true) }} className="btn btn-primary btn-sm">
+                      <Pencil style={{ width: '14px', height: '14px' }} /> تعديل البيانات
+                    </button>
+                  )}
+                  <button onClick={() => setViewEmp(null)} className="btn btn-ghost">إغلاق</button>
+                </div>
               </div>
             </div>
           )}
