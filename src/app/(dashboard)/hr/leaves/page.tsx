@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, XCircle, AlertTriangle, Info, Search, ChevronDown, ChevronUp, FileText } from 'lucide-react'
+import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, XCircle, AlertTriangle, Info, Search, ChevronDown, ChevronUp, FileText, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // ── أنواع الإجازات ──
@@ -526,23 +526,35 @@ export default function LeavesPage() {
                         <tr key={emp.id} style={{ borderBottom: '1px solid var(--bg2)', background: isZero ? '#fff5f5' : isLow ? '#fffbeb' : 'transparent' }}
                           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                           onMouseLeave={e => (e.currentTarget.style.background = isZero ? '#fff5f5' : isLow ? '#fffbeb' : 'transparent')}>
-                          {/* اسم الموظف — قابل للضغط */}
+                          {/* اسم الموظف + زر السجل */}
                           <td style={{ padding: '12px 14px' }}>
-                            <button type="button"
-                              onClick={() => {
-                                setHistoryEmp(emp)
-                                supabase.from('hr_leaves').select('*, employee:employees!hr_leaves_employee_id_fkey(name)')
-                                  .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.employee_id)
-                                  .order('start_date', { ascending: false })
-                                  .then(({ data }) => setAllLeaves(prev => {
-                                    const others = prev.filter(l => l.employee_id !== emp.employee_id)
-                                    return [...others, ...(data || [])]
-                                  }))
-                              }}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'right', padding: 0 }}>
-                              <div style={{ fontWeight: 700, color: 'var(--primary)', textDecoration: 'underline', fontSize: '0.875rem' }}>{emp.employee?.name}</div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.employee?.role}</div>
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{emp.employee?.name}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.employee?.role}</div>
+                              </div>
+                              <button type="button"
+                                title="عرض سجل الإجازات"
+                                onClick={() => {
+                                  setHistoryEmp(emp)
+                                  supabase.from('hr_leaves').select('*, employee:employees!hr_leaves_employee_id_fkey(name)')
+                                    .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.employee_id)
+                                    .order('start_date', { ascending: false })
+                                    .then(({ data }) => setAllLeaves(prev => {
+                                      const others = prev.filter(l => l.employee_id !== emp.employee_id)
+                                      return [...others, ...(data || [])]
+                                    }))
+                                }}
+                                style={{
+                                  background: '#eff6ff', border: '1px solid #bfdbfe',
+                                  borderRadius: '8px', padding: '5px 8px',
+                                  cursor: 'pointer', color: '#1a56db',
+                                  display: 'flex', alignItems: 'center', gap: '4px',
+                                  fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+                                }}>
+                                <Eye style={{ width: '13px', height: '13px' }} /> السجل
+                              </button>
+                            </div>
                           </td>
                           <td style={{ padding: '12px 14px', fontSize: '0.875rem' }}>{emp.hire_date ? formatDate(emp.hire_date) : '—'}</td>
                           <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 600 }}>{bal.yearsOfService.toFixed(1)}</td>
