@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Users, Calendar, Banknote, AlertTriangle, TrendingUp, Clock } from 'lucide-react'
+import { Users, Calendar, Banknote, AlertTriangle, TrendingUp, Clock, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 
 export default function HRDashboard() {
@@ -11,11 +11,12 @@ export default function HRDashboard() {
     totalActive: 0, saudiCount: 0, expatCount: 0,
     pendingLeaves: 0, approvedLeaves: 0,
     expiringIqama: 0, newThisMonth: 0,
-    unpaidPayrolls: 0,
+    unpaidPayrolls: 0, notReturnedCount: 0,
   })
   const [loading, setLoading] = useState(false)
   const [pendingLeavesList, setPendingLeavesList] = useState<any[]>([])
   const [expiringList, setExpiringList] = useState<any[]>([])
+  const [absentList, setAbsentList] = useState<any[]>([])
 
   useEffect(() => { if (tenant) load() }, [tenant?.id])
 
@@ -27,7 +28,9 @@ export default function HRDashboard() {
     const thisYear = now.getFullYear()
     const in60Days = new Date(now.getTime() + 60 * 86400000).toISOString().split('T')[0]
 
-    const [empRes, leavesRes, iqamaRes, payrollRes] = await Promise.all([
+    const yesterday = new Date(now.getTime() - 86400000).toISOString().split('T')[0]
+
+    const [empRes, leavesRes, iqamaRes, payrollRes, absentRes] = await Promise.all([
       supabase.from('hr_employees')
         .select('id, nationality, hire_date, employee:employees!hr_employees_employee_id_fkey(name)')
         .eq('tenant_id', tenant.id).eq('is_active', true),
@@ -42,6 +45,13 @@ export default function HRDashboard() {
       supabase.from('hr_payroll')
         .select('id').eq('tenant_id', tenant.id)
         .eq('month', thisMonth).eq('year', thisYear).eq('status', 'مسودة'),
+      // الموظفون الذين انتهت إجازتهم ولم يسجلوا حضوراً
+      supabase.from('hr_leaves')
+        .select('id, employee_id, end_date, leave_type, days, employee:employees!hr_leaves_employee_id_fkey(name, role)')
+        .eq('tenant_id', tenant.id)
+        .eq('status', 'موافق')
+        .lt('end_date', now.toISOString().split('T')[0])
+        .gte('end_date', new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0]),
     ])
 
     const emps = empRes.data || []
@@ -52,14 +62,35 @@ export default function HRDashboard() {
       return d.getMonth() + 1 === thisMonth && d.getFullYear() === thisYear
     }).length
 
+    // تصفية الموظفين الذين انتهت إجازتهم ولم يسجلوا حضوراً بعد
+    const recentLeaves = absentRes.data || []
+    // جلب سجلات الحضور لهؤلاء الموظفين بعد تاريخ انتهاء إجازتهم
+    const absentEmployees: any[] = []
+    for (const leave of recentLeaves) {
+      const { data: attendance } = await supabase
+        .from('hr_attendance')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .eq('employee_id', leave.employee_id)
+        .eq('status', 'حضور')
+        .gt('date', leave.end_date)
+        .limit(1)
+      if (!attendance || attendance.length === 0) {
+        const overdueDays = Math.ceil((now.getTime() - new Date(leave.end_date).getTime()) / 86400000)
+        absentEmployees.push({ ...leave, overdue_days: overdueDays })
+      }
+    }
+
     setStats({
       totalActive: emps.length, saudiCount: saudi, expatCount: emps.length - saudi,
       pendingLeaves: leavesRes.data?.length || 0,
       approvedLeaves: 0, expiringIqama: iqamaRes.data?.length || 0,
       newThisMonth, unpaidPayrolls: payrollRes.data?.length || 0,
+      notReturnedCount: absentEmployees.length,
     })
     setPendingLeavesList(leavesRes.data || [])
     setExpiringList(iqamaRes.data || [])
+    setAbsentList(absentEmployees)
     setLoading(false)
   }
 
@@ -91,10 +122,11 @@ export default function HRDashboard() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KPI label="الموظفون النشطون"    value={stats.totalActive}     color="#1a56db" bg="#eff6ff"  icon={Users}        href="/hr" />
         <KPI label="طلبات إجازة معلقة"  value={stats.pendingLeaves}   color={stats.pendingLeaves > 0 ? '#e6820a' : '#0ea77b'} bg={stats.pendingLeaves > 0 ? '#fffbeb' : '#ecfdf5'} icon={Clock} href="/hr/leaves" />
         <KPI label="إقامات تنتهي < 60 يوم" value={stats.expiringIqama} color={stats.expiringIqama > 0 ? '#c81e1e' : '#0ea77b'} bg={stats.expiringIqama > 0 ? '#fef2f2' : '#ecfdf5'} icon={AlertTriangle} href="/hr" />
+        <KPI label="لم يعودوا من إجازتهم" value={stats.notReturnedCount} color={stats.notReturnedCount > 0 ? '#c81e1e' : '#0ea77b'} bg={stats.notReturnedCount > 0 ? '#fef2f2' : '#ecfdf5'} icon={ShieldAlert} href="/hr/leaves" />
         <KPI label="موظفون جدد هذا الشهر" value={stats.newThisMonth}  color="#0ea77b"  bg="#ecfdf5"  icon={TrendingUp}    href="/hr" />
       </div>
 
@@ -104,6 +136,47 @@ export default function HRDashboard() {
         <KPI label="مسيرات مسودة هذا الشهر" value={stats.unpaidPayrolls} color={stats.unpaidPayrolls > 0 ? '#e6820a' : '#0ea77b'} bg={stats.unpaidPayrolls > 0 ? '#fffbeb' : '#ecfdf5'} icon={Banknote} href="/hr/payroll" />
         <KPI label="إجمالي الإجازات اليوم" value="—" color="#6b7280" bg="#f9fafb" icon={Calendar} href="/hr/leaves" />
       </div>
+
+      {/* تنبيه: لم يعودوا من إجازتهم */}
+      {absentList.length > 0 && (
+        <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid #fca5a5' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #fca5a5', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fef2f2' }}>
+            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: '#c81e1e' }}>
+              <ShieldAlert style={{ width: '16px', height: '16px' }} />
+              موظفون لم يعودوا من إجازتهم
+            </div>
+            <Link href="/hr/leaves" style={{ fontSize: '0.78rem', color: '#c81e1e', textDecoration: 'none' }}>عرض الكل ←</Link>
+          </div>
+          {absentList.slice(0, 5).map(l => {
+            const isSerious = l.overdue_days >= 5
+            return (
+              <div key={l.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--bg2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{l.employee?.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>
+                    {l.leave_type} · كان يجب العودة: {l.end_date}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <span style={{
+                    background: isSerious ? '#fef2f2' : '#fffbeb',
+                    color: isSerious ? '#c81e1e' : '#92400e',
+                    borderRadius: '20px', padding: '3px 10px',
+                    fontSize: '0.72rem', fontWeight: 700,
+                  }}>
+                    {l.overdue_days} يوم تأخير
+                  </span>
+                  {isSerious && (
+                    <Link href="/hr/disciplinary" style={{ fontSize: '0.68rem', color: '#c81e1e', textDecoration: 'none', fontWeight: 600 }}>
+                      ← إصدار إنذار
+                    </Link>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* طلبات الإجازة المعلقة */}
