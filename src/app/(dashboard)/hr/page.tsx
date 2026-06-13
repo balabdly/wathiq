@@ -8,6 +8,10 @@ import toast from 'react-hot-toast'
 
 type HREmployee = {
   id: number; tenant_id: string; employee_id: number
+  employee_number?: string
+  first_name?: string; father_name?: string
+  grandfather_name?: string; family_name?: string
+  first_name_en?: string; family_name_en?: string
   national_id?: string; nationality: string; birth_date?: string
   gender: string; marital_status: string; hire_date?: string
   contract_type: string; job_title?: string; department?: string
@@ -233,6 +237,12 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
 
   const [form, setForm] = useState({
     emp_name:         emp?.employee?.name   || '',
+    first_name:        emp?.first_name        || '',
+    father_name:       emp?.father_name       || '',
+    grandfather_name:  emp?.grandfather_name  || '',
+    family_name:       emp?.family_name       || '',
+    first_name_en:     emp?.first_name_en     || '',
+    family_name_en:    emp?.family_name_en    || '',
     national_id:      emp?.national_id      || '',
     nationality:      emp?.nationality      || 'سعودي',
     nationality_text: (emp?.nationality && emp.nationality !== 'سعودي') ? emp.nationality : '',
@@ -257,6 +267,10 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   const noEnter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') e.preventDefault() }
+
+  function buildFullName(first: string, father: string, grandfather: string, family: string): string {
+    return [first, father, grandfather, family].map(s => s.trim()).filter(Boolean).join(' ')
+  }
 
   const isSaudi = form.nationality === 'سعودي'
   const gosi = calcGOSI(form.nationality, Number(form.basic_salary), Number(form.housing_allow), Number(form.transport_allow))
@@ -299,7 +313,10 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.emp_name.trim()) { toast.error('أدخل اسم الموظف'); return }
+    if (!form.first_name.trim()) { toast.error('أدخل الاسم الأول'); return }
+    if (!form.father_name.trim()) { toast.error('أدخل اسم الأب'); return }
+    if (!form.family_name.trim()) { toast.error('أدخل اسم العائلة'); return }
+    const fullName = buildFullName(form.first_name, form.father_name, form.grandfather_name, form.family_name)
     if (!form.department) { toast.error('اختر القسم'); return }
     if (!form.job_title) { toast.error('اختر المسمى الوظيفي'); return }
     if (!form.hire_date) { toast.error('أدخل تاريخ التعيين'); return }
@@ -313,7 +330,13 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
     const finalNationality = isSaudi ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
     await onSave({
       ...(emp ? { id: emp.id, employee_id: emp.employee_id } : {}),
-      emp_name: form.emp_name.trim(),
+      emp_name: fullName,
+      first_name:       form.first_name.trim(),
+      father_name:      form.father_name.trim(),
+      grandfather_name: form.grandfather_name.trim() || null,
+      family_name:      form.family_name.trim(),
+      first_name_en:    form.first_name_en.trim() || null,
+      family_name_en:   form.family_name_en.trim() || null,
       national_id: form.national_id,
       nationality: finalNationality,
       birth_date: form.birth_date,
@@ -373,9 +396,72 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
             {tab === 'personal' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الموظف <span className="text-red-500">*</span></label>
-                  <input value={form.emp_name} onChange={e => set('emp_name', e.target.value)} className="input" placeholder="الاسم الكامل" onKeyDown={noEnter} />
+                {/* حقول الاسم الرباعي */}
+                <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '14px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '12px' }}>
+                    🔤 الاسم الرباعي بالعربي <span style={{ color: '#c81e1e' }}>*</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم الأول <span className="text-red-500">*</span></label>
+                      <input
+                        value={form.first_name}
+                        onChange={e => { set('first_name', e.target.value); set('emp_name', buildFullName(e.target.value, form.father_name, form.grandfather_name, form.family_name)) }}
+                        className="input" placeholder="محمد" onKeyDown={noEnter}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الأب <span className="text-red-500">*</span></label>
+                      <input
+                        value={form.father_name}
+                        onChange={e => { set('father_name', e.target.value); set('emp_name', buildFullName(form.first_name, e.target.value, form.grandfather_name, form.family_name)) }}
+                        className="input" placeholder="عبدالله" onKeyDown={noEnter}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الجد</label>
+                      <input
+                        value={form.grandfather_name}
+                        onChange={e => { set('grandfather_name', e.target.value); set('emp_name', buildFullName(form.first_name, form.father_name, e.target.value, form.family_name)) }}
+                        className="input" placeholder="سالم" onKeyDown={noEnter}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم العائلة <span className="text-red-500">*</span></label>
+                      <input
+                        value={form.family_name}
+                        onChange={e => { set('family_name', e.target.value); set('emp_name', buildFullName(form.first_name, form.father_name, form.grandfather_name, e.target.value)) }}
+                        className="input" placeholder="الغامدي" onKeyDown={noEnter}
+                      />
+                    </div>
+                  </div>
+
+                  {/* معاينة الاسم الكامل */}
+                  {form.emp_name && (
+                    <div style={{ marginTop: '10px', padding: '8px 12px', background: 'var(--bg2)', borderRadius: '8px', fontSize: '0.875rem' }}>
+                      <span style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>الاسم الكامل: </span>
+                      <span style={{ fontWeight: 700 }}>{form.emp_name}</span>
+                    </div>
+                  )}
+
+                  {/* الاسم بالإنجليزي */}
+                  <div style={{ borderTop: '1px solid var(--border)', marginTop: '14px', paddingTop: '14px' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text3)', marginBottom: '10px' }}>
+                      🔡 الاسم بالإنجليزي (اختياري)
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">First Name</label>
+                        <input value={form.first_name_en} onChange={e => set('first_name_en', e.target.value)}
+                          className="input" placeholder="Mohammed" dir="ltr" onKeyDown={noEnter} />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Family Name</label>
+                        <input value={form.family_name_en} onChange={e => set('family_name_en', e.target.value)}
+                          className="input" placeholder="Al-Ghamdi" dir="ltr" onKeyDown={noEnter} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* القسم أولاً */}
@@ -1336,6 +1422,7 @@ export default function HRPage() {
     if (!tenant) return
     try {
       let employeeId = data.employee_id
+      let employeeNumber: string | null = null
 
       if (!employeeId) {
         // ✅ إنشاء موظف جديد في جدول employees
@@ -1355,6 +1442,11 @@ export default function HRPage() {
 
         if (empError) throw empError
         employeeId = newEmp.id
+
+        // ✅ توليد رقم الموظف التلقائي (4 أرقام، فريد لكل شركة)
+        const { data: empNum, error: numErr } = await supabase
+          .rpc('generate_employee_number', { p_tenant_id: tenant.id })
+        if (!numErr && empNum) employeeNumber = empNum
       } else {
         // تحديث اسم ومسمى الموظف الموجود
         await supabase
@@ -1367,6 +1459,13 @@ export default function HRPage() {
       const hrPayload: Record<string, any> = {
         tenant_id:      tenant.id,
         employee_id:    employeeId,
+        ...(employeeNumber ? { employee_number: employeeNumber } : {}),
+        first_name:       data.first_name       || null,
+        father_name:      data.father_name       || null,
+        grandfather_name: data.grandfather_name  || null,
+        family_name:      data.family_name       || null,
+        first_name_en:    data.first_name_en     || null,
+        family_name_en:   data.family_name_en    || null,
         national_id:    data.national_id    || null,
         nationality:    data.nationality,
         birth_date:     data.birth_date     || null,
@@ -1571,7 +1670,18 @@ export default function HRPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 700, color: 'var(--text)' }}>{empName}</div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.contract_type}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'flex', gap: '5px', alignItems: 'center', marginTop: '2px' }}>
+                                  {emp.employee_number && (
+                                    <span style={{
+                                      background: '#eff6ff', color: '#1a56db',
+                                      borderRadius: '5px', padding: '1px 6px',
+                                      fontWeight: 700, fontFamily: 'monospace', fontSize: '0.7rem',
+                                    }}>
+                                      #{emp.employee_number}
+                                    </span>
+                                  )}
+                                  <span>{emp.contract_type}</span>
+                                </div>
                               </div>
                             </div>
                           </td>
