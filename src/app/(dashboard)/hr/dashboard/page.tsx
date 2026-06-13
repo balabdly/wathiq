@@ -177,6 +177,7 @@ export default function HRDashboard() {
             { href: '/hr/payroll', label: '💰 الرواتب والتعويضات' },
             { href: '/hr/documents', label: '📄 الوثائق' },
             { href: '/hr/jobs', label: '💼 عروض الوظائف' },
+            { href: '/hr/disciplinary', label: '⚖️ التأديب والجزاءات' },
           ].map(l => (
             <Link key={l.href} href={l.href}
               style={{ padding: '8px 14px', background: 'var(--bg2)', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', textDecoration: 'none', border: '1px solid var(--border)' }}
