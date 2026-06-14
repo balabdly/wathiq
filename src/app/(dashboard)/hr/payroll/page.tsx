@@ -10,6 +10,11 @@ type HREmployee = {
   transport_allow: number; other_allow: number; gosi_enrolled: boolean; gosi_pct: number
   nationality: string; hire_date?: string; department?: string; job_title?: string; is_active?: boolean
 }
+type PendingDeduct = {
+  id: number; employee_id: number; violation_name: string
+  salary_deduct_days: number; incident_date: string; penalty_degree: number
+}
+
 type Payroll = {
   id: number; employee_id: number; month: number; year: number
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
@@ -22,6 +27,7 @@ type PayrollRow = {
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; absence_deduct: number
   other_deduct: number; present_days: number; notes: string; gross: number; net: number; existingId?: number
+  _pendingDeductIds?: number[]
 }
 type Termination = {
   id: number; employee_id: number; hr_employee_id: number
@@ -450,6 +456,8 @@ export default function PayrollPage() {
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
   const [expandedPayrollKey, setExpandedPayrollKey] = useState<string | null>(null)
+  const [pendingDeducts, setPendingDeducts] = useState<PendingDeduct[]>([])
+  const [approvedDeducts, setApprovedDeducts] = useState<Set<number>>(new Set())
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => {
@@ -461,13 +469,21 @@ export default function PayrollPage() {
   async function load() {
     if (!tenant) return
     setLoading(true)
-    const [p, e] = await Promise.all([
+    const [p, e, d] = await Promise.all([
       supabase.from('hr_payroll').select('*').eq('tenant_id', tenant.id).order('year', { ascending: false }).order('month', { ascending: false }),
       supabase.from('hr_employees').select('id, employee_id, name, basic_salary, housing_allow, transport_allow, other_allow, gosi_enrolled, gosi_pct, nationality, hire_date, department, job_title, is_active').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('hr_disciplinary')
+        .select('id, employee_id, violation_name, salary_deduct_days, incident_date, penalty_degree')
+        .eq('tenant_id', tenant.id)
+        .eq('status', 'نافذ')
+        .eq('deduct_applied', false)
+        .gt('salary_deduct_days', 0),
     ])
     const empNameMap = buildEmpNameMap((e.data || []) as HREmployee[])
     setPayrolls((p.data || []).map((pay: any) => ({ ...pay, emp_name: empNameMap[pay.employee_id] || `موظف #${pay.employee_id}` })))
     setHREmployees((e.data || []) as HREmployee[])
+    setPendingDeducts((d.data || []) as PendingDeduct[])
+    setApprovedDeducts(new Set())
     setLoading(false)
   }
 
@@ -517,6 +533,7 @@ export default function PayrollPage() {
         gosi_deduction: ex?.gosi_deduction ?? gosiAmt, absence_deduct: ex?.absence_deduct ?? 0,
         other_deduct: ex?.other_deduct ?? 0, present_days: ex?.present_days ?? 26,
         notes: ex?.notes ?? '', gross: 0, net: 0, existingId: ex?.id,
+        _pendingDeductIds: pendingDeducts.filter(d => d.employee_id === emp.employee_id).map(d => d.id),
       })
     })
     setRows(built); setExpandedRow(null); setMode('create')
@@ -552,6 +569,19 @@ export default function PayrollPage() {
       else await supabase.from('hr_payroll').insert(payload)
     }
     await load(); setMode('view'); setSaving(false)
+    // تسجيل الإنذارات المطبقة كـ deduct_applied
+    if (approvedDeducts.size > 0) {
+      await supabase.from('hr_disciplinary')
+        .update({
+          deduct_applied: true,
+          deduct_applied_month: filterMonth,
+          deduct_applied_year: filterYear,
+        })
+        .in('id', Array.from(approvedDeducts))
+      setPendingDeducts(prev => prev.filter(d => !approvedDeducts.has(d.id)))
+      setApprovedDeducts(new Set())
+    }
+
     toast.success('✅ تم حفظ مسير ' + ARABIC_MONTHS[filterMonth - 1] + ' — ' + includedRows.length + ' موظف')
   }
 
@@ -700,6 +730,56 @@ export default function PayrollPage() {
                                 <div><label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>أيام الحضور</label><input type="number" min="0" max="31" value={row.present_days} onChange={e => updateRow(idx, 'present_days', Number(e.target.value))} style={{ width: '70px', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }} /></div>
                                 <div style={{ flex: 1, minWidth: '180px' }}><label style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'block', marginBottom: '4px' }}>ملاحظات</label><input type="text" value={row.notes} onChange={e => updateRow(idx, 'notes', e.target.value)} style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.8rem' }} /></div>
                               </div>
+                              {/* اقتراحات خصم الإنذارات */}
+                              {(row._pendingDeductIds || []).length > 0 && (
+                                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <div style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 700 }}>⚠ خصومات إنذارات مقترحة:</div>
+                                  {(row._pendingDeductIds || []).map(did => {
+                                    const deduct = pendingDeducts.find(d => d.id === did)
+                                    if (!deduct) return null
+                                    const isApproved = approvedDeducts.has(did)
+                                    const dailySalary = Math.round((row.basic_salary + row.housing_allow + row.transport_allow + row.other_allow) / 30)
+                                    const deductAmt = dailySalary * deduct.salary_deduct_days
+                                    return (
+                                      <div key={did} style={{
+                                        padding: '8px 12px', borderRadius: '8px', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                                        background: isApproved ? '#fef2f2' : '#fffbeb',
+                                        border: `1px solid ${isApproved ? '#fca5a5' : '#fcd34d'}`,
+                                      }}>
+                                        <div style={{ fontSize: '0.78rem' }}>
+                                          <span style={{ fontWeight: 700, color: isApproved ? '#c81e1e' : '#92400e' }}>
+                                            {deduct.violation_name}
+                                          </span>
+                                          <span style={{ color: 'var(--text3)', marginRight: '8px' }}>
+                                            خصم {deduct.salary_deduct_days} يوم = {deductAmt.toLocaleString()} ر.س
+                                          </span>
+                                        </div>
+                                        <button type="button"
+                                          onClick={() => {
+                                            const next = new Set(approvedDeducts)
+                                            if (isApproved) {
+                                              next.delete(did)
+                                              updateRow(idx, 'other_deduct', Math.max(0, row.other_deduct - deductAmt))
+                                            } else {
+                                              next.add(did)
+                                              updateRow(idx, 'other_deduct', row.other_deduct + deductAmt)
+                                            }
+                                            setApprovedDeducts(next)
+                                          }}
+                                          style={{
+                                            flexShrink: 0, padding: '4px 12px', borderRadius: '6px',
+                                            border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+                                            background: isApproved ? '#fee2e2' : '#ecfdf5',
+                                            color: isApproved ? '#c81e1e' : '#0ea77b',
+                                          }}>
+                                          {isApproved ? '✕ إلغاء الخصم' : '✓ تطبيق الخصم'}
+                                        </button>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
                             </td>
                           </tr>
                         )}

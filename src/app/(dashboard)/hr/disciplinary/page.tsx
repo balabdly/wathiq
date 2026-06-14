@@ -22,6 +22,7 @@ type Disciplinary = {
   incident_date: string; penalty_degree: number; penalty_type: string
   penalty_details?: string; salary_deduct_days: number
   notes?: string; status: string; issued_by?: number; created_at: string
+  deduct_applied?: boolean; deduct_applied_month?: number; deduct_applied_year?: number
   employee?: { name: string; role: string }
   issuer?: { name: string }
 }
@@ -31,6 +32,8 @@ const CATEGORY_COLOR: Record<string, string> = {
   'متوسطة': 'badge-coral' ,
   'جسيمة':  'badge-red'   ,
 }
+const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+
 const DEGREE_LABEL: Record<number, string> = {
   1: 'إنذار أول', 2: 'إنذار ثاني', 3: 'إنذار ثالث',
 }
@@ -700,8 +703,19 @@ export default function DisciplinaryPage() {
                               <span className={`badge ${DEGREE_COLOR[r.penalty_degree] || 'badge-gray'}`} style={{ fontSize: '0.7rem' }}>{DEGREE_LABEL[r.penalty_degree]}</span>
                             </td>
                             <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{r.penalty_type}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'center', color: r.salary_deduct_days > 0 ? '#c81e1e' : 'var(--text3)', fontWeight: 600 }}>
-                              {r.salary_deduct_days > 0 ? `${r.salary_deduct_days} يوم` : '—'}
+                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                              {r.salary_deduct_days > 0 ? (
+                                <div>
+                                  <span style={{ color: '#c81e1e', fontWeight: 600 }}>{r.salary_deduct_days} يوم</span>
+                                  {r.deduct_applied ? (
+                                    <div style={{ fontSize: '0.65rem', color: '#0ea77b', marginTop: '2px' }}>
+                                      ✓ مُطبَّق {r.deduct_applied_month && MONTHS[r.deduct_applied_month - 1]} {r.deduct_applied_year}
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '0.65rem', color: '#e6820a', marginTop: '2px' }}>⏳ لم يُطبَّق</div>
+                                  )}
+                                </div>
+                              ) : '—'}
                             </td>
                             <td style={{ padding: '8px 12px' }}>
                               <span className={`badge ${STATUS_COLOR[r.status] || 'badge-gray'}`} style={{ fontSize: '0.7rem' }}>{r.status}</span>
