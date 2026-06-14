@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Layers, Target } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Layers, Target, ExternalLink } from 'lucide-react'
+import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { createJournalEntry } from '@/lib/journal'
 
@@ -87,12 +88,31 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
   }
 
   async function handleSave() {
-    if (!form.code.trim()) { toast.error('رمز الحساب مطلوب'); return }
     if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
+
+    // توليد رقم الحساب تلقائياً إذا لم يكن موجوداً
+    let finalCode = form.code.trim()
+    if (!finalCode) {
+      if (form.parent_id) {
+        const parent = accounts.find(a => a.id === Number(form.parent_id))
+        const parentCode = parent?.code || '1'
+        const siblings = accounts.filter(a => a.parent_id === Number(form.parent_id))
+        finalCode = `${parentCode}.${siblings.length + 1}`
+      } else {
+        const TYPE_PREFIX: Record<string, string> = {
+          'أصول': '1', 'خصوم': '2', 'حقوق ملكية': '3',
+          'إيرادات': '4', 'تكلفة': '5', 'مصروفات': '6',
+        }
+        const prefix = TYPE_PREFIX[form.account_type] || '9'
+        const siblings = accounts.filter(a => !a.parent_id && a.code?.startsWith(prefix))
+        finalCode = `${prefix}${String(siblings.length + 1).padStart(2, '0')}`
+      }
+    }
+
     const payload = {
       tenant_id:      tenantId,
-      code:           form.code.trim(),
+      code:           finalCode,
       name:           form.name.trim(),
       name_en:        form.name_en || null,
       account_type:   form.account_type,
@@ -115,7 +135,7 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
     onSave(); setSaving(false)
   }
 
-  const parentAccounts = accounts.filter(a => a.is_parent || a.level < 4)
+  const parentAccounts = accounts.filter(a => a.level < 5) // السماح بـ 5 مستويات
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -130,8 +150,9 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
             <div>
-              <label style={labelStyle}>رمز الحساب *</label>
-              <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr" />
+              <label style={labelStyle}>رمز الحساب (تلقائي إذا تُرك فارغاً)</label>
+              <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr"
+                placeholder={form.parent_id ? 'مثال: 1.1.1 (تلقائي)' : 'مثال: 101 (تلقائي)'} />
             </div>
             <div>
               <label style={labelStyle}>اسم الحساب *</label>
@@ -175,7 +196,24 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '28px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                <input type="checkbox" checked={form.is_parent} onChange={e => set('is_parent', e.target.checked)} />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { val: false, label: 'فرعي (يقبل معاملات)' },
+                    { val: true,  label: 'رئيسي (يجمع حسابات)' },
+                  ].map(opt => (
+                    <button key={String(opt.val)} type="button"
+                      onClick={() => set('is_parent', opt.val)}
+                      style={{
+                        flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid',
+                        cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                        borderColor: form.is_parent === opt.val ? 'var(--primary)' : 'var(--border)',
+                        background: form.is_parent === opt.val ? '#eff6ff' : 'white',
+                        color: form.is_parent === opt.val ? 'var(--primary)' : 'var(--text3)',
+                      }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
                 حساب تجميعي (لا يُقيَّد عليه)
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
@@ -343,8 +381,17 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
                       <div style={{ fontSize: '0.8rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {line.description}
                       </div>
-                      {line.reference_type && (
-                        <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: '1px' }}>{line.reference_type}</div>
+                      {line.reference_type && line.reference_id && (
+                        <Link href={
+                          line.reference_type === 'فاتورة' ? `/finance/invoices/${line.reference_id}` :
+                          line.reference_type === 'قبض' || line.reference_type === 'صرف' ? `/finance/treasury` :
+                          line.reference_type === 'مصروف' ? `/finance/expenses` :
+                          line.reference_type === 'عهدة' ? `/finance/treasury` : '#'
+                        }
+                          style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px', display: 'inline-flex', alignItems: 'center', gap: '2px', textDecoration: 'none' }}
+                          title="الانتقال للمصدر">
+                          {line.reference_type} <ExternalLink style={{ width: '10px', height: '10px' }} />
+                        </Link>
                       )}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
@@ -923,7 +970,19 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
                       <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#0ea77b' }}>{entry.entry_number}</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{entry.entry_date}</td>
                       <td style={{ padding: '10px 14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.description}</td>
-                      <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{entry.reference_type || '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: '0.78rem' }}>
+                        {entry.reference_type && entry.reference_id ? (
+                          <Link href={
+                            entry.reference_type === 'فاتورة' ? `/finance/invoices/${entry.reference_id}` :
+                            entry.reference_type === 'قبض' || entry.reference_type === 'صرف' ? `/finance/treasury` :
+                            entry.reference_type === 'مصروف' ? `/finance/expenses` :
+                            entry.reference_type === 'عهدة' ? `/finance/treasury` : '#'
+                          }
+                            style={{ color: '#1a56db', display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none', fontSize: '0.78rem' }}>
+                            {entry.reference_type} <ExternalLink style={{ width: '11px', height: '11px' }} />
+                          </Link>
+                        ) : <span style={{ color: 'var(--text3)' }}>{entry.reference_type || '—'}</span>}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>
                         <span style={{
                           padding: '2px 8px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: 600,

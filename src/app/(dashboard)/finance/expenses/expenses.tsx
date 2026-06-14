@@ -499,10 +499,26 @@ export default function FinanceExpensesPage() {
     setLoading(false)
   }
 
+  // إعادة تحميل الحسابات عند العودة للصفحة (بعد إضافة حساب من شجرة الحسابات)
+  useEffect(() => {
+    const reloadAccounts = async () => {
+      if (!tenant) return
+      const { data } = await supabase.from('finance_accounts')
+        .select('id,code,name,account_type')
+        .eq('tenant_id', tenant.id)
+        .eq('is_parent', false)
+        .eq('is_active', true)
+        .order('code')
+      if (data) setAccounts(data)
+    }
+    window.addEventListener('focus', reloadAccounts)
+    return () => window.removeEventListener('focus', reloadAccounts)
+  }, [tenant?.id])
+
   async function loadAll() {
     if (!tenant) return
     const [accRes, ccRes, projRes, venRes] = await Promise.all([
-      supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
+      supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).eq('is_active', true).order('code'),
       supabase.from('finance_cost_centers').select('id,code,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),

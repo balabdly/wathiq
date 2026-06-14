@@ -387,9 +387,16 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
                 style={{ borderColor: isReceipt ? '#bbf7d0' : '#fecaca', background: 'white' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب النقدي</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+                {isReceipt ? '💰 استلم في' : '💰 صرف من'}
+              </label>
               <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+                <optgroup label="🏦 حسابات بنكية">
+                  {cashAccounts.filter((a: any) => a.account_type === 'بنك').map((a: any) => <option key={a.id} value={a.id}>🏦 {a.name}</option>)}
+                </optgroup>
+                <optgroup label="💰 صناديق نقدية">
+                  {cashAccounts.filter((a: any) => a.account_type === 'صندوق').map((a: any) => <option key={a.id} value={a.id}>💰 {a.name}</option>)}
+                </optgroup>
               </select>
             </div>
           </div>
@@ -519,7 +526,30 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
       })
     }
 
-    toast.success('✅ تم إصدار العهدة وتسجيل حركة الصرف')
+    // ✅ قيد محاسبي للعهدة: مدين حساب العهد الموظفين / دائن الصندوق أو البنك
+    if (form.cash_account_id) {
+      const cashAcc = cashAccounts.find((a: any) => a.id === Number(form.cash_account_id))
+      const cashCode = cashAcc?.account_id
+        ? await (async () => {
+            const { data } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
+            return data?.code || '1111'
+          })()
+        : '1111'
+      // حساب العهد الموظفين — 1310 (سلفة موظفين)
+      const custodyCode = form.custody_type === 'سلفة راتب' ? '2210' : '1310'
+      await createJournalEntry(tenantId, {
+        date: form.custody_date,
+        description: `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
+        referenceType: 'عهدة',
+        referenceId: null,
+        lines: [
+          { accountCode: custodyCode, debit: Number(form.amount), credit: 0, description: `${form.custody_type}: ${form.employee_name}` },
+          { accountCode: cashCode,   debit: 0, credit: Number(form.amount), description: form.purpose },
+        ]
+      })
+    }
+
+    toast.success('✅ تم إصدار العهدة وتسجيل القيد المحاسبي')
     onSave(); setSaving(false)
   }
 
