@@ -282,6 +282,22 @@ export default function EmployeeProfilePage() {
   const [disciplinary, setDisciplinary] = useState<any[]>([])
   const [payrolls, setPayrolls] = useState<any[]>([])
   const [documents, setDocuments] = useState<any[]>([])
+  const [emergencyContacts, setEmergencyContacts] = useState<any[]>([])
+
+  // modal الطوارئ
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false)
+  const [editEmergency, setEditEmergency] = useState<any | null>(null)
+  const [emergencyForm, setEmergencyForm] = useState({
+    full_name: '', relationship: 'أب', phone_primary: '',
+    phone_secondary: '', city: '', priority: 1,
+  })
+  const [emergencySaving, setEmergencySaving] = useState(false)
+  const [emergencyDeleteId, setEmergencyDeleteId] = useState<string | null>(null)
+  const [emergencyError, setEmergencyError] = useState('')
+
+  const RELATIONSHIPS = ['أب','أم','زوجة','زوج','أخ','أخت','ابن','ابنة','صديق','أخرى']
+  const PRIORITY_LABEL: Record<number,string> = { 1:'الأول', 2:'الثاني', 3:'الثالث' }
+  const PRIORITY_COLOR: Record<number,string> = { 1:'#dc2626', 2:'#d97706', 3:'#2563eb' }
 
   const isAdmin = currentUser?.role === 'مدير عام'
   const now = new Date()
@@ -333,6 +349,16 @@ export default function EmployeeProfilePage() {
     setDisciplinary(discRes.data || [])
     setPayrolls(payRes.data || [])
     setDocuments(docRes.data || [])
+
+    // جلب بيانات الطوارئ
+    const { data: emergencyData } = await supabase
+      .from('hr_emergency_contacts')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .eq('employee_id', Number(id))
+      .order('priority', { ascending: true })
+    setEmergencyContacts(emergencyData || [])
+
     setLoading(false)
   }
 
@@ -358,6 +384,7 @@ export default function EmployeeProfilePage() {
     { id: 'payroll',       label: 'الرواتب',          icon: <Banknote style={{ width: '14px', height: '14px' }} /> },
     { id: 'documents',     label: `الوثائق (${documents.length})`, icon: <FileText style={{ width: '14px', height: '14px' }} /> },
     { id: 'letters',       label: 'الخطابات',         icon: <BookOpen style={{ width: '14px', height: '14px' }} /> },
+    { id: 'emergency',     label: `جهات الطوارئ (${emergencyContacts.length})`, icon: <AlertTriangle style={{ width: '14px', height: '14px' }} /> },
   ]
 
   return (
@@ -736,9 +763,232 @@ export default function EmployeeProfilePage() {
         </div>
       )}
 
+      {/* ── تاب جهات الطوارئ ── */}
+      {activeTab === 'emergency' && (
+        <div>
+          {/* رأس التاب */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>جهات الاتصال للطوارئ</h3>
+            <button
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}
+              onClick={() => {
+                setEditEmergency(null)
+                setEmergencyForm({ full_name: '', relationship: 'أب', phone_primary: '', phone_secondary: '', city: '', priority: 1 })
+                setEmergencyError('')
+                setShowEmergencyModal(true)
+              }}>
+              <Plus style={{ width: '15px', height: '15px' }} /> إضافة جهة اتصال
+            </button>
+          </div>
+
+          {/* القائمة */}
+          {emergencyContacts.length === 0 ? (
+            <div className="card" style={{ padding: '50px', textAlign: 'center', color: 'var(--text3)' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>📞</div>
+              <p style={{ fontSize: '0.875rem' }}>لا توجد جهات اتصال للطوارئ</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+              {emergencyContacts.map(c => (
+                <div key={c.id} className="card" style={{ padding: '16px' }}>
+                  {/* الرأس */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <span style={{
+                      fontSize: '0.72rem', fontWeight: 700, color: '#fff',
+                      background: PRIORITY_COLOR[c.priority as 1|2|3],
+                      padding: '2px 10px', borderRadius: '20px',
+                    }}>
+                      جهة الاتصال {PRIORITY_LABEL[c.priority as 1|2|3]}
+                    </span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', fontSize: '0.9rem' }}
+                        onClick={() => {
+                          setEditEmergency(c)
+                          setEmergencyForm({
+                            full_name: c.full_name, relationship: c.relationship,
+                            phone_primary: c.phone_primary, phone_secondary: c.phone_secondary || '',
+                            city: c.city || '', priority: c.priority,
+                          })
+                          setEmergencyError('')
+                          setShowEmergencyModal(true)
+                        }}>✏️</button>
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px', fontSize: '0.9rem' }}
+                        onClick={() => setEmergencyDeleteId(c.id)}>🗑️</button>
+                    </div>
+                  </div>
+                  {/* الاسم والصلة */}
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)', marginBottom: '2px' }}>{c.full_name}</div>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '10px' }}>{c.relationship}</div>
+                  {/* التفاصيل */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                      <span style={{ color: 'var(--text3)' }}>📱 الجوال</span>
+                      <span dir="ltr" style={{ fontWeight: 600 }}>{c.phone_primary}</span>
+                    </div>
+                    {c.phone_secondary && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                        <span style={{ color: 'var(--text3)' }}>📞 بديل</span>
+                        <span dir="ltr" style={{ fontWeight: 600 }}>{c.phone_secondary}</span>
+                      </div>
+                    )}
+                    {c.city && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                        <span style={{ color: 'var(--text3)' }}>📍 المدينة</span>
+                        <span style={{ fontWeight: 600 }}>{c.city}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Modal الخطاب */}
       {showLetter && emp && (
         <LetterModal emp={emp} tenant={tenantData} onClose={() => setShowLetter(false)} />
+      )}
+
+      {/* Modal إضافة/تعديل جهة طوارئ */}
+      {showEmergencyModal && (
+        <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setShowEmergencyModal(false) }}>
+          <div className="modal-box" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="font-bold" style={{ color: 'var(--text)' }}>
+                {editEmergency ? 'تعديل جهة الاتصال' : 'إضافة جهة اتصال للطوارئ'}
+              </h3>
+              <button onClick={() => setShowEmergencyModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {emergencyError && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                  {emergencyError}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>
+                    الاسم الكامل <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <input className="input" value={emergencyForm.full_name}
+                    onChange={e => setEmergencyForm(f => ({ ...f, full_name: e.target.value }))}
+                    placeholder="أدخل الاسم الكامل" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>صلة القرابة <span style={{ color: '#dc2626' }}>*</span></label>
+                  <select className="input" value={emergencyForm.relationship}
+                    onChange={e => setEmergencyForm(f => ({ ...f, relationship: e.target.value }))}>
+                    {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>رقم الجوال <span style={{ color: '#dc2626' }}>*</span></label>
+                  <input className="input" dir="ltr" value={emergencyForm.phone_primary}
+                    onChange={e => setEmergencyForm(f => ({ ...f, phone_primary: e.target.value }))}
+                    placeholder="05xxxxxxxx" type="tel" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>رقم بديل</label>
+                  <input className="input" dir="ltr" value={emergencyForm.phone_secondary}
+                    onChange={e => setEmergencyForm(f => ({ ...f, phone_secondary: e.target.value }))}
+                    placeholder="اختياري" type="tel" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>المدينة</label>
+                  <input className="input" value={emergencyForm.city}
+                    onChange={e => setEmergencyForm(f => ({ ...f, city: e.target.value }))}
+                    placeholder="مثال: الرياض" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text)' }}>الأولوية</label>
+                  <select className="input" value={emergencyForm.priority}
+                    onChange={e => setEmergencyForm(f => ({ ...f, priority: Number(e.target.value) as 1|2|3 }))}>
+                    <option value={1}>الأول (الأهم)</option>
+                    <option value={2}>الثاني</option>
+                    <option value={3}>الثالث</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowEmergencyModal(false)} className="btn btn-ghost">إلغاء</button>
+              <button
+                className="btn btn-primary"
+                disabled={emergencySaving}
+                onClick={async () => {
+                  const f = emergencyForm
+                  if (!f.full_name.trim()) { setEmergencyError('الاسم مطلوب'); return }
+                  if (!f.phone_primary.trim()) { setEmergencyError('رقم الجوال مطلوب'); return }
+                  setEmergencySaving(true)
+                  setEmergencyError('')
+                  const payload = {
+                    tenant_id: tenant?.id,
+                    employee_id: Number(id),
+                    full_name: f.full_name.trim(),
+                    relationship: f.relationship,
+                    phone_primary: f.phone_primary.trim(),
+                    phone_secondary: f.phone_secondary.trim() || null,
+                    city: f.city.trim() || null,
+                    priority: f.priority,
+                  }
+                  let err
+                  if (editEmergency) {
+                    ;({ error: err } = await supabase.from('hr_emergency_contacts').update(payload).eq('id', editEmergency.id))
+                  } else {
+                    ;({ error: err } = await supabase.from('hr_emergency_contacts').insert(payload))
+                  }
+                  setEmergencySaving(false)
+                  if (err) { setEmergencyError('حدث خطأ: ' + err.message); return }
+                  setShowEmergencyModal(false)
+                  toast.success(editEmergency ? 'تم التعديل' : 'تمت الإضافة')
+                  loadAll()
+                }}>
+                {emergencySaving ? 'جاري الحفظ...' : editEmergency ? 'حفظ التعديلات' : 'إضافة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* تأكيد حذف جهة الطوارئ */}
+      {emergencyDeleteId && (
+        <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setEmergencyDeleteId(null) }}>
+          <div className="modal-box" style={{ maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="font-bold" style={{ color: 'var(--text)' }}>تأكيد الحذف</h3>
+              <button onClick={() => setEmergencyDeleteId(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--text3)', fontSize: '0.875rem' }}>هل أنت متأكد من حذف جهة الاتصال هذه؟</p>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setEmergencyDeleteId(null)} className="btn btn-ghost">إلغاء</button>
+              <button
+                className="btn"
+                style={{ background: '#dc2626', color: '#fff' }}
+                onClick={async () => {
+                  await supabase.from('hr_emergency_contacts').delete().eq('id', emergencyDeleteId)
+                  setEmergencyDeleteId(null)
+                  toast.success('تم الحذف')
+                  loadAll()
+                }}>
+                حذف
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
