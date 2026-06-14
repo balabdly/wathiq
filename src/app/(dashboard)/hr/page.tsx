@@ -254,6 +254,7 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
     hire_date:        emp?.hire_date        || '',
     contract_type:    emp?.contract_type    || 'دوام كامل',
     work_location:    emp?.work_location    || '',
+    _showCities:    false,
     department:       emp?.department       || '',
     job_title:        emp?.job_title        || '',
     direct_manager:   emp?.direct_manager   ? String(emp.direct_manager) : '',
@@ -583,15 +584,47 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                   </div>
                 </div>
 
-                {/* الموقع — إلزامي */}
-                <div>
+                {/* الموقع — إلزامي مع نص تنبؤي */}
+                <div style={{ position: 'relative' }}>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     الموقع / المدينة <span className="text-red-500">*</span>
                   </label>
-                  <select value={form.work_location} onChange={e => set('work_location', e.target.value)} className="select" onKeyDown={noEnter} required>
-                    <option value="">— اختر المدينة —</option>
-                    {['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الظهران','الأحساء','القطيف','تبوك','أبها','خميس مشيط','نجران','جازان','حائل','القصيم','بريدة','عرعر','سكاكا','الطائف','ينبع','الجبيل','رأس تنورة','بيشة','الباحة'].map(c => <option key={c}>{c}</option>)}
-                  </select>
+                  <input
+                    value={form.work_location}
+                    onChange={e => { set('work_location', e.target.value); set('_showCities', true) }}
+                    onBlur={() => setTimeout(() => set('_showCities', false), 150)}
+                    onFocus={() => set('_showCities', true)}
+                    className="input"
+                    placeholder="اكتب اسم المدينة..."
+                    onKeyDown={noEnter}
+                    autoComplete="off"
+                    required
+                  />
+                  {form._showCities && form.work_location && (() => {
+                    const CITIES = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الظهران','الأحساء','القطيف','تبوك','أبها','خميس مشيط','نجران','جازان','حائل','بريدة','القصيم','عرعر','سكاكا','الطائف','ينبع','الجبيل','رأس تنورة','بيشة','الباحة','وادي الدواسر','الخرج','المجمعة','شقراء','الزلفي','رفحاء','طريف','الوجه','ضباء','تيماء','العقيق','بيشة','المخواة','الليث','القنفذة','رابغ','الجموم','عفيف','الدوادمي','المدينة المنورة','البكيرية','الرس','عنيزة','الدرعية','الخبراء','المذنب']
+                    const filtered = CITIES.filter(c => c.includes(form.work_location))
+                    if (filtered.length === 0) return null
+                    return (
+                      <div style={{
+                        position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 100,
+                        background: 'white', border: '1px solid var(--border)', borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: '180px', overflowY: 'auto',
+                      }}>
+                        {filtered.map(city => (
+                          <div key={city}
+                            onMouseDown={() => { set('work_location', city); set('_showCities', false) }}
+                            style={{
+                              padding: '8px 12px', cursor: 'pointer', fontSize: '0.875rem',
+                              borderBottom: '1px solid var(--bg2)',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg2)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                            {city}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
 
               </div>
@@ -1748,6 +1781,20 @@ export default function HRPage() {
                           <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.8rem' }}>{idx + 1}</td>
 
                           {/* الموظف */}
+                          <td style={{ padding: '12px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {emp.employee_number ? (
+                              <span style={{
+                                background: '#eff6ff', color: '#1a56db',
+                                borderRadius: '6px', padding: '3px 8px',
+                                fontWeight: 700, fontFamily: 'monospace', fontSize: '0.8rem',
+                                display: 'inline-block',
+                              }}>
+                                {emp.employee_number}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
                           <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <div style={{
@@ -1761,18 +1808,11 @@ export default function HRPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 700, color: 'var(--text)' }}>{empName}</div>
-                              {emp.work_location && <div style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px' }}>📍 {emp.work_location}</div>}
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'flex', gap: '5px', alignItems: 'center', marginTop: '2px' }}>
-                                  {emp.employee_number && (
-                                    <span style={{
-                                      background: '#eff6ff', color: '#1a56db',
-                                      borderRadius: '5px', padding: '1px 6px',
-                                      fontWeight: 700, fontFamily: 'monospace', fontSize: '0.7rem',
-                                    }}>
-                                      #{emp.employee_number}
-                                    </span>
-                                  )}
-                                  <span>{emp.contract_type}</span>
+                                {emp.work_location && (
+                                  <div style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px' }}>📍 {emp.work_location}</div>
+                                )}
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                                  {emp.contract_type}
                                 </div>
                               </div>
                             </div>
