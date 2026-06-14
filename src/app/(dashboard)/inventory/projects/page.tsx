@@ -40,7 +40,7 @@ export default function InventoryProjectsPage() {
     // جلب المشاريع التي عليها مواد
     const { data: pmData } = await supabase.from('project_materials')
       .select('project_id').eq('tenant_id', tenant.id)
-    const projectIds = [...new Set((pmData || []).map((p: any) => p.project_id))]
+    const projectIds = Array.from(new Set((pmData || []).map((p: any) => p.project_id)))
 
     if (projectIds.length === 0) { setLoading(false); return }
 
