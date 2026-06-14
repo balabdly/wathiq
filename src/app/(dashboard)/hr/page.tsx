@@ -238,7 +238,7 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   const [jobTitlesForDept, setJobTitlesForDept] = useState<JobTitle[]>([])
 
   const [form, setForm] = useState({
-    emp_name:         emp?.employee?.name   || '',
+    emp_name:         emp?.name   || '',
     first_name:        emp?.first_name        || '',
     father_name:       emp?.father_name       || '',
     grandfather_name:  emp?.grandfather_name  || '',
@@ -1191,7 +1191,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
               <select value={form.hr_employee_id} onChange={e => set('hr_employee_id', e.target.value)} className="select">
                 <option value="">— اختر الموظف —</option>
                 {hrEmployees.filter(e => e.is_active).map(e => (
-                  <option key={e.id} value={e.id}>{e.employee?.name} — {e.job_title || e.employee?.role}</option>
+                  <option key={e.id} value={e.id}>{e.name} — {e.job_title || ''}</option>
                 ))}
               </select>
             </div>
@@ -1369,8 +1369,8 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 700 }}>{t.employee?.name || `#${t.employee_id}`}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{t.employee?.role}</div>
+                      <div style={{ fontWeight: 700 }}>{t.employee?.name || `#${t.hr_employee_id}`}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{t.employee?.job_title}</div>
                     </td>
                     <td style={{ padding: '12px 14px' }}>
                       <span className={`badge ${TYPE_COLOR[t.termination_type] || 'badge-gray'}`}>
@@ -1794,7 +1794,7 @@ export default function HRPage() {
                       const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow, emp.transport_allow)
                       const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
                       const isSaudi = emp.nationality === 'سعودي'
-                      const empName = emp.employee?.name || '—'
+                      const empName = emp.name || '—'
                       const iqamaWarning = iqamaDays !== null && iqamaDays <= 60
 
                       return (
@@ -1983,10 +1983,10 @@ export default function HRPage() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontWeight: 700, fontSize: '1.4rem',
                     }}>
-                      {viewEmp.employee?.name?.charAt(0) || '?'}
+                      {viewEmp.name?.charAt(0) || '?'}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: '1rem' }}>{viewEmp.employee?.name}</div>
+                      <div style={{ fontWeight: 700, fontSize: '1rem' }}>{viewEmp.name}</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text3)', marginTop: '2px' }}>{viewEmp.job_title} — {viewEmp.department}</div>
                       {viewEmp.employee_number && (
                         <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '6px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace', marginTop: '4px', display: 'inline-block' }}>
@@ -2127,7 +2127,7 @@ function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HREmp
     setForm(f => ({
       ...f,
       hr_employee_id: hrEmpId,
-      candidate_name: emp.employee?.name || '',
+      candidate_name: emp.name || '',
       job_title: emp.job_title || '',
       department: emp.department || '',
       contract_type: emp.contract_type || 'دوام كامل',
@@ -2409,7 +2409,7 @@ function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HREmp
                   <select value={form.hr_employee_id} onChange={e => fillFromEmployee(e.target.value)} className="select">
                     <option value="">— اختر موظفاً —</option>
                     {hrEmployees.map(e => (
-                      <option key={e.id} value={e.id}>{e.employee?.name} — {e.job_title}</option>
+                      <option key={e.id} value={e.id}>{e.name} — {e.job_title}</option>
                     ))}
                   </select>
                 </div>
