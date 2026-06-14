@@ -143,6 +143,7 @@ export default function ReportsFinancePage() {
   const [loaded,    setLoaded]    = useState(false)
   const [fDateFrom, setFDateFrom] = useState(firstOfYear)
   const [fDateTo,   setFDateTo]   = useState(today)
+  const [fBsDate,   setFBsDate]   = useState(today)       // تاريخ المركز المالي — تاريخ واحد فقط
   const [fAccount,  setFAccount]  = useState('')
   const [fClient,   setFClient]   = useState('')
   const [summary,   setSummary]   = useState<any>(null)
@@ -157,7 +158,24 @@ export default function ReportsFinancePage() {
   const [compareSummary, setCompareSummary] = useState<any>(null)
 
   // حساب تواريخ فترة المقارنة تلقائياً
-  function getCompareDates(): { from: string; to: string; label: string } {
+  function getCompareDates(isBalanceSheet = false): { from: string; to: string; label: string } {
+    if (isBalanceSheet) {
+      // المركز المالي: مقارنة بتاريخ واحد فقط
+      if (compareType === 'yoy') {
+        const d = new Date(fBsDate); d.setFullYear(d.getFullYear() - 1)
+        const ds = d.toISOString().split('T')[0]
+        return { from: ds, to: ds, label: ds }
+      }
+      if (compareType === 'custom') {
+        return { from: cDateTo, to: cDateTo, label: cDateTo }
+      }
+      // prev: نفس الشهر من السنة السابقة
+      const d = new Date(fBsDate); d.setFullYear(d.getFullYear() - 1)
+      const ds = d.toISOString().split('T')[0]
+      return { from: ds, to: ds, label: ds }
+    }
+
+    // قائمة الدخل والتدفقات: فترة كاملة
     const from = new Date(fDateFrom)
     const to   = new Date(fDateTo)
     if (compareType === 'yoy') {
@@ -235,11 +253,11 @@ export default function ReportsFinancePage() {
       }
 
     } else if (selected === 'balance_sheet') {
-      // المركز المالي — تراكمي حتى fDateTo (بدون dateFrom)
-      // صافي الربح للفترة من بداية السنة حتى fDateTo
+      // المركز المالي — تراكمي حتى fBsDate (تاريخ واحد فقط — لقطة)
+      const yearOfBs = fBsDate.substring(0, 4)
       const [bsData, incomeData] = await Promise.all([
-        fetchAccountBalances(tenant.id, fDateTo, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
-        fetchAccountBalances(tenant.id, fDateTo, firstOfYear, ['إيرادات', 'مصروفات']),
+        fetchAccountBalances(tenant.id, fBsDate, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
+        fetchAccountBalances(tenant.id, fBsDate, `${yearOfBs}-01-01`, ['إيرادات', 'مصروفات']),
       ])
       const netIncome = incomeData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
                       - incomeData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
@@ -257,9 +275,9 @@ export default function ReportsFinancePage() {
       setSummary({ totalAssets: totAssets, totalLiabilities: totLiab, totalEquity: totEquity, netIncome })
       setExtra({ balanced: Math.abs(totAssets - (totLiab + totEquity + netIncome)) < 1 })
 
-      // فترة المقارنة
+      // فترة المقارنة — تاريخ واحد فقط
       if (showCompare) {
-        const cd = getCompareDates()
+        const cd = getCompareDates(true)
         const yearOfCompare = cd.to.substring(0, 4)
         const [cBsData, cIncomeData] = await Promise.all([
           fetchAccountBalances(tenant.id, cd.to, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
@@ -850,14 +868,23 @@ export default function ReportsFinancePage() {
 
           {/* الفلاتر */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', background: '#fafafa' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label>
-              <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label>
-              <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
-            </div>
+
+            {/* المركز المالي — تاريخ واحد فقط */}
+            {selected === 'balance_sheet' ? (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>بتاريخ</label>
+                <input type="date" value={fBsDate} onChange={e => setFBsDate(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+              </div>
+            ) : (<>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label>
+                <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label>
+                <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+              </div>
+            </>)}
             {showClientFilter && (
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>العميل</label>
@@ -913,33 +940,69 @@ export default function ReportsFinancePage() {
           {showCompare && ['income', 'balance_sheet', 'cashflow'].includes(selected || '') && (
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: '#eff6ff', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1a56db', alignSelf: 'center' }}>⚖️ مقارنة مع:</div>
-              {[
-                { val: 'yoy',    label: 'نفس الفترة — العام السابق' },
-                { val: 'prev',   label: 'الفترة السابقة مباشرة' },
-                { val: 'custom', label: 'فترة مخصصة' },
-              ].map(opt => (
-                <button key={opt.val}
-                  onClick={() => setCompareType(opt.val as any)}
-                  style={{
-                    fontSize: '0.78rem', padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
-                    border: `1px solid ${compareType === opt.val ? '#1a56db' : '#bfdbfe'}`,
-                    background: compareType === opt.val ? '#1a56db' : 'white',
-                    color: compareType === opt.val ? 'white' : '#1a56db',
-                    fontWeight: compareType === opt.val ? 700 : 400,
-                  }}>
-                  {opt.label}
-                </button>
-              ))}
-              {compareType === 'custom' && (<>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>من</label>
-                  <input type="date" value={cDateFrom} onChange={e => setCDateFrom(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>إلى</label>
-                  <input type="date" value={cDateTo} onChange={e => setCDateTo(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
-                </div>
-              </>)}
+
+              {/* المركز المالي: تاريخ مقارنة واحد */}
+              {selected === 'balance_sheet' ? (<>
+                {[
+                  { val: 'yoy',    label: 'نفس التاريخ — العام السابق' },
+                  { val: 'custom', label: 'تاريخ مخصص' },
+                ].map(opt => (
+                  <button key={opt.val}
+                    onClick={() => setCompareType(opt.val as any)}
+                    style={{
+                      fontSize: '0.78rem', padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+                      border: `1px solid ${compareType === opt.val ? '#1a56db' : '#bfdbfe'}`,
+                      background: compareType === opt.val ? '#1a56db' : 'white',
+                      color: compareType === opt.val ? 'white' : '#1a56db',
+                      fontWeight: compareType === opt.val ? 700 : 400,
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+                {compareType === 'custom' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>بتاريخ</label>
+                    <input type="date" value={cDateTo} onChange={e => setCDateTo(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
+                  </div>
+                )}
+                {/* عرض تاريخ المقارنة المحسوب */}
+                {compareType === 'yoy' && fBsDate && (
+                  <div style={{ fontSize: '0.75rem', color: '#1a56db', background: 'white', padding: '5px 10px', borderRadius: '8px', border: '1px solid #bfdbfe', alignSelf: 'center' }}>
+                    📅 {(() => { const d = new Date(fBsDate); d.setFullYear(d.getFullYear()-1); return d.toISOString().split('T')[0] })()}
+                  </div>
+                )}
+              </>) : (
+                // قائمة الدخل والتدفقات: فترة كاملة
+                <>
+                  {[
+                    { val: 'yoy',    label: 'نفس الفترة — العام السابق' },
+                    { val: 'prev',   label: 'الفترة السابقة مباشرة' },
+                    { val: 'custom', label: 'فترة مخصصة' },
+                  ].map(opt => (
+                    <button key={opt.val}
+                      onClick={() => setCompareType(opt.val as any)}
+                      style={{
+                        fontSize: '0.78rem', padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+                        border: `1px solid ${compareType === opt.val ? '#1a56db' : '#bfdbfe'}`,
+                        background: compareType === opt.val ? '#1a56db' : 'white',
+                        color: compareType === opt.val ? 'white' : '#1a56db',
+                        fontWeight: compareType === opt.val ? 700 : 400,
+                      }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                  {compareType === 'custom' && (<>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>من</label>
+                      <input type="date" value={cDateFrom} onChange={e => setCDateFrom(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>إلى</label>
+                      <input type="date" value={cDateTo} onChange={e => setCDateTo(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
+                    </div>
+                  </>)}
+                </>
+              )}
             </div>
           )}
 
@@ -1055,8 +1118,8 @@ export default function ReportsFinancePage() {
                   <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', overflow: 'hidden' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', padding: '12px 16px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', textAlign: 'center' }}>
                       <span style={{ textAlign: 'right' }}>قائمة المركز المالي</span>
-                      <span>{fDateTo}</span>
-                      {showCompare && compareResults.length && <span style={{ color: '#bfdbfe' }}>{compareSummary?.label}</span>}
+                      <span>بتاريخ {fBsDate}</span>
+                      {showCompare && compareResults.length && <span style={{ color: '#bfdbfe' }}>بتاريخ {compareSummary?.label}</span>}
                       {showCompare && compareResults.length && <span>التغيير</span>}
                     </div>
                     {[
