@@ -100,8 +100,9 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
 }
 
 export default function AttendancePage() {
-  const { tenant, activeBranch, employees, currentUser } = useStore()
+  const { tenant, activeBranch, currentUser } = useStore()
   const [records, setRecords] = useState<Attendance[]>([])
+  const [hrEmployees, setHrEmployees] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [filterDate, setFilterDate] = useState('')
@@ -114,12 +115,20 @@ export default function AttendancePage() {
   async function load() {
     if (!tenant) return
     setLoading(true)
-    const { data } = await supabase.from('hr_attendance')
-      .select('*, employee:employees(name, role)')
-      .eq('tenant_id', tenant.id)
-      .order('date', { ascending: false })
-      .limit(200)
-    setRecords(data || [])
+    const [attendanceRes, empRes] = await Promise.all([
+      supabase.from('hr_attendance')
+        .select('*, employee:hr_employees!hr_attendance_employee_id_fkey(name, job_title)')
+        .eq('tenant_id', tenant.id)
+        .order('date', { ascending: false })
+        .limit(200),
+      supabase.from('hr_employees')
+        .select('id, name, job_title')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('name'),
+    ])
+    setRecords(attendanceRes.data || [])
+    setHrEmployees(empRes.data || [])
     setLoading(false)
   }
 
@@ -214,7 +223,7 @@ export default function AttendancePage() {
               {filtered.map(r => (
                 <tr key={r.id}>
                   <td style={{ fontWeight: 600 }}>{r.employee?.name || `#${r.employee_id}`}</td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.employee?.role}</td>
+                  <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.employee?.job_title}</td>
                   <td style={{ fontSize: '0.875rem' }}>{formatDate(r.date)}</td>
                   <td><span className={`badge ${STATUS_COLOR[r.status] || 'badge-gray'}`}>{r.status}</span></td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.hours_worked || '—'}</td>
@@ -236,7 +245,7 @@ export default function AttendancePage() {
       )}
 
       {showModal && (
-        <AttendanceModal record={editRecord} employees={employees}
+        <AttendanceModal record={editRecord} employees={hrEmployees}
           onClose={() => { setShowModal(false); setEditRecord(null) }}
           onSave={handleSave} />
       )}

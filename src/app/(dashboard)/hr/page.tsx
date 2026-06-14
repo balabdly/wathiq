@@ -1077,7 +1077,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
     setLoading(true)
     const { data } = await supabase
       .from('hr_terminations')
-      .select('*, employee:employees!hr_terminations_employee_id_fkey(name, role)')
+      .select('*, employee:hr_employees!hr_terminations_hr_employee_id_fkey(name, job_title)')
       .eq('tenant_id', tenantId)
       .order('termination_date', { ascending: false })
     setTerminations(data || [])
@@ -1484,9 +1484,9 @@ export default function HRPage() {
     setSearch(q)
     const { data } = await supabase
       .from('hr_employees')
-      .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
+      .select('*')
       .eq('tenant_id', tenant.id)
-      .or(`employee_number.eq.${q},first_name.ilike.%${q}%,family_name.ilike.%${q}%,father_name.ilike.%${q}%`)
+      .or(`employee_number.eq.${q},first_name.ilike.%${q}%,family_name.ilike.%${q}%,father_name.ilike.%${q}%,name.ilike.%${q}%`)
       .order('employee_number', { ascending: true })
       .limit(50)
     setHREmployees(data || [])
@@ -1502,7 +1502,7 @@ export default function HRPage() {
     const to = from + PAGE_SIZE - 1
     const { data, count } = await supabase
       .from('hr_employees')
-      .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('employee_number', { ascending: true })
       .range(from, to)
@@ -1520,17 +1520,22 @@ export default function HRPage() {
   async function handleSave(data: any) {
     if (!tenant) return
     try {
-      let employeeId = data.employee_id
+      let hrEmployeeId = data.hr_employee_id || null
       let employeeNumber: string | null = null
 
-      if (!employeeId) {
-        // ✅ إنشاء موظف جديد في جدول employees
-        const { data: newEmp, error: empError } = await supabase
+      if (!hrEmployeeId) {
+        // ✅ توليد رقم الموظف التلقائي
+        const { data: empNum, error: numErr } = await supabase
+          .rpc('generate_employee_number', { p_tenant_id: tenant.id })
+        if (!numErr && empNum) employeeNumber = empNum
+
+        // ✅ إنشاء سجل في employees للـ login (اختياري)
+        const { data: newEmp } = await supabase
           .from('employees')
           .insert({
             tenant_id: tenant.id,
             name: data.emp_name,
-            role: data.job_title,
+            role: data.job_title || 'موظف',
             username: `emp_${Date.now()}`,
             password: '1234',
             permissions: [],
@@ -1539,75 +1544,95 @@ export default function HRPage() {
           .select('id')
           .single()
 
-        if (empError) throw empError
-        employeeId = newEmp.id
+        // ✅ بناء payload لـ hr_employees
+        const hrPayload: Record<string, any> = {
+          tenant_id:       tenant.id,
+          employee_id:     newEmp?.id || null,
+          employee_number: employeeNumber,
+          first_name:       data.first_name       || null,
+          father_name:      data.father_name       || null,
+          grandfather_name: data.grandfather_name  || null,
+          family_name:      data.family_name       || null,
+          first_name_en:    data.first_name_en     || null,
+          family_name_en:   data.family_name_en    || null,
+          national_id:    data.national_id    || null,
+          nationality:    data.nationality,
+          birth_date:     data.birth_date     || null,
+          gender:         data.gender,
+          marital_status: data.marital_status,
+          hire_date:      data.hire_date      || null,
+          contract_type:  data.contract_type,
+          job_title:      data.job_title      || null,
+          work_location:  data.work_location  || null,
+          department:     data.department     || null,
+          direct_manager: data.direct_manager || null,
+          basic_salary:   data.basic_salary,
+          housing_allow:  data.housing_allow,
+          transport_allow: data.transport_allow,
+          other_allow:    data.other_allow,
+          gosi_enrolled:  data.gosi_enrolled,
+          gosi_pct:       data.gosi_pct,
+          bank_name:      data.bank_name      || null,
+          iban:           data.iban           || null,
+          iqama_number:   data.iqama_number   || null,
+          iqama_expiry:   data.iqama_expiry   || null,
+          notes:          data.notes          || null,
+          is_active:      true,
+        }
 
-        // ✅ توليد رقم الموظف التلقائي (4 أرقام، فريد لكل شركة)
-        const { data: empNum, error: numErr } = await supabase
-          .rpc('generate_employee_number', { p_tenant_id: tenant.id })
-        if (!numErr && empNum) employeeNumber = empNum
-      } else {
-        // تحديث اسم ومسمى الموظف الموجود
-        await supabase
-          .from('employees')
-          .update({ name: data.emp_name, role: data.job_title })
-          .eq('id', employeeId)
-      }
+        // حذف أي مفتاح قيمته undefined تحسباً
+        Object.keys(hrPayload).forEach(k => {
+          if (hrPayload[k] === undefined) delete hrPayload[k]
+        })
 
-      // ✅ إصلاح: بناء payload نظيف بدون أي undefined
-      const hrPayload: Record<string, any> = {
-        tenant_id:      tenant.id,
-        employee_id:    employeeId,
-        ...(employeeNumber ? { employee_number: employeeNumber } : {}),
-        first_name:       data.first_name       || null,
-        father_name:      data.father_name       || null,
-        grandfather_name: data.grandfather_name  || null,
-        family_name:      data.family_name       || null,
-        first_name_en:    data.first_name_en     || null,
-        family_name_en:   data.family_name_en    || null,
-        national_id:    data.national_id    || null,
-        nationality:    data.nationality,
-        birth_date:     data.birth_date     || null,
-        gender:         data.gender,
-        marital_status: data.marital_status,
-        hire_date:      data.hire_date      || null,
-        contract_type:  data.contract_type,
-        job_title:      data.job_title      || null,
-        work_location:  data.work_location  || null,
-        department:     data.department     || null,
-        direct_manager: data.direct_manager || null,
-        basic_salary:   data.basic_salary,
-        housing_allow:  data.housing_allow,
-        transport_allow: data.transport_allow,
-        other_allow:    data.other_allow,
-        gosi_enrolled:  data.gosi_enrolled,
-        gosi_pct:       data.gosi_pct,
-        bank_name:      data.bank_name      || null,
-        iban:           data.iban           || null,
-        iqama_number:   data.iqama_number   || null,
-        iqama_expiry:   data.iqama_expiry   || null,
-        notes:          data.notes          || null,
-        is_active:      true,
-      }
-
-      // حذف أي مفتاح قيمته undefined تحسباً
-      Object.keys(hrPayload).forEach(k => {
-        if (hrPayload[k] === undefined) delete hrPayload[k]
-      })
-
-      if (data.id) {
-        // تعديل موظف موجود
-        const { error: updateErr } = await supabase
-          .from('hr_employees')
-          .update(hrPayload)
-          .eq('id', data.id)
-        if (updateErr) throw updateErr
-      } else {
-        // إضافة موظف جديد
-        const { error: insertErr } = await supabase
+        // إدراج في hr_employees وربط hr_employee_id في employees
+        const { data: newHR, error: insertErr } = await supabase
           .from('hr_employees')
           .insert(hrPayload)
+          .select('id')
+          .single()
         if (insertErr) throw insertErr
+
+        // ربط العكسي: employees.hr_employee_id → hr_employees.id
+        if (newEmp?.id && newHR?.id) {
+          await supabase.from('employees').update({ hr_employee_id: newHR.id }).eq('id', newEmp.id)
+        }
+
+      } else {
+        // تعديل موظف موجود — تحديث hr_employees فقط
+        const hrPayload: Record<string, any> = {
+          first_name:       data.first_name       || null,
+          father_name:      data.father_name       || null,
+          grandfather_name: data.grandfather_name  || null,
+          family_name:      data.family_name       || null,
+          first_name_en:    data.first_name_en     || null,
+          family_name_en:   data.family_name_en    || null,
+          national_id:    data.national_id    || null,
+          nationality:    data.nationality,
+          birth_date:     data.birth_date     || null,
+          gender:         data.gender,
+          marital_status: data.marital_status,
+          hire_date:      data.hire_date      || null,
+          contract_type:  data.contract_type,
+          job_title:      data.job_title      || null,
+          work_location:  data.work_location  || null,
+          department:     data.department     || null,
+          direct_manager: data.direct_manager || null,
+          basic_salary:   data.basic_salary,
+          housing_allow:  data.housing_allow,
+          transport_allow: data.transport_allow,
+          other_allow:    data.other_allow,
+          gosi_enrolled:  data.gosi_enrolled,
+          gosi_pct:       data.gosi_pct,
+          bank_name:      data.bank_name      || null,
+          iban:           data.iban           || null,
+          iqama_number:   data.iqama_number   || null,
+          iqama_expiry:   data.iqama_expiry   || null,
+          notes:          data.notes          || null,
+        }
+        Object.keys(hrPayload).forEach(k => { if (hrPayload[k] === undefined) delete hrPayload[k] })
+        const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
+        if (updateErr) throw updateErr
       }
 
       // ✅ إعادة تحميل القائمة بعد الحفظ

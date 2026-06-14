@@ -312,10 +312,10 @@ export default function EmployeeProfilePage() {
     const { data: td } = await supabase.from('tenants').select('*').eq('id', tenant.id).single()
     setTenantData(td)
 
-    // جلب بيانات الموظف
+    // جلب بيانات الموظف — مباشرة من hr_employees
     const { data: empData } = await supabase
       .from('hr_employees')
-      .select('*, employee:employees!hr_employees_employee_id_fkey(name, role)')
+      .select('*')
       .eq('tenant_id', tenant.id)
       .eq('id', Number(id))
       .single()
@@ -323,21 +323,21 @@ export default function EmployeeProfilePage() {
     if (!empData) { router.push('/hr'); return }
     setEmp(empData)
 
-    const empId = empData.employee_id
+    const hrEmpId = empData.id  // ← hr_employees.id هو المرجع الآن
 
     // جلب كل البيانات معاً
     const [leavesRes, attRes, discRes, payRes, docRes] = await Promise.all([
       supabase.from('hr_leaves')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('start_date', { ascending: false }).limit(20),
       supabase.from('hr_attendance')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('date', { ascending: false }).limit(30),
       supabase.from('hr_disciplinary')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('created_at', { ascending: false }),
       supabase.from('hr_payroll')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('year', { ascending: false }).order('month', { ascending: false }).limit(6),
       supabase.from('hr_documents')
         .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)

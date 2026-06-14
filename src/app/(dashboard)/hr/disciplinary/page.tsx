@@ -513,11 +513,11 @@ export default function DisciplinaryPage() {
     setLoading(true)
     const [recRes, empRes, vtRes] = await Promise.all([
       supabase.from('hr_disciplinary')
-        .select('*, employee:employees!hr_disciplinary_employee_id_fkey(name, role)')
+        .select('*, employee:hr_employees!hr_disciplinary_employee_id_fkey(name, job_title)')
         .eq('tenant_id', tenant.id)
         .order('created_at', { ascending: false }),
       supabase.from('hr_employees')
-        .select('employee_id, job_title, employee:employees!hr_employees_employee_id_fkey(name, role)')
+        .select('id, name, job_title')
         .eq('tenant_id', tenant.id)
         .eq('is_active', true),
       supabase.from('hr_violation_types')
@@ -528,9 +528,9 @@ export default function DisciplinaryPage() {
     ])
     setRecords(recRes.data || [])
     setEmployees((empRes.data || []).map((e: any) => ({
-      employee_id: e.employee_id,
-      name: e.employee?.name || '—',
-      role: e.employee?.role || '',
+      employee_id: e.id,
+      name: e.name || '—',
+      role: '',
       job_title: e.job_title || '',
     })))
     setViolationTypes(vtRes.data || [])

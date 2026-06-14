@@ -351,7 +351,7 @@ export default function LeavesPage() {
     if (!tenant || empLoaded) return
     setEmpLoading(true)
     supabase.from('hr_employees')
-      .select('id, employee_id, hire_date, nationality, iqama_number, employee:employees!hr_employees_employee_id_fkey(name, role)')
+      .select('id, employee_id, hire_date, nationality, iqama_number, name, job_title')
       .eq('tenant_id', tenant.id).eq('is_active', true).order('id')
       .then(({ data }) => {
         setHREmployees((data || []) as any[])
@@ -367,7 +367,7 @@ export default function LeavesPage() {
     const currentPage = reset ? 0 : page
 
     let query = supabase.from('hr_leaves')
-      .select('*, employee:employees!hr_leaves_employee_id_fkey(name)')
+      .select('*, employee:hr_employees!hr_leaves_employee_id_fkey(name)')
       .eq('tenant_id', tenant.id)
       .order('start_date', { ascending: false })
       .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1)
@@ -530,14 +530,14 @@ export default function LeavesPage() {
                           <td style={{ padding: '12px 14px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
                               <div>
-                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{emp.employee?.name}</div>
-                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.employee?.role}</div>
+                                <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{emp.name}</div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{emp.job_title}</div>
                               </div>
                               <button type="button"
                                 title="عرض سجل الإجازات"
                                 onClick={() => {
                                   setHistoryEmp(emp)
-                                  supabase.from('hr_leaves').select('*, employee:employees!hr_leaves_employee_id_fkey(name)')
+                                  supabase.from('hr_leaves').select('*, employee:hr_employees!hr_leaves_employee_id_fkey(name)')
                                     .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.employee_id)
                                     .order('start_date', { ascending: false })
                                     .then(({ data }) => setAllLeaves(prev => {
