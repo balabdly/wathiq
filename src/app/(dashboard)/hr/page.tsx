@@ -1747,7 +1747,8 @@ export default function HRPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الرقم</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>#</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الرقم الوظيفي</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الاسم</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>القسم / المسمى</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>الجنسية</th>
@@ -1777,17 +1778,9 @@ export default function HRPage() {
                           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
 
-                          {/* # */}
-                          <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                            {emp.employee_number ? (
-                              <span style={{
-                                background: '#eff6ff', color: '#1a56db',
-                                borderRadius: '6px', padding: '3px 8px',
-                                fontWeight: 700, fontFamily: 'monospace', fontSize: '0.8rem',
-                              }}>
-                                {emp.employee_number}
-                              </span>
-                            ) : <span style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>—</span>}
+                          {/* # رقم تسلسلي */}
+                          <td style={{ padding: '12px 14px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.8rem' }}>
+                            {idx + 1}
                           </td>
 
                           {/* الموظف */}
