@@ -541,7 +541,7 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
         date: form.custody_date,
         description: `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
         referenceType: 'عهدة',
-        referenceId: null,
+        referenceId: undefined,
         lines: [
           { accountCode: custodyCode, debit: Number(form.amount), credit: 0, description: `${form.custody_type}: ${form.employee_name}` },
           { accountCode: cashCode,   debit: 0, credit: Number(form.amount), description: form.purpose },
