@@ -263,9 +263,10 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 // ════════════════════════════════════════
 // مودال: إضافة حركة (قبض / صرف)
 // ════════════════════════════════════════
-function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId, onClose, onSave }: {
+function TransactionModal({ type, cashAccounts, accounts, costCenters, clients, vendors, tenantId, onClose, onSave }: {
   type: 'قبض' | 'صرف'; cashAccounts: CashAccount[]
   accounts: Account[]; costCenters: CostCenter[]
+  clients: {id:number,name:string}[]; vendors: {id:number,name:string}[]
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -314,8 +315,14 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
     if (form.account_id)      payload.account_id      = Number(form.account_id)
     if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
 
+    // تأكد من أن tenant_id string
+    payload.tenant_id = String(payload.tenant_id)
     const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
-    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    if (error) {
+      console.error('Treasury error:', error)
+      toast.error('خطأ في الحفظ: ' + error.message)
+      setSaving(false); return
+    }
 
     if (trxData) {
       const selectedCashAccount = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
@@ -403,8 +410,15 @@ function TransactionModal({ type, cashAccounts, accounts, costCenters, tenantId,
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
-              <input value={form.party_name} onChange={e => set('party_name', e.target.value)} className="input"
-                placeholder={isReceipt ? 'اسم العميل' : 'اسم المورد'} />
+              <select value={form.party_name} onChange={e => set('party_name', e.target.value)} className="select">
+                <option value="">— اختر أو اكتب —</option>
+                {(isReceipt ? clients : vendors).map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+              <input value={form.party_name} onChange={e => set('party_name', e.target.value)}
+                className="input" style={{ marginTop: '6px' }}
+                placeholder={isReceipt ? 'أو اكتب اسم العميل...' : 'أو اكتب اسم المورد...'} />
             </div>
             <div>
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
@@ -504,8 +518,9 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
       settled_amount: 0, status: 'مفتوحة',
       notes: form.notes || null,
     }
-    if (form.employee_id) payload.employee_id = Number(form.employee_id)
-    if (form.project_id)  payload.project_id  = Number(form.project_id)
+    if (form.employee_id)    payload.employee_id    = Number(form.employee_id)
+    if (form.project_id)     payload.project_id     = Number(form.project_id)
+    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
 
     const { error } = await supabase.from('finance_employee_custody').insert(payload)
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
@@ -758,6 +773,8 @@ export default function FinanceTreasuryPage() {
   const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
   const [projects,     setProjects]     = useState<Project[]>([])
   const [employees,    setEmployees]    = useState<Employee[]>([])
+  const [clients,      setClients]      = useState<{id:number,name:string}[]>([])
+  const [vendors,      setVendors]      = useState<{id:number,name:string}[]>([])
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
 
@@ -774,7 +791,7 @@ export default function FinanceTreasuryPage() {
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [trRes, cusRes, caRes, accRes, ccRes, projRes, empRes] = await Promise.all([
+    const [trRes, cusRes, caRes, accRes, ccRes, projRes, empRes, clientsRes, vendorsRes] = await Promise.all([
       supabase.from('finance_treasury').select('*, cash_account:finance_cash_accounts(name), account:finance_accounts(code,name)').eq('tenant_id', tenant.id).order('transaction_date', { ascending: false }).limit(200),
       supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
       supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('name'),
@@ -782,6 +799,8 @@ export default function FinanceTreasuryPage() {
       supabase.from('finance_cost_centers').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('finance_clients').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
     setTransactions(trRes.data || [])
     setCustodies(cusRes.data || [])
@@ -797,6 +816,8 @@ export default function FinanceTreasuryPage() {
     setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
     setEmployees(empRes.data || [])
+    setClients(clientsRes.data || [])
+    setVendors(vendorsRes.data || [])
     setLoading(false)
   }
 
@@ -1051,11 +1072,11 @@ export default function FinanceTreasuryPage() {
 
       {/* المودالات */}
       {showReceiptModal && (
-        <TransactionModal type="قبض" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+        <TransactionModal type="قبض" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters} clients={clients} vendors={vendors}
           tenantId={tenant!.id} onClose={() => setShowReceiptModal(false)} onSave={() => { setShowReceiptModal(false); loadAll() }} />
       )}
       {showPaymentModal && (
-        <TransactionModal type="صرف" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters}
+        <TransactionModal type="صرف" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters} clients={clients} vendors={vendors}
           tenantId={tenant!.id} onClose={() => setShowPaymentModal(false)} onSave={() => { setShowPaymentModal(false); loadAll() }} />
       )}
       {showCustodyModal && (
