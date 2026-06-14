@@ -549,7 +549,7 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
       const cashAccountId = cashAcc?.account_id || null
 
       // جلب account_id لحساب العهد (1310 أو 2210)
-      const custodyAccountCode = form.custody_type === 'سلفة راتب' ? '2210' : '1310'
+      const custodyAccountCode = form.custody_type === 'سلفة راتب' ? '1320' : '1310'
       const { data: custodyAccData } = await supabase
         .from('finance_accounts')
         .select('id')
