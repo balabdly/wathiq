@@ -332,7 +332,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
   )
 }
 
-function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payroll[]; isAdmin: boolean; onEdit: (p: Payroll) => void; exportCSV: (data: Payroll[], month: number, year: number) => void }) {
+function ArchiveTab({ payrolls, isAdmin, onEdit, onEditPayroll, exportCSV }: { payrolls: Payroll[]; isAdmin: boolean; onEdit: (p: Payroll) => void; onEditPayroll: (month: number, year: number) => void; exportCSV: (data: Payroll[], month: number, year: number) => void }) {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
   const [archiveYear, setArchiveYear] = useState(currentYear)
@@ -371,7 +371,14 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payrol
                   </div>
                   <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                     <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '4px 14px', textAlign: 'center' }}><div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الصافي</div><div style={{ fontWeight: 700, color: '#0ea77b' }}>{gNet.toLocaleString()} ر.س</div></div>
-                    <div onClick={e => e.stopPropagation()}>
+                    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: '8px' }}>
+                      {isAdmin && !allPaid && (
+                        <button
+                          onClick={() => onEditPayroll(mo, yr)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #1a56db', background: '#eff6ff', cursor: 'pointer', fontSize: '0.78rem', color: '#1a56db', fontWeight: 600 }}>
+                          <Pencil style={{ width: '13px', height: '13px' }} /> تعديل المسير
+                        </button>
+                      )}
                       <button onClick={() => exportCSV(group, mo, yr)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.78rem' }}>
                         <Download style={{ width: '13px', height: '13px' }} /> CSV
                       </button>
@@ -386,7 +393,6 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payrol
                         {['الموظف','الأساسي','البدلات','الإجمالي','الخصومات','الصافي','حضور','الحالة'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: '0.72rem', background: h==='الصافي'?'#ecfdf5':'transparent', color: h==='الصافي'?'#0ea77b':h==='الخصومات'?'#c81e1e':h==='الإجمالي'?'var(--primary)':'var(--text3)' }}>{h}</th>
                         ))}
-                        {isAdmin && <th></th>}
                       </tr></thead>
                       <tbody>
                         {group.map(p => (
@@ -401,7 +407,7 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payrol
                             <td style={{ padding: '11px 14px', color: '#0ea77b', fontWeight: 700, background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
                             <td style={{ padding: '11px 14px', textAlign: 'center' }}>{p.present_days}/26</td>
                             <td style={{ padding: '11px 14px' }}><span className={'badge ' + (STATUS_COLOR[p.status] || 'badge-gray')}>{p.status}</span></td>
-                            {isAdmin && <td style={{ padding: '11px 14px' }}><button onClick={() => onEdit(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button></td>}
+
                           </tr>
                         ))}
                       </tbody>
@@ -479,6 +485,15 @@ export default function PayrollPage() {
       return { allowed: false, reason: `يمكن إنشاء مسير ${ARABIC_MONTHS[month-1]} بعد يوم 20 من الشهر (اليوم الحالي: ${todayDay})` }
     }
     return { allowed: true }
+  }
+
+  // الانتقال لتعديل مسير سابق — يفتح تاب المسير الحالي بشهر وسنة المسير
+  function handleEditPayroll(month: number, year: number) {
+    setFilterMonth(month)
+    setFilterYear(year)
+    setActiveTab('payroll')
+    setMode('view')
+    toast('📋 جاري تحميل مسير ' + ARABIC_MONTHS[month - 1] + ' ' + year, { icon: '✏️' })
   }
 
   function enterCreateMode() {
@@ -776,7 +791,7 @@ export default function PayrollPage() {
           })()}
         </>
       )}
-      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} exportCSV={exportCSV} />}
+      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
       {activeTab === 'settlements' && <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />}
       {activeTab === 'leave_comp' && <LeaveCompensationTab tenant={tenant} hrEmployees={hrEmployees} />}
       {editPayroll && <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />}
