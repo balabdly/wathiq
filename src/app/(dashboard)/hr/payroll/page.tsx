@@ -437,22 +437,9 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editPayroll, setEditPayroll] = useState<Payroll | null>(null)
-  // إذا فُتح على archive (بعد 7 أيام من نهاية الشهر) → اعرض الشهر السابق
-  const defaultMonth = (() => {
-    const now = new Date()
-    if (now.getDate() > 7) {
-      // الشهر السابق
-      return now.getMonth() === 0 ? 12 : now.getMonth()
-    }
-    return now.getMonth() + 1
-  })()
-  const defaultYear = (() => {
-    const now = new Date()
-    if (now.getDate() > 7 && now.getMonth() === 0) return now.getFullYear() - 1
-    return now.getFullYear()
-  })()
-  const [filterMonth, setFilterMonth] = useState(defaultMonth)
-  const [filterYear, setFilterYear]   = useState(defaultYear)
+  // filterMonth/Year = الشهر الحالي دائماً (للمسير الجديد)
+  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
+  const [filterYear, setFilterYear]   = useState(new Date().getFullYear())
   const [mode, setMode] = useState<'view' | 'create'>('view')
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
