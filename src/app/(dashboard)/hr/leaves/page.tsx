@@ -90,11 +90,11 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
     ? Math.max(0, Math.ceil((new Date(form.end_date).getTime() - new Date(form.start_date).getTime()) / 86400000) + 1)
     : 0
 
-  const selectedEmp = hrEmployees.find(e => e.employee_id === Number(form.employee_id))
+  const selectedEmp = hrEmployees.find(e => e.id === Number(form.employee_id))
   const leaveTypeInfo = LEAVE_TYPES.find(t => t.value === form.leave_type)
-  const annualTaken = selectedEmp ? (annualTakenMap[selectedEmp.employee_id] || 0) : 0
+  const annualTaken = selectedEmp ? (annualTakenMap[selectedEmp.id] || 0) : 0
   const annualBalance = selectedEmp ? calcAnnualLeaveBalance(selectedEmp.hire_date || '', annualTaken) : null
-  const sickDaysThisYear = selectedEmp ? (sickDaysMap[selectedEmp.employee_id] || 0) : 0
+  const sickDaysThisYear = selectedEmp ? (sickDaysMap[selectedEmp.id] || 0) : 0
   const sickPayInfo = form.leave_type === 'مرضية' && days > 0 ? calcSickLeavePay(sickDaysThisYear, days) : null
 
   async function handleSubmit(e: React.FormEvent) {
@@ -122,7 +122,7 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
               <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
                 <option value="">— اختر موظف —</option>
-                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.name}</option>)}
+                {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
             </div>
 
@@ -517,9 +517,9 @@ export default function LeavesPage() {
                   </thead>
                   <tbody>
                     {hrEmployees.map(emp => {
-                      const taken = annualTakenMap[emp.employee_id] || 0
+                      const taken = annualTakenMap[emp.id] || 0
                       const bal = calcAnnualLeaveBalance(emp.hire_date || '', taken)
-                      const lastLeave = lastLeaveMap[emp.employee_id]
+                      const lastLeave = lastLeaveMap[emp.id]
                       const isLow = bal.balance <= 5 && bal.balance > 0
                       const isZero = bal.balance === 0
                       return (
@@ -588,7 +588,7 @@ export default function LeavesPage() {
               {/* فلتر الموظف */}
               <select value={filterEmpId} onChange={e => setFilterEmpId(e.target.value)} className="select" style={{ width: 'auto', minWidth: '150px' }}>
                 <option value="">كل الموظفين</option>
-                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.name}</option>)}
+                {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
               {/* فلتر السنة */}
               <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="select" style={{ width: 'auto' }}>
