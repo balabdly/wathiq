@@ -66,9 +66,9 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  // تعبئة اسم الوثيقة تلقائياً عند اختيار الموظف والنوع
+  // تعبئة اسم الوثيقة مقترح عند اختيار الموظف والنوع — قابل للتعديل
   useEffect(() => {
-    if (!form.name && form.employee_id && form.doc_type) {
+    if (form.employee_id && form.doc_type) {
       const emp = employees.find(e => String(e.employee_id) === String(form.employee_id))
       const empName = emp?.employee?.name?.split(' ')[0] || ''
       if (empName) set('name', `${form.doc_type} — ${empName}`)
@@ -101,7 +101,7 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
   const selectedEmp = employees.find(e => String(e.employee_id) === String(form.employee_id))
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{doc ? 'تعديل وثيقة' : 'إضافة وثيقة'}</h3>
@@ -129,14 +129,7 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
                 <select value={form.doc_type} onChange={e => set('doc_type', e.target.value)} className="select">
                   {DOC_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
-                {form.doc_type === 'أخرى' && (
-                  <input
-                    value={form.name}
-                    onChange={e => set('name', e.target.value)}
-                    className="input" style={{ marginTop: '8px' }}
-                    placeholder="اكتب اسم الوثيقة..." required
-                  />
-                )}
+
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
@@ -144,8 +137,7 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
                   value={form.name}
                   onChange={e => set('name', e.target.value)}
                   className="input" required
-                  placeholder="مثال: هوية محمد"
-                  style={{ display: form.doc_type === 'أخرى' ? 'none' : 'block' }}
+                  placeholder={form.doc_type === 'أخرى' ? 'اكتب اسم الوثيقة...' : 'مثال: هوية محمد'}
                 />
               </div>
             </div>
