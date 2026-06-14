@@ -1305,10 +1305,10 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
             {selectedHR && (
               <div style={{ gridColumn: '1/-1', background: 'var(--bg2)', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem' }}>
                 <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                  <div><span style={{ color: 'var(--text3)' }}>الراتب الأساسي: </span><strong>{selectedHR.basic_salary.toLocaleString()} ر.س</strong></div>
+                  <div><span style={{ color: 'var(--text3)' }}>الراتب الأساسي: </span><strong>{Number(selectedHR.basic_salary || 0).toLocaleString()} ر.س</strong></div>
                   <div><span style={{ color: 'var(--text3)' }}>تاريخ المباشرة: </span><strong>{selectedHR.hire_date || '—'}</strong></div>
                   <div><span style={{ color: 'var(--text3)' }}>القسم: </span><strong>{selectedHR.department || '—'}</strong></div>
-                  <div><span style={{ color: 'var(--text3)' }}>الجنسية: </span><strong>{selectedHR.nationality}</strong></div>
+                  <div><span style={{ color: 'var(--text3)' }}>الجنسية: </span><strong>{selectedHR.nationality || '—'}</strong></div>
                 </div>
               </div>
             )}
