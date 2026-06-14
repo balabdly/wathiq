@@ -148,6 +148,45 @@ export default function ReportsFinancePage() {
   const [summary,   setSummary]   = useState<any>(null)
   const [extra,     setExtra]     = useState<any>(null) // بيانات إضافية (مثل رصيد أول المدة في ميزان المراجعة)
 
+  // ── فترة المقارنة ──
+  const [showCompare,    setShowCompare]    = useState(false)
+  const [compareType,    setCompareType]    = useState<'yoy' | 'prev' | 'custom'>('yoy') // yoy=نفس الفترة عام سابق، prev=الفترة السابقة، custom=مخصص
+  const [cDateFrom,      setCDateFrom]      = useState('')
+  const [cDateTo,        setCDateTo]        = useState('')
+  const [compareResults, setCompareResults] = useState<any[]>([])
+  const [compareSummary, setCompareSummary] = useState<any>(null)
+
+  // حساب تواريخ فترة المقارنة تلقائياً
+  function getCompareDates(): { from: string; to: string; label: string } {
+    const from = new Date(fDateFrom)
+    const to   = new Date(fDateTo)
+    if (compareType === 'yoy') {
+      const f = new Date(from); f.setFullYear(f.getFullYear() - 1)
+      const t = new Date(to);   t.setFullYear(t.getFullYear() - 1)
+      return { from: f.toISOString().split('T')[0], to: t.toISOString().split('T')[0], label: `نفس الفترة ${f.getFullYear()}` }
+    }
+    if (compareType === 'prev') {
+      const diffDays = Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1
+      const t = new Date(from); t.setDate(t.getDate() - 1)
+      const f = new Date(t);    f.setDate(f.getDate() - diffDays + 1)
+      return { from: f.toISOString().split('T')[0], to: t.toISOString().split('T')[0], label: 'الفترة السابقة' }
+    }
+    return { from: cDateFrom, to: cDateTo, label: `${cDateFrom} — ${cDateTo}` }
+  }
+
+  // لون نسبة التغيير: أخضر للإيجابي في الإيرادات والنقد، أحمر للسلبي
+  function changeColor(val: number, isExpense = false): string {
+    if (val === 0) return '#9ca3af'
+    if (isExpense) return val > 0 ? '#c81e1e' : '#0ea77b' // زيادة المصروفات سيئة
+    return val > 0 ? '#0ea77b' : '#c81e1e'
+  }
+
+  function fmtChange(curr: number, comp: number, isExpense = false): { diff: number; pct: string; color: string } {
+    const diff = curr - comp
+    const pct  = comp !== 0 ? ((diff / Math.abs(comp)) * 100).toFixed(1) : '—'
+    return { diff, pct: pct === '—' ? '—' : (diff > 0 ? '+' : '') + pct + '%', color: changeColor(diff, isExpense) }
+  }
+
   const allReports = REPORT_GROUPS.flatMap(g => g.reports.map(r => ({ ...r, groupColor: g.color, groupBg: g.bg, groupLabel: g.label })))
   const report = allReports.find(r => r.id === selected)
 
@@ -162,6 +201,7 @@ export default function ReportsFinancePage() {
   async function runReport() {
     if (!tenant || !selected) return
     setLoading(true); setResults([]); setSummary(null); setExtra(null)
+    setCompareResults([]); setCompareSummary(null)
 
     // ══════════════════════════════════════════
     // القوائم المالية
@@ -178,6 +218,21 @@ export default function ReportsFinancePage() {
         ...expenses.map(a => ({ ...a, section: 'مصروفات' })),
       ])
       setSummary({ revenues: totRev, expenses: totExp, net: totRev - totExp })
+
+      // فترة المقارنة
+      if (showCompare) {
+        const cd = getCompareDates()
+        const cData = await fetchAccountBalances(tenant.id, cd.to, cd.from, ['إيرادات', 'مصروفات'])
+        const cRevenues = cData.filter(a => a.account_type === 'إيرادات' && a.balance !== 0)
+        const cExpenses = cData.filter(a => a.account_type === 'مصروفات' && a.balance !== 0)
+        const cTotRev = cRevenues.reduce((s, a) => s + a.balance, 0)
+        const cTotExp = cExpenses.reduce((s, a) => s + a.balance, 0)
+        setCompareResults([
+          ...cRevenues.map(a => ({ ...a, section: 'إيرادات' })),
+          ...cExpenses.map(a => ({ ...a, section: 'مصروفات' })),
+        ])
+        setCompareSummary({ revenues: cTotRev, expenses: cTotExp, net: cTotRev - cTotExp, label: cd.label })
+      }
 
     } else if (selected === 'balance_sheet') {
       // المركز المالي — تراكمي حتى fDateTo (بدون dateFrom)
@@ -201,6 +256,33 @@ export default function ReportsFinancePage() {
       const totEquity = equity.reduce((s, a) => s + a.balance, 0)
       setSummary({ totalAssets: totAssets, totalLiabilities: totLiab, totalEquity: totEquity, netIncome })
       setExtra({ balanced: Math.abs(totAssets - (totLiab + totEquity + netIncome)) < 1 })
+
+      // فترة المقارنة
+      if (showCompare) {
+        const cd = getCompareDates()
+        const yearOfCompare = cd.to.substring(0, 4)
+        const [cBsData, cIncomeData] = await Promise.all([
+          fetchAccountBalances(tenant.id, cd.to, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
+          fetchAccountBalances(tenant.id, cd.to, `${yearOfCompare}-01-01`, ['إيرادات', 'مصروفات']),
+        ])
+        const cNetIncome = cIncomeData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
+                         - cIncomeData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+        const cAssets      = cBsData.filter(a => a.account_type === 'أصول'       && a.balance !== 0)
+        const cLiabilities = cBsData.filter(a => a.account_type === 'خصوم'       && a.balance !== 0)
+        const cEquity      = cBsData.filter(a => a.account_type === 'حقوق ملكية' && a.balance !== 0)
+        setCompareResults([
+          ...cAssets.map(a      => ({ ...a, section: 'أصول' })),
+          ...cLiabilities.map(a => ({ ...a, section: 'خصوم' })),
+          ...cEquity.map(a      => ({ ...a, section: 'حقوق الملكية' })),
+        ])
+        setCompareSummary({
+          totalAssets:      cAssets.reduce((s, a) => s + a.balance, 0),
+          totalLiabilities: cLiabilities.reduce((s, a) => s + a.balance, 0),
+          totalEquity:      cEquity.reduce((s, a) => s + a.balance, 0),
+          netIncome:        cNetIncome,
+          label:            cd.label,
+        })
+      }
 
     } else if (selected === 'cashflow') {
       // ══════════════════════════════════════════════════════
@@ -306,6 +388,48 @@ export default function ReportsFinancePage() {
         'صافي التغير في النقد':        netCash,
         'رصيد النقد آخر المدة':        closeCash,
       })
+
+      // فترة المقارنة للتدفقات
+      if (showCompare) {
+        const cd = getCompareDates()
+        // رصيد نقدي أول المدة للمقارنة
+        const cOpenCashData = await fetchAccountBalances(tenant.id, cd.from, undefined, ['أصول'])
+        const cOpenCash = cOpenCashData.filter((a: any) => cashIds.has(a.id)).reduce((s: number, a: any) => s + a.balance, 0)
+        // قيود فترة المقارنة
+        const { data: cEntries } = await supabase.from('finance_journal_entries')
+          .select('id, entry_date, description, reference_type')
+          .eq('tenant_id', tenant.id).gte('entry_date', cd.from).lte('entry_date', cd.to).order('entry_date')
+        const cFlowMap: Record<string, Record<string, { inflow: number; outflow: number }>> = {
+          'تشغيلية': {}, 'استثمارية': {}, 'تمويلية': {},
+        }
+        const cTotals = { operating: 0, investing: 0, financing: 0 }
+        if (cEntries?.length) {
+          const cEntryIds = cEntries.map((e: any) => e.id)
+          const cEntryMap: Record<number, any> = {}
+          cEntries.forEach((e: any) => { cEntryMap[e.id] = e })
+          const { data: cLines } = await supabase.from('finance_journal_lines')
+            .select('entry_id, account_id, debit, credit').in('entry_id', cEntryIds).in('account_id', Array.from(cashIds))
+          ;(cLines || []).forEach((l: any) => {
+            const e = cEntryMap[l.entry_id]; if (!e) return
+            const cat = classifyFlow(e.reference_type); const ref = e.reference_type || 'أخرى'
+            if (!cFlowMap[cat][ref]) cFlowMap[cat][ref] = { inflow: 0, outflow: 0 }
+            cFlowMap[cat][ref].inflow  += Number(l.debit  || 0)
+            cFlowMap[cat][ref].outflow += Number(l.credit || 0)
+          })
+          for (const [cat, types] of Object.entries(cFlowMap)) {
+            const catNet = Object.values(types).reduce((s, t) => s + t.inflow - t.outflow, 0)
+            if (cat === 'تشغيلية')   cTotals.operating  = catNet
+            if (cat === 'استثمارية') cTotals.investing  = catNet
+            if (cat === 'تمويلية')   cTotals.financing  = catNet
+          }
+        }
+        const cNetCash   = cTotals.operating + cTotals.investing + cTotals.financing
+        const cCloseCash = cOpenCash + cNetCash
+        setCompareSummary({
+          openCash: cOpenCash, operating: cTotals.operating, investing: cTotals.investing,
+          financing: cTotals.financing, netCash: cNetCash, closeCash: cCloseCash, label: cd.label,
+        })
+      }
 
     } else if (selected === 'equity') {
       // ══════════════════════════════════════════════
@@ -758,6 +882,21 @@ export default function ReportsFinancePage() {
                 : <Search style={{ width: '14px', height: '14px' }} />}
               عرض التقرير
             </button>
+
+            {/* زر المقارنة — للقوائم المالية الثلاث فقط */}
+            {['income', 'balance_sheet', 'cashflow'].includes(selected || '') && (
+              <button
+                onClick={() => setShowCompare(v => !v)}
+                style={{
+                  fontSize: '0.78rem', padding: '7px 12px', borderRadius: '8px', cursor: 'pointer',
+                  border: `1px solid ${showCompare ? '#1a56db' : '#e5e7eb'}`,
+                  background: showCompare ? '#eff6ff' : 'white',
+                  color: showCompare ? '#1a56db' : '#6b7280', fontWeight: showCompare ? 700 : 400,
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                }}>
+                ⚖️ {showCompare ? 'إخفاء المقارنة' : 'إضافة فترة مقارنة'}
+              </button>
+            )}
             {results.length > 0 && (
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button onClick={exportExcel} className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '7px 10px', color: '#0ea77b', borderColor: '#86efac' }}>
@@ -769,6 +908,40 @@ export default function ReportsFinancePage() {
               </div>
             )}
           </div>
+
+          {/* ── خيارات فترة المقارنة ── */}
+          {showCompare && ['income', 'balance_sheet', 'cashflow'].includes(selected || '') && (
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: '#eff6ff', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#1a56db', alignSelf: 'center' }}>⚖️ مقارنة مع:</div>
+              {[
+                { val: 'yoy',    label: 'نفس الفترة — العام السابق' },
+                { val: 'prev',   label: 'الفترة السابقة مباشرة' },
+                { val: 'custom', label: 'فترة مخصصة' },
+              ].map(opt => (
+                <button key={opt.val}
+                  onClick={() => setCompareType(opt.val as any)}
+                  style={{
+                    fontSize: '0.78rem', padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+                    border: `1px solid ${compareType === opt.val ? '#1a56db' : '#bfdbfe'}`,
+                    background: compareType === opt.val ? '#1a56db' : 'white',
+                    color: compareType === opt.val ? 'white' : '#1a56db',
+                    fontWeight: compareType === opt.val ? 700 : 400,
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+              {compareType === 'custom' && (<>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>من</label>
+                  <input type="date" value={cDateFrom} onChange={e => setCDateFrom(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '3px', color: '#1a56db' }}>إلى</label>
+                  <input type="date" value={cDateTo} onChange={e => setCDateTo(e.target.value)} className="input" style={{ fontSize: '0.78rem' }} />
+                </div>
+              </>)}
+            </div>
+          )}
 
           {/* ملخص الأرقام الرئيسية */}
           {summary && (
@@ -799,34 +972,78 @@ export default function ReportsFinancePage() {
 
               {/* ══ قائمة الدخل ══ */}
               {selected === 'income' && summary && (
-                <div style={{ padding: '20px', maxWidth: '680px', margin: '0 auto' }}>
+                <div style={{ padding: '20px', maxWidth: showCompare && compareResults.length ? '900px' : '680px', margin: '0 auto' }}>
                   <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
-                      قائمة الدخل — من {fDateFrom} إلى {fDateTo}
+                    {/* رأس */}
+                    <div style={{ display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', padding: '12px 16px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', textAlign: 'center' }}>
+                      <span style={{ textAlign: 'right' }}>قائمة الدخل</span>
+                      <span>{fDateFrom} — {fDateTo}</span>
+                      {showCompare && compareResults.length && <span style={{ color: '#bfdbfe' }}>{compareSummary?.label}</span>}
+                      {showCompare && compareResults.length && <span>التغيير</span>}
                     </div>
                     {['إيرادات', 'مصروفات'].map(section => {
-                      const items = results.filter(r => r.section === section)
-                      const total = items.reduce((s, r) => s + r.balance, 0)
-                      const color = section === 'إيرادات' ? '#0ea77b' : '#c81e1e'
+                      const isExp  = section === 'مصروفات'
+                      const items  = results.filter(r => r.section === section)
+                      const total  = items.reduce((s, r) => s + r.balance, 0)
+                      const color  = isExp ? '#c81e1e' : '#0ea77b'
+                      const bg     = isExp ? '#fef2f2' : '#ecfdf5'
+                      // خريطة الحسابات في فترة المقارنة
+                      const cMap: Record<number, number> = {}
+                      compareResults.filter(r => r.section === section).forEach(r => { cMap[r.id] = r.balance })
+                      const cTotal = compareResults.filter(r => r.section === section).reduce((s, r) => s + r.balance, 0)
+                      const totChange = fmtChange(total, cTotal, isExp)
                       return (
                         <div key={section}>
-                          <div style={{ padding: '10px 16px', background: section === 'إيرادات' ? '#ecfdf5' : '#fef2f2', fontWeight: 700, color, borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>{section}</div>
-                          {items.map((r, i) => (
-                            <div key={i} style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem' }}>
-                              <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
-                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(r.balance)}</span>
-                            </div>
-                          ))}
-                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                          {/* رأس القسم */}
+                          <div style={{ padding: '10px 16px', background: bg, fontWeight: 700, color, borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>{section}</div>
+                          {/* البنود */}
+                          {items.map((r, i) => {
+                            const cVal    = cMap[r.id] || 0
+                            const change  = fmtChange(r.balance, cVal, isExp)
+                            return (
+                              <div key={i} style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', alignItems: 'center' }}>
+                                <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600, textAlign: 'center' }}>{fmt(r.balance)}</span>
+                                {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', textAlign: 'center', color: '#9ca3af' }}>{cVal ? fmt(cVal) : '—'}</span>}
+                                {showCompare && compareResults.length && (
+                                  <span style={{ fontFamily: 'monospace', textAlign: 'center', color: change.color, fontWeight: 600, fontSize: '0.78rem' }}>
+                                    {change.pct}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })}
+                          {/* سطر الإجمالي */}
+                          <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
                             <span>إجمالي {section}</span>
-                            <span style={{ fontFamily: 'monospace', color }}>{fmt(total)}</span>
+                            <span style={{ fontFamily: 'monospace', color, textAlign: 'center' }}>{fmt(total)}</span>
+                            {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', color: '#9ca3af', textAlign: 'center' }}>{fmt(cTotal)}</span>}
+                            {showCompare && compareResults.length && (
+                              <span style={{ fontFamily: 'monospace', color: totChange.color, textAlign: 'center', fontSize: '0.82rem' }}>
+                                {totChange.pct}
+                                <span style={{ display: 'block', fontSize: '0.7rem', color: '#9ca3af' }}>{totChange.diff > 0 ? '+' : ''}{fmt(totChange.diff)}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       )
                     })}
-                    <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1rem', background: summary.net >= 0 ? '#ecfdf5' : '#fef2f2', borderTop: '2px solid #e5e7eb' }}>
+                    {/* صافي الربح */}
+                    <div style={{ padding: '14px 16px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', fontWeight: 800, fontSize: '1rem', background: summary.net >= 0 ? '#ecfdf5' : '#fef2f2', borderTop: '2px solid #e5e7eb', alignItems: 'center' }}>
                       <span>صافي {summary.net >= 0 ? 'الربح' : 'الخسارة'}</span>
-                      <span style={{ fontFamily: 'monospace', color: summary.net >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(Math.abs(summary.net))} ر.س</span>
+                      <span style={{ fontFamily: 'monospace', color: summary.net >= 0 ? '#0ea77b' : '#c81e1e', textAlign: 'center' }}>{fmt(Math.abs(summary.net))} ر.س</span>
+                      {showCompare && compareResults.length && (
+                        <span style={{ fontFamily: 'monospace', color: '#9ca3af', textAlign: 'center', fontWeight: 400, fontSize: '0.875rem' }}>{fmt(Math.abs(compareSummary?.net || 0))} ر.س</span>
+                      )}
+                      {showCompare && compareResults.length && (() => {
+                        const ch = fmtChange(summary.net, compareSummary?.net || 0)
+                        return (
+                          <span style={{ fontFamily: 'monospace', color: ch.color, textAlign: 'center', fontSize: '0.875rem' }}>
+                            {ch.pct}
+                            <span style={{ display: 'block', fontSize: '0.72rem', color: '#9ca3af' }}>{ch.diff > 0 ? '+' : ''}{fmt(ch.diff)}</span>
+                          </span>
+                        )
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -834,42 +1051,68 @@ export default function ReportsFinancePage() {
 
               {/* ══ قائمة المركز المالي ══ */}
               {selected === 'balance_sheet' && (
-                <div style={{ padding: '20px', maxWidth: '700px', margin: '0 auto' }}>
+                <div style={{ padding: '20px', maxWidth: showCompare && compareResults.length ? '900px' : '700px', margin: '0 auto' }}>
                   <div style={{ border: '1px solid #bfdbfe', borderRadius: '12px', overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 16px', background: '#1a56db', color: 'white', textAlign: 'center', fontWeight: 700 }}>
-                      قائمة المركز المالي — {fDateTo}
+                    <div style={{ display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', padding: '12px 16px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', textAlign: 'center' }}>
+                      <span style={{ textAlign: 'right' }}>قائمة المركز المالي</span>
+                      <span>{fDateTo}</span>
+                      {showCompare && compareResults.length && <span style={{ color: '#bfdbfe' }}>{compareSummary?.label}</span>}
+                      {showCompare && compareResults.length && <span>التغيير</span>}
                     </div>
                     {[
-                      { section: 'أصول',           color: '#0ea77b', bg: '#ecfdf5' },
-                      { section: 'خصوم',           color: '#c81e1e', bg: '#fef2f2' },
-                      { section: 'حقوق الملكية',   color: '#7c3aed', bg: '#f5f3ff' },
-                    ].map(({ section, color, bg }) => {
-                      const items = results.filter(r => r.section === section)
-                      const total = items.reduce((s, r) => s + r.balance, 0)
+                      { section: 'أصول',           color: '#0ea77b', bg: '#ecfdf5', summaryKey: 'totalAssets' },
+                      { section: 'خصوم',           color: '#c81e1e', bg: '#fef2f2', summaryKey: 'totalLiabilities' },
+                      { section: 'حقوق الملكية',   color: '#7c3aed', bg: '#f5f3ff', summaryKey: 'totalEquity' },
+                    ].map(({ section, color, bg, summaryKey }) => {
+                      const items  = results.filter(r => r.section === section)
+                      const total  = items.reduce((s, r) => s + r.balance, 0) + (section === 'حقوق الملكية' ? (summary?.netIncome || 0) : 0)
+                      const cMap: Record<number, number> = {}
+                      compareResults.filter(r => r.section === section).forEach(r => { cMap[r.id] = r.balance })
+                      const cTotal = compareResults.filter(r => r.section === section).reduce((s, r) => s + r.balance, 0) + (section === 'حقوق الملكية' ? (compareSummary?.netIncome || 0) : 0)
+                      const totChange = fmtChange(total, cTotal)
                       return (
                         <div key={section}>
                           <div style={{ padding: '10px 16px', background: bg, fontWeight: 700, color, borderBottom: '1px solid #e5e7eb', fontSize: '0.875rem' }}>{section}</div>
-                          {items.map((r, i) => (
-                            <div key={i} style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem' }}>
-                              <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
-                              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(r.balance)}</span>
-                            </div>
-                          ))}
-                          {/* صافي الربح ضمن حقوق الملكية */}
+                          {items.map((r, i) => {
+                            const cVal   = cMap[r.id] || 0
+                            const change = fmtChange(r.balance, cVal)
+                            return (
+                              <div key={i} style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', alignItems: 'center' }}>
+                                <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600, textAlign: 'center' }}>{fmt(r.balance)}</span>
+                                {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', textAlign: 'center', color: '#9ca3af' }}>{cVal ? fmt(cVal) : '—'}</span>}
+                                {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', textAlign: 'center', color: change.color, fontWeight: 600, fontSize: '0.78rem' }}>{change.pct}</span>}
+                              </div>
+                            )
+                          })}
                           {section === 'حقوق الملكية' && summary?.netIncome !== 0 && (
-                            <div style={{ padding: '8px 20px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', background: '#fafafa' }}>
+                            <div style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', background: '#fafafa', alignItems: 'center' }}>
                               <span style={{ color: '#6b7280', fontStyle: 'italic' }}>صافي ربح الفترة</span>
-                              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: summary.netIncome >= 0 ? '#0ea77b' : '#c81e1e' }}>{fmt(summary.netIncome)}</span>
+                              <span style={{ fontFamily: 'monospace', fontWeight: 600, color: summary.netIncome >= 0 ? '#0ea77b' : '#c81e1e', textAlign: 'center' }}>{fmt(summary.netIncome)}</span>
+                              {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', textAlign: 'center', color: '#9ca3af' }}>{compareSummary?.netIncome ? fmt(compareSummary.netIncome) : '—'}</span>}
+                              {showCompare && compareResults.length && (() => { const ch = fmtChange(summary.netIncome, compareSummary?.netIncome || 0); return <span style={{ fontFamily: 'monospace', textAlign: 'center', color: ch.color, fontWeight: 600, fontSize: '0.78rem' }}>{ch.pct}</span> })()}
                             </div>
                           )}
-                          <div style={{ padding: '10px 16px', display: 'flex', justifyContent: 'space-between', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                          <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', fontWeight: 700, background: '#f8fafc', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
                             <span>إجمالي {section}</span>
-                            <span style={{ fontFamily: 'monospace', color }}>{fmt(section === 'حقوق الملكية' ? total + (summary?.netIncome || 0) : total)}</span>
+                            <span style={{ fontFamily: 'monospace', color, textAlign: 'center' }}>{fmt(total)}</span>
+                            {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', color: '#9ca3af', textAlign: 'center' }}>{fmt(cTotal)}</span>}
+                            {showCompare && compareResults.length && (
+                              <span style={{ fontFamily: 'monospace', color: totChange.color, textAlign: 'center', fontSize: '0.82rem' }}>
+                                {totChange.pct}
+                                <span style={{ display: 'block', fontSize: '0.7rem', color: '#9ca3af' }}>{totChange.diff > 0 ? '+' : ''}{fmt(totChange.diff)}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       )
                     })}
                   </div>
+                  {extra?.balanced !== undefined && (
+                    <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '0.78rem', color: extra.balanced ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
+                      {extra.balanced ? '✅ الميزانية متوازنة' : '⚠️ الميزانية غير متوازنة'}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -938,10 +1181,46 @@ export default function ReportsFinancePage() {
                       ))}
                     </div>
                   )}
+                  {/* مقارنة التدفقات */}
+                  {showCompare && compareSummary && (
+                    <div style={{ marginTop: '16px', border: '1px solid #bfdbfe', borderRadius: '10px', overflow: 'hidden' }}>
+                      <div style={{ padding: '10px 16px', background: '#1a56db', color: 'white', fontWeight: 700, fontSize: '0.875rem', textAlign: 'center' }}>
+                        مقارنة التدفقات النقدية
+                      </div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                          <tr style={{ background: '#f8fafc' }}>
+                            {['البند', fDateFrom + ' — ' + fDateTo, compareSummary.label, 'التغيير', '%'].map(h => (
+                              <th key={h} style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb', fontSize: '0.75rem' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { label: 'رصيد النقد أول المدة',   curr: extra?.openCash,      comp: compareSummary.openCash,  isExp: false },
+                            { label: 'صافي التدفق التشغيلي',   curr: summary?.['صافي تدفق تشغيلي'],    comp: compareSummary.operating,  isExp: false },
+                            { label: 'صافي التدفق الاستثماري', curr: summary?.['صافي تدفق استثماري'],  comp: compareSummary.investing,  isExp: false },
+                            { label: 'صافي التدفق التمويلي',   curr: summary?.['صافي تدفق تمويلي'],    comp: compareSummary.financing,  isExp: false },
+                            { label: 'صافي التغير في النقد',   curr: extra?.netCash,        comp: compareSummary.netCash,   isExp: false },
+                            { label: 'رصيد النقد آخر المدة',   curr: extra?.closeCash,      comp: compareSummary.closeCash, isExp: false, isTotal: true },
+                          ].map((row, i) => {
+                            const ch = fmtChange(row.curr || 0, row.comp || 0, row.isExp)
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: row.isTotal ? '#ecfeff' : 'white', fontWeight: row.isTotal ? 700 : 400 }}>
+                                <td style={{ padding: '9px 14px' }}>{row.label}</td>
+                                <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: (row.curr || 0) >= 0 ? '#0ea77b' : '#c81e1e', fontWeight: 600 }}>{fmt(row.curr || 0)}</td>
+                                <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#9ca3af' }}>{fmt(row.comp || 0)}</td>
+                                <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: ch.color, fontWeight: 600 }}>{ch.diff > 0 ? '+' : ''}{fmt(ch.diff)}</td>
+                                <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: ch.color, fontWeight: 700 }}>{ch.pct}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {/* ══ التغير في حقوق الملكية ══ */}
               {selected === 'equity' && (
                 <div style={{ padding: '20px' }}>
                   <div style={{ border: '1px solid #ddd6fe', borderRadius: '12px', overflow: 'hidden' }}>
