@@ -68,14 +68,14 @@ export default function InventoryProjectsPage() {
       return
     }
 
-    setLoadingMat(prev => new Set([...prev, projectId]))
+    setLoadingMat(prev => new Set(Array.from(prev).concat(projectId)))
     const { data } = await supabase.from('project_materials')
       .select('*, material:materials(name, unit, catalog_no, sec_number, mat_code), warehouse:warehouses(name)')
       .eq('tenant_id', tenant.id).eq('project_id', projectId)
       .order('material(name)')
 
     setMaterials(prev => ({ ...prev, [projectId]: data || [] }))
-    setExpanded(prev => new Set([...prev, projectId]))
+    setExpanded(prev => new Set(Array.from(prev).concat(projectId)))
     setLoadingMat(prev => { const next = new Set(prev); next.delete(projectId); return next })
   }
 
