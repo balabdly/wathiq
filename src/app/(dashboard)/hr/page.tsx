@@ -253,6 +253,7 @@ function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
     marital_status:   emp?.marital_status   || 'أعزب',
     hire_date:        emp?.hire_date        || '',
     contract_type:    emp?.contract_type    || 'دوام كامل',
+    work_location:    emp?.work_location    || '',
     department:       emp?.department       || '',
     job_title:        emp?.job_title        || '',
     direct_manager:   emp?.direct_manager   ? String(emp.direct_manager) : '',
