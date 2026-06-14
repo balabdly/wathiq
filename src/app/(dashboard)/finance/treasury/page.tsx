@@ -54,7 +54,7 @@ async function getAccountId(tenantId: string, code: string): Promise<number | nu
 
 async function createJournalEntry(tenantId: string, params: {
   date: string; description: string
-  referenceType: string; referenceId: number
+  referenceType: string; referenceId?: number
   lines: { accountCode: string; debit: number; credit: number; description?: string }[]
 }) {
   const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
