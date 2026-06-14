@@ -49,9 +49,9 @@ function calcSickLeavePay(totalSickDaysThisYear: number, newDays: number) {
 }
 
 type HREmployee = {
-  id: number; employee_id: number; hire_date?: string
-  nationality: string; iqama_number?: string
-  employee?: { name: string; role: string }
+  id: number; employee_id?: number; hire_date?: string
+  nationality?: string; iqama_number?: string
+  name?: string; job_title?: string
 }
 
 type Leave = {
@@ -122,7 +122,7 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
               <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
                 <option value="">— اختر موظف —</option>
-                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.employee?.name}</option>)}
+                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.name}</option>)}
               </select>
             </div>
 
@@ -242,7 +242,7 @@ function EmployeeLeaveHistory({ emp, leaves, onClose }: {
       <div className="modal-box" style={{ maxWidth: '680px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">
-            سجل إجازات — {emp.employee?.name}
+            سجل إجازات — {emp.name}
           </h3>
           <button type="button" onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
             <X className="w-5 h-5 text-gray-500" />
@@ -588,7 +588,7 @@ export default function LeavesPage() {
               {/* فلتر الموظف */}
               <select value={filterEmpId} onChange={e => setFilterEmpId(e.target.value)} className="select" style={{ width: 'auto', minWidth: '150px' }}>
                 <option value="">كل الموظفين</option>
-                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.employee?.name}</option>)}
+                {hrEmployees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.name}</option>)}
               </select>
               {/* فلتر السنة */}
               <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="select" style={{ width: 'auto' }}>
