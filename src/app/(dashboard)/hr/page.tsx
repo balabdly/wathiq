@@ -37,11 +37,11 @@ type JobTitle = {
 }
 
 type Termination = {
-  id: number; tenant_id: string; employee_id: number; hr_employee_id: number
+  id: number; tenant_id: string; employee_id?: number; hr_employee_id: number
   termination_type: string; termination_date: string
   last_working_day: string; years_of_service: number
   gratuity_amount: number; notes?: string; status: string
-  employee?: { name: string; role: string }
+  employee?: { name: string; job_title?: string }
 }
 
 // ── حساب مكافأة نهاية الخدمة حسب نظام العمل السعودي ──
