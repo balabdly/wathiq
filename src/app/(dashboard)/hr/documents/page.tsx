@@ -97,7 +97,7 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
     setSaving(false)
   }
 
-  const DOC_TYPES = ['هوية وطنية','إقامة','جواز سفر','عقد عمل','شهادة خبرة','شهادة دراسية','رخصة قيادة','تأمين صحي','تصريح عمل','أخرى']
+  const DOC_TYPES = ['هوية وطنية','إقامة','جواز سفر','عقد عمل','شهادة خبرة','شهادة دراسية','رخصة قيادة','تأمين صحي','تصريح عمل','شهادة هيئة المهندسين','تأهيل فني','أخرى']
   const selectedEmp = employees.find(e => String(e.employee_id) === String(form.employee_id))
 
   return (
@@ -129,10 +129,24 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
                 <select value={form.doc_type} onChange={e => set('doc_type', e.target.value)} className="select">
                   {DOC_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
+                {form.doc_type === 'أخرى' && (
+                  <input
+                    value={form.name}
+                    onChange={e => set('name', e.target.value)}
+                    className="input" style={{ marginTop: '8px' }}
+                    placeholder="اكتب اسم الوثيقة..." required
+                  />
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
-                <input value={form.name} onChange={e => set('name', e.target.value)} className="input" required placeholder="مثال: هوية محمد" />
+                <input
+                  value={form.name}
+                  onChange={e => set('name', e.target.value)}
+                  className="input" required
+                  placeholder="مثال: هوية محمد"
+                  style={{ display: form.doc_type === 'أخرى' ? 'none' : 'block' }}
+                />
               </div>
             </div>
 

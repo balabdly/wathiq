@@ -16,6 +16,7 @@ type HREmployee = {
   national_id?: string; nationality: string; birth_date?: string
   gender: string; marital_status: string; hire_date?: string
   contract_type: string; job_title?: string; department?: string
+  work_location?: string
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   gosi_enrolled: boolean; gosi_pct: number
   iqama_number?: string; iqama_expiry?: string
@@ -315,6 +316,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.first_name.trim()) { toast.error('أدخل الاسم الأول'); return }
+    if (!form.work_location) { toast.error('اختر الموقع / المدينة'); return }
     if (!form.father_name.trim()) { toast.error('أدخل اسم الأب'); return }
     if (!form.family_name.trim()) { toast.error('أدخل اسم العائلة'); return }
     const fullName = buildFullName(form.first_name, form.father_name, form.grandfather_name, form.family_name)
@@ -578,6 +580,17 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                       {['دوام كامل', 'دوام جزئي', 'مؤقت', 'مياومة'].map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
+                </div>
+
+                {/* الموقع — إلزامي */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    الموقع / المدينة <span className="text-red-500">*</span>
+                  </label>
+                  <select value={form.work_location} onChange={e => set('work_location', e.target.value)} className="select" onKeyDown={noEnter} required>
+                    <option value="">— اختر المدينة —</option>
+                    {['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الظهران','الأحساء','القطيف','تبوك','أبها','خميس مشيط','نجران','جازان','حائل','القصيم','بريدة','عرعر','سكاكا','الطائف','ينبع','الجبيل','رأس تنورة','بيشة','الباحة'].map(c => <option key={c}>{c}</option>)}
+                  </select>
                 </div>
 
               </div>
@@ -1526,6 +1539,7 @@ export default function HRPage() {
         hire_date:      data.hire_date      || null,
         contract_type:  data.contract_type,
         job_title:      data.job_title      || null,
+        work_location:  data.work_location  || null,
         department:     data.department     || null,
         direct_manager: data.direct_manager || null,
         basic_salary:   data.basic_salary,
@@ -1746,6 +1760,7 @@ export default function HRPage() {
                               </div>
                               <div>
                                 <div style={{ fontWeight: 700, color: 'var(--text)' }}>{empName}</div>
+                              {emp.work_location && <div style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px' }}>📍 {emp.work_location}</div>}
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'flex', gap: '5px', alignItems: 'center', marginTop: '2px' }}>
                                   {emp.employee_number && (
                                     <span style={{
