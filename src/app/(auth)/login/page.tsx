@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/hooks/useStore'
+import { loadHREmployees } from '@/lib/loadHREmployees'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -81,6 +82,9 @@ export default function LoginPage() {
 
       const userBranch = branches?.find((b: any) => b.id === emp.branch_id) || branches?.[0]
       if (userBranch) setActiveBranch(userBranch)
+
+      // ── تحميل موظفي HR في الـ store ──
+      await loadHREmployees(emp.tenant_id)
 
       toast.success(`أهلاً ${emp.name} 👋`)
       router.push('/dashboard')

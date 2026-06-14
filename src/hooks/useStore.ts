@@ -2,6 +2,30 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Tenant, Employee, Branch, Project, Visit, Material, StockLedger, Warehouse, Purchase, Client } from '@/types'
 
+// ── نوع موظف HR ──
+export type HREmployee = {
+  id: number
+  tenant_id: string
+  employee_id?: number        // الربط بـ employees (للـ login)
+  employee_number?: string
+  name?: string               // الاسم المدمج
+  first_name?: string
+  father_name?: string
+  grandfather_name?: string
+  family_name?: string
+  job_title?: string
+  department?: string
+  nationality?: string
+  is_active: boolean
+  basic_salary?: number
+  housing_allow?: number
+  transport_allow?: number
+  other_allow?: number
+  hire_date?: string
+  iqama_expiry?: string
+  passport_expiry?: string
+}
+
 interface AppState {
   // ── Auth ──
   currentUser: Employee | null
@@ -19,7 +43,8 @@ interface AppState {
   warehouses: Warehouse[]
   stockLedger: StockLedger[]
   purchases: Purchase[]
-  employees: Employee[]
+  employees: Employee[]       // مستخدمو النظام (login/صلاحيات)
+  hrEmployees: HREmployee[]   // موظفو HR (بيانات وظيفية)
   clients: Client[]
   // ── Setters ──
   setProjects: (projects: Project[]) => void
@@ -29,6 +54,7 @@ interface AppState {
   setStockLedger: (ledger: StockLedger[]) => void
   setPurchases: (purchases: Purchase[]) => void
   setEmployees: (employees: Employee[]) => void
+  setHREmployees: (hrEmployees: HREmployee[]) => void
   setClients: (clients: Client[]) => void
   // ── UI ──
   isLoading: boolean
@@ -61,6 +87,7 @@ export const useStore = create<AppState>()(
       stockLedger: [],
       purchases: [],
       employees: [],
+      hrEmployees: [],
       clients: [],
       // Setters
       setProjects: (projects) => set({ projects }),
@@ -70,6 +97,7 @@ export const useStore = create<AppState>()(
       setStockLedger: (stockLedger) => set({ stockLedger }),
       setPurchases: (purchases) => set({ purchases }),
       setEmployees: (employees) => set({ employees }),
+      setHREmployees: (hrEmployees) => set({ hrEmployees }),
       setClients: (clients) => set({ clients }),
       // UI
       isLoading: false,
@@ -82,7 +110,7 @@ export const useStore = create<AppState>()(
       reset: () => set({
         currentUser: null, tenant: null, activeBranch: null,
         projects: [], visits: [], materials: [], warehouses: [],
-        stockLedger: [], purchases: [], employees: [], clients: [],
+        stockLedger: [], purchases: [], employees: [], hrEmployees: [], clients: [],
       }),
     }),
     {
