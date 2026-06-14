@@ -14,7 +14,7 @@ type Attendance = {
   hours_worked?: number
   overtime_hours?: number
   notes?: string
-  employee?: { name: string; role: string }
+  employee?: { name: string; job_title?: string }
 }
 
 function AttendanceModal({ record, employees, onClose, onSave }: {
