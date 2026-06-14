@@ -418,14 +418,41 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, exportCSV }: { payrolls: Payrol
 
 export default function PayrollPage() {
   const { tenant, activeBranch, currentUser } = useStore()
-  const [activeTab, setActiveTab] = useState<'payroll' | 'archive' | 'settlements' | 'leave_comp'>('payroll')
+  // تحديد التاب الافتراضي: إذا مضى 7 أيام على نهاية الشهر → مسيرات سابقة
+  const defaultTab = (() => {
+    const now = new Date()
+    const day = now.getDate()
+    const month = now.getMonth() + 1
+    const year = now.getFullYear()
+    // احسب نهاية الشهر الحالي
+    const lastDayOfMonth = new Date(year, month, 0).getDate()
+    // إذا كنا في شهر جديد وتجاوزنا 7 أيام من بدايته
+    // يعني الشهر السابق انتهى منذ أكثر من 7 أيام
+    if (day > 7) return 'archive'
+    return 'payroll'
+  })()
+  const [activeTab, setActiveTab] = useState<'payroll' | 'archive' | 'settlements' | 'leave_comp'>(defaultTab as any)
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editPayroll, setEditPayroll] = useState<Payroll | null>(null)
-  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
-  const [filterYear, setFilterYear] = useState(new Date().getFullYear())
+  // إذا فُتح على archive (بعد 7 أيام من نهاية الشهر) → اعرض الشهر السابق
+  const defaultMonth = (() => {
+    const now = new Date()
+    if (now.getDate() > 7) {
+      // الشهر السابق
+      return now.getMonth() === 0 ? 12 : now.getMonth()
+    }
+    return now.getMonth() + 1
+  })()
+  const defaultYear = (() => {
+    const now = new Date()
+    if (now.getDate() > 7 && now.getMonth() === 0) return now.getFullYear() - 1
+    return now.getFullYear()
+  })()
+  const [filterMonth, setFilterMonth] = useState(defaultMonth)
+  const [filterYear, setFilterYear]   = useState(defaultYear)
   const [mode, setMode] = useState<'view' | 'create'>('view')
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
