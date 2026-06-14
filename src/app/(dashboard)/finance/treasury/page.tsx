@@ -541,50 +541,106 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
       })
     }
 
-    // ✅ قيد محاسبي للعهدة بالـ account_id مباشرة (بدل البحث بالكود)
+    // ✅ قيد محاسبي للعهدة مع إنشاء حساب فرعي للموظف تلقائياً
     if (form.cash_account_id) {
       const cashAcc = cashAccounts.find((a: any) => a.id === Number(form.cash_account_id))
-
-      // جلب account_id للصندوق/البنك المختار
       const cashAccountId = cashAcc?.account_id || null
 
-      // جلب account_id لحساب العهد (1310 أو 2210)
-      const custodyAccountCode = form.custody_type === 'سلفة راتب' ? '1320' : '1310'
-      const { data: custodyAccData } = await supabase
+      // تحديد الحساب الرئيسي: 1150 عهد أو 1160 سلف
+      const parentCode = form.custody_type === 'سلفة راتب' ? '1160' : '1150'
+      const parentLabel = form.custody_type === 'سلفة راتب' ? 'سلف الرواتب' : 'عهد الموظفين'
+
+      // جلب الحساب الرئيسي
+      const { data: parentAcc } = await supabase
+        .from('finance_accounts')
+        .select('id, code')
+        .eq('tenant_id', tenantId)
+        .eq('code', parentCode)
+        .single()
+
+      if (!parentAcc) {
+        toast.error(`حساب ${parentCode} (${parentLabel}) غير موجود في شجرة الحسابات`)
+        setSaving(false); return
+      }
+
+      // البحث عن حساب فرعي للموظف أو إنشاؤه
+      const empAccountName = `${form.custody_type === 'سلفة راتب' ? 'سلفة' : 'عهدة'} — ${form.employee_name}`
+      let empAccountId: number | null = null
+
+      // هل يوجد حساب لهذا الموظف مسبقاً؟
+      const { data: existingAcc } = await supabase
         .from('finance_accounts')
         .select('id')
         .eq('tenant_id', tenantId)
-        .eq('code', custodyAccountCode)
+        .eq('parent_id', parentAcc.id)
+        .eq('name', empAccountName)
         .single()
-      const custodyAccountId = custodyAccData?.id || null
 
-      if (custodyAccountId && cashAccountId) {
-        // إنشاء القيد مباشرة بالـ account_id بدون البحث بالكود
-        const { count } = await supabase.from('finance_journal_entries')
-          .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-        const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-
-        const { data: entry } = await supabase.from('finance_journal_entries').insert({
-          tenant_id: tenantId,
-          entry_number: entryNumber,
-          entry_date: form.custody_date,
-          description: `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
-          reference_type: 'عهدة',
-          total_debit: Number(form.amount),
-          total_credit: Number(form.amount),
-          status: 'معتمد',
-          entry_source: 'آلي',
-        }).select('id').single()
-
-        if (entry) {
-          await supabase.from('finance_journal_lines').insert([
-            { entry_id: entry.id, account_id: custodyAccountId, debit: Number(form.amount), credit: 0, description: `${form.custody_type}: ${form.employee_name}` },
-            { entry_id: entry.id, account_id: cashAccountId,    debit: 0, credit: Number(form.amount), description: form.purpose },
-          ])
-        }
+      if (existingAcc) {
+        empAccountId = existingAcc.id
       } else {
-        console.warn('حسابات العهدة غير موجودة — يرجى إضافة حساب', custodyAccountCode, 'في شجرة الحسابات')
-        toast.error(`يرجى إضافة حساب ${custodyAccountCode} في شجرة الحسابات أولاً`)
+        // إنشاء حساب فرعي جديد للموظف
+        const { data: siblings } = await supabase
+          .from('finance_accounts')
+          .select('code')
+          .eq('tenant_id', tenantId)
+          .eq('parent_id', parentAcc.id)
+          .order('code', { ascending: false })
+          .limit(1)
+
+        // الكود التالي: مثلاً 1150 → 1151، 1152، 1153...
+        const lastCode = siblings?.[0]?.code
+        const nextNum = lastCode
+          ? String(parseInt(lastCode) + 1)
+          : `${parentCode}1`
+
+        const { data: newAcc } = await supabase
+          .from('finance_accounts')
+          .insert({
+            tenant_id:      tenantId,
+            code:           nextNum,
+            name:           empAccountName,
+            account_type:   'أصول',
+            account_class:  'ميزانية',
+            parent_id:      parentAcc.id,
+            level:          4,
+            is_parent:      false,
+            normal_balance: 'مدين',
+            is_active:      true,
+          })
+          .select('id')
+          .single()
+
+        empAccountId = newAcc?.id || null
+      }
+
+      if (!empAccountId || !cashAccountId) {
+        toast.error('تعذّر إنشاء حساب الموظف في شجرة الحسابات')
+        setSaving(false); return
+      }
+
+      // إنشاء القيد المحاسبي
+      const { count } = await supabase.from('finance_journal_entries')
+        .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+      const { data: entry } = await supabase.from('finance_journal_entries').insert({
+        tenant_id:    tenantId,
+        entry_number: entryNumber,
+        entry_date:   form.custody_date,
+        description:  `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
+        reference_type: 'عهدة',
+        total_debit:  Number(form.amount),
+        total_credit: Number(form.amount),
+        status:       'معتمد',
+        entry_source: 'آلي',
+      }).select('id').single()
+
+      if (entry) {
+        await supabase.from('finance_journal_lines').insert([
+          { entry_id: entry.id, account_id: empAccountId,  debit: Number(form.amount), credit: 0,                   description: `${form.custody_type}: ${form.employee_name}` },
+          { entry_id: entry.id, account_id: cashAccountId, debit: 0,                   credit: Number(form.amount), description: form.purpose },
+        ])
       }
     }
 
