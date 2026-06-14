@@ -340,7 +340,7 @@ export default function EmployeeProfilePage() {
         .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('year', { ascending: false }).order('month', { ascending: false }).limit(6),
       supabase.from('hr_documents')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', empId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('expiry_date'),
     ])
 
@@ -355,7 +355,7 @@ export default function EmployeeProfilePage() {
       .from('hr_emergency_contacts')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('employee_id', Number(id))
+      .eq('employee_id', hrEmpId)
       .order('priority', { ascending: true })
     setEmergencyContacts(emergencyData || [])
 
