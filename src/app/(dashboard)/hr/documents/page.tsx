@@ -285,8 +285,15 @@ export default function DocumentsPage() {
   async function handleSave(data: any) {
     if (!tenant) return
     const payload = { ...data, tenant_id: tenant.id }
-    if (data.id) await supabase.from('hr_documents').update(payload).eq('id', data.id)
-    else await supabase.from('hr_documents').insert(payload)
+    let error = null
+    if (data.id) {
+      const res = await supabase.from('hr_documents').update(payload).eq('id', data.id)
+      error = res.error
+    } else {
+      const res = await supabase.from('hr_documents').insert(payload)
+      error = res.error
+    }
+    if (error) { toast.error('حدث خطأ: ' + error.message); return }
     await load()
     setShowModal(false); setEditDoc(null)
     toast.success('تم الحفظ ✅')
@@ -319,10 +326,7 @@ export default function DocumentsPage() {
 
   // ── وثائق الموظف المختار ──
   const empDocs = selectedEmpId
-    ? docs.filter(d => {
-        const emp = hrEmployees.find(e => e.employee_id === selectedEmpId)
-        return d.employee_id === selectedEmpId || d.employee_id === emp?.employee_id
-      })
+    ? docs.filter(d => d.employee_id === selectedEmpId)
     : []
 
   // ── وثائق التنبيهات مرتبة ──
