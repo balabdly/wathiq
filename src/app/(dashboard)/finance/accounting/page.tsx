@@ -43,6 +43,7 @@ type AccountLedgerLine = {
   credit: number
   entry_source: string
   reference_type?: string
+  reference_id?: number
   running_balance: number
 }
 
@@ -257,7 +258,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
       .select(`
         id, debit, credit, description,
         finance_journal_entries!inner(
-          id, entry_number, entry_date, description, reference_type, entry_source, tenant_id
+          id, entry_number, entry_date, description, reference_type, reference_id, entry_source, tenant_id
         )
       `)
       .eq('account_id', account.id)
@@ -279,6 +280,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
           debit, credit,
           entry_source:    entry.entry_source || 'آلي',
           reference_type:  entry.reference_type,
+          reference_id:    entry.reference_id,
           running_balance: balance,
         }
       })
