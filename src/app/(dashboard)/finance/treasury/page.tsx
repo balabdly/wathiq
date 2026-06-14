@@ -541,27 +541,51 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
       })
     }
 
-    // ✅ قيد محاسبي للعهدة: مدين حساب العهد الموظفين / دائن الصندوق أو البنك
+    // ✅ قيد محاسبي للعهدة بالـ account_id مباشرة (بدل البحث بالكود)
     if (form.cash_account_id) {
       const cashAcc = cashAccounts.find((a: any) => a.id === Number(form.cash_account_id))
-      const cashCode = cashAcc?.account_id
-        ? await (async () => {
-            const { data } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
-            return data?.code || '1111'
-          })()
-        : '1111'
-      // حساب العهد الموظفين — 1310 (سلفة موظفين)
-      const custodyCode = form.custody_type === 'سلفة راتب' ? '2210' : '1310'
-      await createJournalEntry(tenantId, {
-        date: form.custody_date,
-        description: `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
-        referenceType: 'عهدة',
-        referenceId: undefined,
-        lines: [
-          { accountCode: custodyCode, debit: Number(form.amount), credit: 0, description: `${form.custody_type}: ${form.employee_name}` },
-          { accountCode: cashCode,   debit: 0, credit: Number(form.amount), description: form.purpose },
-        ]
-      })
+
+      // جلب account_id للصندوق/البنك المختار
+      const cashAccountId = cashAcc?.account_id || null
+
+      // جلب account_id لحساب العهد (1310 أو 2210)
+      const custodyAccountCode = form.custody_type === 'سلفة راتب' ? '2210' : '1310'
+      const { data: custodyAccData } = await supabase
+        .from('finance_accounts')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('code', custodyAccountCode)
+        .single()
+      const custodyAccountId = custodyAccData?.id || null
+
+      if (custodyAccountId && cashAccountId) {
+        // إنشاء القيد مباشرة بالـ account_id بدون البحث بالكود
+        const { count } = await supabase.from('finance_journal_entries')
+          .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+        const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+        const { data: entry } = await supabase.from('finance_journal_entries').insert({
+          tenant_id: tenantId,
+          entry_number: entryNumber,
+          entry_date: form.custody_date,
+          description: `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
+          reference_type: 'عهدة',
+          total_debit: Number(form.amount),
+          total_credit: Number(form.amount),
+          status: 'معتمد',
+          entry_source: 'آلي',
+        }).select('id').single()
+
+        if (entry) {
+          await supabase.from('finance_journal_lines').insert([
+            { entry_id: entry.id, account_id: custodyAccountId, debit: Number(form.amount), credit: 0, description: `${form.custody_type}: ${form.employee_name}` },
+            { entry_id: entry.id, account_id: cashAccountId,    debit: 0, credit: Number(form.amount), description: form.purpose },
+          ])
+        }
+      } else {
+        console.warn('حسابات العهدة غير موجودة — يرجى إضافة حساب', custodyAccountCode, 'في شجرة الحسابات')
+        toast.error(`يرجى إضافة حساب ${custodyAccountCode} في شجرة الحسابات أولاً`)
+      }
     }
 
     toast.success('✅ تم إصدار العهدة وتسجيل القيد المحاسبي')
@@ -798,7 +822,7 @@ export default function FinanceTreasuryPage() {
       supabase.from('finance_accounts').select('id,code,name').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
       supabase.from('finance_cost_centers').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('hr_employees').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('hr_employees').select('id, employee_id, employee:employees!hr_employees_employee_id_fkey(name)').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('finance_clients').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
@@ -815,7 +839,10 @@ export default function FinanceTreasuryPage() {
     setAccounts(accRes.data || [])
     setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
-    setEmployees(empRes.data || [])
+    setEmployees((empRes.data || []).map((e: any) => ({
+      id: e.id,
+      name: Array.isArray(e.employee) ? e.employee[0]?.name : e.employee?.name || '—',
+    })).filter(e => e.name !== '—'))
     setClients(clientsRes.data || [])
     setVendors(vendorsRes.data || [])
     setLoading(false)
