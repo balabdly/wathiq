@@ -1069,7 +1069,7 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 
   const selectedHR = hrEmployees.find(e => e.id === Number(form.hr_employee_id))
   const gratuity = selectedHR && form.last_working_day
-    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, selectedHR.basic_salary, form.termination_type)
+    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, Number(selectedHR.basic_salary || 0), form.termination_type)
     : null
 
   useEffect(() => { loadData() }, [])
