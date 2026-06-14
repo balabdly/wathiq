@@ -118,8 +118,8 @@ export default function ReportsHRPage() {
   async function loadEmployees() {
     if (empLoaded || !tenant) return
     const { data } = await supabase
-      .from('hr_employees')
-      .select('id, name, employee_number')
+      .from('employees')
+      .select('id, name')
       .eq('tenant_id', tenant.id)
       .eq('is_active', true)
       .order('name')
@@ -170,13 +170,22 @@ export default function ReportsHRPage() {
     else if (selected === 'payroll') {
       const { data } = await supabase
         .from('hr_payroll')
-        .select('*, employee:hr_employees!hr_payroll_employee_id_fkey(name, employee_number, job_title, department)')
+        .select('*, employee:employees!hr_payroll_employee_id_fkey(id, name, hr_employee_id, hr_emp:hr_employees(employee_number, job_title, department))')
         .eq('tenant_id', tenant.id)
         .eq('month', Number(fMonth))
         .eq('year', Number(fYear))
         .order('created_at')
 
-      const rows = data || []
+      // دمج بيانات الموظف من employees + hr_employees
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        employee: {
+          name:            r.employee?.name || '—',
+          employee_number: r.employee?.hr_emp?.employee_number || '—',
+          job_title:       r.employee?.hr_emp?.job_title || '—',
+          department:      r.employee?.hr_emp?.department || '—',
+        }
+      }))
       const totalGross = rows.reduce((s, r) => s + Number(r.gross_salary || 0), 0)
       const totalDeduct = rows.reduce((s, r) => s + Number(r.gosi_deduction || 0) + Number(r.absence_deduct || 0) + Number(r.other_deduct || 0), 0)
       const totalNet = rows.reduce((s, r) => s + Number(r.net_salary || 0), 0)
@@ -214,13 +223,20 @@ export default function ReportsHRPage() {
     else if (selected === 'leaves') {
       let q = supabase
         .from('hr_leaves')
-        .select('*, employee:hr_employees!hr_leaves_employee_id_fkey(name, employee_number, department)')
+        .select('*, employee:employees!hr_leaves_employee_id_fkey(name, hr_emp:hr_employees(employee_number, department))')
         .eq('tenant_id', tenant.id)
       if (fDateFrom) q = q.gte('start_date', fDateFrom)
       if (fDateTo)   q = q.lte('end_date', fDateTo)
       const { data } = await q.order('start_date', { ascending: false })
 
-      const rows = data || []
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        employee: {
+          name:            r.employee?.name || '—',
+          employee_number: r.employee?.hr_emp?.employee_number || '—',
+          department:      r.employee?.hr_emp?.department || '—',
+        }
+      }))
       const totalDays   = rows.reduce((s, r) => s + Number(r.days || 0), 0)
       const approvedDays = rows.filter(r => r.status === 'موافق').reduce((s, r) => s + Number(r.days || 0), 0)
       setSummary({ 'إجمالي الطلبات': rows.length, 'إجمالي الأيام': totalDays, 'أيام موافق عليها': approvedDays })
@@ -231,14 +247,20 @@ export default function ReportsHRPage() {
     else if (selected === 'attendance') {
       let q = supabase
         .from('hr_attendance')
-        .select('*, employee:hr_employees!hr_attendance_employee_id_fkey(name, employee_number)')
+        .select('*, employee:employees!hr_attendance_employee_id_fkey(name, hr_emp:hr_employees(employee_number))')
         .eq('tenant_id', tenant.id)
       if (fDateFrom)  q = q.gte('date', fDateFrom)
       if (fDateTo)    q = q.lte('date', fDateTo)
       if (fEmployee)  q = q.eq('employee_id', Number(fEmployee))
       const { data } = await q.order('date', { ascending: false }).limit(500)
 
-      const rows = data || []
+      const rows = (data || []).map((r: any) => ({
+        ...r,
+        employee: {
+          name:            r.employee?.name || '—',
+          employee_number: r.employee?.hr_emp?.employee_number || '—',
+        }
+      }))
       const present = rows.filter(r => r.status === 'حاضر').length
       const absent  = rows.filter(r => r.status === 'غائب').length
       setSummary({ 'إجمالي السجلات': rows.length, 'حاضر': present, 'غائب': absent })
