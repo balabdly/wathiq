@@ -8,21 +8,22 @@ import { Users, Plus, Search, Pencil, X, Save, AlertTriangle, Trash2, LogOut, Bu
 import toast from 'react-hot-toast'
 
 type HREmployee = {
-  id: number; tenant_id: string; employee_id: number
+  id: number; tenant_id: string; employee_id?: number
   employee_number?: string
+  name?: string                // الاسم المدمج من hr_employees
   first_name?: string; father_name?: string
   grandfather_name?: string; family_name?: string
   first_name_en?: string; family_name_en?: string
-  national_id?: string; nationality: string; birth_date?: string
-  gender: string; marital_status: string; hire_date?: string
-  contract_type: string; job_title?: string; department?: string
+  national_id?: string; nationality?: string; birth_date?: string
+  gender?: string; marital_status?: string; hire_date?: string
+  contract_type?: string; job_title?: string; department?: string
   work_location?: string
-  basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
-  gosi_enrolled: boolean; gosi_pct: number
+  basic_salary?: number; housing_allow?: number; transport_allow?: number; other_allow?: number
+  gosi_enrolled?: boolean; gosi_pct?: number
   iqama_number?: string; iqama_expiry?: string
+  passport_number?: string; passport_expiry?: string
   bank_name?: string; iban?: string; notes?: string
   is_active: boolean; direct_manager?: number
-  employee?: { name: string; role: string }
 }
 
 type Department = {
@@ -1787,11 +1788,11 @@ export default function HRPage() {
                   </thead>
                   <tbody>
                     {filtered.map((emp, idx) => {
-                      const totalSal = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
+                      const totalSal = Number(emp.basic_salary || 0) + Number(emp.housing_allow || 0) + Number(emp.transport_allow || 0) + Number(emp.other_allow || 0)
                       const iqamaDays = emp.iqama_expiry
                         ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000)
                         : null
-                      const gosi = calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow, emp.transport_allow)
+                      const gosi = calcGOSI(emp.nationality || '', Number(emp.basic_salary || 0), Number(emp.housing_allow || 0), Number(emp.transport_allow || 0))
                       const netSal = totalSal - (emp.gosi_enrolled ? gosi.employeeDeduction : 0)
                       const isSaudi = emp.nationality === 'سعودي'
                       const empName = emp.name || '—'
@@ -1840,7 +1841,7 @@ export default function HRPage() {
                                   <div style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px' }}>📍 {emp.work_location}</div>
                                 )}
                                 <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
-                                  {emp.contract_type}
+                                  {emp.contract_type || '—'}
                                 </div>
                               </div>
                             </div>
@@ -1855,7 +1856,7 @@ export default function HRPage() {
                           {/* الجنسية */}
                           <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                             <span className={`badge text-xs ${isSaudi ? 'badge-blue' : 'badge-amber'}`}>
-                              {isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality}`}
+                              {isSaudi ? '🇸🇦 سعودي' : `🌍 ${emp.nationality || "وافد"}`}
                             </span>
                             {iqamaWarning && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.7rem', color: iqamaDays! <= 0 ? '#c81e1e' : '#e6820a' }}>
@@ -1872,8 +1873,8 @@ export default function HRPage() {
 
                           {/* الراتب الأساسي */}
                           <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{emp.basic_salary.toLocaleString()} ر.س</div>
-                            {totalSal !== emp.basic_salary && (
+                            <div style={{ fontWeight: 600, color: 'var(--text)' }}>{Number(emp.basic_salary || 0).toLocaleString()} ر.س</div>
+                            {totalSal !== Number(emp.basic_salary || 0) && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>إجمالي: {totalSal.toLocaleString()}</div>
                             )}
                           </td>
