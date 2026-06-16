@@ -340,6 +340,80 @@ function MaterialEditModal({ material, warehouses, onClose, onSave }: {
 // ══════════════════════════════════════════
 // مودال: عملية (استلام/صرف/إرجاع/تحويل)
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// دالة طباعة وصل العملية
+// ══════════════════════════════════════════
+function printOperationReceipt({ type, warehouseName, projectName, date, rows, vendorName, docCode, bookingNo, clientName, exitPermitNo, txnNumber }: {
+  type: string; warehouseName: string; projectName: string; date: string
+  rows: { name: string; unit: string; qty: number; note: string }[]
+  vendorName?: string; docCode?: string; bookingNo?: string
+  clientName?: string; exitPermitNo?: string; txnNumber?: string
+}) {
+  const win = window.open('', '_blank', 'width=700,height=600')
+  if (!win) return
+  const color = type === 'استلام' ? '#0ea77b' : type === 'إرجاع' || type === 'إرجاع للعميل' ? '#e6820a' : '#c81e1e'
+  const title = type === 'استلام' ? 'وصل استلام مواد' : type === 'إرجاع' || type === 'إرجاع للعميل' ? 'وصل إرجاع مواد للعميل' : 'أذن صرف مواد'
+  const rowsHtml = rows.map((r, i) => `
+    <tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#f8fafc'}">
+      <td style="padding:8px 10px">${r.name}</td>
+      <td style="padding:8px 10px;text-align:center;font-weight:700">${r.qty}</td>
+      <td style="padding:8px 10px;text-align:center;color:#6b7280">${r.unit}</td>
+      <td style="padding:8px 10px;color:#6b7280">${r.note || '—'}</td>
+    </tr>`).join('')
+  win.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>${title}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#1a1a2e;direction:rtl;padding:24px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid ${color}}
+  .badge{background:${color};color:white;padding:10px 18px;border-radius:10px;text-align:center}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  thead tr{background:${color};color:white}
+  th{padding:9px 10px;text-align:right;font-size:13px}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;font-size:13px}
+  .info-item{background:#f8fafc;padding:8px 12px;border-radius:8px}
+  .info-label{color:#9ca3af;font-size:11px;margin-bottom:2px}
+  .info-value{font-weight:600}
+  .footer{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px}
+  .sign-box{border-top:1px solid #e5e7eb;padding-top:8px;text-align:center;color:#6b7280}
+  @media print{.noprint{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body>
+<div class="header">
+  <div>
+    <div style="font-size:22px;font-weight:800;color:${color}">${title}</div>
+    <div style="font-size:12px;color:#9ca3af;margin-top:4px">${new Date().toLocaleString('ar-SA')}</div>
+    ${txnNumber ? `<div style="font-size:13px;color:${color};font-weight:700;margin-top:4px;direction:ltr"># ${txnNumber}</div>` : ''}
+  </div>
+  <div class="badge">
+    <div style="font-size:11px;opacity:0.85">${type}</div>
+    <div style="font-size:15px;font-weight:800">${date}</div>
+  </div>
+</div>
+<div class="info-grid">
+  ${warehouseName ? `<div class="info-item"><div class="info-label">المستودع</div><div class="info-value">${warehouseName}</div></div>` : ''}
+  ${projectName   ? `<div class="info-item"><div class="info-label">المشروع</div><div class="info-value">${projectName}</div></div>` : ''}
+  ${clientName    ? `<div class="info-item"><div class="info-label">العميل</div><div class="info-value">${clientName}</div></div>` : ''}
+  ${exitPermitNo  ? `<div class="info-item"><div class="info-label">رقم إذن الخروج</div><div class="info-value" style="direction:ltr">${exitPermitNo}</div></div>` : ''}
+  ${bookingNo     ? `<div class="info-item"><div class="info-label">رقم الحجز</div><div class="info-value" style="direction:ltr">${bookingNo}</div></div>` : ''}
+  ${vendorName    ? `<div class="info-item"><div class="info-label">المورد</div><div class="info-value">${vendorName}</div></div>` : ''}
+  ${docCode       ? `<div class="info-item"><div class="info-label">رقم الوثيقة</div><div class="info-value" style="direction:ltr">${docCode}</div></div>` : ''}
+</div>
+<table>
+  <thead><tr><th>اسم المادة</th><th style="text-align:center">الكمية</th><th style="text-align:center">الوحدة</th><th>ملاحظة</th></tr></thead>
+  <tbody>${rowsHtml}</tbody>
+</table>
+<div class="footer">
+  <div class="sign-box">توقيع المستلم</div>
+  <div class="sign-box">توقيع المسلّم</div>
+</div>
+<div class="noprint" style="text-align:center;padding:16px;margin-top:16px;border-top:1px solid #e5e7eb">
+  <button onclick="window.print()" style="padding:10px 28px;background:${color};color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600;margin-left:10px">🖨️ طباعة</button>
+  <button onclick="window.close()" style="padding:10px 20px;background:#6b7280;color:white;border:none;border-radius:8px;cursor:pointer;font-size:15px">إغلاق</button>
+</div>
+</body></html>`)
+  win.document.close()
+}
+
 function OperationModal({ type, tenantId, branchId, warehouses, projects, onClose, onSave }: {
   type: 'استلام' | 'صرف' | 'إرجاع' | 'تحويل'
   tenantId: string; branchId: number
@@ -559,6 +633,32 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
     setSaving(false)
     toast.success(type + ' تم بنجاح ✅')
+
+    // جلب رقم العملية وطباعة الوصل
+    if (type === 'استلام' || type === 'صرف' || type === 'إرجاع') {
+      const { data: lastEntry } = await supabase.from('stock_ledger')
+        .select('txn_number').eq('tenant_id', tenantId)
+        .order('id', { ascending: false }).limit(1).maybeSingle()
+      const wh   = warehouses.find(w => w.id === Number(form.warehouse_id))
+      const proj = projects.find((p: any) => p.id === Number(form.project_id))
+      printOperationReceipt({
+        type,
+        warehouseName: wh?.name    || '',
+        projectName:   proj?.name  || form.project_name || '',
+        date:          form.date,
+        rows: validRows.map(r => {
+          const mat = materials.find(m => String(m.id) === String(r.mat_id))
+          return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
+        }),
+        vendorName:   form.vendor_name     || '',
+        docCode:      form.doc_code        || '',
+        bookingNo:    form.booking_no      || '',
+        clientName:   form.client_name_recv || '',
+        exitPermitNo: form.exit_permit_no  || '',
+        txnNumber:    lastEntry?.txn_number || '',
+      })
+    }
+
     onSave(); onClose()
   }
 
