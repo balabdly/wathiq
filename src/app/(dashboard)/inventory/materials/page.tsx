@@ -356,16 +356,16 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   const [form, setForm] = useState({
     warehouse_id:    warehouses[0]?.id ? String(warehouses[0].id) : '',
     to_warehouse_id: '', project_id: '', project_name: '',
-    vendor_name: '', doc_code: '', booking_no: '', client_name: '',
+    vendor_name: '', doc_code: '', booking_no: '',
+    client_name_recv: '', exit_permit_no: '',
     date: new Date().toISOString().split('T')[0], return_type: '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
-  const whMode                   = selectedWh?.mode || 'عام'
-  const isProjectWh              = whMode === 'مشاريع'
-  const showProjectOnReceive     = whMode === 'مشاريع' || whMode === 'مرن'
-  const projectRequiredOnReceive = whMode === 'مشاريع'
+  const isProjectWh              = (selectedWh as any)?.wh_category === 'مشاريع'
+  const showProjectOnReceive     = isProjectWh
+  const projectRequiredOnReceive = isProjectWh
 
   useEffect(() => { if (form.warehouse_id) loadMats() }, [form.warehouse_id])
   useEffect(() => {
@@ -400,13 +400,14 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
   async function handleSave() {
     let effectiveRows = rows
-    if (type === 'صرف' && isProjectWh && form.project_id && Object.keys(directQtys).length > 0) {
+    if (isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع') && Object.keys(directQtys).length > 0) {
       effectiveRows = Object.entries(directQtys).filter(([, qty]) => Number(qty) > 0)
         .map(([matId, qty]) => ({ mat_id: matId, qty, note: '' }))
     }
     const validRows = effectiveRows.filter(r => r.mat_id && Number(r.qty) > 0)
-    if (validRows.length === 0) { toast.error('أضف مادة واحدة على الأقل بكمية صحيحة'); return }
-    if ((type === 'صرف' || type === 'إرجاع') && !form.project_id) { toast.error('اسم المشروع مطلوب'); return }
+    if (validRows.length === 0) { toast.error('أدخل كمية لمادة واحدة على الأقل'); return }
+    if (type === 'صرف' && !form.project_id) { toast.error('اسم المشروع مطلوب'); return }
+    if (type === 'إرجاع' && !form.project_id && isProjectWh) { toast.error('اختر المشروع'); return }
     if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) { toast.error('المشروع إلزامي لهذا المستودع'); return }
     if (type === 'تحويل' && !form.to_warehouse_id) { toast.error('اختر المستودع المستلم'); return }
     if (type === 'إرجاع' && !form.return_type) { toast.error('يجب تحديد نوع الإرجاع'); return }
@@ -483,14 +484,15 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         mat_name: mat.name, mat_code: mat.mat_code || null,
         unit: mat.unit, qty, qty_before: qtyBefore, qty_after: qtyAfter,
         wh_name: wh?.name || '',
-        project_id:   form.project_id   ? Number(form.project_id) : null,
-        project_name: form.project_name || null,
-        vendor_name:  form.vendor_name  || null,
-        doc_code:     form.doc_code     || null,
-        booking_no:   form.booking_no   || null,
-        client_name:  form.client_name  || null,
-        dispatch_note: row.note         || null,
-        attachment_url: attachmentUrl,
+        project_id:       form.project_id        ? Number(form.project_id) : null,
+        project_name:     form.project_name       || null,
+        vendor_name:      form.vendor_name        || null,
+        client_name:      form.client_name_recv   || null,
+        exit_permit_no:   form.exit_permit_no     || null,
+        doc_code:         form.doc_code           || null,
+        booking_no:       form.booking_no         || null,
+        dispatch_note:    row.note                || null,
+        attachment_url:   attachmentUrl,
       })
 
       // ── تحديث project_materials ──
@@ -619,12 +621,16 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>نوع الإرجاع <span style={{ color: '#c81e1e' }}>*</span></label>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {[{ val: 'فائض', desc: 'مواد غير مستخدمة ترجع للمستودع', color: '#0ea77b' }, { val: 'سكراب', desc: 'مواد تالفة أو مرجعة للعميل', color: '#c81e1e' }].map(rt => (
+                {[
+                  { val: 'فائض',  desc: 'مواد فائضة ترجع للعميل',  color: '#e6820a', icon: '↩️' },
+                  { val: 'سكراب', desc: 'مواد تالفة فقط',           color: '#c81e1e', icon: '🗑️' },
+                ].map(rt => (
                   <button key={rt.val} type="button" onClick={() => set('return_type', rt.val)}
                     style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', textAlign: 'center',
                       borderColor: form.return_type === rt.val ? rt.color : '#e5e7eb',
                       background: form.return_type === rt.val ? rt.color + '10' : 'white',
                       color: form.return_type === rt.val ? rt.color : '#9ca3af' }}>
+                    <div style={{ fontSize: '1.2rem', marginBottom: '4px' }}>{rt.icon}</div>
                     <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{rt.val}</div>
                     <div style={{ fontSize: '0.68rem', opacity: 0.8, marginTop: '3px' }}>{rt.desc}</div>
                   </button>
@@ -634,44 +640,85 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
           )}
 
           {/* حقول إضافية */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            {type === 'استلام' && (<>
+          {type === 'استلام' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {isProjectWh ? (<>
+                {/* مستودع مشاريع: العميل + رقم إذن الخروج + رقم الحجز */}
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>اسم العميل</label>
+                  <input value={form.client_name_recv} onChange={e => set('client_name_recv', e.target.value)} className="input" placeholder="اسم العميل صاحب المواد" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم إذن الخروج</label>
+                  <input value={form.exit_permit_no} onChange={e => set('exit_permit_no', e.target.value)} className="input" placeholder="رقم إذن خروج المواد" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم الحجز</label>
+                  <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)} className="input" placeholder="رقم حجز العميل" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>
+                  <input value={form.doc_code} onChange={e => set('doc_code', e.target.value)} className="input" placeholder="رقم المستند" />
+                </div>
+              </>) : (<>
+                {/* مستودع عام: المورد + رقم المستند */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المورد</label>
+                  <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} className="input" placeholder="اسم المورد" />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>
+                  <input value={form.doc_code} onChange={e => set('doc_code', e.target.value)} className="input" placeholder="رقم الفاتورة أو أمر الشراء" />
+                </div>
+              </>)}
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المورد</label>
-                <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} className="input" placeholder="اسم المورد" />
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
+                <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" />
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>
-                <input value={form.doc_code} onChange={e => set('doc_code', e.target.value)} className="input" placeholder="رقم الفاتورة أو أمر الشراء" />
-              </div>
-            </>)}
+            </div>
+          )}
+          {type !== 'استلام' && (
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
               <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" />
             </div>
-          </div>
+          )}
 
           {/* المواد */}
           {isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع') ? (
             <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px', color: '#1a56db' }}>مواد المشروع — أدخل الكميات:</label>
-              {materials.filter(m => (projectBalances[m.id] ?? 0) > 0).length === 0 ? (
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px', color: '#1a56db' }}>
+                {type === 'صرف' ? 'مواد المشروع — أدخل الكميات المصروفة:' : 'مواد المشروع — أدخل الكميات المُرجعة (اختياري):'}
+              </label>
+              {type === 'إرجاع' && (
+                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '8px' }}>
+                  💡 أدخل الكمية فقط للمواد التي تريد إرجاعها — يمكن ترك باقي المواد فارغة
+                </div>
+              )}
+              {Object.keys(projectBalances).length === 0 ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>لا توجد مواد لهذا المشروع في هذا المستودع</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
-                  {materials.filter(m => (projectBalances[m.id] ?? 0) > 0).map(m => (
-                    <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid var(--border)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>متاح: {projectBalances[m.id]} {m.unit}</div>
+                  {Object.entries(projectBalances).map(([matIdStr, balance]) => {
+                    const matId = Number(matIdStr)
+                    const mat   = materials.find(m => m.id === matId)
+                    if (!mat) return null
+                    return (
+                      <div key={matId} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', borderRadius: '8px', background: '#f8fafc', border: '1px solid var(--border)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mat.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: type === 'صرف' ? '#0ea77b' : '#e6820a', fontWeight: 600 }}>
+                            رصيد المشروع: {balance} {mat.unit}
+                          </div>
+                        </div>
+                        <input type="number" value={directQtys[matId] || ''} min="0" max={balance}
+                          onChange={e => setDirectQtys(prev => ({ ...prev, [matId]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                          placeholder="0" style={{ width: '70px', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.82rem', textAlign: 'center' }} />
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '30px' }}>{mat.unit}</span>
                       </div>
-                      <input type="number" value={directQtys[m.id] || ''} min="0" max={projectBalances[m.id]}
-                        onChange={e => setDirectQtys(prev => ({ ...prev, [m.id]: e.target.value }))}
-                        onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
-                        placeholder="0" style={{ width: '70px', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.82rem', textAlign: 'center' }} />
-                      <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '30px' }}>{m.unit}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -683,7 +730,11 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <select value={row.mat_id} onChange={e => setRow(i, 'mat_id', e.target.value)} className="select" style={{ flex: 2 }}>
                       <option value="">— اختر مادة —</option>
-                      {materials.map(m => <option key={m.id} value={m.id}>{m.name} ({m.qty} {m.unit})</option>)}
+                      {materials.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}{!isProjectWh ? ` (${m.qty} ${m.unit})` : ''}
+                        </option>
+                      ))}
                     </select>
                     <input type="number" value={row.qty} onChange={e => setRow(i, 'qty', e.target.value)} className="input" placeholder="الكمية" min="0" style={{ width: '90px' }} />
                     <input value={row.note} onChange={e => setRow(i, 'note', e.target.value)} className="input" placeholder="بيان" style={{ flex: 1 }} />
@@ -759,7 +810,8 @@ export default function InventoryMaterialsPage() {
     if (!tenant) return
     const [whRes, projRes] = await Promise.all([
       supabase.from('warehouses').select('*').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('projects').select('id, name, status').eq('tenant_id', tenant.id)
+        .not('status', 'eq', 'مكتمل').order('name'),
     ])
     setWarehouses(whRes.data || [])
     setProjects(projRes.data || [])

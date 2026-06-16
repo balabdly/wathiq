@@ -325,7 +325,10 @@ export default function InventoryProjectsPage() {
     if (projectIds.length === 0) { setLoading(false); return }
 
     const [projRes, allPM, adjRes] = await Promise.all([
-      supabase.from('projects').select('id, name, status, location').in('id', projectIds).order('name'),
+      supabase.from('projects').select('id, name, status, location')
+        .in('id', projectIds)
+        .neq('status', 'مكتمل')  // إخفاء المكتملة
+        .order('name'),
       supabase.from('project_materials').select('qty_balance').eq('tenant_id', tenant.id),
       supabase.from('project_material_adjustments')
         .select('status, total_amount').eq('tenant_id', tenant.id),
