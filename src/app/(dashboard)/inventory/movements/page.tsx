@@ -16,16 +16,33 @@ type LedgerEntry = {
   wh_name: string; project_name?: string; dispatch_note?: string
   vendor_name?: string; doc_code?: string; booking_no?: string
   client_name?: string; created_at: string; attachment_url?: string
-  txn_number?: string
+  txn_number?: string; movement_category?: string
 }
 
-const MOVEMENT_META: Record<string, { color: string; bg: string; border: string; icon: any; sign: string }> = {
-  'استلام':        { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: ArrowDownToLine, sign: '+' },
-  'صرف':           { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', icon: ArrowUpFromLine, sign: '-' },
-  'إرجاع':         { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: RotateCcw,       sign: '+' },
-  'إرجاع للعميل':  { color: '#e6820a', bg: '#fffbeb', border: '#fde68a', icon: RotateCcw,       sign: '-' },
-  'تحويل':         { color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc', icon: ArrowLeftRight,  sign: '±' },
-  'تسوية جرد':     { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', icon: Package,         sign: '~' },
+const MOVEMENT_META: Record<string, { color: string; bg: string; border: string; icon: any; sign: string; label: string }> = {
+  // بالنوع الأصلي
+  'استلام':        { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: ArrowDownToLine, sign: '+', label: 'استلام'         },
+  'صرف':           { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', icon: ArrowUpFromLine, sign: '-', label: 'صرف'             },
+  'إرجاع للعميل':  { color: '#e6820a', bg: '#fffbeb', border: '#fde68a', icon: RotateCcw,       sign: '-', label: 'إرجاع للعميل'   },
+  'تحويل':         { color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc', icon: ArrowLeftRight,  sign: '±', label: 'تحويل'          },
+  'تسوية جرد':     { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', icon: Package,         sign: '~', label: 'تسوية جرد'      },
+  // بفئة الحركة (movement_category) — الأولوية لها
+  'استلام_عهدة':   { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: ArrowDownToLine, sign: '+', label: 'استلام عهدة'    },
+  'صرف_عهدة':      { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', icon: ArrowUpFromLine, sign: '-', label: 'صرف عهدة'       },
+  'ارجاع_عميل':    { color: '#e6820a', bg: '#fffbeb', border: '#fde68a', icon: RotateCcw,       sign: '-', label: 'إرجاع للعميل'   },
+  'استلام_مقايسة': { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: ArrowDownToLine, sign: '+', label: 'استلام مقايسة'  },
+  'استلام_عام':    { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: ArrowDownToLine, sign: '+', label: 'استلام عام'     },
+  'صرف_عام':       { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', icon: ArrowUpFromLine, sign: '-', label: 'صرف عام'        },
+  'ارجاع_مستودع':  { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: RotateCcw,       sign: '+', label: 'إرجاع للمستودع' },
+  'تسوية':         { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', icon: Package,         sign: '~', label: 'تسوية'          },
+}
+
+// دالة مساعدة تختار الميتاداتا الصحيحة
+function getMovementMeta(entry: LedgerEntry) {
+  if (entry.movement_category && MOVEMENT_META[entry.movement_category]) {
+    return MOVEMENT_META[entry.movement_category]
+  }
+  return MOVEMENT_META[entry.type] || { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb', icon: Package, sign: '', label: entry.type }
 }
 
 const PAGE_SIZE = 50
@@ -219,16 +236,22 @@ export default function InventoryMovementsPage() {
 
       {/* أنواع الحركات — فلاتر سريعة */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button onClick={() => { setFType(''); setTimeout(() => loadMovements(1), 0) }}
+          style={{ padding: '6px 14px', borderRadius: '20px', border: `1px solid ${fType === '' ? '#1a56db' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, background: fType === '' ? '#eff6ff' : 'transparent', color: fType === '' ? '#1a56db' : 'var(--text3)' }}>
+          الكل
+        </button>
         {[
-          { val: '', label: 'الكل' },
-          ...Object.entries(MOVEMENT_META).map(([val, meta]) => ({ val, label: val, color: meta.color, bg: meta.bg })),
+          { val: 'استلام',       label: 'استلام عام',      color: '#0ea77b', bg: '#ecfdf5' },
+          { val: 'صرف',          label: 'صرف عام',         color: '#c81e1e', bg: '#fef2f2' },
+          { val: 'إرجاع للعميل', label: 'إرجاع للعميل',   color: '#e6820a', bg: '#fffbeb' },
+          { val: 'تحويل',        label: 'تحويل',           color: '#0891b2', bg: '#ecfeff' },
         ].map(opt => (
           <button key={opt.val} onClick={() => { setFType(opt.val); setTimeout(() => loadMovements(1), 0) }}
             style={{
-              padding: '6px 14px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s',
-              borderColor: fType === opt.val ? ((opt as any).color || '#1a56db') : 'var(--border)',
-              background: fType === opt.val ? ((opt as any).bg || '#eff6ff') : 'transparent',
-              color: fType === opt.val ? ((opt as any).color || '#1a56db') : 'var(--text3)',
+              padding: '6px 14px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+              borderColor: fType === opt.val ? opt.color : 'var(--border)',
+              background: fType === opt.val ? opt.bg : 'transparent',
+              color: fType === opt.val ? opt.color : 'var(--text3)',
             }}>
             {opt.label}
           </button>
@@ -304,7 +327,7 @@ export default function InventoryMovementsPage() {
                 </thead>
                 <tbody>
                   {entries.map(e => {
-                    const mv = MOVEMENT_META[e.type] || { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb', icon: Package, sign: '' }
+                    const mv = getMovementMeta(e)
                     const MvIcon = mv.icon
                     return (
                       <tr key={e.id} style={{ borderBottom: '1px solid var(--bg2, #f8fafc)', transition: 'background 0.1s' }}
@@ -315,7 +338,7 @@ export default function InventoryMovementsPage() {
                         <td style={{ padding: '11px 12px' }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: mv.bg, color: mv.color, border: `1px solid ${mv.border}`, borderRadius: '20px', padding: '3px 10px', fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
                             <MvIcon style={{ width: '12px', height: '12px' }} />
-                            {e.type}
+                            {mv.label}
                           </span>
                         </td>
 

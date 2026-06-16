@@ -447,40 +447,92 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
       await supabase.from('materials').update({ qty: qtyAfter }).eq('id', mat.id)
 
-      const ledgerType = type === 'إرجاع'
-        ? (form.return_type === 'فائض' ? 'استلام' : 'إرجاع للعميل')
-        : type === 'تحويل' ? 'صرف' : type
+      // تحديد نوع الحركة وفئتها
+      const isProjectWarehouse = isProjectWh && !!form.project_id
+      let ledgerType: string
+      let movementCategory: string
+
+      if (type === 'استلام') {
+        ledgerType       = 'استلام'
+        movementCategory = isProjectWarehouse ? 'استلام_عهدة' : 'استلام_عام'
+      } else if (type === 'صرف') {
+        ledgerType       = 'صرف'
+        movementCategory = isProjectWarehouse ? 'صرف_عهدة' : 'صرف_عام'
+      } else if (type === 'تحويل') {
+        ledgerType       = 'صرف'
+        movementCategory = 'تحويل'
+      } else if (type === 'إرجاع') {
+        if (form.return_type === 'فائض') {
+          // فائض من مستودع مشاريع → إرجاع للعميل
+          // فائض من مستودع عام → يرجع للمستودع
+          ledgerType       = isProjectWarehouse ? 'إرجاع للعميل' : 'استلام'
+          movementCategory = isProjectWarehouse ? 'ارجاع_عميل' : 'ارجاع_مستودع'
+        } else {
+          // سكراب
+          ledgerType       = 'إرجاع للعميل'
+          movementCategory = 'ارجاع_عميل'
+        }
+      } else {
+        ledgerType = type; movementCategory = 'استلام_عام'
+      }
 
       await supabase.from('stock_ledger').insert({
         tenant_id: tenantId, branch_id: branchId,
-        type: ledgerType, mat_name: mat.name, mat_code: mat.mat_code || null,
+        type: ledgerType,
+        movement_category: movementCategory,
+        mat_name: mat.name, mat_code: mat.mat_code || null,
         unit: mat.unit, qty, qty_before: qtyBefore, qty_after: qtyAfter,
-        wh_name: wh?.name || '', project_id: form.project_id ? Number(form.project_id) : null,
-        project_name: form.project_name || null, vendor_name: form.vendor_name || null,
-        doc_code: form.doc_code || null, booking_no: form.booking_no || null,
-        client_name: form.client_name || null, dispatch_note: row.note || null,
+        wh_name: wh?.name || '',
+        project_id:   form.project_id   ? Number(form.project_id) : null,
+        project_name: form.project_name || null,
+        vendor_name:  form.vendor_name  || null,
+        doc_code:     form.doc_code     || null,
+        booking_no:   form.booking_no   || null,
+        client_name:  form.client_name  || null,
+        dispatch_note: row.note         || null,
         attachment_url: attachmentUrl,
       })
 
+      // ── تحديث project_materials ──
       if (type === 'استلام' && form.project_id) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
           .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
         if (pm) {
-          await supabase.from('project_materials').update({ qty_received: pm.qty_received + qty, qty_balance: pm.qty_balance + qty }).eq('id', pm.id)
+          await supabase.from('project_materials').update({
+            qty_received: Number(pm.qty_received) + qty,
+            qty_balance:  Number(pm.qty_balance)  + qty,
+          }).eq('id', pm.id)
         } else {
-          await supabase.from('project_materials').insert({ tenant_id: tenantId, project_id: Number(form.project_id), material_id: mat.id, warehouse_id: mat.warehouse_id, qty_received: qty, qty_issued: 0, qty_balance: qty })
+          await supabase.from('project_materials').insert({
+            tenant_id: tenantId, project_id: Number(form.project_id),
+            material_id: mat.id, warehouse_id: mat.warehouse_id,
+            qty_received: qty, qty_issued: 0, qty_balance: qty,
+          })
         }
       }
 
-      if ((type === 'صرف' || type === 'إرجاع') && form.project_id) {
+      if (type === 'صرف' && form.project_id) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
           .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
         if (pm) {
-          const newIssued  = pm.qty_issued  + (type === 'صرف' ? qty : 0)
-          const newBalance = pm.qty_balance - qty
-          await supabase.from('project_materials').update({ qty_issued: newIssued, qty_balance: Math.max(0, newBalance) }).eq('id', pm.id)
+          await supabase.from('project_materials').update({
+            qty_issued:  Number(pm.qty_issued)  + qty,
+            qty_balance: Math.max(0, Number(pm.qty_balance) - qty),
+          }).eq('id', pm.id)
+        }
+      }
+
+      // إرجاع للعميل — ينقص من رصيد العهدة ولا يعود للمستودع العام
+      if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
+        const { data: pm } = await supabase.from('project_materials').select('*')
+          .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
+          .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
+        if (pm) {
+          await supabase.from('project_materials').update({
+            qty_balance: Math.max(0, Number(pm.qty_balance) - qty),
+          }).eq('id', pm.id)
         }
       }
 
