@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import {
   FolderOpen, Search, Package, TrendingDown,
-  ChevronDown, ChevronUp, Download, AlertTriangle
+  ChevronDown, ChevronUp, Download, AlertTriangle, RotateCcw
 } from 'lucide-react'
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
@@ -58,8 +58,10 @@ export default function InventoryProjectsPage() {
   }
 
   async function loadProjectMaterials(projectId: number) {
-    if (!tenant || materials[projectId]) {
-      // toggle إذا موجود
+    if (!tenant) return
+
+    // لو البيانات محملة — فقط toggle الفتح/الإغلاق
+    if (materials[projectId] !== undefined) {
       setExpanded(prev => {
         const next = new Set(prev)
         next.has(projectId) ? next.delete(projectId) : next.add(projectId)
@@ -69,17 +71,29 @@ export default function InventoryProjectsPage() {
     }
 
     setLoadingMat(prev => new Set(Array.from(prev).concat(projectId)))
-    const { data } = await supabase.from('project_materials')
+
+    const { data } = await supabase
+      .from('project_materials')
       .select('*, material:materials(name, unit, catalog_no, sec_number, mat_code), warehouse:warehouses(name)')
-      .eq('tenant_id', tenant.id).eq('project_id', projectId)
-      .order('material(name)')
+      .eq('tenant_id', tenant.id)
+      .eq('project_id', projectId)
 
     setMaterials(prev => ({ ...prev, [projectId]: data || [] }))
     setExpanded(prev => new Set(Array.from(prev).concat(projectId)))
     setLoadingMat(prev => { const next = new Set(prev); next.delete(projectId); return next })
   }
 
-  function exportProject(proj: Project) {
+  async function refreshProject(projectId: number) {
+    if (!tenant) return
+    setLoadingMat(prev => new Set(Array.from(prev).concat(projectId)))
+    const { data } = await supabase
+      .from('project_materials')
+      .select('*, material:materials(name, unit, catalog_no, sec_number, mat_code), warehouse:warehouses(name)')
+      .eq('tenant_id', tenant.id)
+      .eq('project_id', projectId)
+    setMaterials(prev => ({ ...prev, [projectId]: data || [] }))
+    setLoadingMat(prev => { const next = new Set(prev); next.delete(projectId); return next })
+  }
     const mats = materials[proj.id] || []
     const headers = ['الاسم', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد']
     const rows = mats.map(m => [
@@ -204,6 +218,11 @@ export default function InventoryProjectsPage() {
                           {zeroBalance} نفذت
                         </span>
                       )}
+                      <button onClick={e => { e.stopPropagation(); refreshProject(proj.id) }}
+                        style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db' }}
+                        title="تحديث">
+                        <RotateCcw style={{ width: '13px', height: '13px' }} />
+                      </button>
                       <button onClick={e => { e.stopPropagation(); exportProject(proj) }}
                         style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
                         <Download style={{ width: '13px', height: '13px' }} />
