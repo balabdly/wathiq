@@ -94,6 +94,8 @@ export default function InventoryProjectsPage() {
     setMaterials(prev => ({ ...prev, [projectId]: data || [] }))
     setLoadingMat(prev => { const next = new Set(prev); next.delete(projectId); return next })
   }
+
+  function exportProject(proj: Project) {
     const mats = materials[proj.id] || []
     const headers = ['الاسم', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد']
     const rows = mats.map(m => [
