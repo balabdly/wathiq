@@ -437,7 +437,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
-  const isProjectWh              = (selectedWh as any)?.wh_category === 'مشاريع'
+  const isProjectWh              = (selectedWh as any)?.wh_category === 'مشاريع' || (selectedWh as any)?.mode === 'مشاريع'
   const showProjectOnReceive     = isProjectWh
   const projectRequiredOnReceive = isProjectWh
 
