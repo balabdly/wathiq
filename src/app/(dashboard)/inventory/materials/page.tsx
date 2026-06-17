@@ -597,7 +597,9 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
     const { data: freshMats } = await supabase.from('materials').select('*')
-      .in('id', validRows.map(r => Number(r.mat_id))).eq('tenant_id', tenantId)
+      .in('id', validRows.map(r => Number(r.mat_id)))
+      .eq('tenant_id', tenantId)
+      .eq('warehouse_id', Number(form.warehouse_id))  // مهم: نفس المستودع المختار
     const matsMap: Record<number, any> = {}
     ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
 
@@ -678,18 +680,16 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (type === 'استلام' && form.project_id) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
+          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
             qty_received: Number(pm.qty_received) + qty,
-            // qty_balance محسوب تلقائياً = qty_received - qty_issued
           }).eq('id', pm.id)
         } else {
           await supabase.from('project_materials').insert({
             tenant_id: tenantId, project_id: Number(form.project_id),
-            material_id: mat.id, warehouse_id: mat.warehouse_id,
+            material_id: mat.id, warehouse_id: Number(form.warehouse_id),
             qty_received: qty, qty_issued: 0,
-            // qty_balance يُحسب تلقائياً
           })
         }
       }
@@ -697,11 +697,10 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (type === 'صرف' && form.project_id) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
+          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
             qty_issued: Number(pm.qty_issued) + qty,
-            // qty_balance يُحسب تلقائياً
           }).eq('id', pm.id)
         }
       }
@@ -710,11 +709,10 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
       if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
+          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
             qty_received: Math.max(0, Number(pm.qty_received) - qty),
-            // qty_balance يُحسب تلقائياً = qty_received - qty_issued
           }).eq('id', pm.id)
         }
       }
