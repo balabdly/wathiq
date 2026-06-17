@@ -508,6 +508,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   onClose: () => void; onSave: () => void
 }) {
   const [saving,          setSaving]          = useState(false)
+  const savingRef = useRef(false)  // guard ضد التنفيذ المزدوج
   const [materials,       setMaterials]       = useState<Material[]>([])
   const [projectBalances, setProjectBalances] = useState<Record<number, number>>({})
   const [directQtys,      setDirectQtys]      = useState<Record<number, string>>({})
@@ -578,6 +579,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   }
 
   async function handleSave() {
+    if (saving || savingRef.current) return  // منع التنفيذ المزدوج
+    savingRef.current = true
     let effectiveRows = rows
     if (isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع') && Object.keys(directQtys).length > 0) {
       effectiveRows = Object.entries(directQtys).filter(([, qty]) => Number(qty) > 0)
@@ -737,6 +740,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     }
 
     setSaving(false)
+    savingRef.current = false
     toast.success(type + ' تم بنجاح ✅')
 
     // طباعة وصل واحد لكل العملية بعد الحفظ
