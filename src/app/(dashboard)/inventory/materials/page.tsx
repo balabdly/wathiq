@@ -687,38 +687,7 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         attachment_url: attachmentUrl,
       })
 
-      // ── تحديث project_materials بـ RPC آمن ──
-      if (type === 'استلام' && form.project_id) {
-        const txnKey = `${operationId}-${mat.id}`
-        await supabase.rpc('increment_pm_received', {
-          p_tenant_id:    tenantId,
-          p_project_id:   Number(form.project_id),
-          p_material_id:  mat.id,
-          p_warehouse_id: Number(form.warehouse_id),
-          p_qty:          qty,
-          p_txn:          txnKey,
-        })
-      }
-
-      if (type === 'صرف' && form.project_id) {
-        await supabase.rpc('increment_pm_issued', {
-          p_tenant_id:    tenantId,
-          p_project_id:   Number(form.project_id),
-          p_material_id:  mat.id,
-          p_warehouse_id: Number(form.warehouse_id),
-          p_qty:          qty,
-        })
-      }
-
-      if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
-        await supabase.rpc('increment_pm_returned', {
-          p_tenant_id:    tenantId,
-          p_project_id:   Number(form.project_id),
-          p_material_id:  mat.id,
-          p_warehouse_id: Number(form.warehouse_id),
-          p_qty:          qty,
-        })
-      }
+      // ── project_materials يُحدَّث تلقائياً بـ trigger على stock_ledger ──
 
       if (type === 'تحويل' && form.to_warehouse_id) {
         const toWh = warehouses.find(w => w.id === Number(form.to_warehouse_id))
@@ -1066,14 +1035,7 @@ function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave
       const { error: matErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
       if (matErr) { toast.error('خطأ تحديث المادة: ' + matErr.message); setSaving(false); return }
 
-      // تحديث project_materials بـ RPC آمن
-      await supabase.rpc('decrement_pm_issued', {
-        p_tenant_id:    tenantId,
-        p_project_id:   Number(projectId),
-        p_material_id:  pm.material_id,
-        p_warehouse_id: Number(warehouseId),
-        p_qty:          qty,
-      })
+      // project_materials يُحدَّث تلقائياً بـ trigger
 
       // تسجيل في stock_ledger
       const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
