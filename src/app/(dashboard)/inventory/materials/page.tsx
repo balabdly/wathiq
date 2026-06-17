@@ -621,13 +621,14 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         if (pm) {
           await supabase.from('project_materials').update({
             qty_received: Number(pm.qty_received) + qty,
-            qty_balance:  Number(pm.qty_balance)  + qty,
+            // qty_balance محسوب تلقائياً = qty_received - qty_issued
           }).eq('id', pm.id)
         } else {
           await supabase.from('project_materials').insert({
             tenant_id: tenantId, project_id: Number(form.project_id),
             material_id: mat.id, warehouse_id: mat.warehouse_id,
-            qty_received: qty, qty_issued: 0, qty_balance: qty,
+            qty_received: qty, qty_issued: 0,
+            // qty_balance يُحسب تلقائياً
           })
         }
       }
@@ -638,20 +639,21 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
           .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
-            qty_issued:  Number(pm.qty_issued)  + qty,
-            qty_balance: Math.max(0, Number(pm.qty_balance) - qty),
+            qty_issued: Number(pm.qty_issued) + qty,
+            // qty_balance يُحسب تلقائياً
           }).eq('id', pm.id)
         }
       }
 
-      // إرجاع للعميل — ينقص من رصيد العهدة ولا يعود للمستودع العام
+      // إرجاع للعميل — ينقص من qty_received (المواد ترجع للعميل من الرصيد)
       if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
           .eq('material_id', mat.id).eq('warehouse_id', mat.warehouse_id).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
-            qty_balance: Math.max(0, Number(pm.qty_balance) - qty),
+            qty_received: Math.max(0, Number(pm.qty_received) - qty),
+            // qty_balance يُحسب تلقائياً = qty_received - qty_issued
           }).eq('id', pm.id)
         }
       }
@@ -1001,17 +1003,10 @@ function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave
       const { error: matErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
       if (matErr) { toast.error('خطأ تحديث المادة: ' + matErr.message); setSaving(false); return }
 
-      // تحديث project_materials
-      const { error: pmErr } = await supabase.from('project_materials').update({
-        qty_issued:  Math.max(0, Number(pm.qty_issued) - qty),
-        qty_balance: Number(pm.qty_balance) + qty,
+      // تحديث project_materials — qty_balance محسوب تلقائياً (generated)
+      await supabase.from('project_materials').update({
+        qty_issued: Math.max(0, Number(pm.qty_issued) - qty),
       }).eq('id', pm.id)
-      if (pmErr) {
-        // لو qty_balance generated — نحدث qty_issued فقط
-        await supabase.from('project_materials').update({
-          qty_issued: Math.max(0, Number(pm.qty_issued) - qty),
-        }).eq('id', pm.id)
-      }
 
       // تسجيل في stock_ledger
       const { error: ledgerErr } = await supabase.from('stock_ledger').insert({

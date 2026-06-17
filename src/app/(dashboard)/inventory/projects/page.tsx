@@ -217,13 +217,14 @@ function ReceiveAdjustmentModal({ adj, tenantId, branchId, onClose, onSave }: {
     if (pm) {
       await supabase.from('project_materials').update({
         qty_received: Number(pm.qty_received) + qty,
-        qty_balance:  Number(pm.qty_balance) + qty,
+        // qty_balance يُحسب تلقائياً = qty_received - qty_issued
       }).eq('id', pm.id)
     } else {
       await supabase.from('project_materials').insert({
         tenant_id: tenantId, project_id: adj.project_id,
         material_id: adj.material_id, warehouse_id: adj.warehouse_id,
-        qty_received: qty, qty_issued: 0, qty_balance: qty,
+        qty_received: qty, qty_issued: 0,
+        // qty_balance يُحسب تلقائياً
       })
     }
 
