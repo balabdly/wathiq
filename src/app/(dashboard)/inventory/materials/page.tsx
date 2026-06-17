@@ -436,6 +436,24 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
+  // قائمة العملاء المحفوظة محلياً
+  const [savedClients,    setSavedClients]    = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('wathiq_clients') || '[]') } catch { return [] }
+  })
+  const [newClientInput,  setNewClientInput]  = useState('')
+  const [showClientInput, setShowClientInput] = useState(false)
+
+  function addClient() {
+    const name = newClientInput.trim()
+    if (!name) return
+    const updated = Array.from(new Set([name, ...savedClients])).slice(0, 20)
+    setSavedClients(updated)
+    localStorage.setItem('wathiq_clients', JSON.stringify(updated))
+    set('client_name_recv', name)
+    setNewClientInput('')
+    setShowClientInput(false)
+  }
+
   const selectedWh               = warehouses.find(w => w.id === Number(form.warehouse_id))
   const isProjectWh              = (selectedWh as any)?.wh_category === 'مشاريع' || (selectedWh as any)?.mode === 'مشاريع'
   const showProjectOnReceive     = isProjectWh
@@ -634,28 +652,30 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     setSaving(false)
     toast.success(type + ' تم بنجاح ✅')
 
-    // جلب رقم العملية وطباعة الوصل
+    // طباعة وصل واحد لكل العملية بعد الحفظ
     if (type === 'استلام' || type === 'صرف' || type === 'إرجاع') {
       const { data: lastEntry } = await supabase.from('stock_ledger')
         .select('txn_number').eq('tenant_id', tenantId)
         .order('id', { ascending: false }).limit(1).maybeSingle()
       const wh   = warehouses.find(w => w.id === Number(form.warehouse_id))
       const proj = projects.find((p: any) => p.id === Number(form.project_id))
+      // جمع كل مواد العملية في وصل واحد
+      const printRows = validRows.map(r => {
+        const mat = materials.find(m => String(m.id) === String(r.mat_id))
+        return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
+      })
       printOperationReceipt({
         type,
-        warehouseName: wh?.name    || '',
-        projectName:   proj?.name  || form.project_name || '',
-        date:          form.date,
-        rows: validRows.map(r => {
-          const mat = materials.find(m => String(m.id) === String(r.mat_id))
-          return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
-        }),
-        vendorName:   form.vendor_name     || '',
-        docCode:      form.doc_code        || '',
-        bookingNo:    form.booking_no      || '',
-        clientName:   form.client_name_recv || '',
-        exitPermitNo: form.exit_permit_no  || '',
-        txnNumber:    lastEntry?.txn_number || '',
+        warehouseName:  wh?.name           || '',
+        projectName:    proj?.name          || form.project_name || '',
+        date:           form.date,
+        rows:           printRows,
+        vendorName:     form.vendor_name    || '',
+        docCode:        form.doc_code       || '',
+        bookingNo:      form.booking_no     || '',
+        clientName:     form.client_name_recv || '',
+        exitPermitNo:   form.exit_permit_no || '',
+        txnNumber:      lastEntry?.txn_number || '',
       })
     }
 
@@ -746,7 +766,23 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
                 {/* مستودع مشاريع: العميل + رقم إذن الخروج + رقم الحجز */}
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>اسم العميل</label>
-                  <input value={form.client_name_recv} onChange={e => set('client_name_recv', e.target.value)} className="input" placeholder="اسم العميل صاحب المواد" />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select value={form.client_name_recv} onChange={e => set('client_name_recv', e.target.value)} className="select" style={{ flex: 1 }}>
+                      <option value="">— اختر العميل —</option>
+                      {savedClients.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setShowClientInput(v => !v)}
+                      style={{ padding: '0 14px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>+</button>
+                  </div>
+                  {showClientInput && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                      <input value={newClientInput} onChange={e => setNewClientInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addClient())}
+                        className="input" placeholder="اسم العميل الجديد..." style={{ flex: 1 }} autoFocus />
+                      <button onClick={addClient} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '6px 14px' }}>إضافة</button>
+                      <button onClick={() => setShowClientInput(false)} className="btn btn-ghost" style={{ fontSize: '0.82rem', padding: '6px 10px' }}>✕</button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم إذن الخروج</label>

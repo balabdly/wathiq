@@ -174,7 +174,7 @@ export default function InventoryMovementsPage() {
       .order('created_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
 
-    if (fType)     q = q.eq('type', fType)
+    if (fType)     q = q.eq('movement_category', fType)
     if (fWh)       q = q.eq('wh_name', fWh)
     if (fProject)  q = q.eq('project_name', fProject)
     if (fDateFrom) q = q.gte('created_at', fDateFrom)
@@ -241,10 +241,12 @@ export default function InventoryMovementsPage() {
           الكل
         </button>
         {[
-          { val: 'استلام',       label: 'استلام عام',      color: '#0ea77b', bg: '#ecfdf5' },
-          { val: 'صرف',          label: 'صرف عام',         color: '#c81e1e', bg: '#fef2f2' },
-          { val: 'إرجاع للعميل', label: 'إرجاع للعميل',   color: '#e6820a', bg: '#fffbeb' },
-          { val: 'تحويل',        label: 'تحويل',           color: '#0891b2', bg: '#ecfeff' },
+          { val: 'استلام_عهدة',   label: 'استلام عهدة',    color: '#0ea77b', bg: '#ecfdf5' },
+          { val: 'استلام_عام',    label: 'استلام عام',     color: '#0ea77b', bg: '#ecfdf5' },
+          { val: 'صرف_عهدة',      label: 'صرف عهدة',       color: '#c81e1e', bg: '#fef2f2' },
+          { val: 'صرف_عام',       label: 'صرف عام',        color: '#c81e1e', bg: '#fef2f2' },
+          { val: 'ارجاع_عميل',    label: 'إرجاع للعميل',   color: '#e6820a', bg: '#fffbeb' },
+          { val: 'تحويل',         label: 'تحويل',           color: '#0891b2', bg: '#ecfeff' },
         ].map(opt => (
           <button key={opt.val} onClick={() => { setFType(opt.val); setTimeout(() => loadMovements(1), 0) }}
             style={{
