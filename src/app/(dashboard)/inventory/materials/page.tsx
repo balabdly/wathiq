@@ -351,8 +351,14 @@ function printOperationReceipt({ type, warehouseName, projectName, date, rows, v
 }) {
   const win = window.open('', '_blank', 'width=700,height=600')
   if (!win) return
-  const color = type === 'استلام' ? '#0ea77b' : type === 'إرجاع' || type === 'إرجاع للعميل' ? '#e6820a' : '#c81e1e'
-  const title = type === 'استلام' ? 'وصل استلام مواد' : type === 'إرجاع' || type === 'إرجاع للعميل' ? 'وصل إرجاع مواد للعميل' : 'أذن صرف مواد'
+  const color = type === 'استلام' ? '#0ea77b'
+    : type === 'إرجاع' || type === 'إرجاع للعميل' ? '#e6820a'
+    : type === 'مرتجع موقع' ? '#1a56db'
+    : '#c81e1e'
+  const title = type === 'استلام' ? 'وصل استلام مواد'
+    : type === 'إرجاع' || type === 'إرجاع للعميل' ? 'وصل إرجاع مواد للعميل'
+    : type === 'مرتجع موقع' ? 'وصل مرتجع موقع'
+    : 'أذن صرف مواد'
   const rowsHtml = rows.map((r, i) => `
     <tr style="border-bottom:1px solid #f1f5f9;background:${i%2===0?'white':'#f8fafc'}">
       <td style="padding:8px 10px">${r.name}</td>
@@ -972,16 +978,23 @@ function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave
       const qtyAfter  = qtyBefore + qty
 
       // تحديث المادة في المستودع
-      await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
+      const { error: matErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
+      if (matErr) { toast.error('خطأ تحديث المادة: ' + matErr.message); setSaving(false); return }
 
       // تحديث project_materials
-      await supabase.from('project_materials').update({
-        qty_issued:  Math.max(0, Number(pm.qty_issued)  - qty),
+      const { error: pmErr } = await supabase.from('project_materials').update({
+        qty_issued:  Math.max(0, Number(pm.qty_issued) - qty),
         qty_balance: Number(pm.qty_balance) + qty,
       }).eq('id', pm.id)
+      if (pmErr) {
+        // لو qty_balance generated — نحدث qty_issued فقط
+        await supabase.from('project_materials').update({
+          qty_issued: Math.max(0, Number(pm.qty_issued) - qty),
+        }).eq('id', pm.id)
+      }
 
       // تسجيل في stock_ledger
-      await supabase.from('stock_ledger').insert({
+      const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
         tenant_id:         tenantId,
         branch_id:         branchId,
         type:              'استلام',
@@ -996,6 +1009,7 @@ function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave
         project_name:      projectName,
         dispatch_note:     notes || 'مرتجع موقع',
       })
+      if (ledgerErr) { toast.error('خطأ تسجيل الحركة: ' + ledgerErr.message); setSaving(false); return }
 
       printRows.push({ name: mat.name, unit: mat.unit, qty, note: notes || '' })
     }
