@@ -139,6 +139,38 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
     reader.readAsText(file, 'UTF-8')
   }
 
+  function downloadTemplate() {
+    // إنشاء ملف TSV جاهز للاستيراد مع رأس وأمثلة
+    const headers = ['اسم المادة', 'الوحدة', 'المصدر', 'رقم الكتالوج', 'رقم SEC', 'الكمية', 'حد الأمان', 'الموقع في المستودع']
+    const examples = [
+      ['كيبل نحاسي 4×10مم', 'متر', 'خاص', 'CAT-1001', 'SEC-2001', '0', '50', 'رف A - قسم 1'],
+      ['محول توزيع 100KVA', 'قطعة', 'SEC', 'CAT-1002', 'SEC-2002', '0', '2', 'رف B - قسم 2'],
+      ['لوحة تحكم كهربائية', 'قطعة', 'خاص', 'CAT-1003', '', '0', '1', ''],
+      // صفوف فارغة للإدخال
+      ...Array(20).fill(['', '', 'خاص', '', '', '0', '0', '']),
+    ]
+    const notes = [
+      '# ملاحظات مهمة:',
+      '# - احذف هذه الأسطر قبل الرفع (الأسطر التي تبدأ بـ #)',
+      '# - الأعمدة الإلزامية: اسم المادة | الوحدة | المصدر',
+      '# - الوحدات المسموحة: متر / كجم / قطعة / لتر / علبة / رول / طن / م² / م³ / كيس / برميل / أمبير / متر كيبل',
+      '# - المصدر: خاص = مواد الشركة | SEC = مواد العميل',
+      '# - رقم الكتالوج ورقم SEC فريدان — لا يتكرران في الشركة',
+      '#',
+    ]
+    const content = [
+      ...notes,
+      headers.join('\t'),
+      ...examples.map(r => r.join('\t')),
+    ].join('\n')
+    const blob = new Blob(['\uFEFF' + content], { type: 'text/tab-separated-values;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'نموذج_استيراد_المواد.tsv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
@@ -216,18 +248,47 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
 
           {tab === 'import' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px', fontSize: '0.78rem', color: '#1a56db' }}>
-                <div style={{ fontWeight: 700, marginBottom: '6px' }}>📋 تنسيق الملف (Excel → حفظ كـ TSV أو نسخ مباشر)</div>
-                <div>الأعمدة المطلوبة: <strong>اسم المادة</strong> | الوحدة | رقم الكتالوج | رقم SEC | الكمية | حد الأمان</div>
+
+              {/* خطوات الاستيراد */}
+              <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text)', marginBottom: '2px' }}>خطوات الاستيراد:</div>
+                {[
+                  { n: '١', text: 'حمّل النموذج', sub: 'اضغط الزر أدناه لتنزيل ملف Excel جاهز', color: '#1a56db' },
+                  { n: '٢', text: 'عبّئ البيانات', sub: 'أدخل بيانات المواد في الأعمدة المحددة', color: '#0ea77b' },
+                  { n: '٣', text: 'احفظ كـ CSV أو TSV', sub: 'من Excel: ملف ← حفظ باسم ← CSV (محدد بفاصلة منقوطة)', color: '#e6820a' },
+                  { n: '٤', text: 'ارفع الملف', sub: 'اختر الملف المحفوظ وسيتم استيراد المواد تلقائياً', color: '#7c3aed' },
+                ].map(s => (
+                  <div key={s.n} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: s.color, color: 'white', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text)' }}>{s.text}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{s.sub}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
+
+              {/* زر تحميل النموذج */}
+              <button onClick={downloadTemplate}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', borderRadius: '10px', border: '2px solid #bfdbfe', background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', color: '#1a56db', transition: 'all 0.2s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = 'none'}>
+                <FileSpreadsheet style={{ width: '20px', height: '20px' }} />
+                📥 تحميل نموذج Excel
+              </button>
+
+              {/* رفع الملف */}
               <div>
                 <input ref={fileRef} type="file" accept=".txt,.tsv,.csv" onChange={handleFile} style={{ display: 'none' }} />
-                <button onClick={() => fileRef.current?.click()} className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed' }}>
-                  <Upload style={{ width: '16px', height: '16px' }} /> اختر ملف TSV / CSV
+                <button onClick={() => fileRef.current?.click()} className="btn btn-ghost"
+                  style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', padding: '14px' }}>
+                  <Upload style={{ width: '16px', height: '16px' }} />
+                  {importData.length > 0 ? `تم قراءة ${importData.length} مادة — اضغط لتغيير الملف` : 'ارفع ملف CSV / TSV'}
                 </button>
               </div>
+
               {importData.length > 0 && (
-                <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '8px', padding: '10px 14px', fontSize: '0.82rem', color: '#0ea77b', fontWeight: 600 }}>
+                <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', color: '#0ea77b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   ✅ تم قراءة {importData.length} مادة — جاهزة للاستيراد
                 </div>
               )}
