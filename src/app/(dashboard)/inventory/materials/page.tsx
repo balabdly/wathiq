@@ -686,45 +686,35 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         attachment_url:   attachmentUrl,
       })
 
-      // ── تحديث project_materials ──
+      // ── تحديث project_materials بـ RPC آمن ──
       if (type === 'استلام' && form.project_id) {
-        const { data: pm } = await supabase.from('project_materials').select('*')
-          .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
-        if (pm) {
-          await supabase.from('project_materials').update({
-            qty_received: Number(pm.qty_received) + qty,
-          }).eq('id', pm.id)
-        } else {
-          await supabase.from('project_materials').insert({
-            tenant_id: tenantId, project_id: Number(form.project_id),
-            material_id: mat.id, warehouse_id: Number(form.warehouse_id),
-            qty_received: qty, qty_issued: 0,
-          })
-        }
+        await supabase.rpc('increment_pm_received', {
+          p_tenant_id:    tenantId,
+          p_project_id:   Number(form.project_id),
+          p_material_id:  mat.id,
+          p_warehouse_id: Number(form.warehouse_id),
+          p_qty:          qty,
+        })
       }
 
       if (type === 'صرف' && form.project_id) {
-        const { data: pm } = await supabase.from('project_materials').select('*')
-          .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
-        if (pm) {
-          await supabase.from('project_materials').update({
-            qty_issued: Number(pm.qty_issued) + qty,
-          }).eq('id', pm.id)
-        }
+        await supabase.rpc('increment_pm_issued', {
+          p_tenant_id:    tenantId,
+          p_project_id:   Number(form.project_id),
+          p_material_id:  mat.id,
+          p_warehouse_id: Number(form.warehouse_id),
+          p_qty:          qty,
+        })
       }
 
-      // إرجاع للعميل — يزيد qty_returned
       if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
-        const { data: pm } = await supabase.from('project_materials').select('*')
-          .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
-          .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
-        if (pm) {
-          await supabase.from('project_materials').update({
-            qty_returned: Number(pm.qty_returned || 0) + qty,
-          }).eq('id', pm.id)
-        }
+        await supabase.rpc('increment_pm_returned', {
+          p_tenant_id:    tenantId,
+          p_project_id:   Number(form.project_id),
+          p_material_id:  mat.id,
+          p_warehouse_id: Number(form.warehouse_id),
+          p_qty:          qty,
+        })
       }
 
       if (type === 'تحويل' && form.to_warehouse_id) {
@@ -1072,10 +1062,14 @@ function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave
       const { error: matErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
       if (matErr) { toast.error('خطأ تحديث المادة: ' + matErr.message); setSaving(false); return }
 
-      // تحديث project_materials — qty_balance محسوب تلقائياً (generated)
-      await supabase.from('project_materials').update({
-        qty_issued: Math.max(0, Number(pm.qty_issued) - qty),
-      }).eq('id', pm.id)
+      // تحديث project_materials بـ RPC آمن
+      await supabase.rpc('decrement_pm_issued', {
+        p_tenant_id:    tenantId,
+        p_project_id:   Number(projectId),
+        p_material_id:  pm.material_id,
+        p_warehouse_id: Number(warehouseId),
+        p_qty:          qty,
+      })
 
       // تسجيل في stock_ledger
       const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
