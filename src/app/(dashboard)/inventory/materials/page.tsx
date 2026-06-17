@@ -83,7 +83,17 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
       notes: form.notes || null, is_active: true,
     })
     setSaving(false)
-    if (error) { toast.error('خطأ: ' + error.message); return }
+    if (error) {
+      if (error.message.includes('materials_unique_name_per_warehouse'))
+        toast.error('⛔ هذه المادة موجودة بالفعل في هذا المستودع')
+      else if (error.message.includes('materials_unique_catalog_no'))
+        toast.error('⛔ رقم الكتالوج مستخدم لمادة أخرى')
+      else if (error.message.includes('materials_unique_sec_number'))
+        toast.error('⛔ رقم SEC مستخدم لمادة أخرى')
+      else
+        toast.error('خطأ: ' + error.message)
+      return
+    }
     toast.success('تمت إضافة المادة ✅')
     onSave(); onClose()
   }
@@ -268,7 +278,17 @@ function MaterialEditModal({ material, warehouses, onClose, onSave }: {
       notes: form.notes || null, warehouse_id: Number(form.warehouse_id),
     }).eq('id', material.id)
     setSaving(false)
-    if (error) { toast.error('خطأ: ' + error.message); return }
+    if (error) {
+      if (error.message.includes('materials_unique_name_per_warehouse'))
+        toast.error('⛔ هذه المادة موجودة بالفعل في هذا المستودع')
+      else if (error.message.includes('materials_unique_catalog_no'))
+        toast.error('⛔ رقم الكتالوج مستخدم لمادة أخرى')
+      else if (error.message.includes('materials_unique_sec_number'))
+        toast.error('⛔ رقم SEC مستخدم لمادة أخرى')
+      else
+        toast.error('خطأ: ' + error.message)
+      return
+    }
     toast.success('تم التعديل ✅'); onSave(); onClose()
   }
 
