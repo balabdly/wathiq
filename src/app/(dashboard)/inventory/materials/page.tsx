@@ -691,12 +691,15 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
       // ── تحديث project_materials بـ RPC آمن ──
       if (type === 'استلام' && form.project_id) {
+        // txn فريد لكل مادة = timestamp + material_id لمنع التكرار
+        const txnKey = `${Date.now()}-${mat.id}-${form.project_id}`
         await supabase.rpc('increment_pm_received', {
           p_tenant_id:    tenantId,
           p_project_id:   Number(form.project_id),
           p_material_id:  mat.id,
           p_warehouse_id: Number(form.warehouse_id),
           p_qty:          qty,
+          p_txn:          txnKey,
         })
       }
 
