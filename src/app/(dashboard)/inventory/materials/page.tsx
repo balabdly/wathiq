@@ -596,14 +596,24 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     if (attachmentFile) attachmentUrl = await uploadAttachment(attachmentFile, tenantId)
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
+
+    // تجميع الصفوف — لو نفس المادة مكررة نجمع كمياتها
+    const mergedRows: Record<number, { mat_id: number; qty: number; note: string }> = {}
+    for (const row of validRows) {
+      const id = Number(row.mat_id)
+      if (mergedRows[id]) mergedRows[id].qty += Number(row.qty)
+      else mergedRows[id] = { mat_id: id, qty: Number(row.qty), note: row.note }
+    }
+    const finalRows = Object.values(mergedRows)
+
     const { data: freshMats } = await supabase.from('materials').select('*')
-      .in('id', validRows.map(r => Number(r.mat_id)))
+      .in('id', finalRows.map(r => r.mat_id))
       .eq('tenant_id', tenantId)
-      .eq('warehouse_id', Number(form.warehouse_id))  // مهم: نفس المستودع المختار
+      .eq('warehouse_id', Number(form.warehouse_id))
     const matsMap: Record<number, any> = {}
     ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
 
-    for (const row of validRows) {
+    for (const row of finalRows) {
       const mat = matsMap[Number(row.mat_id)]
       if (!mat) { toast.error('لم يتم العثور على المادة'); setSaving(false); return }
       const qty = Number(row.qty)
