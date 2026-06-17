@@ -705,14 +705,14 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
         }
       }
 
-      // إرجاع للعميل — ينقص من qty_received (المواد ترجع للعميل من الرصيد)
+      // إرجاع للعميل — يزيد qty_returned
       if (type === 'إرجاع' && form.project_id && isProjectWarehouse) {
         const { data: pm } = await supabase.from('project_materials').select('*')
           .eq('tenant_id', tenantId).eq('project_id', Number(form.project_id))
           .eq('material_id', mat.id).eq('warehouse_id', Number(form.warehouse_id)).maybeSingle()
         if (pm) {
           await supabase.from('project_materials').update({
-            qty_received: Math.max(0, Number(pm.qty_received) - qty),
+            qty_returned: Number(pm.qty_returned || 0) + qty,
           }).eq('id', pm.id)
         }
       }

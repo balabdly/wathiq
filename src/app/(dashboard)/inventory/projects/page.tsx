@@ -30,7 +30,7 @@ const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFract
 type Project     = { id: number; name: string; status?: string; location?: string }
 type ProjectMat  = {
   id: number; project_id: number; material_id: number; warehouse_id: number
-  qty_received: number; qty_issued: number; qty_balance: number
+  qty_received: number; qty_issued: number; qty_returned: number; qty_balance: number
   material?: { name: string; unit: string; catalog_no?: string; sec_number?: string }
   warehouse?: { name: string }
 }
@@ -477,9 +477,10 @@ export default function InventoryProjectsPage() {
             const mats         = materials[proj.id]    || []
             const adjs         = adjustments[proj.id]  || []
             const tab          = activeTab[proj.id]    || 'materials'
-            const totalRecv    = mats.reduce((s, m) => s + Number(m.qty_received), 0)
-            const totalIssued  = mats.reduce((s, m) => s + Number(m.qty_issued), 0)
-            const totalBalance = mats.reduce((s, m) => s + Number(m.qty_balance), 0)
+            const totalRecv     = mats.reduce((s, m) => s + Number(m.qty_received), 0)
+            const totalIssued   = mats.reduce((s, m) => s + Number(m.qty_issued), 0)
+            const totalReturned = mats.reduce((s, m) => s + Number(m.qty_returned || 0), 0)
+            const totalBalance  = mats.reduce((s, m) => s + Number(m.qty_balance), 0)
             const zeroItems    = mats.filter(m => Number(m.qty_balance) === 0).length
             const pendingAdjs  = adjs.filter(a => a.status === 'معلق').length
             const totalDebt    = adjs.filter(a => a.status === 'تم الاستلام')
@@ -514,9 +515,10 @@ export default function InventoryProjectsPage() {
                     <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexShrink: 0 }}>
                       {[
                         { label: 'صنف', value: mats.length, color: '#0f766e' },
-                        { label: 'مستلم', value: fmt(totalRecv), color: '#0ea77b' },
-                        { label: 'مصروف', value: fmt(totalIssued), color: '#c81e1e' },
-                        { label: 'الرصيد', value: fmt(totalBalance), color: totalBalance > 0 ? '#1a56db' : '#c81e1e' },
+                        { label: 'مستلم',          value: fmt(totalRecv),     color: '#0ea77b' },
+                        { label: 'مصروف',           value: fmt(totalIssued),   color: '#c81e1e' },
+                        { label: 'مرجع للعميل',     value: fmt(totalReturned), color: '#e6820a' },
+                        { label: 'الرصيد',           value: fmt(totalBalance),  color: totalBalance > 0 ? '#1a56db' : '#c81e1e' },
                       ].map(s => (
                         <div key={s.label} style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: s.color }}>{s.value}</div>
@@ -588,7 +590,7 @@ export default function InventoryProjectsPage() {
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                             <thead>
                               <tr style={{ background: 'var(--bg2, #f8fafc)' }}>
-                                {['المادة', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد', 'الحالة'].map(h => (
+                                {['المادة', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'مرجع للعميل', 'الرصيد', 'الحالة'].map(h => (
                                   <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
                                 ))}
                               </tr>
@@ -611,6 +613,10 @@ export default function InventoryProjectsPage() {
                                     {/* مصروف — أحمر */}
                                     <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: MOVEMENT_COLORS.صرف.color }}>
                                       {fmt(Number(m.qty_issued))}
+                                    </td>
+                                    {/* مرجع للعميل — برتقالي */}
+                                    <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: Number(m.qty_returned) > 0 ? MOVEMENT_COLORS.ارجاع_عميل.color : 'var(--text3)' }}>
+                                      {Number(m.qty_returned) > 0 ? fmt(Number(m.qty_returned)) : '—'}
                                     </td>
                                     {/* الرصيد */}
                                     <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.95rem', color: balance === 0 ? '#c81e1e' : balance < received * 0.2 ? '#d97706' : '#1a56db' }}>
@@ -637,6 +643,7 @@ export default function InventoryProjectsPage() {
                                 <td colSpan={4} style={{ padding: '10px 14px', color: '#0f766e' }}>الإجمالي — {mats.length} صنف</td>
                                 <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: MOVEMENT_COLORS.استلام.color }}>{fmt(totalRecv)}</td>
                                 <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: MOVEMENT_COLORS.صرف.color }}>{fmt(totalIssued)}</td>
+                                <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: MOVEMENT_COLORS.ارجاع_عميل.color }}>{fmt(totalReturned)}</td>
                                 <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#1a56db', fontSize: '0.95rem' }}>{fmt(totalBalance)}</td>
                                 <td />
                               </tr>
