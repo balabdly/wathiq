@@ -599,6 +599,8 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     if (attachmentFile) attachmentUrl = await uploadAttachment(attachmentFile, tenantId)
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
+    // txn_key فريد لكل العملية — يختلف لكل مادة
+    const operationId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
     // تجميع الصفوف — لو نفس المادة مكررة نجمع كمياتها
     const mergedRows: Record<number, { mat_id: number; qty: number; note: string }> = {}
@@ -616,24 +618,30 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
     const matsMap: Record<number, any> = {}
     ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
 
+
     for (const row of finalRows) {
       const mat = matsMap[Number(row.mat_id)]
-      if (!mat) { toast.error('لم يتم العثور على المادة'); setSaving(false); return }
+      if (!mat) { toast.error('لم يتم العثور على المادة'); setSaving(false); savingRef.current = false; return }
       const qty = Number(row.qty)
+      const isProjectWarehouse = isProjectWh && !!form.project_id
 
+      // جلب الرصيد الحالي fresh من DB
+      const { data: freshQty } = await supabase.from('materials').select('qty').eq('id', mat.id).single()
+      const qtyBefore = Number(freshQty?.qty ?? mat.qty)
+
+      // التحقق من الرصيد
       if (type === 'صرف' || type === 'تحويل') {
-        const available = isProjectWh && form.project_id ? (projectBalances[mat.id] ?? 0) : mat.qty
-        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); return }
+        const available = isProjectWarehouse && form.project_id ? (projectBalances[mat.id] ?? 0) : qtyBefore
+        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
       }
-      if (type === 'إرجاع' && isProjectWh && form.project_id) {
+      if (type === 'إرجاع' && isProjectWarehouse && form.project_id) {
         const available = projectBalances[mat.id] ?? 0
-        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); return }
+        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
       }
 
-      const qtyBefore = mat.qty
-      let   qtyAfter  = qtyBefore
-
-      if (type === 'استلام')                    qtyAfter = qtyBefore + qty
+      // حساب الرصيد الجديد
+      let qtyAfter = qtyBefore
+      if (type === 'استلام') qtyAfter = qtyBefore + qty
       else if (type === 'صرف' || type === 'تحويل') qtyAfter = qtyBefore - qty
       else if (type === 'إرجاع') {
         if (form.return_type === 'فائض') qtyAfter = qtyBefore + qty
@@ -642,30 +650,21 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
       await supabase.from('materials').update({ qty: qtyAfter }).eq('id', mat.id)
 
-      // تحديد نوع الحركة وفئتها
-      const isProjectWarehouse = isProjectWh && !!form.project_id
+      // تحديد نوع الحركة
       let ledgerType: string
       let movementCategory: string
-
       if (type === 'استلام') {
-        ledgerType       = 'استلام'
-        movementCategory = isProjectWarehouse ? 'استلام_عهدة' : 'استلام_عام'
+        ledgerType = 'استلام'; movementCategory = isProjectWarehouse ? 'استلام_عهدة' : 'استلام_عام'
       } else if (type === 'صرف') {
-        ledgerType       = 'صرف'
-        movementCategory = isProjectWarehouse ? 'صرف_عهدة' : 'صرف_عام'
+        ledgerType = 'صرف'; movementCategory = isProjectWarehouse ? 'صرف_عهدة' : 'صرف_عام'
       } else if (type === 'تحويل') {
-        ledgerType       = 'صرف'
-        movementCategory = 'تحويل'
+        ledgerType = 'صرف'; movementCategory = 'تحويل'
       } else if (type === 'إرجاع') {
         if (form.return_type === 'فائض') {
-          // فائض من مستودع مشاريع → إرجاع للعميل
-          // فائض من مستودع عام → يرجع للمستودع
-          ledgerType       = isProjectWarehouse ? 'إرجاع للعميل' : 'استلام'
+          ledgerType = isProjectWarehouse ? 'إرجاع للعميل' : 'استلام'
           movementCategory = isProjectWarehouse ? 'ارجاع_عميل' : 'ارجاع_مستودع'
         } else {
-          // سكراب
-          ledgerType       = 'إرجاع للعميل'
-          movementCategory = 'ارجاع_عميل'
+          ledgerType = 'إرجاع للعميل'; movementCategory = 'ارجاع_عميل'
         }
       } else {
         ledgerType = type; movementCategory = 'استلام_عام'
@@ -673,26 +672,24 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 
       await supabase.from('stock_ledger').insert({
         tenant_id: tenantId, branch_id: branchId,
-        type: ledgerType,
-        movement_category: movementCategory,
+        type: ledgerType, movement_category: movementCategory,
         mat_name: mat.name, mat_code: mat.mat_code || null,
         unit: mat.unit, qty, qty_before: qtyBefore, qty_after: qtyAfter,
         wh_name: wh?.name || '',
-        project_id:       form.project_id        ? Number(form.project_id) : null,
-        project_name:     form.project_name       || null,
-        vendor_name:      form.vendor_name        || null,
-        client_name:      form.client_name_recv   || null,
-        exit_permit_no:   form.exit_permit_no     || null,
-        doc_code:         form.doc_code           || null,
-        booking_no:       form.booking_no         || null,
-        dispatch_note:    row.note                || null,
-        attachment_url:   attachmentUrl,
+        project_id:    form.project_id ? Number(form.project_id) : null,
+        project_name:  form.project_name || null,
+        vendor_name:   form.vendor_name || null,
+        client_name:   form.client_name_recv || null,
+        exit_permit_no: form.exit_permit_no || null,
+        doc_code:      form.doc_code || null,
+        booking_no:    form.booking_no || null,
+        dispatch_note: row.note || null,
+        attachment_url: attachmentUrl,
       })
 
       // ── تحديث project_materials بـ RPC آمن ──
       if (type === 'استلام' && form.project_id) {
-        // txn فريد لكل مادة = timestamp + material_id لمنع التكرار
-        const txnKey = `${Date.now()}-${mat.id}-${form.project_id}`
+        const txnKey = `${operationId}-${mat.id}`
         await supabase.rpc('increment_pm_received', {
           p_tenant_id:    tenantId,
           p_project_id:   Number(form.project_id),
