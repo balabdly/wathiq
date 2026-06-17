@@ -121,54 +121,64 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
     const reader = new FileReader()
-    reader.onload = ev => {
+    reader.onload = async ev => {
       try {
-        const text   = ev.target?.result as string
-        const lines  = text.split('\n').filter(Boolean)
-        const headers = lines[0].split('\t').map(h => h.trim())
-        const data   = lines.slice(1).map(line => {
-          const vals = line.split('\t')
-          const obj: any = {}
-          headers.forEach((h, i) => { obj[h] = vals[i]?.trim() })
-          return obj
-        }).filter(r => Object.values(r).some(v => v))
-        setImportData(data)
-        toast.success(`تم قراءة ${data.length} سطر`)
-      } catch { toast.error('خطأ في قراءة الملف') }
+        const XLSX = await import('xlsx')
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer)
+        const wb   = XLSX.read(data, { type: 'array' })
+        const ws   = wb.Sheets[wb.SheetNames[0]]
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        // تصفية الصفوف الفارغة وأسطر الملاحظات
+        const valid = rows.filter(r =>
+          r['اسم المادة'] && String(r['اسم المادة']).trim() &&
+          !String(r['اسم المادة']).startsWith('#')
+        )
+        setImportData(valid)
+        toast.success(`تم قراءة ${valid.length} مادة ✅`)
+      } catch { toast.error('خطأ في قراءة الملف — تأكد أنه ملف Excel صحيح') }
     }
-    reader.readAsText(file, 'UTF-8')
+    reader.readAsArrayBuffer(file)
   }
 
-  function downloadTemplate() {
-    // إنشاء ملف TSV جاهز للاستيراد مع رأس وأمثلة
+  async function downloadTemplate() {
+    const XLSX = await import('xlsx')
+    const wb   = XLSX.utils.book_new()
+
+    // ── ورقة المواد ──
     const headers = ['اسم المادة', 'الوحدة', 'المصدر', 'رقم الكتالوج', 'رقم SEC', 'الكمية', 'حد الأمان', 'الموقع في المستودع']
     const examples = [
-      ['كيبل نحاسي 4×10مم', 'متر', 'خاص', 'CAT-1001', 'SEC-2001', '0', '50', 'رف A - قسم 1'],
-      ['محول توزيع 100KVA', 'قطعة', 'SEC', 'CAT-1002', 'SEC-2002', '0', '2', 'رف B - قسم 2'],
-      ['لوحة تحكم كهربائية', 'قطعة', 'خاص', 'CAT-1003', '', '0', '1', ''],
-      // صفوف فارغة للإدخال
-      ...Array(20).fill(['', '', 'خاص', '', '', '0', '0', '']),
+      ['كيبل نحاسي 4×10مم', 'متر', 'خاص', 'CAT-1001', 'SEC-2001', 0, 50, 'رف A - قسم 1'],
+      ['محول توزيع 100KVA', 'قطعة', 'SEC', 'CAT-1002', 'SEC-2002', 0, 2, 'رف B - قسم 2'],
+      ['لوحة تحكم كهربائية', 'قطعة', 'خاص', 'CAT-1003', '', 0, 1, ''],
+      ...Array(20).fill(['', 'قطعة', 'خاص', '', '', 0, 0, '']),
     ]
-    const notes = [
-      '# ملاحظات مهمة:',
-      '# - احذف هذه الأسطر قبل الرفع (الأسطر التي تبدأ بـ #)',
-      '# - الأعمدة الإلزامية: اسم المادة | الوحدة | المصدر',
-      '# - الوحدات المسموحة: متر / كجم / قطعة / لتر / علبة / رول / طن / م² / م³ / كيس / برميل / أمبير / متر كيبل',
-      '# - المصدر: خاص = مواد الشركة | SEC = مواد العميل',
-      '# - رقم الكتالوج ورقم SEC فريدان — لا يتكرران في الشركة',
-      '#',
+    const wsData = [headers, ...examples]
+    const ws = XLSX.utils.aoa_to_sheet(wsData)
+
+    // عرض الأعمدة
+    ws['!cols'] = [
+      { wch: 30 }, { wch: 12 }, { wch: 10 },
+      { wch: 16 }, { wch: 16 }, { wch: 10 },
+      { wch: 12 }, { wch: 25 },
     ]
-    const content = [
-      ...notes,
-      headers.join('\t'),
-      ...examples.map(r => r.join('\t')),
-    ].join('\n')
-    const blob = new Blob(['\uFEFF' + content], { type: 'text/tab-separated-values;charset=utf-8' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'نموذج_استيراد_المواد.tsv'
-    a.click()
-    URL.revokeObjectURL(a.href)
+    XLSX.utils.book_append_sheet(wb, ws, 'المواد')
+
+    // ── ورقة التوضيحات ──
+    const wsInfo = XLSX.utils.aoa_to_sheet([
+      ['الحقل', 'إلزامي؟', 'القيم المسموحة', 'ملاحظة'],
+      ['اسم المادة', 'نعم', '—', 'لا يتكرر في نفس المستودع'],
+      ['الوحدة', 'نعم', 'متر / كجم / قطعة / لتر / علبة / رول / طن / م² / م³ / كيس / برميل / أمبير / متر كيبل', ''],
+      ['المصدر', 'نعم', 'خاص / SEC', 'خاص = مواد الشركة | SEC = مواد العميل'],
+      ['رقم الكتالوج', 'لا', '—', 'فريد على مستوى الشركة'],
+      ['رقم SEC', 'لا', '—', 'فريد على مستوى الشركة'],
+      ['الكمية', 'لا', 'رقم', 'الكمية الافتتاحية — 0 افتراضياً'],
+      ['حد الأمان', 'لا', 'رقم', 'تنبيه عند الوصول لهذا الحد'],
+      ['الموقع في المستودع', 'لا', '—', 'مثال: رف A - قسم 1'],
+    ])
+    wsInfo['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 55 }, { wch: 30 }]
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'تعليمات')
+
+    XLSX.writeFile(wb, 'نموذج_استيراد_المواد.xlsx')
   }
 
   return (
@@ -255,8 +265,7 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
                 {[
                   { n: '١', text: 'حمّل النموذج', sub: 'اضغط الزر أدناه لتنزيل ملف Excel جاهز', color: '#1a56db' },
                   { n: '٢', text: 'عبّئ البيانات', sub: 'أدخل بيانات المواد في الأعمدة المحددة', color: '#0ea77b' },
-                  { n: '٣', text: 'احفظ كـ CSV أو TSV', sub: 'من Excel: ملف ← حفظ باسم ← CSV (محدد بفاصلة منقوطة)', color: '#e6820a' },
-                  { n: '٤', text: 'ارفع الملف', sub: 'اختر الملف المحفوظ وسيتم استيراد المواد تلقائياً', color: '#7c3aed' },
+                  { n: '٣', text: 'ارفع الملف', sub: 'اضغط زر الرفع واختر ملف Excel — سيُقرأ مباشرة', color: '#7c3aed' },
                 ].map(s => (
                   <div key={s.n} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                     <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: s.color, color: 'white', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.n}</div>
@@ -279,11 +288,11 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
 
               {/* رفع الملف */}
               <div>
-                <input ref={fileRef} type="file" accept=".txt,.tsv,.csv" onChange={handleFile} style={{ display: 'none' }} />
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" onChange={handleFile} style={{ display: 'none' }} />
                 <button onClick={() => fileRef.current?.click()} className="btn btn-ghost"
                   style={{ width: '100%', justifyContent: 'center', borderStyle: 'dashed', padding: '14px' }}>
                   <Upload style={{ width: '16px', height: '16px' }} />
-                  {importData.length > 0 ? `تم قراءة ${importData.length} مادة — اضغط لتغيير الملف` : 'ارفع ملف CSV / TSV'}
+                  {importData.length > 0 ? `تم قراءة ${importData.length} مادة — اضغط لتغيير الملف` : 'ارفع ملف Excel (.xlsx)'}
                 </button>
               </div>
 
