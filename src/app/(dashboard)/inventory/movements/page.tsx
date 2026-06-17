@@ -34,7 +34,7 @@ const MOVEMENT_META: Record<string, { color: string; bg: string; border: string;
   'استلام_عام':    { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: ArrowDownToLine, sign: '+', label: 'استلام عام'     },
   'صرف_عام':       { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', icon: ArrowUpFromLine, sign: '-', label: 'صرف عام'        },
   'ارجاع_مستودع':  { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', icon: RotateCcw,       sign: '+', label: 'إرجاع للمستودع' },
-  'تسوية':         { color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe', icon: Package,         sign: '~', label: 'تسوية'          },
+  'مرتجع_موقع':    { color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', icon: RotateCcw,       sign: '+', label: 'مرتجع موقع'     },
 }
 
 // دالة مساعدة تختار الميتاداتا الصحيحة
@@ -246,7 +246,7 @@ export default function InventoryMovementsPage() {
           { val: 'صرف_عهدة',      label: 'صرف عهدة',       color: '#c81e1e', bg: '#fef2f2' },
           { val: 'صرف_عام',       label: 'صرف عام',        color: '#c81e1e', bg: '#fef2f2' },
           { val: 'ارجاع_عميل',    label: 'إرجاع للعميل',   color: '#e6820a', bg: '#fffbeb' },
-          { val: 'تحويل',         label: 'تحويل',           color: '#0891b2', bg: '#ecfeff' },
+          { val: 'مرتجع_موقع',    label: 'مرتجع موقع',     color: '#1a56db', bg: '#eff6ff' },
         ].map(opt => (
           <button key={opt.val} onClick={() => { setFType(opt.val); setTimeout(() => loadMovements(1), 0) }}
             style={{

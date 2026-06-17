@@ -913,6 +913,250 @@ function OperationModal({ type, tenantId, branchId, warehouses, projects, onClos
 }
 
 // ══════════════════════════════════════════
+// مودال: مرتجع موقع
+// ══════════════════════════════════════════
+function ReturnModal({ tenantId, branchId, warehouses, projects, onClose, onSave }: {
+  tenantId: string; branchId: number
+  warehouses: any[]; projects: any[]
+  onClose: () => void; onSave: () => void
+}) {
+  const [saving,         setSaving]         = useState(false)
+  const [warehouseId,    setWarehouseId]    = useState('')
+  const [projectId,      setProjectId]      = useState('')
+  const [projectName,    setProjectName]    = useState('')
+  const [issuedMats,     setIssuedMats]     = useState<any[]>([])
+  const [returnQtys,     setReturnQtys]     = useState<Record<number, string>>({})
+  const [date,           setDate]           = useState(new Date().toISOString().split('T')[0])
+  const [notes,          setNotes]          = useState('')
+
+  async function loadIssuedMats() {
+    if (!warehouseId || !projectId) return
+    const { data } = await supabase.from('project_materials')
+      .select('*, material:materials(id, name, unit, catalog_no)')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', Number(projectId))
+      .eq('warehouse_id', Number(warehouseId))
+      .gt('qty_issued', 0)
+    setIssuedMats(data || [])
+    setReturnQtys({})
+  }
+
+  useEffect(() => { loadIssuedMats() }, [warehouseId, projectId])
+
+  async function handleSave() {
+    const validRows = Object.entries(returnQtys).filter(([, qty]) => Number(qty) > 0)
+    if (validRows.length === 0) { toast.error('أدخل كمية مرتجعة لمادة واحدة على الأقل'); return }
+    if (!projectId) { toast.error('اختر المشروع'); return }
+    setSaving(true)
+
+    const wh   = warehouses.find(w => w.id === Number(warehouseId))
+    const printRows: { name: string; unit: string; qty: number; note: string }[] = []
+
+    for (const [pmIdStr, qtyStr] of validRows) {
+      const qty = Number(qtyStr)
+      const pm  = issuedMats.find(m => String(m.id) === pmIdStr)
+      if (!pm) continue
+
+      const maxReturn = Number(pm.qty_issued)
+      if (qty > maxReturn) {
+        toast.error(`لا يمكن إرجاع أكثر من ${maxReturn} ${pm.material?.unit} من "${pm.material?.name}"`)
+        setSaving(false); return
+      }
+
+      // جلب رصيد المادة
+      const { data: mat } = await supabase.from('materials').select('qty, name, unit')
+        .eq('id', pm.material_id).single()
+      if (!mat) continue
+
+      const qtyBefore = Number(mat.qty)
+      const qtyAfter  = qtyBefore + qty
+
+      // تحديث المادة في المستودع
+      await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
+
+      // تحديث project_materials
+      await supabase.from('project_materials').update({
+        qty_issued:  Math.max(0, Number(pm.qty_issued)  - qty),
+        qty_balance: Number(pm.qty_balance) + qty,
+      }).eq('id', pm.id)
+
+      // تسجيل في stock_ledger
+      await supabase.from('stock_ledger').insert({
+        tenant_id:         tenantId,
+        branch_id:         branchId,
+        type:              'استلام',
+        movement_category: 'مرتجع_موقع',
+        mat_name:          mat.name,
+        unit:              mat.unit,
+        qty,
+        qty_before:        qtyBefore,
+        qty_after:         qtyAfter,
+        wh_name:           wh?.name || '',
+        project_id:        Number(projectId),
+        project_name:      projectName,
+        dispatch_note:     notes || 'مرتجع موقع',
+      })
+
+      printRows.push({ name: mat.name, unit: mat.unit, qty, note: notes || '' })
+    }
+
+    setSaving(false)
+    toast.success(`✅ تم تسجيل المرتجع — ${printRows.length} مادة`)
+
+    // طباعة وصل المرتجع
+    const { data: lastEntry } = await supabase.from('stock_ledger')
+      .select('txn_number').eq('tenant_id', tenantId)
+      .order('id', { ascending: false }).limit(1).maybeSingle()
+
+    printOperationReceipt({
+      type: 'مرتجع موقع',
+      warehouseName: wh?.name || '',
+      projectName,
+      date,
+      rows: printRows,
+      txnNumber: lastEntry?.txn_number || '',
+    })
+
+    onSave(); onClose()
+  }
+
+  const isProjectWh = warehouses.find(w => w.id === Number(warehouseId))
+  const totalReturn = Object.values(returnQtys).reduce((s, v) => s + Number(v || 0), 0)
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#eff6ff', borderBottom: '2px solid #bfdbfe' }}>
+          <h3 style={{ fontWeight: 700, color: '#1a56db', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <RotateCcw style={{ width: '18px', height: '18px' }} /> مرتجع موقع
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#1a56db' }}>
+            📦 مواد خرجت للموقع ولم تُستخدم — ترجع للمستودع وتزيد رصيد العهدة
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                المستودع <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className="select">
+                <option value="">— اختر المستودع —</option>
+                {warehouses.filter(w => w.wh_category === 'مشاريع' || w.mode === 'مشاريع').map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                المشروع <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={projectId} onChange={e => {
+                const p = projects.find((p: any) => p.id === Number(e.target.value))
+                setProjectId(e.target.value)
+                setProjectName(p?.name || '')
+              }} className="select">
+                <option value="">— اختر المشروع —</option>
+                {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" style={{ maxWidth: '200px' }} />
+          </div>
+
+          {/* قائمة المواد المصروفة */}
+          {warehouseId && projectId && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1a56db' }}>
+                  المواد المصروفة — أدخل الكمية المرتجعة:
+                </label>
+                {totalReturn > 0 && (
+                  <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+                    إجمالي المرتجع: {totalReturn}
+                  </span>
+                )}
+              </div>
+
+              {issuedMats.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: 'var(--text3)', fontSize: '0.875rem' }}>
+                  لا توجد مواد مصروفة لهذا المشروع في هذا المستودع
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {issuedMats.map(pm => (
+                    <div key={pm.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '10px 14px', borderRadius: '10px',
+                      background: returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#eff6ff' : '#f8fafc',
+                      border: `1px solid ${returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#bfdbfe' : 'var(--border)'}`,
+                      transition: 'all 0.15s',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {pm.material?.name || '—'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', marginTop: '2px', display: 'flex', gap: '10px' }}>
+                          <span style={{ color: '#c81e1e' }}>مصروف: <strong>{pm.qty_issued}</strong></span>
+                          <span style={{ color: '#0ea77b' }}>الرصيد: <strong>{pm.qty_balance}</strong></span>
+                          <span style={{ color: 'var(--text3)' }}>{pm.material?.unit}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        <input
+                          type="number"
+                          value={returnQtys[pm.id] || ''}
+                          min="0"
+                          max={pm.qty_issued}
+                          onChange={e => setReturnQtys(prev => ({ ...prev, [pm.id]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                          placeholder="0"
+                          style={{
+                            width: '75px', padding: '6px 8px', borderRadius: '8px',
+                            border: '2px solid #bfdbfe', fontSize: '0.875rem',
+                            textAlign: 'center', fontWeight: 700,
+                            background: returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#eff6ff' : 'white',
+                          }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '35px' }}>
+                          {pm.material?.unit}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)}
+              className="input" placeholder="سبب الإرجاع (اختياري)" />
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || totalReturn === 0}
+            className="btn btn-primary" style={{ background: '#1a56db' }}>
+            {saving ? 'جاري الحفظ...' : `تأكيد المرتجع${totalReturn > 0 ? ` (${totalReturn})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════
 // الصفحة الرئيسية
 // ══════════════════════════════════════════
 export default function InventoryMaterialsPage() {
@@ -933,7 +1177,7 @@ export default function InventoryMaterialsPage() {
   const [projectId,   setProjectId]   = useState('')
 
   // modals
-  const [modal,      setModal]      = useState<'define' | 'edit' | 'استلام' | 'صرف' | 'إرجاع' | 'تحويل' | 'check' | null>(null)
+  const [modal,      setModal]      = useState<'define' | 'edit' | 'استلام' | 'صرف' | 'إرجاع' | 'تحويل' | 'مرتجع' | 'check' | null>(null)
   const [editMat,    setEditMat]    = useState<Material | null>(null)
   const [checkItems, setCheckItems] = useState<any[]>([])
   const [checkWh,    setCheckWh]    = useState('')
@@ -1067,23 +1311,49 @@ export default function InventoryMaterialsPage() {
         </div>
       </div>
 
-      {/* أزرار العمليات */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-        {([
-          { type: 'استلام', emoji: '📥', color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد جديدة' },
-          { type: 'صرف',    emoji: '📤', color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف لمشروع أو جهة' },
-          { type: 'إرجاع',  emoji: '↩️', color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع فائض أو سكراب' },
-          { type: 'تحويل',  emoji: '🔄', color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'نقل بين المستودعات' },
-        ] as const).map(btn => (
-          <button key={btn.type} onClick={() => setModal(btn.type)}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '16px 12px', borderRadius: '14px', border: `2px solid ${btn.border}`, background: btn.bg, cursor: 'pointer', transition: 'all 0.2s' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 20px ${btn.color}25` }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
-            <span style={{ fontSize: '1.8rem', lineHeight: 1 }}>{btn.emoji}</span>
-            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: btn.color }}>{btn.type}</div>
-            <div style={{ fontSize: '0.68rem', color: btn.color, opacity: 0.7 }}>{btn.desc}</div>
-          </button>
-        ))}
+      {/* أزرار العمليات — مجموعتان */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+        {/* المجموعة الأولى: حركات الموقع */}
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text3)', fontWeight: 600, whiteSpace: 'nowrap', minWidth: '80px' }}>حركات الموقع</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', flex: 1 }}>
+            {([
+              { type: 'استلام', emoji: '📥', color: '#0ea77b', bg: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', border: '#86efac', desc: 'استلام مواد' },
+              { type: 'صرف',    emoji: '📤', color: '#c81e1e', bg: 'linear-gradient(135deg, #fef2f2, #fecaca)', border: '#fca5a5', desc: 'صرف للموقع' },
+              { type: 'مرتجع', emoji: '📦', color: '#1a56db', bg: 'linear-gradient(135deg, #eff6ff, #bfdbfe)', border: '#93c5fd', desc: 'مرتجع من الموقع' },
+            ] as const).map(btn => (
+              <button key={btn.type} onClick={() => setModal(btn.type as any)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '14px 10px', borderRadius: '12px', border: `2px solid ${btn.border}`, background: btn.bg, cursor: 'pointer', transition: 'all 0.2s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 20px ${btn.color}25` }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
+                <span style={{ fontSize: '1.6rem', lineHeight: 1 }}>{btn.emoji}</span>
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: btn.color }}>{btn.type}</div>
+                <div style={{ fontSize: '0.65rem', color: btn.color, opacity: 0.75 }}>{btn.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* المجموعة الثانية: حركات إدارية */}
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text3)', fontWeight: 600, whiteSpace: 'nowrap', minWidth: '80px' }}>حركات إدارية</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', flex: 1 }}>
+            {([
+              { type: 'تحويل',  emoji: '🔄', color: '#0891b2', bg: 'linear-gradient(135deg, #ecfeff, #a5f3fc)', border: '#67e8f9', desc: 'نقل بين المستودعات' },
+              { type: 'إرجاع',  emoji: '↩️', color: '#e6820a', bg: 'linear-gradient(135deg, #fffbeb, #fde68a)', border: '#fcd34d', desc: 'إرجاع فائض للعميل' },
+            ] as const).map(btn => (
+              <button key={btn.type} onClick={() => setModal(btn.type)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '12px 10px', borderRadius: '12px', border: `2px solid ${btn.border}`, background: btn.bg, cursor: 'pointer', transition: 'all 0.2s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 20px ${btn.color}25` }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
+                <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{btn.emoji}</span>
+                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: btn.color }}>{btn.type === 'إرجاع' ? 'إرجاع للعميل' : btn.type}</div>
+                <div style={{ fontSize: '0.65rem', color: btn.color, opacity: 0.75 }}>{btn.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* الفلاتر */}
@@ -1252,6 +1522,15 @@ export default function InventoryMaterialsPage() {
             onClose={() => setModal(null)} onSave={() => { setModal(null); loadMaterials(matPage) }} />
         )
       ))}
+
+      {modal === 'مرتجع' && tenant && activeBranch && (
+        <ReturnModal
+          tenantId={tenant.id} branchId={activeBranch.id}
+          warehouses={warehouses} projects={projects}
+          onClose={() => setModal(null)}
+          onSave={() => { setModal(null); loadMaterials(matPage) }}
+        />
+      )}
 
       {/* جرد المستودع */}
       {modal === 'check' && (
