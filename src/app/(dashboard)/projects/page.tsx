@@ -9,7 +9,8 @@ import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/uti
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
   LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
-  MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save
+  MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save,
+  ClipboardList, MapPin, ChevronDown
 } from 'lucide-react'
 import type { Project, ProjectStatus } from '@/types'
 import toast from 'react-hot-toast'
@@ -90,7 +91,7 @@ function NoteModal({ project, onClose, onSave }: {
   const notes = (project.history || []).filter(h => h.includes('📝')).slice(-5).reverse()
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 60 }}>
+    <div className="modal-overlay" onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }} onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }} style={{ zIndex: 60 }}>
       <div className="modal-box" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -129,24 +130,69 @@ function NoteModal({ project, onClose, onSave }: {
 }
 
 // ══════════════════════════════════════
-// زر الملاحظة
+// زر الإضافة السريعة (+) — ملاحظة / زيارة / مهمة
 // ══════════════════════════════════════
-function NoteButton({ project, onClick }: { project: Project; onClick: () => void }) {
+function QuickAddButton({ project, onNote, onVisit, onTask }: {
+  project: Project
+  onNote:  () => void
+  onVisit: () => void
+  onTask:  () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   const noteCount = (project.history || []).filter(h => h.includes('📝')).length
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
   return (
-    <button onClick={onClick}
-      style={{
-        padding: '5px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
-        border: `1px solid ${noteCount > 0 ? '#fcd34d' : '#e5e7eb'}`,
-        background: noteCount > 0 ? '#fffbeb' : 'white',
-        cursor: 'pointer', color: noteCount > 0 ? '#e6820a' : '#9ca3af',
-        display: 'flex', alignItems: 'center', gap: '3px',
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#fffbeb'; (e.currentTarget as HTMLElement).style.color = '#e6820a' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = noteCount > 0 ? '#fffbeb' : 'white'; (e.currentTarget as HTMLElement).style.color = noteCount > 0 ? '#e6820a' : '#9ca3af' }}>
-      <MessageSquarePlus style={{ width: '13px', height: '13px' }} />
-      {noteCount > 0 && <span>{noteCount}</span>}
-    </button>
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{
+          padding: '5px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
+          border: `1px solid ${noteCount > 0 ? '#fcd34d' : '#e5e7eb'}`,
+          background: open ? '#f3f4f6' : noteCount > 0 ? '#fffbeb' : 'white',
+          cursor: 'pointer', color: noteCount > 0 ? '#e6820a' : '#6b7280',
+          display: 'flex', alignItems: 'center', gap: '3px',
+        }}>
+        <Plus style={{ width: '12px', height: '12px' }} />
+        {noteCount > 0 && <span style={{ fontSize: '0.68rem' }}>{noteCount}</span>}
+        <ChevronDown style={{ width: '10px', height: '10px' }} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, marginTop: '4px',
+          background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '150px',
+          overflow: 'hidden',
+        }}>
+          {[
+            { icon: <MessageSquarePlus style={{ width: '14px', height: '14px' }} />, label: 'ملاحظة', color: '#e6820a', action: onNote },
+            { icon: <MapPin style={{ width: '14px', height: '14px' }} />,            label: 'زيارة',   color: '#0ea77b', action: onVisit },
+            { icon: <ClipboardList style={{ width: '14px', height: '14px' }} />,     label: 'مهمة',    color: '#1a56db', action: onTask },
+          ].map(item => (
+            <button key={item.label} onClick={() => { setOpen(false); item.action() }}
+              style={{
+                width: '100%', padding: '9px 14px', border: 'none', background: 'white',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)',
+                textAlign: 'right', transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+              <span style={{ color: item.color }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -205,7 +251,7 @@ function ManageTypesModal({ tenantId, onClose }: {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }} onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
       <div className="modal-box" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -295,10 +341,11 @@ function ManageTypesModal({ tenantId, onClose }: {
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote }: {
+function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onVisit, onTask }: {
   p: Project; canEdit: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
+  onVisit: () => void; onTask: () => void
 }) {
   const days   = daysUntil(p.end_date)
   const isLate = days !== null && days < 0 && p.progress < 100
@@ -372,6 +419,7 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
           <Eye style={{ width: '12px', height: '12px' }} /> تفاصيل
         </button>
         <NoteButton project={p} onClick={onNote} />
+        <QuickAddButton project={p} onNote={onNote} onVisit={onVisit} onTask={onTask} />
         {canEdit && (
           <>
             <button onClick={onEdit}
@@ -417,7 +465,9 @@ export default function ProjectsPage() {
   const [clientFilter, setClient] = useState('')
   const savedView = (tenant as any)?.display_settings?.projectsView || 'kanban'
   const [viewMode, setViewMode]   = useState<'kanban' | 'grid' | 'list'>(savedView as any)
-  const [noteProject, setNoteProject] = useState<Project | null>(null)
+  const [noteProject,  setNoteProject]  = useState<Project | null>(null)
+  const [visitProject, setVisitProject] = useState<Project | null>(null)
+  const [taskProject,  setTaskProject]  = useState<Project | null>(null)
 
   useEffect(() => {
     const v = (tenant as any)?.display_settings?.projectsView
@@ -508,7 +558,7 @@ export default function ProjectsPage() {
     // تطبيق النسبة التلقائية حسب الحالة
     const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress }
-    delete (payload as any).value
+    // لا نحذف value — قيمة العقد مطلوبة
 
     if ((payload as any).id) {
       const { id, ...rest } = payload as any
@@ -777,7 +827,9 @@ export default function ProjectsPage() {
                         onEdit={() => { setEditProject(p); setShowModal(true) }}
                         onDelete={() => handleDelete(p)}
                         onMove={dir => handleMove(p, dir)}
-                        onNote={() => setNoteProject(p)} />
+                        onNote={() => setNoteProject(p)}
+                        onVisit={() => setVisitProject(p)}
+                        onTask={() => setTaskProject(p)} />
                     ))
                   )}
                   {canEdit && col.id !== 'مكتمل' && (
@@ -842,7 +894,7 @@ export default function ProjectsPage() {
                     style={{ flex: 1, padding: '6px', borderRadius: '7px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <Eye style={{ width: '13px', height: '13px' }} /> تفاصيل
                   </button>
-                  <NoteButton project={p} onClick={() => setNoteProject(p)} />
+                  <QuickAddButton project={p} onNote={() => setNoteProject(p)} onVisit={() => setVisitProject(p)} onTask={() => setTaskProject(p)} />
                   {canEdit && (
                     <>
                       <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -907,7 +959,7 @@ export default function ProjectsPage() {
                           style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           تفاصيل
                         </button>
-                        <NoteButton project={p} onClick={() => setNoteProject(p)} />
+                        <QuickAddButton project={p} onNote={() => setNoteProject(p)} onVisit={() => setVisitProject(p)} onTask={() => setTaskProject(p)} />
                         {canEdit && (
                           <>
                             <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -941,6 +993,20 @@ export default function ProjectsPage() {
           onClose={() => setNoteProject(null)}
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
       )}
+
+      {/* توجيه سريع للزيارة */}
+      {visitProject && (() => {
+        toast(`انتقل لصفحة الزيارات لإضافة زيارة للمشروع: ${visitProject.name}`, { icon: '📍', duration: 4000 })
+        setVisitProject(null)
+        return null
+      })()}
+
+      {/* توجيه سريع للمهمة */}
+      {taskProject && (() => {
+        toast(`انتقل لصفحة المهام لإضافة مهمة للمشروع: ${taskProject.name}`, { icon: '📋', duration: 4000 })
+        setTaskProject(null)
+        return null
+      })()}
 
       {showManageTypes && tenant && (
         <ManageTypesModal
