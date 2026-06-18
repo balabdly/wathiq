@@ -172,6 +172,11 @@ export default function VisitsPage() {
     toast.success('✅ تم إغلاق NCR')
   }
 
+  // حسابات KPIs
+  const openNCR   = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
+  const totalOk   = visits.filter(v => v.specs === 'مطابق').length
+  const matchRate = visits.length ? Math.round(totalOk / visits.length * 100) : 0
+
   // الفلترة المدمجة
   const q = search.toLowerCase()
   const filtered = visits.filter(v => {
