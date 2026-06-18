@@ -73,10 +73,104 @@ function CorrectiveModal({ visit, onClose, onSave }: {
     setSaving(false)
   }
 
-  const openNCR    = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
-  const closedNCR  = visits.filter(v => v.specs === 'غير مطابق' && v.resolved_report).length
-  const totalOk    = visits.filter(v => v.specs === 'مطابق').length
-  const matchRate  = visits.length ? Math.round(totalOk / visits.length * 100) : 0
+  // render CorrectiveModal...
+  return (
+    <div className="modal-overlay" onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }} onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700 }}>📋 إغلاق NCR — إجراء تصحيحي</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '12px', fontSize: '0.82rem', color: '#c81e1e' }}>
+            ⚠️ {visit.corrective || visit.notes || 'مخالفة تحتاج إجراء تصحيحي'}
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span></label>
+            <textarea value={report} onChange={e => setReport(e.target.value)}
+              className="input" style={{ minHeight: '90px', resize: 'none' }}
+              placeholder="اكتب تفاصيل الإجراء التصحيحي المتخذ..." />
+          </div>
+          {isClosed && (
+            <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '8px', padding: '12px', fontSize: '0.82rem', color: '#0ea77b' }}>
+              ✅ تم إغلاق NCR مسبقاً — {visit.resolved_by} في {formatDate(visit.resolved_date || '')}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          {!isClosed && (
+            <button onClick={handleSave} disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+              {saving ? 'جاري الحفظ...' : '✅ إغلاق NCR'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+export default function VisitsPage() {
+  const { tenant, activeBranch, visits, setVisits, projects, setProjects, currentUser } = useStore()
+  const [loading,          setLoading]          = useState(true)
+  const [search,           setSearch]           = useState('')
+  const [showModal,        setShowModal]        = useState(false)
+  const [editVisit,        setEditVisit]        = useState<Visit | null>(null)
+  const [detailVisit,      setDetail]           = useState<Visit | null>(null)
+  const [correctiveVisit,  setCorrectiveVisit]  = useState<Visit | null>(null)
+  const [selectedType,     setSelectedType]     = useState<string | null>(null)
+  const [statusTab,        setStatusTab]        = useState('all')
+
+  const canEdit = currentUser?.permissions?.some(p => p.startsWith('visits'))
+
+  useEffect(() => { loadVisits() }, [tenant?.id, activeBranch?.id])
+
+  async function loadVisits() {
+    if (!tenant || !activeBranch) return
+    setLoading(true)
+    const { data } = await visitsApi.getAll(tenant.id, activeBranch.id)
+    setVisits(data || [])
+    setLoading(false)
+  }
+
+  async function loadProjects() {
+    if (!tenant || !activeBranch || projects.length > 0) return
+    const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
+    setProjects(data || [])
+  }
+
+  async function handleDelete(v: Visit) {
+    if (currentUser?.role !== 'admin') { toast.error('⛔ الحذف للأدمن فقط'); return }
+    if (!confirm('حذف هذه الزيارة نهائياً؟')) return
+    await visitsApi.delete(v.id)
+    await loadVisits()
+    toast.success('تم الحذف')
+  }
+
+  async function handleSave(data: Partial<Visit>) {
+    if (!tenant || !activeBranch) return
+    const payload: any = { ...data, tenant_id: tenant.id, branch_id: activeBranch.id, project_id: data.project_id ? Number(data.project_id) : null }
+    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
+    const { error } = await visitsApi.upsert(payload)
+    if (error) { toast.error('خطأ: ' + (error as any)?.message); return }
+    await loadVisits()
+    setShowModal(false); setEditVisit(null)
+    toast.success(editVisit ? 'تم التعديل' : 'تمت الإضافة ✅')
+  }
+
+  async function handleResolve(id: number, report: string, attachments: string[] = []) {
+    if (!tenant) return
+    const { error } = await supabase.from('visits').update({
+      resolved_report: report, resolved_date: new Date().toISOString().split('T')[0],
+      resolved_by: currentUser?.name || '', status: 'مغلق', specs: 'مطابق',
+      ncr_attachments: attachments.length > 0 ? attachments : undefined,
+    }).eq('id', id).eq('tenant_id', tenant.id)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    await loadVisits()
+    setCorrectiveVisit(null); setDetail(null)
+    toast.success('✅ تم إغلاق NCR')
+  }
 
   // الفلترة المدمجة
   const q = search.toLowerCase()
