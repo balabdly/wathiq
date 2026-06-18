@@ -45,7 +45,7 @@ function getMovementMeta(entry: LedgerEntry) {
   return MOVEMENT_META[entry.type] || { color: '#6b7280', bg: '#f9fafb', border: '#e5e7eb', icon: Package, sign: '', label: entry.type }
 }
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 10
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
 
 function formatDateTime(dateStr: string) {
@@ -127,8 +127,12 @@ export default function InventoryMovementsPage() {
   const [fType,     setFType]     = useState('')
   const [fWh,       setFWh]       = useState('')
   const [fProject,  setFProject]  = useState('')
+  const [fMaterial, setFMaterial] = useState('')
   const [fDateFrom, setFDateFrom] = useState('')
   const [fDateTo,   setFDateTo]   = useState('')
+
+  // قائمة المواد للفلتر
+  const [materials, setMaterials] = useState<any[]>([])
 
   // KPIs
   const [kpis, setKpis] = useState({ totalIn: 0, totalOut: 0, totalMoves: 0, todayMoves: 0 })
@@ -139,12 +143,14 @@ export default function InventoryMovementsPage() {
 
   async function loadBase() {
     if (!tenant) return
-    const [whRes, projRes] = await Promise.all([
+    const [whRes, projRes, matRes] = await Promise.all([
       supabase.from('warehouses').select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('materials').select('id, name, unit').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
     setWarehouses(whRes.data || [])
     setProjects(projRes.data || [])
+    setMaterials(matRes.data || [])
     loadMovements(1)
     loadKPIs()
   }
@@ -174,9 +180,15 @@ export default function InventoryMovementsPage() {
       .order('created_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
 
-    if (fType)     q = q.eq('movement_category', fType)
+    if (fType === '__استلام__')
+      q = q.in('movement_category', ['استلام_عهدة', 'استلام_عام', 'استلام_مقايسة'])
+    else if (fType === '__صرف__')
+      q = q.in('movement_category', ['صرف_عهدة', 'صرف_عام'])
+    else if (fType)
+      q = q.eq('movement_category', fType)
     if (fWh)       q = q.eq('wh_name', fWh)
     if (fProject)  q = q.eq('project_name', fProject)
+    if (fMaterial) q = q.ilike('mat_name', `%${fMaterial}%`)
     if (fDateFrom) q = q.gte('created_at', fDateFrom)
     if (fDateTo)   q = q.lte('created_at', fDateTo + 'T23:59:59')
     if (fSearch)   q = q.ilike('mat_name', `%${fSearch}%`)
@@ -234,26 +246,22 @@ export default function InventoryMovementsPage() {
         ))}
       </div>
 
-      {/* أنواع الحركات — فلاتر سريعة */}
+      {/* فلاتر سريعة — مبسطة */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button onClick={() => { setFType(''); setTimeout(() => loadMovements(1), 0) }}
-          style={{ padding: '6px 14px', borderRadius: '20px', border: `1px solid ${fType === '' ? '#1a56db' : 'var(--border)'}`, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, background: fType === '' ? '#eff6ff' : 'transparent', color: fType === '' ? '#1a56db' : 'var(--text3)' }}>
-          الكل
-        </button>
         {[
-          { val: 'استلام_عهدة',   label: 'استلام عهدة',    color: '#0ea77b', bg: '#ecfdf5' },
-          { val: 'استلام_عام',    label: 'استلام عام',     color: '#0ea77b', bg: '#ecfdf5' },
-          { val: 'صرف_عهدة',      label: 'صرف عهدة',       color: '#c81e1e', bg: '#fef2f2' },
-          { val: 'صرف_عام',       label: 'صرف عام',        color: '#c81e1e', bg: '#fef2f2' },
-          { val: 'ارجاع_عميل',    label: 'إرجاع للعميل',   color: '#e6820a', bg: '#fffbeb' },
-          { val: 'مرتجع_موقع',    label: 'مرتجع موقع',     color: '#1a56db', bg: '#eff6ff' },
+          { val: '',              label: 'الكل',             color: '#6b7280', bg: '#f9fafb' },
+          { val: '__استلام__',   label: '📥 استلام',         color: '#0ea77b', bg: '#ecfdf5' },
+          { val: '__صرف__',      label: '📤 صرف',            color: '#c81e1e', bg: '#fef2f2' },
+          { val: 'ارجاع_عميل',  label: '↩️ إرجاع للعميل',  color: '#e6820a', bg: '#fffbeb' },
+          { val: 'مرتجع_موقع',  label: '📦 مرتجع موقع',    color: '#1a56db', bg: '#eff6ff' },
         ].map(opt => (
           <button key={opt.val} onClick={() => { setFType(opt.val); setTimeout(() => loadMovements(1), 0) }}
             style={{
-              padding: '6px 14px', borderRadius: '20px', border: '1px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+              padding: '7px 16px', borderRadius: '20px', border: '2px solid', cursor: 'pointer',
+              fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
               borderColor: fType === opt.val ? opt.color : 'var(--border)',
-              background: fType === opt.val ? opt.bg : 'transparent',
-              color: fType === opt.val ? opt.color : 'var(--text3)',
+              background:  fType === opt.val ? opt.bg : 'transparent',
+              color:       fType === opt.val ? opt.color : 'var(--text3)',
             }}>
             {opt.label}
           </button>
@@ -275,6 +283,10 @@ export default function InventoryMovementsPage() {
           <option value="">كل المشاريع</option>
           {projects.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
         </select>
+        <select value={fMaterial} onChange={e => setFMaterial(e.target.value)} className="select" style={{ fontSize: '0.82rem', minWidth: '160px' }}>
+          <option value="">كل المواد</option>
+          {materials.map((m: any) => <option key={m.id} value={m.name}>{m.name} ({m.unit})</option>)}
+        </select>
         <div>
           <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>من تاريخ</label>
           <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
@@ -286,8 +298,8 @@ export default function InventoryMovementsPage() {
         <button onClick={() => loadMovements(1)} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
           <Filter style={{ width: '13px', height: '13px' }} /> بحث
         </button>
-        {(fSearch || fWh || fProject || fDateFrom || fDateTo || fType) && (
-          <button onClick={() => { setFSearch(''); setFType(''); setFWh(''); setFProject(''); setFDateFrom(''); setFDateTo(''); setTimeout(() => loadMovements(1), 0) }}
+        {(fSearch || fWh || fProject || fMaterial || fDateFrom || fDateTo || fType) && (
+          <button onClick={() => { setFSearch(''); setFType(''); setFWh(''); setFProject(''); setFMaterial(''); setFDateFrom(''); setFDateTo(''); setTimeout(() => loadMovements(1), 0) }}
             className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#c81e1e' }}>
             <X style={{ width: '13px', height: '13px' }} /> مسح
           </button>
