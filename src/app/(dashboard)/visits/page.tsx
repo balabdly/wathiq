@@ -100,7 +100,7 @@ function CorrectiveModal({ visit, onClose, onSave }: {
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           {!isClosed && (
-            <button onClick={handleSave} disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            <button onClick={handleSubmit} disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
               {saving ? 'جاري الحفظ...' : '✅ إغلاق NCR'}
             </button>
           )}
