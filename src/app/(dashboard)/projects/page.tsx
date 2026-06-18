@@ -418,7 +418,6 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
           style={{ flex: 1, padding: '5px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
           <Eye style={{ width: '12px', height: '12px' }} /> تفاصيل
         </button>
-        <NoteButton project={p} onClick={onNote} />
         <QuickAddButton project={p} onNote={onNote} onVisit={onVisit} onTask={onTask} />
         {canEdit && (
           <>
