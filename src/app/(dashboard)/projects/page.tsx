@@ -199,8 +199,184 @@ function QuickAddButton({ project, onNote, onVisit, onTask }: {
 
 
 // ══════════════════════════════════════
-// نافذة إدارة أنواع المشاريع
+// مودال إضافة زيارة سريعة
 // ══════════════════════════════════════
+function QuickVisitModal({ project, tenantId, branchId, onClose }: {
+  project: Project; tenantId: string; branchId: number; onClose: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    type:     'زيارة متابعة',
+    date:     new Date().toISOString().split('T')[0],
+    engineer: '',
+    notes:    '',
+    status:   'مفتوحة',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.engineer.trim()) { toast.error('اسم المهندس مطلوب'); return }
+    setSaving(true)
+    const { error } = await supabase.from('visits').insert({
+      tenant_id:  tenantId,
+      branch_id:  branchId,
+      project_id: project.id,
+      type:       form.type,
+      date:       form.date,
+      engineer:   form.engineer.trim(),
+      notes:      form.notes.trim() || null,
+      status:     form.status,
+    })
+    setSaving(false)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    toast.success('تمت إضافة الزيارة ✅')
+    onClose()
+  }
+
+  return (
+    <div className="modal-overlay"
+      onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }}
+      onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#f0fdfa', borderBottom: '2px solid #99f6e4' }}>
+          <h3 style={{ fontWeight: 700, color: '#0f766e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📍 إضافة زيارة — {project.name}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>نوع الزيارة</label>
+              <select value={form.type} onChange={e => set('type', e.target.value)} className="select">
+                {['زيارة متابعة','زيارة تفتيشية','زيارة تسليم','زيارة طارئة','زيارة عميل'].map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
+              <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" />
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المهندس المسؤول <span style={{ color: '#c81e1e' }}>*</span></label>
+            <input value={form.engineer} onChange={e => set('engineer', e.target.value)} className="input" placeholder="اسم المهندس" />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الحالة</label>
+            <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+              {['مفتوحة','منجزة','ملغاة'].map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input"
+              placeholder="ملاحظات الزيارة..." style={{ minHeight: '70px', resize: 'none' }} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0f766e' }}>
+            {saving ? 'جاري الحفظ...' : 'إضافة الزيارة'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// مودال إضافة مهمة سريعة
+// ══════════════════════════════════════
+function QuickTaskModal({ project, tenantId, onClose }: {
+  project: Project; tenantId: string; onClose: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    title:    '',
+    assignee: '',
+    priority: 'متوسط',
+    due_date: '',
+    status:   'قيد التنفيذ',
+    notes:    '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.title.trim()) { toast.error('عنوان المهمة مطلوب'); return }
+    setSaving(true)
+    const { error } = await supabase.from('project_tasks').insert({
+      tenant_id:  tenantId,
+      project_id: project.id,
+      title:      form.title.trim(),
+      assignee:   form.assignee.trim() || null,
+      priority:   form.priority,
+      due_date:   form.due_date || null,
+      status:     form.status,
+      description: form.notes.trim() || null,
+      progress:   0,
+    })
+    setSaving(false)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    toast.success('تمت إضافة المهمة ✅')
+    onClose()
+  }
+
+  return (
+    <div className="modal-overlay"
+      onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }}
+      onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#eff6ff', borderBottom: '2px solid #bfdbfe' }}>
+          <h3 style={{ fontWeight: 700, color: '#1a56db', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            📋 إضافة مهمة — {project.name}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>عنوان المهمة <span style={{ color: '#c81e1e' }}>*</span></label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="وصف المهمة..." autoFocus />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
+              <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المسؤول" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الأولوية</label>
+              <select value={form.priority} onChange={e => set('priority', e.target.value)} className="select">
+                {['عالي','متوسط','منخفض'].map(p => <option key={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>تاريخ الاستحقاق</label>
+              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الحالة</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['قيد التنفيذ','مكتملة','معلقة','ملغاة'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input"
+              placeholder="تفاصيل إضافية..." style={{ minHeight: '60px', resize: 'none' }} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? 'جاري الحفظ...' : 'إضافة المهمة'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 function ManageTypesModal({ tenantId, onClose }: {
   tenantId: string; onClose: () => void
 }) {
@@ -680,7 +856,7 @@ export default function ProjectsPage() {
   const activeCount = projects.filter(p => p.status === 'قيد التنفيذ').length
   const doneCount   = projects.filter(p => p.progress >= 100 || p.status === 'مكتمل').length
   const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now && p.status !== 'مكتمل').length
-  const totalValue  = projects.reduce((s, p) => s + (p.value || 0), 0)
+  const totalValue  = projects.reduce((s, p) => s + (p.estimated_value || 0), 0)
 
   if (detailProject) {
     return (
@@ -886,7 +1062,7 @@ export default function ProjectsPage() {
                 <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: '#9ca3af', flexWrap: 'wrap' }}>
                   {p.engineer && <span>👷 {p.engineer}</span>}
                   {p.end_date && <span>📅 {formatDate(p.end_date)}</span>}
-                  {p.value   && <span>💰 {formatCurrency(p.value)}</span>}
+                  {p.estimated_value   && <span>💰 {formatCurrency(p.estimated_value)}</span>}
                 </div>
                 <div style={{ marginTop: '12px', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                   <button onClick={() => setDetail(p)}
@@ -949,7 +1125,7 @@ export default function ProjectsPage() {
                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{p.progress}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{p.value ? formatCurrency(p.value) : '—'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{p.estimated_value ? formatCurrency(p.estimated_value) : '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{p.engineer || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: isLate ? '#c81e1e' : 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(p.end_date) || '—'}</td>
                     <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
@@ -993,19 +1169,22 @@ export default function ProjectsPage() {
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
       )}
 
-      {/* توجيه سريع للزيارة */}
-      {visitProject && (() => {
-        toast(`انتقل لصفحة الزيارات لإضافة زيارة للمشروع: ${visitProject.name}`, { icon: '📍', duration: 4000 })
-        setVisitProject(null)
-        return null
-      })()}
+      {visitProject && tenant && activeBranch && (
+        <QuickVisitModal
+          project={visitProject}
+          tenantId={tenant.id}
+          branchId={activeBranch.id}
+          onClose={() => setVisitProject(null)}
+        />
+      )}
 
-      {/* توجيه سريع للمهمة */}
-      {taskProject && (() => {
-        toast(`انتقل لصفحة المهام لإضافة مهمة للمشروع: ${taskProject.name}`, { icon: '📋', duration: 4000 })
-        setTaskProject(null)
-        return null
-      })()}
+      {taskProject && tenant && (
+        <QuickTaskModal
+          project={taskProject}
+          tenantId={tenant.id}
+          onClose={() => setTaskProject(null)}
+        />
+      )}
 
       {showManageTypes && tenant && (
         <ManageTypesModal
