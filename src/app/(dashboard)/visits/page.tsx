@@ -73,207 +73,25 @@ function CorrectiveModal({ visit, onClose, onSave }: {
     setSaving(false)
   }
 
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} style={{ zIndex: 60 }}>
-      <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header" style={{ background: isClosed ? '#ecfdf5' : '#fffbeb', borderRadius: '10px 10px 0 0', margin: '-1px -1px 0' }}>
-          <h3 style={{ fontWeight: 700, color: isClosed ? '#0ea77b' : '#e6820a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ClipboardList style={{ width: '18px', height: '18px' }} />
-            {isClosed ? 'تفاصيل الإجراء التصحيحي' : 'إجراء تصحيحي — NCR'}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
-            <X style={{ width: '18px', height: '18px' }} />
-          </button>
-        </div>
+  const openNCR    = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
+  const closedNCR  = visits.filter(v => v.specs === 'غير مطابق' && v.resolved_report).length
+  const totalOk    = visits.filter(v => v.specs === 'مطابق').length
+  const matchRate  = visits.length ? Math.round(totalOk / visits.length * 100) : 0
 
-        <form onSubmit={handleSubmit}>
-          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-            {/* معلومات الزيارة */}
-            <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px 14px', border: '1px solid var(--border)', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                {visit.date     && <span>📅 {formatDate(visit.date)}</span>}
-                {visit.engineer && <span>👷 {visit.engineer}</span>}
-                {(visit as any).location && <span>📍 {(visit as any).location}</span>}
-              </div>
-              {visit.corrective && (
-                <div style={{ color: '#c81e1e', marginTop: '4px' }}>
-                  <span style={{ fontWeight: 600 }}>المخالفة: </span>{visit.corrective}
-                </div>
-              )}
-            </div>
-
-            {/* إذا كانت مغلقة — عرض فقط */}
-            {isClosed ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>تقرير الإجراء التصحيحي:</div>
-                  <div style={{ padding: '12px 14px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac', fontSize: '0.875rem', lineHeight: 1.7 }}>
-                    {visit.resolved_report}
-                  </div>
-                </div>
-                {(visit as any).ncr_attachments?.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '8px' }}>📎 المرفقات:</div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {(visit as any).ncr_attachments.map((url: string, i: number) => (
-                        <a key={i} href={url} target="_blank" rel="noreferrer"
-                          style={{ display: 'block', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border)' }}>
-                          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {visit.resolved_by && (
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                    ✅ أُغلق بواسطة: {visit.resolved_by}
-                    {visit.resolved_date && ` — ${formatDate(visit.resolved_date)}`}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
-                    تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span>
-                  </label>
-                  <textarea
-                    value={report}
-                    onChange={e => setReport(e.target.value)}
-                    className="input"
-                    style={{ minHeight: '120px', resize: 'none' }}
-                    placeholder="صف الإجراء التصحيحي المتخذ لإغلاق هذه المخالفة..."
-                    autoFocus
-                  />
-                </div>
-
-                {/* المرفقات */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px' }}>
-                    📎 صور ومرفقات <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#9ca3af' }}>(اختياري — صور، PDF)</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', border: '2px dashed #e5e7eb', cursor: 'pointer', fontSize: '0.82rem', color: '#6b7280', background: '#f8fafc' }}>
-                    <Camera style={{ width: '16px', height: '16px', color: '#1a56db' }} />
-                    اختر صور أو ملفات
-                    <input type="file" multiple accept="image/*,.pdf" onChange={handleFiles} style={{ display: 'none' }} />
-                  </label>
-                  {previews.length > 0 && (
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
-                      {previews.map((src, i) => (
-                        <div key={i} style={{ position: 'relative', width: '72px', height: '72px' }}>
-                          <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)' }} />
-                          <button type="button" onClick={() => removeFile(i)}
-                            style={{ position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px', borderRadius: '50%', background: '#c81e1e', color: 'white', border: 'none', cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-ghost">
-              {isClosed ? 'إغلاق' : 'إلغاء'}
-            </button>
-            {!isClosed && (
-              <button type="submit" disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-                {saving
-                  ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-                  : <Save style={{ width: '14px', height: '14px' }} />}
-                {uploading ? 'جاري الرفع...' : 'إغلاق NCR'}
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ══════════════════════════════════════
-// الصفحة الرئيسية
-// ══════════════════════════════════════
-export default function VisitsPage() {
-  const { tenant, activeBranch, visits, setVisits, projects, setProjects, currentUser } = useStore()
-  const [loading, setLoading]           = useState(true)
-  const [search, setSearch]             = useState('')
-  const [specsFilter, setSpecs]         = useState('')
-  const [showModal, setShowModal]       = useState(false)
-  const [editVisit, setEditVisit]       = useState<Visit | null>(null)
-  const [detailVisit, setDetail]        = useState<Visit | null>(null)
-  const [correctiveVisit, setCorrectiveVisit] = useState<Visit | null>(null)
-  const [selectedType, setSelectedType] = useState<string | null>(null)
-
-  const canEdit = currentUser?.permissions?.some(p => p.startsWith('visits'))
-
-  useEffect(() => { loadVisits() }, [tenant?.id, activeBranch?.id])
-
-  async function loadVisits() {
-    if (!tenant || !activeBranch) return
-    setLoading(true)
-    const { data } = await visitsApi.getAll(tenant.id, activeBranch.id)
-    setVisits(data || [])
-    setLoading(false)
-  }
-
-  async function loadProjects() {
-    if (!tenant || !activeBranch || projects.length > 0) return
-    const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
-    setProjects(data || [])
-  }
-
-  async function handleDelete(v: Visit) {
-    console.log('🔴 currentUser role:', currentUser?.role, currentUser)
-    if (currentUser?.role !== 'admin') { toast.error(`⛔ الحذف للأدمن — دورك: ${currentUser?.role}`); return }
-    if (!confirm('حذف هذه الزيارة نهائياً؟ لا يمكن التراجع.')) return
-    await visitsApi.delete(v.id)
-    await loadVisits()
-    toast.success('تم الحذف')
-  }
-
-  async function handleSave(data: Partial<Visit>) {
-    if (!tenant || !activeBranch) return
-    const payload: any = {
-      ...data,
-      tenant_id:  tenant.id,
-      branch_id:  activeBranch.id,
-      project_id: data.project_id ? Number(data.project_id) : null,
-    }
-    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k])
-    const { error } = await visitsApi.upsert(payload)
-    if (error) { toast.error(`حدث خطأ: ${(error as any)?.message}`); return }
-    await loadVisits()
-    setShowModal(false); setEditVisit(null)
-    toast.success(editVisit ? 'تم التعديل' : 'تم إضافة الزيارة')
-  }
-
-  async function handleResolve(id: number, report: string, attachments: string[] = []) {
-    if (!tenant) return
-    const { error } = await supabase.from('visits')
-      .update({
-        resolved_report:  report,
-        resolved_date:    new Date().toISOString().split('T')[0],
-        resolved_by:      currentUser?.name || '',
-        status:           'مغلق',
-        specs:            'مطابق',
-        ncr_attachments:  attachments.length > 0 ? attachments : undefined,
-      })
-      .eq('id', id)
-      .eq('tenant_id', tenant.id)
-    if (error) { toast.error('خطأ في الحفظ: ' + error.message); return }
-    await loadVisits()
-    setCorrectiveVisit(null)
-    setDetail(null)
-    toast.success('✅ تم إغلاق NCR — الزيارة أصبحت مطابقة')
-  }
-
-  const openNCR = visits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
-  const totalOk = visits.filter(v => v.specs === 'مطابق').length
+  // الفلترة المدمجة
+  const q = search.toLowerCase()
+  const filtered = visits.filter(v => {
+    const matchType   = !selectedType || v.type === selectedType
+    const matchStatus =
+      statusTab === 'all'    ? true :
+      statusTab === 'ok'     ? v.specs === 'مطابق' :
+      statusTab === 'open'   ? (v.specs === 'غير مطابق' && !v.resolved_report) :
+      statusTab === 'closed' ? (v.specs === 'غير مطابق' && !!v.resolved_report) : true
+    const matchSearch = !q || v.engineer.toLowerCase().includes(q) ||
+      ((v as any).location || '').toLowerCase().includes(q) ||
+      (v.notes || '').toLowerCase().includes(q)
+    return matchType && matchStatus && matchSearch
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -298,200 +116,224 @@ export default function VisitsPage() {
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-        <div className="card" style={{ padding: '16px', textAlign: 'center' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1a1a2e' }}>{visits.length}</div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>إجمالي الزيارات</div>
-        </div>
-        <div className="card" style={{ padding: '16px', textAlign: 'center', background: openNCR > 0 ? '#fef2f2' : 'white', border: openNCR > 0 ? '1px solid #fecaca' : '' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: openNCR > 0 ? '#c81e1e' : '#1a1a2e' }}>{openNCR}</div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>NCR معلقة</div>
-        </div>
-        <div className="card" style={{ padding: '16px', textAlign: 'center', background: '#ecfdf5', border: '1px solid #bbf7d0' }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#0ea77b' }}>{totalOk}</div>
-          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '4px' }}>مطابق</div>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+        {[
+          { label: 'إجمالي الزيارات', value: visits.length,  color: '#1a56db', bg: '#eff6ff', icon: '📋' },
+          { label: 'مطابق',           value: totalOk,         color: '#0ea77b', bg: '#ecfdf5', icon: '✅' },
+          { label: 'NCR مفتوحة',      value: openNCR,         color: '#c81e1e', bg: openNCR > 0 ? '#fef2f2' : '#f9fafb', icon: '⚠️' },
+          { label: 'نسبة المطابقة',   value: matchRate + '%', color: matchRate >= 80 ? '#0ea77b' : '#e6820a', bg: '#f9fafb', icon: '📊' },
+        ].map(k => (
+          <div key={k.label} style={{ background: k.bg, borderRadius: '12px', padding: '16px', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '1.6rem', marginBottom: '6px' }}>{k.icon}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{k.label}</div>
+          </div>
+        ))}
       </div>
 
-      {/* بطاقات الأنواع */}
-      {!selectedType ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-          {VISIT_TYPES.map(type => {
-            const typeVisits = visits.filter(v => v.type === type.id)
-            const typeNCR    = typeVisits.filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length
-            const typeOk     = typeVisits.filter(v => v.specs === 'مطابق').length
-            const matchRate  = typeVisits.length ? Math.round(typeOk / typeVisits.length * 100) : 0
-            return (
-              <button key={type.id} onClick={() => setSelectedType(type.id)}
-                style={{ padding: '20px', borderRadius: '14px', border: `2px solid ${type.border}`, background: type.bg, cursor: 'pointer', textAlign: 'right', transition: 'all 0.2s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.08)' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>{type.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: '1rem', color: type.color, marginBottom: '4px' }}>زيارات {type.id}</div>
-                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1a1a2e', marginBottom: '10px' }}>{typeVisits.length}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '6px' }}>
-                  <span style={{ color: '#9ca3af' }}>نسبة المطابقة</span>
-                  <span style={{ fontWeight: 700, color: matchRate >= 80 ? '#0ea77b' : '#e6820a' }}>{matchRate}%</span>
-                </div>
-                <div style={{ height: '6px', background: 'rgba(255,255,255,0.6)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: '4px', width: `${matchRate}%`, background: matchRate >= 80 ? '#0ea77b' : '#e6820a', transition: 'width 0.3s' }} />
-                </div>
-                {typeNCR > 0 && (
-                  <div style={{ marginTop: '10px' }}>
-                    <span className="badge badge-red" style={{ fontSize: '0.72rem' }}>⚠ {typeNCR} NCR معلقة</span>
-                  </div>
-                )}
-              </button>
-            )
-          })}
+      {/* فلاتر النوع — pills */}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text3)', fontWeight: 600 }}>النوع:</span>
+        {[{ id: '', label: 'الكل', icon: '🔎' }, ...VISIT_TYPES.map(t => ({ id: t.id, label: t.id, icon: t.icon }))].map(t => {
+          const count = t.id ? visits.filter(v => v.type === t.id).length : visits.length
+          const active = selectedType === (t.id || null)
+          const vt = VISIT_TYPES.find(x => x.id === t.id)
+          return (
+            <button key={t.id} onClick={() => setSelectedType(t.id || null)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 14px', borderRadius: '20px', border: '2px solid',
+                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                transition: 'all 0.15s',
+                borderColor: active ? (vt?.color || '#1a56db') : 'var(--border)',
+                background:  active ? (vt?.bg || '#eff6ff') : 'white',
+                color:       active ? (vt?.color || '#1a56db') : 'var(--text3)',
+              }}>
+              <span>{t.icon}</span>
+              {t.label}
+              <span style={{ background: active ? 'rgba(255,255,255,0.6)' : 'var(--bg2)', borderRadius: '10px', padding: '1px 7px', fontSize: '0.72rem', fontWeight: 700 }}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* فلاتر الحالة — tabs */}
+      <div style={{ display: 'flex', background: 'var(--bg2, #f8fafc)', borderRadius: '12px', padding: '4px', gap: '4px' }}>
+        {[
+          { id: 'all',    label: 'الكل',         count: filtered.length + (statusTab !== 'all' ? 0 : 0), icon: '📋', color: '#6b7280' },
+          { id: 'ok',     label: 'مطابق',         count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'مطابق').length, icon: '✅', color: '#0ea77b' },
+          { id: 'open',   label: 'NCR مفتوحة',   count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length, icon: '⚠️', color: '#c81e1e' },
+          { id: 'closed', label: 'NCR مغلقة',    count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'غير مطابق' && !!v.resolved_report).length, icon: '✓', color: '#0ea77b' },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setStatusTab(tab.id)}
+            style={{
+              flex: 1, padding: '8px 12px', borderRadius: '9px', border: 'none',
+              cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+              transition: 'all 0.15s',
+              background: statusTab === tab.id ? 'white' : 'transparent',
+              color:       statusTab === tab.id ? tab.color : 'var(--text3)',
+              boxShadow:   statusTab === tab.id ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+            }}>
+            <span>{tab.icon}</span>
+            {tab.label}
+            {tab.count > 0 && (
+              <span style={{
+                background: statusTab === tab.id ? (tab.id === 'open' ? '#fef2f2' : '#ecfdf5') : 'var(--bg2)',
+                color: tab.color, borderRadius: '10px', padding: '1px 7px', fontSize: '0.72rem', fontWeight: 700
+              }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* شريط البحث */}
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <Search style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: 'var(--text3)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            className="input" style={{ paddingRight: '36px', fontSize: '0.82rem' }}
+            placeholder="بحث بالمهندس، الموقع، الملاحظات..." />
+        </div>
+        {(search || selectedType || statusTab !== 'all') && (
+          <button onClick={() => { setSearch(''); setSelectedType(null); setStatusTab('all') }}
+            className="btn btn-ghost" style={{ fontSize: '0.78rem', color: '#c81e1e', whiteSpace: 'nowrap' }}>
+            <X style={{ width: '13px', height: '13px' }} /> مسح
+          </button>
+        )}
+      </div>
+
+      {/* الجدول */}
+      {filtered.length === 0 ? (
+        <div style={{ background: 'white', borderRadius: '14px', padding: '60px', textAlign: 'center', border: '1px solid var(--border)' }}>
+          <ClipboardCheck style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 12px' }} />
+          <p style={{ color: '#9ca3af', fontWeight: 600 }}>لا توجد زيارات</p>
+          <p style={{ color: '#d1d5db', fontSize: '0.78rem' }}>جرّب تغيير الفلتر أو أضف زيارة جديدة</p>
         </div>
       ) : (
-        /* زيارات النوع المحدد */
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <button onClick={() => { setSelectedType(null); setSearch(''); setSpecs('') }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.82rem', color: '#6b7280' }}>
-              <ArrowRight style={{ width: '15px', height: '15px' }} /> العودة
-            </button>
-            <div>
-              <h2 style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '1rem' }}>
-                {VISIT_TYPES.find(t => t.id === selectedType)?.icon} زيارات {selectedType}
-              </h2>
-              <p style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{visits.filter(v => v.type === selectedType).length} زيارة</p>
-            </div>
+        <div style={{ background: 'white', borderRadius: '14px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--border)' }}>
+                {['النوع', 'التاريخ', 'المهندس', 'المشروع', 'النتيجة', 'الحالة', ''].map(h => (
+                  <th key={h} style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, fontSize: '0.78rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((v, i) => {
+                const isNCR    = v.specs === 'غير مطابق'
+                const isOpen   = isNCR && !v.resolved_report
+                const isClosed = isNCR && !!v.resolved_report
+                const vt       = VISIT_TYPES.find(t => t.id === v.type)
+                return (
+                  <tr key={v.id} style={{ borderBottom: '1px solid var(--border)', background: isOpen ? '#fff8f8' : i % 2 === 0 ? 'white' : '#fafafa', transition: 'background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f0f9ff')}
+                    onMouseLeave={e => (e.currentTarget.style.background = isOpen ? '#fff8f8' : i % 2 === 0 ? 'white' : '#fafafa')}>
+
+                    {/* النوع */}
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '3px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700, background: vt?.bg || '#f3f4f6', color: vt?.color || '#6b7280' }}>
+                        {vt?.icon} {v.type}
+                      </span>
+                    </td>
+
+                    {/* التاريخ */}
+                    <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                      {formatDate(v.date)}
+                    </td>
+
+                    {/* المهندس */}
+                    <td style={{ padding: '12px 14px', fontWeight: 600 }}>{v.engineer}</td>
+
+                    {/* المشروع */}
+                    <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: '0.78rem' }}>
+                      {projects.find(p => p.id === v.project_id)?.name || '—'}
+                    </td>
+
+                    {/* النتيجة */}
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{
+                        padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700,
+                        background: isNCR ? '#fef2f2' : '#ecfdf5',
+                        color:      isNCR ? '#c81e1e' : '#0ea77b',
+                      }}>
+                        {isNCR ? '❌ غير مطابق' : '✅ مطابق'}
+                      </span>
+                    </td>
+
+                    {/* الحالة */}
+                    <td style={{ padding: '12px 14px' }}>
+                      {isOpen ? (
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#fef2f2', color: '#c81e1e' }}>
+                          ⚠️ NCR مفتوحة
+                        </span>
+                      ) : isClosed ? (
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#ecfdf5', color: '#0ea77b' }}>
+                          ✓ NCR مغلقة
+                        </span>
+                      ) : (
+                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#0ea77b' }}>
+                          ✓ مغلق
+                        </span>
+                      )}
+                    </td>
+
+                    {/* الإجراءات */}
+                    <td style={{ padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setDetail(v)} title="تفاصيل"
+                          style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db' }}>
+                          <Eye style={{ width: '13px', height: '13px' }} />
+                        </button>
+                        {isOpen && canEdit && (
+                          <button onClick={() => setCorrectiveVisit(v)} title="إغلاق NCR"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            <ClipboardList style={{ width: '13px', height: '13px' }} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <>
+                            <button onClick={() => { setEditVisit(v); loadProjects(); setShowModal(true) }} title="تعديل"
+                              style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: 'var(--text3)' }}>
+                              <Pencil style={{ width: '13px', height: '13px' }} />
+                            </button>
+                            <button onClick={() => handleDelete(v)} title="حذف"
+                              style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
+                              <Trash2 style={{ width: '13px', height: '13px' }} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: '0.78rem', color: 'var(--text3)' }}>
+            {filtered.length} زيارة معروضة من أصل {visits.length}
           </div>
-
-          {/* فلاتر */}
-          <div className="card" style={{ padding: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-              <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#9ca3af' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                className="input" style={{ paddingRight: '32px', fontSize: '0.82rem' }}
-                placeholder="بحث بالمهندس أو الموقع..." />
-            </div>
-            <select value={specsFilter} onChange={e => setSpecs(e.target.value)} className="select" style={{ width: 'auto', fontSize: '0.82rem' }}>
-              <option value="">كل النتائج</option>
-              <option value="مطابق">مطابق</option>
-              <option value="غير مطابق">غير مطابق (NCR)</option>
-            </select>
-          </div>
-
-          {(() => {
-            const q = search.toLowerCase()
-            const filtered = visits.filter(v =>
-              v.type === selectedType &&
-              (!q || v.engineer.toLowerCase().includes(q) || ((v as any).location || '').toLowerCase().includes(q)) &&
-              (!specsFilter || v.specs === specsFilter)
-            )
-            return filtered.length === 0 ? (
-              <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-                <ClipboardCheck style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 12px' }} />
-                <p style={{ color: '#9ca3af' }}>لا توجد زيارات</p>
-              </div>
-            ) : (
-              <div className="card" style={{ overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      {['التاريخ', 'المهندس', 'الموقع', 'النتيجة', 'الحالة', ''].map(h => (
-                        <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map(v => {
-                      const isNCR  = v.specs === 'غير مطابق'
-                      const isOpen = isNCR && !v.resolved_report
-                      return (
-                        <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                          <td style={{ padding: '10px 12px', color: '#9ca3af', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(v.date)}</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600, fontSize: '0.82rem' }}>{v.engineer}</td>
-                          <td style={{ padding: '10px 12px', color: '#9ca3af', fontSize: '0.78rem' }}>{(v as any).location || '—'}</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span className={`badge ${isNCR ? 'badge-red' : 'badge-green'}`}>
-                              {isNCR ? '❌ غير مطابق' : '✅ مطابق'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span className={`badge ${isNCR ? (isOpen ? 'badge-amber' : 'badge-green') : 'badge-green'}`}>
-                              {isNCR ? (isOpen ? '⚠ مفتوح' : '✓ مغلق') : 'مغلق'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end' }}>
-                              {v.attachments && v.attachments.length > 0 && (
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '0.72rem', color: '#1a56db', marginLeft: '4px' }}>
-                                  <Camera style={{ width: '12px', height: '12px' }} />{v.attachments.length}
-                                </span>
-                              )}
-
-                              {/* زر عرض التفاصيل */}
-                              <button onClick={() => setDetail(v)}
-                                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                <Eye style={{ width: '12px', height: '12px' }} /> عرض
-                              </button>
-
-                              {/* زر الإجراء التصحيحي — للغير مطابق فقط */}
-                              {isNCR && (
-                                <button onClick={() => setCorrectiveVisit(v)}
-                                  style={{ padding: '4px 8px', borderRadius: '6px', border: `1px solid ${isOpen ? '#fcd34d' : '#86efac'}`, background: isOpen ? '#fffbeb' : '#ecfdf5', cursor: 'pointer', color: isOpen ? '#e6820a' : '#0ea77b', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                  <ClipboardList style={{ width: '12px', height: '12px' }} />
-                                  {isOpen ? 'إجراء تصحيحي' : '✅ مغلق'}
-                                </button>
-                              )}
-
-                              {/* زر التعديل — للوصف فقط */}
-                              {canEdit && (
-                                <button onClick={() => { setEditVisit(v); loadProjects(); setShowModal(true) }}
-                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}
-                                  title="تعديل الوصف فقط">
-                                  <Pencil style={{ width: '12px', height: '12px' }} />
-                                </button>
-                              )}
-
-                              {/* زر الحذف — للأدمن فقط */}
-                              {currentUser?.role === 'admin' && (
-                                <button onClick={() => handleDelete(v)} title="حذف (أدمن فقط)"
-                                  style={{ padding: '4px 6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', display: 'flex', alignItems: 'center' }}>
-                                  <Trash2 style={{ width: '12px', height: '12px' }} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )
-          })()}
-        </>
+        </div>
       )}
 
-      {/* Modals */}
+      {/* المودالات */}
       {showModal && (
-        <VisitModal visit={editVisit} projects={projects}
-          onClose={() => { setShowModal(false); setEditVisit(null) }}
-          onSave={handleSave} />
+        <VisitModal visit={editVisit} projects={projects} onClose={() => { setShowModal(false); setEditVisit(null) }} onSave={handleSave} />
       )}
-
-      {detailVisit && (
-        <VisitDetail
-          visit={visits.find(v => v.id === detailVisit.id) || detailVisit}
-          onClose={() => setDetail(null)}
-        />
-      )}
-
+      {detailVisit && <VisitDetail visit={detailVisit} onClose={() => setDetail(null)} />}
       {correctiveVisit && (
-        <CorrectiveModal
-          visit={visits.find(v => v.id === correctiveVisit.id) || correctiveVisit}
+        <CorrectiveModal visit={correctiveVisit}
           onClose={() => setCorrectiveVisit(null)}
-          onSave={(report, attachments) => handleResolve(correctiveVisit.id, report, attachments)}
-        />
+          onSave={async (report, attachments) => { await handleResolve(correctiveVisit.id, report, attachments) }} />
       )}
+
+      <style jsx global>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
