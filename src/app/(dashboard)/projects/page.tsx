@@ -12,8 +12,7 @@ import {
   MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save,
   ClipboardList, MapPin, ChevronDown
 } from 'lucide-react'
-import type { Project as BaseProject, ProjectStatus } from '@/types'
-type Project = BaseProject & { estimated_value?: number; actual_value?: number }
+import type { Project, ProjectStatus } from '@/types'
 import toast from 'react-hot-toast'
 
 
@@ -857,7 +856,7 @@ export default function ProjectsPage() {
   const activeCount = projects.filter(p => p.status === 'قيد التنفيذ').length
   const doneCount   = projects.filter(p => p.progress >= 100 || p.status === 'مكتمل').length
   const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now && p.status !== 'مكتمل').length
-  const totalValue  = projects.reduce((s, p) => s + (p.estimated_value || 0), 0)
+  const totalValue = projects.reduce((s, p) => s + (Number((p as any).estimated_value) || 0), 0)
 
   if (detailProject) {
     return (
@@ -1063,7 +1062,7 @@ export default function ProjectsPage() {
                 <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: '#9ca3af', flexWrap: 'wrap' }}>
                   {p.engineer && <span>👷 {p.engineer}</span>}
                   {p.end_date && <span>📅 {formatDate(p.end_date)}</span>}
-                  {p.estimated_value   && <span>💰 {formatCurrency(p.estimated_value)}</span>}
+                  {(p as any).estimated_value   && <span>💰 {formatCurrency((p as any).estimated_value)}</span>}
                 </div>
                 <div style={{ marginTop: '12px', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                   <button onClick={() => setDetail(p)}
@@ -1126,7 +1125,7 @@ export default function ProjectsPage() {
                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{p.progress}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{p.estimated_value ? formatCurrency(p.estimated_value) : '—'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{(p as any).estimated_value ? formatCurrency((p as any).estimated_value) : '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{p.engineer || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: isLate ? '#c81e1e' : 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(p.end_date) || '—'}</td>
                     <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
