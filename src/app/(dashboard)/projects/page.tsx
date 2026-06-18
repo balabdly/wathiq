@@ -13,7 +13,7 @@ import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
   LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
   MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save,
-  ClipboardList, MapPin, ChevronDown
+  ClipboardList, MapPin, ChevronDown, Circle, Clock, AlertTriangle, CheckCircle2
 } from 'lucide-react'
 import type { Project, ProjectStatus } from '@/types'
 type Task = {
@@ -210,6 +210,14 @@ function QuickAddButton({ project, onNote, onVisit, onTask }: {
 
 // ══════════════════════════════════════
 // مودال إضافة زيارة سريعة
+
+const STATUS_STEPS = [
+  { id: 'لم تبدأ',     icon: <Circle style={{ width: '14px', height: '14px' }} />,       color: '#9ca3af', bg: '#f3f4f6' },
+  { id: 'قيد التنفيذ', icon: <Clock style={{ width: '14px', height: '14px' }} />,         color: '#1a56db', bg: '#eff6ff' },
+  { id: 'معلقة',       icon: <AlertTriangle style={{ width: '14px', height: '14px' }} />, color: '#e6820a', bg: '#fffbeb' },
+  { id: 'مكتملة',      icon: <CheckCircle2 style={{ width: '14px', height: '14px' }} />,  color: '#0ea77b', bg: '#ecfdf5' },
+  { id: 'ملغاة',       icon: <X style={{ width: '14px', height: '14px' }} />,             color: '#6b7280', bg: '#f3f4f6' },
+]
 
 // ══════════════════════════════════════
 // TaskModal — مودال إضافة/تعديل المهمة
