@@ -121,6 +121,7 @@ export default function VisitsPage() {
   const [correctiveVisit,  setCorrectiveVisit]  = useState<Visit | null>(null)
   const [selectedType,     setSelectedType]     = useState<string | null>(null)
   const [statusTab,        setStatusTab]        = useState('all')
+  const [projectFilter,    setProjectFilter]    = useState('')
 
   const canEdit = currentUser?.permissions?.some(p => p.startsWith('visits'))
 
@@ -180,16 +181,17 @@ export default function VisitsPage() {
   // الفلترة المدمجة
   const q = search.toLowerCase()
   const filtered = visits.filter(v => {
-    const matchType   = !selectedType || v.type === selectedType
-    const matchStatus =
+    const matchType    = !selectedType || v.type === selectedType
+    const matchProject = !projectFilter || String(v.project_id) === projectFilter
+    const matchStatus  =
       statusTab === 'all'    ? true :
       statusTab === 'ok'     ? v.specs === 'مطابق' :
       statusTab === 'open'   ? (v.specs === 'غير مطابق' && !v.resolved_report) :
       statusTab === 'closed' ? (v.specs === 'غير مطابق' && !!v.resolved_report) : true
-    const matchSearch = !q || v.engineer.toLowerCase().includes(q) ||
+    const matchSearch  = !q || v.engineer.toLowerCase().includes(q) ||
       ((v as any).location || '').toLowerCase().includes(q) ||
       (v.notes || '').toLowerCase().includes(q)
-    return matchType && matchStatus && matchSearch
+    return matchType && matchProject && matchStatus && matchSearch
   })
 
   return (
@@ -230,81 +232,58 @@ export default function VisitsPage() {
         ))}
       </div>
 
-      {/* فلاتر النوع — pills */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text3)', fontWeight: 600 }}>النوع:</span>
-        {[{ id: '', label: 'الكل', icon: '🔎' }, ...VISIT_TYPES.map(t => ({ id: t.id, label: t.id, icon: t.icon }))].map(t => {
-          const count = t.id ? visits.filter(v => v.type === t.id).length : visits.length
-          const active = selectedType === (t.id || null)
-          const vt = VISIT_TYPES.find(x => x.id === t.id)
-          return (
-            <button key={t.id} onClick={() => setSelectedType(t.id || null)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 14px', borderRadius: '20px', border: '2px solid',
-                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
-                transition: 'all 0.15s',
-                borderColor: active ? (vt?.color || '#1a56db') : 'var(--border)',
-                background:  active ? (vt?.bg || '#eff6ff') : 'white',
-                color:       active ? (vt?.color || '#1a56db') : 'var(--text3)',
-              }}>
-              <span>{t.icon}</span>
-              {t.label}
-              <span style={{ background: active ? 'rgba(255,255,255,0.6)' : 'var(--bg2)', borderRadius: '10px', padding: '1px 7px', fontSize: '0.72rem', fontWeight: 700 }}>
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {/* فلاتر — 3 قوائم منسدلة + بحث */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) 2fr', gap: '10px', alignItems: 'center' }}>
 
-      {/* فلاتر الحالة — tabs */}
-      <div style={{ display: 'flex', background: 'var(--bg2, #f8fafc)', borderRadius: '12px', padding: '4px', gap: '4px' }}>
-        {[
-          { id: 'all',    label: 'الكل',         count: filtered.length + (statusTab !== 'all' ? 0 : 0), icon: '📋', color: '#6b7280' },
-          { id: 'ok',     label: 'مطابق',         count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'مطابق').length, icon: '✅', color: '#0ea77b' },
-          { id: 'open',   label: 'NCR مفتوحة',   count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'غير مطابق' && !v.resolved_report).length, icon: '⚠️', color: '#c81e1e' },
-          { id: 'closed', label: 'NCR مغلقة',    count: visits.filter(v => !selectedType || v.type === selectedType).filter(v => v.specs === 'غير مطابق' && !!v.resolved_report).length, icon: '✓', color: '#0ea77b' },
-        ].map(tab => (
-          <button key={tab.id} onClick={() => setStatusTab(tab.id)}
-            style={{
-              flex: 1, padding: '8px 12px', borderRadius: '9px', border: 'none',
-              cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
-              transition: 'all 0.15s',
-              background: statusTab === tab.id ? 'white' : 'transparent',
-              color:       statusTab === tab.id ? tab.color : 'var(--text3)',
-              boxShadow:   statusTab === tab.id ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-            }}>
-            <span>{tab.icon}</span>
-            {tab.label}
-            {tab.count > 0 && (
-              <span style={{
-                background: statusTab === tab.id ? (tab.id === 'open' ? '#fef2f2' : '#ecfdf5') : 'var(--bg2)',
-                color: tab.color, borderRadius: '10px', padding: '1px 7px', fontSize: '0.72rem', fontWeight: 700
-              }}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+        {/* النوع */}
+        <select value={selectedType || ''} onChange={e => setSelectedType(e.target.value || null)} className="select">
+          <option value="">🔎 كل الأنواع</option>
+          {VISIT_TYPES.map(t => (
+            <option key={t.id} value={t.id}>
+              {t.icon} {t.id} ({visits.filter(v => v.type === t.id).length})
+            </option>
+          ))}
+        </select>
 
-      {/* شريط البحث */}
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+        {/* المشروع */}
+        <select value={projectFilter} onChange={e => setProjectFilter(e.target.value)} className="select">
+          <option value="">📁 كل المشاريع</option>
+          {projects
+            .filter(p => visits.some(v => v.project_id === p.id))
+            .map(p => (
+              <option key={p.id} value={String(p.id)}>
+                {p.name} ({visits.filter(v => v.project_id === p.id).length})
+              </option>
+            ))
+          }
+        </select>
+
+        {/* الحالة */}
+        <select value={statusTab} onChange={e => setStatusTab(e.target.value)} className="select">
+          <option value="all">📋 كل الحالات</option>
+          <option value="ok">✅ مطابق</option>
+          <option value="open">⚠️ NCR مفتوحة</option>
+          <option value="closed">✓ NCR مغلقة</option>
+        </select>
+
+        {/* البحث */}
+        <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: 'var(--text3)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
             className="input" style={{ paddingRight: '36px', fontSize: '0.82rem' }}
-            placeholder="بحث بالمهندس، الموقع، الملاحظات..." />
+            placeholder="بحث بالمهندس أو الموقع..." />
         </div>
-        {(search || selectedType || statusTab !== 'all') && (
-          <button onClick={() => { setSearch(''); setSelectedType(null); setStatusTab('all') }}
-            className="btn btn-ghost" style={{ fontSize: '0.78rem', color: '#c81e1e', whiteSpace: 'nowrap' }}>
-            <X style={{ width: '13px', height: '13px' }} /> مسح
-          </button>
-        )}
       </div>
+
+      {/* زر مسح الفلاتر */}
+      {(search || selectedType || projectFilter || statusTab !== 'all') && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={() => { setSearch(''); setSelectedType(null); setProjectFilter(''); setStatusTab('all') }}
+            className="btn btn-ghost" style={{ fontSize: '0.78rem', color: '#c81e1e' }}>
+            <X style={{ width: '13px', height: '13px' }} /> مسح الفلاتر
+          </button>
+        </div>
+      )}
 
       {/* الجدول */}
       {filtered.length === 0 ? (
