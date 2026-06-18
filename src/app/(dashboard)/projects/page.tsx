@@ -219,10 +219,10 @@ const lbl: React.CSSProperties = {
   display: 'block', fontSize: '0.875rem', fontWeight: 600,
   color: 'var(--text)', marginBottom: '6px'
 }
-const PRIORITY_COLOR: Record<string, { bg: string; color: string; border: string }> = {
-  'عالي':    { bg: '#fef2f2', color: '#c81e1e', border: '#fca5a5' },
-  'متوسط':   { bg: '#fffbeb', color: '#e6820a', border: '#fcd34d' },
-  'منخفض':   { bg: '#f0fdf4', color: '#0ea77b', border: '#86efac' },
+const PRIORITY_COLOR: Record<string, { bg: string; color: string; border: string; label: string }> = {
+  'عالي':    { bg: '#fef2f2', color: '#c81e1e', border: '#fca5a5', label: '🔴 عالي' },
+  'متوسط':   { bg: '#fffbeb', color: '#e6820a', border: '#fcd34d', label: '🟡 متوسط' },
+  'منخفض':   { bg: '#f0fdf4', color: '#0ea77b', border: '#86efac', label: '🟢 منخفض' },
 }
 
 function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId }: {
