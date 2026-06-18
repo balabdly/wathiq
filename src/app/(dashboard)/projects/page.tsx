@@ -12,7 +12,8 @@ import {
   MessageSquarePlus, X, Send, StickyNote, Building2, Tag, Save,
   ClipboardList, MapPin, ChevronDown
 } from 'lucide-react'
-import type { Project, ProjectStatus } from '@/types'
+import type { Project as BaseProject, ProjectStatus } from '@/types'
+type Project = BaseProject & { estimated_value?: number; actual_value?: number }
 import toast from 'react-hot-toast'
 
 
