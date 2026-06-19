@@ -50,7 +50,7 @@ function LetterModal({ emp, tenant, onClose }: {
   const [addressedTo, setAddressedTo] = useState('من يهمه الأمر')
   const [generating, setGenerating] = useState(false)
 
-  const empName = emp.employee?.name || '—'
+  const empName = [emp.first_name, emp.father_name, emp.grandfather_name, emp.family_name].filter(Boolean).join(' ') || emp.first_name_en || '—'
   const totalSalary = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
   const today = new Date().toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' })
   const refNo = `${tenant?.name?.slice(0,3) || 'HR'}-${Date.now().toString().slice(-6)}`
@@ -380,7 +380,7 @@ export default function EmployeeProfilePage() {
 
   if (!emp) return null
 
-  const empName = emp.employee?.name || '—'
+  const empName = [emp.first_name, emp.father_name, emp.grandfather_name, emp.family_name].filter(Boolean).join(' ') || emp.first_name_en || '—'
   const totalSalary = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
   const activeWarnings = disciplinary.filter(d => d.status === 'نافذ').length
   const annualTaken = leaves.filter(l => l.leave_type === 'سنوية' && l.status === 'موافق').reduce((s, l) => s + l.days, 0)
@@ -440,9 +440,7 @@ export default function EmployeeProfilePage() {
           </button>
           {isAdmin && (
             <button onClick={() => {
-              // نحفظ id الموظف في sessionStorage ونعود لصفحة HR لفتح المودال
-              sessionStorage.setItem('hr_edit_emp', String(emp.id))
-              router.push('/hr')
+              router.push(`/hr?editEmp=${emp.id}`)
             }} className="btn btn-primary">
               <Pencil style={{ width: '15px', height: '15px' }} /> تعديل البيانات
             </button>

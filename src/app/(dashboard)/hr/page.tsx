@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
@@ -1426,7 +1426,8 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 // ══════════════════════════════════════
 export default function HRPage() {
   const { tenant, currentUser } = useStore()
-  const router = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
   const [showModal,    setShowModal]    = useState(false)
   const [editEmp,      setEditEmp]      = useState<HREmployee | null>(null)
   const [activeTab, setActiveTab] = useState<'employees' | 'terminations' | 'joboffers'>('employees')
@@ -1445,14 +1446,14 @@ export default function HRPage() {
   const isAdmin = currentUser?.role === 'مدير عام'
   const now = new Date()
 
-  // فتح مودال التعديل تلقائياً إذا جاء من صفحة تفاصيل الموظف
+  // فتح مودال التعديل إذا جاء من صفحة تفاصيل الموظف
   useEffect(() => {
-    const editId = sessionStorage.getItem('hr_edit_emp')
+    const editId = searchParams?.get('editEmp') || sessionStorage.getItem('hr_edit_emp')
     if (!editId || !hrEmployees.length) return
     sessionStorage.removeItem('hr_edit_emp')
     const emp = hrEmployees.find(e => String(e.id) === editId)
     if (emp) { setEditEmp(emp); setShowModal(true) }
-  }, [hrEmployees])
+  }, [hrEmployees, searchParams])
 
   useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
