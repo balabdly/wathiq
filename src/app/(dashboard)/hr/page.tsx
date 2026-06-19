@@ -1434,14 +1434,6 @@ export default function HRPage() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  // فتح مودال التعديل تلقائياً إذا جاء من صفحة تفاصيل الموظف
-  useEffect(() => {
-    const editId = sessionStorage.getItem('hr_edit_emp')
-    if (!editId || !hrEmployees.length) return
-    sessionStorage.removeItem('hr_edit_emp')
-    const emp = hrEmployees.find(e => String(e.id) === editId)
-    if (emp) { setEditEmp(emp); setShowModal(true) }
-  }, [hrEmployees])
   const [viewEmp, setViewEmp] = useState<HREmployee | null>(null)
   const [listMode, setListMode] = useState<'idle' | 'search' | 'all'>('idle')
   const [page, setPage] = useState(1)
@@ -1450,6 +1442,15 @@ export default function HRPage() {
   const PAGE_SIZE = 20
   const isAdmin = currentUser?.role === 'مدير عام'
   const now = new Date()
+
+  // فتح مودال التعديل تلقائياً إذا جاء من صفحة تفاصيل الموظف
+  useEffect(() => {
+    const editId = sessionStorage.getItem('hr_edit_emp')
+    if (!editId || !hrEmployees.length) return
+    sessionStorage.removeItem('hr_edit_emp')
+    const emp = hrEmployees.find(e => String(e.id) === editId)
+    if (emp) { setEditEmp(emp); setShowModal(true) }
+  }, [hrEmployees])
 
   useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
