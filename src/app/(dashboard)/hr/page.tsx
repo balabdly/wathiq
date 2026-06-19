@@ -1427,6 +1427,8 @@ function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmploye
 export default function HRPage() {
   const { tenant, currentUser } = useStore()
   const router = useRouter()
+  const [showModal,    setShowModal]    = useState(false)
+  const [editEmp,      setEditEmp]      = useState<HREmployee | null>(null)
   const [activeTab, setActiveTab] = useState<'employees' | 'terminations' | 'joboffers'>('employees')
   const [hrEmployees, setHREmployees] = useState<HREmployee[]>([])
   const [managers, setManagers] = useState<any[]>([])
