@@ -269,7 +269,7 @@ ${tenant?.footer_text ? `<div class="footer">${tenant.footer_text}</div>` : ''}
 export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { tenant, currentUser } = useStore()
+  const { tenant, activeBranch, currentUser } = useStore()
   const [emp, setEmp] = useState<HREmployee | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('personal')
