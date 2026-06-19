@@ -302,10 +302,16 @@ export default function EmployeeProfilePage() {
   const isAdmin = currentUser?.role === 'مدير عام'
   const now = new Date()
 
-  useEffect(() => { if (tenant && id) loadAll() }, [tenant?.id, id])
+  useEffect(() => { 
+    if (tenant && activeBranch && id) loadAll() 
+  }, [tenant?.id, activeBranch?.id, id])
 
   async function loadAll() {
     if (!tenant) return
+    setLoading(true)
+
+    // إذا tenant لم يُحمَّل بعد، انتظر
+    if (!tenant || !activeBranch) return
     setLoading(true)
 
     // جلب بيانات الشركة للخطابات
@@ -313,14 +319,18 @@ export default function EmployeeProfilePage() {
     setTenantData(td)
 
     // جلب بيانات الموظف — مباشرة من hr_employees
-    const { data: empData } = await supabase
+    const { data: empData, error: empErr } = await supabase
       .from('hr_employees')
       .select('*')
       .eq('tenant_id', tenant.id)
       .eq('id', Number(id))
       .single()
 
-    if (!empData) { router.push('/hr'); return }
+    if (!empData || empErr) {
+      console.error('لم يُعثر على الموظف:', empErr)
+      router.push('/hr')
+      return
+    }
     setEmp(empData)
 
     const hrEmpId = empData.id  // ← hr_employees.id هو المرجع الآن
@@ -429,7 +439,11 @@ export default function EmployeeProfilePage() {
             <Printer style={{ width: '15px', height: '15px' }} /> إصدار خطاب
           </button>
           {isAdmin && (
-            <button onClick={() => router.push(`/hr?edit=${emp.id}`)} className="btn btn-primary">
+            <button onClick={() => {
+              // نحفظ id الموظف في sessionStorage ونعود لصفحة HR لفتح المودال
+              sessionStorage.setItem('hr_edit_emp', String(emp.id))
+              router.push('/hr')
+            }} className="btn btn-primary">
               <Pencil style={{ width: '15px', height: '15px' }} /> تعديل البيانات
             </button>
           )}
