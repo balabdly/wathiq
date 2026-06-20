@@ -126,8 +126,8 @@ function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
 }
 
 // ══ مودال تعديل صلاحيات مستخدم موجود ══
-function EditPermissionsModal({ emp, onClose, onSave, onGoToPermissions }: {
-  emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>; onGoToPermissions: () => void
+function EditPermissionsModal({ emp, onClose, onSave }: {
+  emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -181,15 +181,46 @@ function EditPermissionsModal({ emp, onClose, onSave, onGoToPermissions }: {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>الدور الوظيفي</label>
               <input value={form.role} onChange={e => set('role', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" />
             </div>
-            {/* الصلاحيات — تُدار من صفحة الصلاحيات المخصصة */}
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
-                🔐 لإدارة الصلاحيات التفصيلية
+
+            {/* تطبيق دور جاهز */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text3)' }}>تطبيق دور جاهز:</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {Object.keys(DEFAULT_ROLES_PERMS).map(role => (
+                  <button key={role} type="button"
+                    onClick={() => setUserPerms(DEFAULT_ROLES_PERMS[role])}
+                    style={{ padding: '3px 10px', borderRadius: '20px', border: '1px solid var(--border)', background: form.role === role ? '#eff6ff' : 'white', color: form.role === role ? '#1a56db' : 'var(--text3)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}>
+                    {role}
+                  </button>
+                ))}
               </div>
-              <button onClick={() => { onClose(); onGoToPermissions() }}
-                style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                صفحة الصلاحيات ←
-              </button>
+            </div>
+
+            {/* الصلاحيات */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px' }}>
+                الصلاحيات <span style={{ color: '#6b7280', fontWeight: 400 }}>({userPerms.length} مختارة)</span>
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto', padding: '2px' }}>
+                {PERMISSION_GROUPS.map(group => (
+                  <div key={group.label}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: group.color, marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: group.color }} /> {group.label}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {group.perms.map(perm => {
+                        const active = userPerms.includes(perm.id)
+                        return (
+                          <button key={perm.id} type="button" onClick={() => togglePerm(perm.id)}
+                            style={{ padding: '4px 10px', borderRadius: '7px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, transition: 'all 0.1s', border: `2px solid ${active ? group.color : '#e5e7eb'}`, background: active ? group.color + '15' : 'white', color: active ? group.color : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {perm.icon} {perm.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="modal-footer">
@@ -261,7 +292,7 @@ export default function EmployeesSettingsPage() {
     const payload: any = {
       role:      data.role,
       username:  data.username || null,
-      // لا نُعيد كتابة permissions — تُدار من صفحة الصلاحيات
+      permissions: data.permissions, // نحفظ permissions من المودال
       is_active: data.is_active,
     }
     if (data.password) payload.password = data.password
@@ -446,8 +477,7 @@ export default function EmployeesSettingsPage() {
       {showEdit && editEmp && (
         <EditPermissionsModal emp={editEmp}
           onClose={() => { setShowEdit(false); setEditEmp(null) }}
-          onSave={handleEdit}
-          onGoToPermissions={() => { setShowEdit(false); setEditEmp(null); router.push('/settings/permissions') }} />
+          onSave={handleEdit} />
       )}
     </div>
   )
