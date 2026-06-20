@@ -102,7 +102,13 @@ export default function PermissionsPage() {
       .eq('tenant_id', tenant!.id)
       .eq('is_active', true)
       .order('name')
-    setEmployees(data || [])
+    const emps = data || []
+    setEmployees(emps)
+    // لو موظف محدد — حدّث userPerms من البيانات الجديدة
+    if (selected) {
+      const updated = emps.find(e => e.id === selected)
+      if (updated) setUserPerms(updated.permissions || [])
+    }
   }
 
   function selectEmployee(emp: Employee) {
@@ -130,6 +136,8 @@ export default function PermissionsPage() {
       .eq('id', selected).eq('tenant_id', tenant!.id)
     setSaving(false)
     if (error) { toast.error('خطأ: ' + error.message); return }
+    // تحديث الـ state محلياً مباشرة بدون انتظار loadEmployees
+    setEmployees(prev => prev.map(e => e.id === selected ? { ...e, permissions: userPerms } : e))
     await loadEmployees()
     toast.success('تم حفظ الصلاحيات ✅')
   }
