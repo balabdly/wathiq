@@ -270,6 +270,7 @@ export default function EmployeeProfilePage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const { tenant, activeBranch, currentUser } = useStore()
+  const [showEditModal, setShowEditModal] = useState(false)
   const [emp, setEmp] = useState<HREmployee | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('personal')
@@ -307,10 +308,6 @@ export default function EmployeeProfilePage() {
   }, [tenant?.id, activeBranch?.id, id])
 
   async function loadAll() {
-    if (!tenant) return
-    setLoading(true)
-
-    // إذا tenant لم يُحمَّل بعد، انتظر
     if (!tenant || !activeBranch) return
     setLoading(true)
 
@@ -439,9 +436,7 @@ export default function EmployeeProfilePage() {
             <Printer style={{ width: '15px', height: '15px' }} /> إصدار خطاب
           </button>
           {isAdmin && (
-            <button onClick={() => {
-              router.push(`/hr?editEmp=${emp.id}`)
-            }} className="btn btn-primary">
+            <button onClick={() => setShowEditModal(true)} className="btn btn-primary">
               <Pencil style={{ width: '15px', height: '15px' }} /> تعديل البيانات
             </button>
           )}
@@ -1002,6 +997,147 @@ export default function EmployeeProfilePage() {
           </div>
         </div>
       )}
+
+      {/* مودال تعديل بيانات الموظف */}
+      {showEditModal && emp && (
+        <QuickEditModal
+          emp={emp}
+          tenantId={tenant?.id || ''}
+          onClose={() => setShowEditModal(false)}
+          onSave={() => { setShowEditModal(false); loadAll() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
+// مودال تعديل بيانات الموظف
+// ══════════════════════════════════════
+function QuickEditModal({ emp, tenantId, onClose, onSave }: {
+  emp: HREmployee; tenantId: string
+  onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    first_name:       emp.first_name       || '',
+    father_name:      emp.father_name      || '',
+    grandfather_name: emp.grandfather_name || '',
+    family_name:      emp.family_name      || '',
+    first_name_en:    emp.first_name_en    || '',
+    family_name_en:   emp.family_name_en   || '',
+    national_id:      emp.national_id      || '',
+    nationality:      emp.nationality      || '',
+    birth_date:       emp.birth_date       || '',
+    gender:           emp.gender           || 'ذكر',
+    marital_status:   emp.marital_status   || 'أعزب',
+    job_title:        emp.job_title        || '',
+    department:       emp.department       || '',
+    hire_date:        emp.hire_date        || '',
+    contract_type:    emp.contract_type    || 'دوام كامل',
+    basic_salary:     String(emp.basic_salary    || 0),
+    housing_allow:    String(emp.housing_allow   || 0),
+    transport_allow:  String(emp.transport_allow || 0),
+    bank_name:        emp.bank_name        || '',
+    iban:             emp.iban             || '',
+    iqama_number:     emp.iqama_number     || '',
+    iqama_expiry:     emp.iqama_expiry     || '',
+    phone:            emp.phone            || '',
+    email:            emp.email            || '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    setSaving(true)
+    const { error } = await supabase.from('hr_employees').update({
+      ...form,
+      basic_salary:    Number(form.basic_salary)    || 0,
+      housing_allow:   Number(form.housing_allow)   || 0,
+      transport_allow: Number(form.transport_allow) || 0,
+      birth_date:   form.birth_date   || null,
+      hire_date:    form.hire_date    || null,
+      iqama_expiry: form.iqama_expiry || null,
+    }).eq('id', emp.id).eq('tenant_id', tenantId)
+    setSaving(false)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    toast.success('تم حفظ البيانات ✅')
+    onSave()
+  }
+
+  const Section = ({ title }: { title: string }) => (
+    <div style={{ gridColumn: '1/-1', fontWeight: 700, fontSize: '0.82rem', color: '#1a56db',
+      borderBottom: '2px solid #eff6ff', paddingBottom: '6px', marginTop: '8px' }}>
+      {title}
+    </div>
+  )
+
+  const Field = ({ label, k, type = 'text', options }: { label: string; k: string; type?: string; options?: string[] }) => (
+    <div>
+      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>{label}</label>
+      {options ? (
+        <select value={(form as any)[k]} onChange={e => set(k, e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
+          {options.map(o => <option key={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input type={type} value={(form as any)[k]} onChange={e => set(k, e.target.value)}
+          className="input" style={{ fontSize: '0.82rem' }} />
+      )}
+    </div>
+  )
+
+  return (
+    <div className="modal-overlay"
+      onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }}
+      onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#eff6ff', borderBottom: '2px solid #bfdbfe' }}>
+          <h3 style={{ fontWeight: 700, color: '#1a56db' }}>✏️ تعديل بيانات — {emp.first_name} {emp.family_name}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <Section title="👤 الاسم" />
+            <Field label="الاسم الأول" k="first_name" />
+            <Field label="اسم الأب" k="father_name" />
+            <Field label="اسم الجد" k="grandfather_name" />
+            <Field label="اسم العائلة" k="family_name" />
+            <Field label="الاسم الأول (إنجليزي)" k="first_name_en" />
+            <Field label="اسم العائلة (إنجليزي)" k="family_name_en" />
+
+            <Section title="🪪 الهوية والجنسية" />
+            <Field label="رقم الهوية / الإقامة" k="national_id" />
+            <Field label="الجنسية" k="nationality" options={['سعودي','وافد']} />
+            <Field label="تاريخ الميلاد" k="birth_date" type="date" />
+            <Field label="الجنس" k="gender" options={['ذكر','أنثى']} />
+            <Field label="الحالة الاجتماعية" k="marital_status" options={['أعزب','متزوج','مطلق','أرمل']} />
+            <Field label="الجوال" k="phone" />
+            <Field label="البريد الإلكتروني" k="email" type="email" />
+
+            <Section title="💼 البيانات الوظيفية" />
+            <Field label="المسمى الوظيفي" k="job_title" />
+            <Field label="القسم" k="department" />
+            <Field label="تاريخ التعيين" k="hire_date" type="date" />
+            <Field label="نوع العقد" k="contract_type" options={['دوام كامل','دوام جزئي','مؤقت','موسمي']} />
+
+            <Section title="💰 الراتب والبدلات" />
+            <Field label="الراتب الأساسي" k="basic_salary" type="number" />
+            <Field label="بدل السكن" k="housing_allow" type="number" />
+            <Field label="بدل النقل" k="transport_allow" type="number" />
+
+            <Section title="🏦 البنك والإقامة" />
+            <Field label="اسم البنك" k="bank_name" />
+            <Field label="رقم IBAN" k="iban" />
+            <Field label="رقم الإقامة" k="iqama_number" />
+            <Field label="انتهاء الإقامة" k="iqama_expiry" type="date" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? 'جاري الحفظ...' : '💾 حفظ البيانات'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
