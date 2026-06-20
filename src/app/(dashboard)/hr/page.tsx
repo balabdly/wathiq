@@ -1532,7 +1532,6 @@ export default function HRPage() {
     if (!tenant) return
     try {
       let hrEmployeeId = data.hr_employee_id || null
-      let employeeNumber: string | null = null
 
       // data.id = hr_employees.id عند التعديل
       const isEdit = !!(data.id || hrEmployeeId)
