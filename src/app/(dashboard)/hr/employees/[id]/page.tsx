@@ -1013,6 +1013,38 @@ export default function EmployeeProfilePage() {
 }
 
 // ══════════════════════════════════════
+// مكونات مساعدة — خارج QuickEditModal لمنع إعادة الـ render
+// ══════════════════════════════════════
+function EditSection({ title }: { title: string }) {
+  return (
+    <div style={{ gridColumn: '1/-1', fontWeight: 700, fontSize: '0.82rem', color: '#1a56db',
+      borderBottom: '2px solid #eff6ff', paddingBottom: '6px', marginTop: '8px' }}>
+      {title}
+    </div>
+  )
+}
+
+function EditField({ label, value, onChange, type = 'text', options }: {
+  label: string; value: string
+  onChange: (v: string) => void
+  type?: string; options?: string[]
+}) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>{label}</label>
+      {options ? (
+        <select value={value} onChange={e => onChange(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
+          {options.map(o => <option key={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input type={type} value={value} onChange={e => onChange(e.target.value)}
+          className="input" style={{ fontSize: '0.82rem' }} />
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════
 // مودال تعديل بيانات الموظف
 // ══════════════════════════════════════
 function QuickEditModal({ emp, tenantId, onClose, onSave }: {
@@ -1046,45 +1078,42 @@ function QuickEditModal({ emp, tenantId, onClose, onSave }: {
     phone:            emp.phone            || '',
     email:            emp.email            || '',
   })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const set = (k: string) => (v: string) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     setSaving(true)
+    // لا نُرسل direct_manager أو أي FK قد يكون undefined
     const { error } = await supabase.from('hr_employees').update({
-      ...form,
-      basic_salary:    Number(form.basic_salary)    || 0,
-      housing_allow:   Number(form.housing_allow)   || 0,
-      transport_allow: Number(form.transport_allow) || 0,
-      birth_date:   form.birth_date   || null,
-      hire_date:    form.hire_date    || null,
-      iqama_expiry: form.iqama_expiry || null,
+      first_name:       form.first_name       || null,
+      father_name:      form.father_name      || null,
+      grandfather_name: form.grandfather_name || null,
+      family_name:      form.family_name      || null,
+      first_name_en:    form.first_name_en    || null,
+      family_name_en:   form.family_name_en   || null,
+      national_id:      form.national_id      || null,
+      nationality:      form.nationality,
+      birth_date:       form.birth_date       || null,
+      gender:           form.gender,
+      marital_status:   form.marital_status,
+      job_title:        form.job_title        || null,
+      department:       form.department       || null,
+      hire_date:        form.hire_date        || null,
+      contract_type:    form.contract_type,
+      basic_salary:     Number(form.basic_salary)    || 0,
+      housing_allow:    Number(form.housing_allow)   || 0,
+      transport_allow:  Number(form.transport_allow) || 0,
+      bank_name:        form.bank_name        || null,
+      iban:             form.iban             || null,
+      iqama_number:     form.iqama_number     || null,
+      iqama_expiry:     form.iqama_expiry     || null,
+      phone:            form.phone            || null,
+      email:            form.email            || null,
     }).eq('id', emp.id).eq('tenant_id', tenantId)
     setSaving(false)
     if (error) { toast.error('خطأ: ' + error.message); return }
     toast.success('تم حفظ البيانات ✅')
     onSave()
   }
-
-  const Section = ({ title }: { title: string }) => (
-    <div style={{ gridColumn: '1/-1', fontWeight: 700, fontSize: '0.82rem', color: '#1a56db',
-      borderBottom: '2px solid #eff6ff', paddingBottom: '6px', marginTop: '8px' }}>
-      {title}
-    </div>
-  )
-
-  const Field = ({ label, k, type = 'text', options }: { label: string; k: string; type?: string; options?: string[] }) => (
-    <div>
-      <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>{label}</label>
-      {options ? (
-        <select value={(form as any)[k]} onChange={e => set(k, e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
-          {options.map(o => <option key={o}>{o}</option>)}
-        </select>
-      ) : (
-        <input type={type} value={(form as any)[k]} onChange={e => set(k, e.target.value)}
-          className="input" style={{ fontSize: '0.82rem' }} />
-      )}
-    </div>
-  )
 
   return (
     <div className="modal-overlay"
@@ -1097,39 +1126,39 @@ function QuickEditModal({ emp, tenantId, onClose, onSave }: {
         </div>
         <div className="modal-body">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <Section title="👤 الاسم" />
-            <Field label="الاسم الأول" k="first_name" />
-            <Field label="اسم الأب" k="father_name" />
-            <Field label="اسم الجد" k="grandfather_name" />
-            <Field label="اسم العائلة" k="family_name" />
-            <Field label="الاسم الأول (إنجليزي)" k="first_name_en" />
-            <Field label="اسم العائلة (إنجليزي)" k="family_name_en" />
+            <EditSection title="👤 الاسم" />
+            <EditField label="الاسم الأول"            value={form.first_name}       onChange={set('first_name')} />
+            <EditField label="اسم الأب"               value={form.father_name}      onChange={set('father_name')} />
+            <EditField label="اسم الجد"               value={form.grandfather_name} onChange={set('grandfather_name')} />
+            <EditField label="اسم العائلة"            value={form.family_name}      onChange={set('family_name')} />
+            <EditField label="الاسم الأول (إنجليزي)" value={form.first_name_en}    onChange={set('first_name_en')} />
+            <EditField label="اسم العائلة (إنجليزي)" value={form.family_name_en}   onChange={set('family_name_en')} />
 
-            <Section title="🪪 الهوية والجنسية" />
-            <Field label="رقم الهوية / الإقامة" k="national_id" />
-            <Field label="الجنسية" k="nationality" options={['سعودي','وافد']} />
-            <Field label="تاريخ الميلاد" k="birth_date" type="date" />
-            <Field label="الجنس" k="gender" options={['ذكر','أنثى']} />
-            <Field label="الحالة الاجتماعية" k="marital_status" options={['أعزب','متزوج','مطلق','أرمل']} />
-            <Field label="الجوال" k="phone" />
-            <Field label="البريد الإلكتروني" k="email" type="email" />
+            <EditSection title="🪪 الهوية والجنسية" />
+            <EditField label="رقم الهوية / الإقامة"  value={form.national_id}   onChange={set('national_id')} />
+            <EditField label="الجنسية"                value={form.nationality}   onChange={set('nationality')} options={['سعودي','وافد']} />
+            <EditField label="تاريخ الميلاد"          value={form.birth_date}    onChange={set('birth_date')}  type="date" />
+            <EditField label="الجنس"                  value={form.gender}        onChange={set('gender')}       options={['ذكر','أنثى']} />
+            <EditField label="الحالة الاجتماعية"     value={form.marital_status} onChange={set('marital_status')} options={['أعزب','متزوج','مطلق','أرمل']} />
+            <EditField label="الجوال"                 value={form.phone}         onChange={set('phone')} />
+            <EditField label="البريد الإلكتروني"     value={form.email}         onChange={set('email')} type="email" />
 
-            <Section title="💼 البيانات الوظيفية" />
-            <Field label="المسمى الوظيفي" k="job_title" />
-            <Field label="القسم" k="department" />
-            <Field label="تاريخ التعيين" k="hire_date" type="date" />
-            <Field label="نوع العقد" k="contract_type" options={['دوام كامل','دوام جزئي','مؤقت','موسمي']} />
+            <EditSection title="💼 البيانات الوظيفية" />
+            <EditField label="المسمى الوظيفي" value={form.job_title}     onChange={set('job_title')} />
+            <EditField label="القسم"           value={form.department}    onChange={set('department')} />
+            <EditField label="تاريخ التعيين"  value={form.hire_date}     onChange={set('hire_date')} type="date" />
+            <EditField label="نوع العقد"       value={form.contract_type} onChange={set('contract_type')} options={['دوام كامل','دوام جزئي','مؤقت','موسمي']} />
 
-            <Section title="💰 الراتب والبدلات" />
-            <Field label="الراتب الأساسي" k="basic_salary" type="number" />
-            <Field label="بدل السكن" k="housing_allow" type="number" />
-            <Field label="بدل النقل" k="transport_allow" type="number" />
+            <EditSection title="💰 الراتب والبدلات" />
+            <EditField label="الراتب الأساسي" value={form.basic_salary}    onChange={set('basic_salary')}    type="number" />
+            <EditField label="بدل السكن"      value={form.housing_allow}   onChange={set('housing_allow')}   type="number" />
+            <EditField label="بدل النقل"      value={form.transport_allow} onChange={set('transport_allow')} type="number" />
 
-            <Section title="🏦 البنك والإقامة" />
-            <Field label="اسم البنك" k="bank_name" />
-            <Field label="رقم IBAN" k="iban" />
-            <Field label="رقم الإقامة" k="iqama_number" />
-            <Field label="انتهاء الإقامة" k="iqama_expiry" type="date" />
+            <EditSection title="🏦 البنك والإقامة" />
+            <EditField label="اسم البنك"      value={form.bank_name}    onChange={set('bank_name')} />
+            <EditField label="رقم IBAN"       value={form.iban}         onChange={set('iban')} />
+            <EditField label="رقم الإقامة"   value={form.iqama_number} onChange={set('iqama_number')} />
+            <EditField label="انتهاء الإقامة" value={form.iqama_expiry} onChange={set('iqama_expiry')} type="date" />
           </div>
         </div>
         <div className="modal-footer">
