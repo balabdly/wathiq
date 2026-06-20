@@ -28,8 +28,8 @@ type HREmp = {
 }
 
 // ══ مودال تنشيط موظف كمستخدم ══
-function ActivateModal({ hrEmp, onClose, onSave }: {
-  hrEmp: HREmp; onClose: () => void; onSave: (data: any) => Promise<void>
+function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
+  hrEmp: HREmp; onClose: () => void; onSave: (data: any) => Promise<void>; onGoToPermissions: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -440,7 +440,8 @@ export default function EmployeesSettingsPage() {
       {showActivate && activateHr && (
         <ActivateModal hrEmp={activateHr}
           onClose={() => { setShowActivate(false); setActivateHr(null) }}
-          onSave={handleActivate} />
+          onSave={handleActivate}
+          onGoToPermissions={() => { setShowActivate(false); setActivateHr(null); router.push('/settings/permissions') }} />
       )}
       {showEdit && editEmp && (
         <EditPermissionsModal emp={editEmp}
