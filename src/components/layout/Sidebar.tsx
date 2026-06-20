@@ -31,11 +31,6 @@ const IC = {
   treasury:    'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
   accounting:  'M9 7H6a2 2 0 00-2 2v9a2 2 0 002 2h9a2 2 0 002-2v-3M14 3h4m0 0v4m0-4L10 11',
   reports:     'M18 20V10M12 20V4M6 20v-6',
-  inv_overview:  'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
-  inv_materials: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
-  inv_movements: 'M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4',
-  inv_projects:  'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-  inv_warehouses:'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
   settings:    'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
   employees:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
@@ -235,18 +230,29 @@ export default function Sidebar() {
   const tenantModules     = (tenant as any)?.modules || {}
   const isAdmin           = currentUser?.role === 'مدير عام'
 
-  const hasProjects  = perms.includes('projects_view')                   && tenantModules.projects  !== false
-  const hasTasks     = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
-  const hasLessons   = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
-  const hasRisks     = (isAdmin || perms.includes('projects_view'))        && tenantModules.projects  !== false
+  const hasProjects  = perms.some(p => ['projects_view','projects_edit'].includes(p)) && tenantModules.projects  !== false
+  const hasTasks     = hasProjects
+  const hasLessons   = hasProjects
+  const hasRisks     = hasProjects
   const hasVisits    = perms.some((p: string) => p.startsWith('visits')) && tenantModules.visits    !== false
   const hasInventory = perms.includes('inventory')                       && tenantModules.inventory !== false
   const hasQHSE      = perms.includes('qhse')                           && tenantModules.qhse      !== false
   const hasPurchases = perms.includes('purchases')                       && tenantModules.purchases !== false
-  const hasFinance   = perms.includes('finance')                         && tenantModules.finance   !== false
+  const hasFinance   = perms.includes('finance')                        && tenantModules.finance   !== false
   const hasReports   = perms.includes('reports')
-  const hasHR        = perms.includes('employees')
+  const hasHR        = perms.some(p => ['hr','employees'].includes(p))
   const hasDashboard = perms.includes('dashboard')
+  const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
+
+  // فلترة أنواع الزيارات حسب الصلاحيات
+  const visitTypes = perms.includes('visits')
+    ? ['جودة','سلامة','كهربائية','ميدانية']
+    : [
+        perms.includes('visits_quality')     ? 'جودة'      : null,
+        perms.includes('visits_safety')      ? 'سلامة'     : null,
+        perms.includes('visits_electrical')  ? 'كهربائية'  : null,
+        perms.includes('visits_field')       ? 'ميدانية'   : null,
+      ].filter(Boolean)
 
   const inProjects = pathname === '/dashboard' || ['/projects','/visits','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
@@ -256,13 +262,12 @@ export default function Sidebar() {
   const inFinance  = pathname.startsWith('/finance')
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
-  const [projectsOpen,  setProjectsOpen]  = useState(false)
-  const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith('/inventory'))
-  const [qhseOpen,      setQhseOpen]      = useState(inQHSE)
-  const [hrOpen,        setHrOpen]        = useState(inHR)
-  const [settingsOpen,  setSettingsOpen]  = useState(inSettings)
-  const [reportsOpen,   setReportsOpen]   = useState(pathname.startsWith('/reports'))
-  const [financeOpen,   setFinanceOpen]   = useState(inFinance)
+  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
+  const [hrOpen,       setHrOpen]       = useState(inHR)
+  const [settingsOpen, setSettingsOpen] = useState(inSettings)
+  const [reportsOpen,  setReportsOpen]  = useState(pathname.startsWith('/reports'))
+  const [financeOpen,  setFinanceOpen]  = useState(inFinance)
 
   return (
     <div className="sidebar" style={{
@@ -335,14 +340,7 @@ export default function Sidebar() {
         )}
 
         {hasInventory && (
-          <NavSection label="المخزون" icon={IC.inventory}
-            isActive={pathname.startsWith('/inventory')} isOpen={inventoryOpen} onToggle={() => setInventoryOpen(o => !o)}>
-            <SubLink href="/inventory"             label="نظرة عامة"       icon={IC.inv_overview}   active={pathname === '/inventory'} />
-            <SubLink href="/inventory/materials"   label="المواد"           icon={IC.inv_materials}  active={pathname.startsWith('/inventory/materials')} />
-            <SubLink href="/inventory/movements"   label="الحركات"          icon={IC.inv_movements}  active={pathname.startsWith('/inventory/movements')} />
-            <SubLink href="/inventory/projects"    label="عهدة المشاريع"    icon={IC.inv_projects}   active={pathname.startsWith('/inventory/projects')} />
-            <SubLink href="/inventory/warehouses"  label="المستودعات"       icon={IC.inv_warehouses} active={pathname.startsWith('/inventory/warehouses')} />
-          </NavSection>
+          <NavDirectLink href="/inventory" label="المخزون" icon={IC.inventory} active={pathname.startsWith('/inventory')} />
         )}
 
         {hasQHSE && (
@@ -363,7 +361,7 @@ export default function Sidebar() {
             <SubLink href="/hr"            label="ملفات الموظفين"     icon={IC.employees}  active={pathname === '/hr'} />
             <SubLink href="/hr/attendance" label="الحضور والغياب"     icon={IC.attendance} active={pathname.startsWith('/hr/attendance')} />
             <SubLink href="/hr/leaves"     label="الإجازات"           icon={IC.leaves}     active={pathname.startsWith('/hr/leaves')} />
-            <SubLink href="/hr/payroll"    label="الرواتب والتعويضات"  icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
+            <SubLink href="/hr/payroll"    label="الرواتب"            icon={IC.payroll}    active={pathname.startsWith('/hr/payroll')} />
             <SubLink href="/hr/documents"  label="الوثائق"            icon={IC.documents}  active={pathname.startsWith('/hr/documents')} />
             <SubLink href="/hr/jobs"       label="عروض الوظائف"       icon={IC.jobs}       active={pathname.startsWith('/hr/jobs')} />
             <SubLink href="/hr/disciplinary" label="التأديب والجزاءات"   icon={IC.disciplinary} active={pathname.startsWith('/hr/disciplinary')} />

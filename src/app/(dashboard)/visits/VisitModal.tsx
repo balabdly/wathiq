@@ -13,12 +13,16 @@ const lbl: React.CSSProperties = {
   color: 'var(--text)', marginBottom: '6px'
 }
 
-export default function VisitModal({ visit, projects, onClose, onSave }: {
+export default function VisitModal({ visit, projects, allowedTypes, onClose, onSave }: {
   visit: Visit | null
   projects: Project[]
+  allowedTypes?: string[]
   onClose: () => void
   onSave: (data: Partial<Visit>) => Promise<void>
 }) {
+  const availableTypes = allowedTypes && allowedTypes.length > 0
+    ? allowedTypes
+    : ['جودة', 'سلامة', 'كهربائية', 'ميدانية']
   const { tenant } = useStore()
   const [saving,    setSaving]   = useState(false)
   const [engineers, setEngineers]= useState<{ id: number; name: string; job_title?: string }[]>([])
@@ -95,7 +99,7 @@ export default function VisitModal({ visit, projects, onClose, onSave }: {
               <div>
                 <label style={lbl}>نوع الزيارة</label>
                 <select value={form.type} onChange={e => set('type', e.target.value)} className="select">
-                  {(['جودة', 'سلامة', 'كهربائية', 'ميدانية'] as const).map(t => (
+                {(availableTypes as any[]).map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>

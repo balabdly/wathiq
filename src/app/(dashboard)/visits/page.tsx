@@ -113,6 +113,19 @@ function CorrectiveModal({ visit, onClose, onSave }: {
 // ══════════════════════════════════════
 export default function VisitsPage() {
   const { tenant, activeBranch, visits, setVisits, projects, setProjects, currentUser } = useStore()
+  const perms = (currentUser?.permissions || []) as string[]
+  const canEdit = perms.some(p => p.startsWith('visits'))
+
+  // أنواع الزيارات المسموح بها حسب الدور
+  const allowedTypes: string[] = perms.includes('visits')
+    ? ['جودة', 'سلامة', 'كهربائية', 'ميدانية']
+    : [
+        perms.includes('visits_quality')    ? 'جودة'     : null,
+        perms.includes('visits_safety')     ? 'سلامة'    : null,
+        perms.includes('visits_electrical') ? 'كهربائية' : null,
+        perms.includes('visits_field')      ? 'ميدانية'  : null,
+      ].filter(Boolean) as string[]
+
   const [loading,          setLoading]          = useState(true)
   const [search,           setSearch]           = useState('')
   const [showModal,        setShowModal]        = useState(false)
@@ -182,6 +195,8 @@ export default function VisitsPage() {
   const q = search.toLowerCase()
   const filtered = visits.filter(v => {
     const matchType    = !selectedType || v.type === selectedType
+    // فلترة تلقائية حسب الصلاحيات — لو allowedTypes محدودة
+    const matchAllowed = allowedTypes.length === 0 || allowedTypes.includes(v.type)
     const matchProject = !projectFilter || String(v.project_id) === projectFilter
     const matchStatus  =
       statusTab === 'all'    ? true :
@@ -191,7 +206,7 @@ export default function VisitsPage() {
     const matchSearch  = !q || v.engineer.toLowerCase().includes(q) ||
       ((v as any).location || '').toLowerCase().includes(q) ||
       (v.notes || '').toLowerCase().includes(q)
-    return matchType && matchProject && matchStatus && matchSearch
+    return matchType && matchAllowed && matchProject && matchStatus && matchSearch
   })
 
   return (
@@ -238,7 +253,7 @@ export default function VisitsPage() {
         {/* النوع */}
         <select value={selectedType || ''} onChange={e => setSelectedType(e.target.value || null)} className="select">
           <option value="">🔎 كل الأنواع</option>
-          {VISIT_TYPES.map(t => (
+          {VISIT_TYPES.filter(t => allowedTypes.length === 0 || allowedTypes.includes(t.id)).map(t => (
             <option key={t.id} value={t.id}>
               {t.icon} {t.id} ({visits.filter(v => v.type === t.id).length})
             </option>
@@ -402,7 +417,7 @@ export default function VisitsPage() {
 
       {/* المودالات */}
       {showModal && (
-        <VisitModal visit={editVisit} projects={projects} onClose={() => { setShowModal(false); setEditVisit(null) }} onSave={handleSave} />
+        <VisitModal visit={editVisit} projects={projects} allowedTypes={allowedTypes} onClose={() => { setShowModal(false); setEditVisit(null) }} onSave={handleSave} />
       )}
       {detailVisit && <VisitDetail visit={detailVisit} onClose={() => setDetail(null)} />}
       {correctiveVisit && (
