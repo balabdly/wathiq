@@ -27,6 +27,7 @@ type HREmployee = {
   gosi_enrolled: boolean; gosi_pct: number
   iqama_number?: string; iqama_expiry?: string
   bank_name?: string; iban?: string; notes?: string
+  phone?: string; email?: string; mobile?: string
   is_active: boolean; direct_manager?: number
   employee?: { name: string; role: string }
 }
