@@ -154,28 +154,23 @@ function EditPermissionsModal({ emp, onClose, onSave }: {
   emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
+  const [userPerms, setUserPerms] = useState<string[]>(emp.permissions || [])
   const [form, setForm] = useState({
-    role:        emp.role || '',
-    username:    emp.username || '',
-    password:    '',
-    permissions: emp.permissions || [],
-    is_active:   emp.is_active,
+    role:      emp.role || '',
+    username:  emp.username || '',
+    password:  '',
+    is_active: emp.is_active,
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   function togglePerm(key: string) {
-    setForm(f => ({
-      ...f,
-      permissions: f.permissions.includes(key)
-        ? f.permissions.filter(p => p !== key)
-        : [...f.permissions, key]
-    }))
+    setUserPerms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key])
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    await onSave({ id: emp.id, name: emp.name, ...form })
+    await onSave({ id: emp.id, name: emp.name, ...form, permissions: userPerms })
     setSaving(false)
   }
 
