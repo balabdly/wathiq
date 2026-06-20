@@ -263,7 +263,8 @@ export default function Sidebar() {
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
   const [projectsOpen, setProjectsOpen] = useState(false)
-  const [qhseOpen,     setQhseOpen]     = useState(inQHSE)
+  const [qhseOpen,      setQhseOpen]      = useState(inQHSE)
+  const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith('/inventory'))
   const [hrOpen,       setHrOpen]       = useState(inHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
   const [reportsOpen,  setReportsOpen]  = useState(pathname.startsWith('/reports'))
@@ -340,7 +341,15 @@ export default function Sidebar() {
         )}
 
         {hasInventory && (
-          <NavDirectLink href="/inventory" label="المخزون" icon={IC.inventory} active={pathname.startsWith('/inventory')} />
+          <NavSection label="المخزون" icon={IC.inventory}
+            isActive={pathname.startsWith('/inventory')}
+            isOpen={inventoryOpen}
+            onToggle={() => setInventoryOpen(o => !o)}>
+            <SubLink href="/inventory/materials"   label="المواد"           icon={IC.inventory} active={pathname.startsWith('/inventory/materials')} />
+            <SubLink href="/inventory/projects"    label="عهدة المشاريع"    icon={IC.projects}  active={pathname.startsWith('/inventory/projects')} />
+            <SubLink href="/inventory/movements"   label="الحركات"          icon={IC.reports}   active={pathname.startsWith('/inventory/movements')} />
+            <SubLink href="/inventory/warehouses"  label="المستودعات"       icon={IC.dashboard} active={pathname.startsWith('/inventory/warehouses')} />
+          </NavSection>
         )}
 
         {hasQHSE && (
