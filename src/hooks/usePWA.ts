@@ -12,7 +12,7 @@ export function usePWA() {
     }
   }, [])
 
-  // حفظ بيانات المستخدم في cookie عند تغيير الـ session
+  // حفظ بيانات المستخدم في cookie
   useEffect(() => {
     if (currentUser) {
       const userData = {
@@ -27,29 +27,53 @@ export function usePWA() {
     }
   }, [currentUser?.id])
 
-  // تحديث الصلاحيات تلقائياً كل دقيقة
+  // ── Realtime: تحديث permissions فوراً عند تغييرها ──
   useEffect(() => {
     if (!currentUser?.id) return
 
-    async function refreshPermissions() {
+    // تحديث فوري عند التحميل
+    async function fetchPerms() {
       const { data } = await supabase
         .from('employees')
-        .select('permissions, role')
+        .select('permissions, role, name')
         .eq('id', currentUser!.id)
         .single()
-
-      if (data && JSON.stringify(data.permissions) !== JSON.stringify(currentUser!.permissions)) {
-        // الصلاحيات تغيّرت — حدّث الـ store
-        setCurrentUser({ ...currentUser!, permissions: data.permissions, role: data.role })
+      if (!data) return
+      // تحديث لو تغيّرت
+      if (
+        JSON.stringify(data.permissions) !== JSON.stringify(currentUser!.permissions) ||
+        data.role !== currentUser!.role
+      ) {
+        setCurrentUser({ ...currentUser!, permissions: data.permissions || [], role: data.role })
       }
     }
+    fetchPerms()
 
-    // تحديث فوري عند الدخول
-    refreshPermissions()
+    // Realtime subscription — يستمع لأي تغيير على هذا الموظف
+    const channel = supabase
+      .channel(`employee_perms_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'employees',
+          filter: `id=eq.${currentUser.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as any
+          if (updated.permissions || updated.role) {
+            setCurrentUser({
+              ...currentUser!,
+              permissions: updated.permissions || [],
+              role:        updated.role || currentUser!.role,
+            })
+          }
+        }
+      )
+      .subscribe()
 
-    // تحديث كل 60 ثانية
-    const interval = setInterval(refreshPermissions, 60000)
-    return () => clearInterval(interval)
+    return () => { supabase.removeChannel(channel) }
   }, [currentUser?.id])
 }
 
