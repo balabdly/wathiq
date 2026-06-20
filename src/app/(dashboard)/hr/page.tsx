@@ -352,7 +352,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
       contract_type: form.contract_type,
       job_title: form.job_title,
       department: form.department,
-      direct_manager: form.direct_manager ? Number(form.direct_manager) : null,
+      direct_manager: form.direct_manager && Number(form.direct_manager) > 0 ? Number(form.direct_manager) : null,
       basic_salary: Number(form.basic_salary),
       housing_allow: Number(form.housing_allow),
       transport_allow: Number(form.transport_allow),

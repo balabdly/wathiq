@@ -492,6 +492,8 @@ export default function EmployeeProfilePage() {
               { label: 'تاريخ الميلاد',        value: emp.birth_date ? formatDate(emp.birth_date) : '—' },
               { label: 'الجنس',                value: emp.gender },
               { label: 'الحالة الاجتماعية',    value: emp.marital_status },
+              { label: 'الجوال',               value: emp.phone || emp.mobile || '—' },
+              { label: 'البريد الإلكتروني',    value: emp.email || '—' },
             ].map(row => (
               <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: '8px', marginBottom: '10px' }}>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{row.label}</span>
