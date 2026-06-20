@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Users, Pencil, X, Save, Search, Shield, UserCheck, UserX, RefreshCw, UserPlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 const ALL_PERMISSIONS = [
@@ -105,9 +106,10 @@ function ActivateModal({ hrEmp, onClose, onSave }: {
               <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
                 🔐 لإدارة الصلاحيات التفصيلية
               </div>
-              <a href="/settings/permissions" style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>
+              <button onClick={() => { onClose(); window.location.href = '/settings/permissions' }}
+                style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                 صفحة الصلاحيات ←
-              </a>
+              </button>
             </div>
           </div>
           <div className="modal-footer">
@@ -184,9 +186,10 @@ function EditPermissionsModal({ emp, onClose, onSave }: {
               <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
                 🔐 لإدارة الصلاحيات التفصيلية
               </div>
-              <a href="/settings/permissions" style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>
+              <button onClick={() => { onClose(); window.location.href = '/settings/permissions' }}
+                style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                 صفحة الصلاحيات ←
-              </a>
+              </button>
             </div>
           </div>
           <div className="modal-footer">
