@@ -1543,20 +1543,33 @@ export default function HRPage() {
           .rpc('generate_employee_number', { p_tenant_id: tenant.id })
         if (!numErr && empNum) employeeNumber = empNum
 
-        // ✅ إنشاء سجل في employees للـ login (اختياري)
-        const { data: newEmp } = await supabase
+        // ✅ إنشاء سجل في employees للـ login — upsert لمنع التكرار
+        // أولاً تحقق لو الموظف موجود بنفس الاسم
+        const { data: existingEmp } = await supabase
           .from('employees')
-          .insert({
-            tenant_id: tenant.id,
-            name: data.emp_name,
-            role: data.job_title || 'موظف',
-            username: `emp_${Date.now()}`,
-            password: '1234',
-            permissions: [],
-            is_active: true,
-          })
           .select('id')
-          .single()
+          .eq('tenant_id', tenant.id)
+          .eq('name', data.emp_name)
+          .eq('is_active', true)
+          .maybeSingle()
+
+        let newEmp = existingEmp
+        if (!existingEmp) {
+          const { data: createdEmp } = await supabase
+            .from('employees')
+            .insert({
+              tenant_id:  tenant.id,
+              name:       data.emp_name,
+              role:       data.job_title || 'موظف',
+              username:   `emp_${Date.now()}`,
+              password:   '1234',
+              permissions: [],
+              is_active:  true,
+            })
+            .select('id')
+            .single()
+          newEmp = createdEmp
+        }
 
         // ✅ بناء payload لـ hr_employees
         const hrPayload: Record<string, any> = {
