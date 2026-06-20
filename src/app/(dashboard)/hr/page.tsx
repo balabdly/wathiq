@@ -1534,7 +1534,11 @@ export default function HRPage() {
       let hrEmployeeId = data.hr_employee_id || null
       let employeeNumber: string | null = null
 
-      if (!hrEmployeeId) {
+      // data.id = hr_employees.id عند التعديل
+      const isEdit = !!(data.id || hrEmployeeId)
+      let employeeNumber: string | null = null
+
+      if (!isEdit) {
         // ✅ توليد رقم الموظف التلقائي
         const { data: empNum, error: numErr } = await supabase
           .rpc('generate_employee_number', { p_tenant_id: tenant.id })
@@ -1610,7 +1614,9 @@ export default function HRPage() {
         }
 
       } else {
-        // تعديل موظف موجود — تحديث hr_employees فقط
+        // تعديل موظف موجود — data.id = hr_employees.id
+        const updateId = data.id || hrEmployeeId
+        if (!updateId) throw new Error('لا يوجد ID للموظف')
         const hrPayload: Record<string, any> = {
           first_name:       data.first_name       || null,
           father_name:      data.father_name       || null,
@@ -1642,7 +1648,7 @@ export default function HRPage() {
           notes:          data.notes          || null,
         }
         Object.keys(hrPayload).forEach(k => { if (hrPayload[k] === undefined) delete hrPayload[k] })
-        const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', data.id)
+        const { error: updateErr } = await supabase.from('hr_employees').update(hrPayload).eq('id', updateId)
         if (updateErr) throw updateErr
       }
 
