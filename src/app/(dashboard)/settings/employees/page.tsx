@@ -106,7 +106,7 @@ function ActivateModal({ hrEmp, onClose, onSave }: {
               <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
                 🔐 لإدارة الصلاحيات التفصيلية
               </div>
-              <button onClick={() => { onClose(); window.location.href = '/settings/permissions' }}
+              <button onClick={() => { onClose(); onGoToPermissions() }}
                 style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                 صفحة الصلاحيات ←
               </button>
@@ -126,8 +126,8 @@ function ActivateModal({ hrEmp, onClose, onSave }: {
 }
 
 // ══ مودال تعديل صلاحيات مستخدم موجود ══
-function EditPermissionsModal({ emp, onClose, onSave }: {
-  emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>
+function EditPermissionsModal({ emp, onClose, onSave, onGoToPermissions }: {
+  emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>; onGoToPermissions: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -186,7 +186,7 @@ function EditPermissionsModal({ emp, onClose, onSave }: {
               <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
                 🔐 لإدارة الصلاحيات التفصيلية
               </div>
-              <button onClick={() => { onClose(); window.location.href = '/settings/permissions' }}
+              <button onClick={() => { onClose(); onGoToPermissions() }}
                 style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                 صفحة الصلاحيات ←
               </button>
@@ -208,6 +208,7 @@ function EditPermissionsModal({ emp, onClose, onSave }: {
 // ══ الصفحة الرئيسية ══
 export default function EmployeesSettingsPage() {
   const { tenant, currentUser } = useStore()
+  const router = useRouter()
   const [employees,   setEmployees]   = useState<Emp[]>([])
   const [hrEmployees, setHrEmployees] = useState<HREmp[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -444,7 +445,8 @@ export default function EmployeesSettingsPage() {
       {showEdit && editEmp && (
         <EditPermissionsModal emp={editEmp}
           onClose={() => { setShowEdit(false); setEditEmp(null) }}
-          onSave={handleEdit} />
+          onSave={handleEdit}
+          onGoToPermissions={() => { setShowEdit(false); setEditEmp(null); router.push('/settings/permissions') }} />
       )}
     </div>
   )
