@@ -125,6 +125,30 @@ function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
   )
 }
 
+// ── ثوابت الصلاحيات ──
+const PERMISSION_GROUPS = [
+  { label: 'عام',                color: '#6b7280', perms: [{ id: 'dashboard', label: 'لوحة التحكم', icon: '📊' }] },
+  { label: 'المشاريع',          color: '#1a56db', perms: [{ id: 'projects_view', label: 'عرض المشاريع', icon: '👁️' }, { id: 'projects_edit', label: 'تعديل المشاريع', icon: '✏️' }, { id: 'pmo', label: 'إدارة PMO', icon: '📋' }] },
+  { label: 'الزيارات',          color: '#0ea77b', perms: [{ id: 'visits', label: 'كل الزيارات', icon: '🔎' }, { id: 'visits_quality', label: 'زيارات الجودة', icon: '✅' }, { id: 'visits_safety', label: 'زيارات السلامة', icon: '🦺' }, { id: 'visits_electrical', label: 'زيارات كهربائية', icon: '⚡' }, { id: 'visits_field', label: 'زيارات ميدانية', icon: '🏗️' }] },
+  { label: 'QHSE',              color: '#e6820a', perms: [{ id: 'qhse', label: 'QHSE', icon: '🛡️' }] },
+  { label: 'المخزون والمشتريات', color: '#7c3aed', perms: [{ id: 'inventory', label: 'المخزون', icon: '📦' }, { id: 'purchases', label: 'المشتريات', icon: '🛒' }] },
+  { label: 'الموارد البشرية',   color: '#9333ea', perms: [{ id: 'hr', label: 'HR', icon: '👥' }, { id: 'employees', label: 'الموظفون', icon: '👤' }] },
+  { label: 'المالية',           color: '#0f766e', perms: [{ id: 'finance', label: 'المالية', icon: '💰' }] },
+  { label: 'التقارير',          color: '#64748b', perms: [{ id: 'reports', label: 'التقارير', icon: '📈' }] },
+]
+
+const DEFAULT_ROLES_PERMS: Record<string, string[]> = {
+  'مدير عام':     ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','qhse','employees','reports','finance','pmo','hr'],
+  'مدير مشروع':  ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','reports','pmo'],
+  'مهندس جودة':  ['dashboard','projects_view','visits_quality','qhse','reports'],
+  'مهندس سلامة': ['dashboard','projects_view','visits_safety','qhse','reports'],
+  'مهندس كهرباء':['dashboard','projects_view','visits_electrical','visits_field','inventory','reports'],
+  'مهندس ميداني':['dashboard','projects_view','visits_field','reports'],
+  'مشرف':        ['dashboard','projects_view','visits_field','reports'],
+  'محاسب':       ['dashboard','finance','purchases','reports'],
+  'مدير HR':     ['dashboard','hr','employees','reports'],
+}
+
 // ══ مودال تعديل صلاحيات مستخدم موجود ══
 function EditPermissionsModal({ emp, onClose, onSave }: {
   emp: Emp; onClose: () => void; onSave: (data: any) => Promise<void>
