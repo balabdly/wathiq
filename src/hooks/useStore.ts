@@ -29,6 +29,7 @@ interface AppState {
   setStockLedger: (ledger: StockLedger[]) => void
   setPurchases: (purchases: Purchase[]) => void
   setEmployees: (employees: Employee[]) => void
+  setHREmployees: (employees: Employee[]) => void
   setClients: (clients: Client[]) => void
   // ── UI ──
   isLoading: boolean
@@ -76,6 +77,7 @@ export const useStore = create<AppState>()(
       setStockLedger: (stockLedger) => set({ stockLedger }),
       setPurchases: (purchases) => set({ purchases }),
       setEmployees: (employees) => set({ employees }),
+      setHREmployees: (employees) => set({ employees }), // alias لـ setEmployees
       setClients: (clients) => set({ clients }),
       // UI
       isLoading: false,
