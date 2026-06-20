@@ -100,17 +100,14 @@ function ActivateModal({ hrEmp, onClose, onSave }: {
                 className="input" placeholder="مثال: مدير مشاريع" />
             </div>
 
-            {/* الصلاحيات */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '8px' }}>الصلاحيات</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                {ALL_PERMISSIONS.map(p => (
-                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${form.permissions.includes(p.key) ? '#bfdbfe' : '#e5e7eb'}`, background: form.permissions.includes(p.key) ? '#eff6ff' : 'white', cursor: 'pointer', fontSize: '0.82rem' }}>
-                    <input type="checkbox" checked={form.permissions.includes(p.key)} onChange={() => togglePerm(p.key)} style={{ cursor: 'pointer' }} />
-                    <span style={{ color: form.permissions.includes(p.key) ? '#1a56db' : '#374151', fontWeight: form.permissions.includes(p.key) ? 600 : 400 }}>{p.label}</span>
-                  </label>
-                ))}
+            {/* الصلاحيات — تُدار من صفحة الصلاحيات المخصصة */}
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
+                🔐 لإدارة الصلاحيات التفصيلية
               </div>
+              <a href="/settings/permissions" style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>
+                صفحة الصلاحيات ←
+              </a>
             </div>
           </div>
           <div className="modal-footer">
@@ -182,16 +179,14 @@ function EditPermissionsModal({ emp, onClose, onSave }: {
               <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>الدور الوظيفي</label>
               <input value={form.role} onChange={e => set('role', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" />
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '8px' }}>الصلاحيات</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                {ALL_PERMISSIONS.map(p => (
-                  <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${form.permissions.includes(p.key) ? '#bfdbfe' : '#e5e7eb'}`, background: form.permissions.includes(p.key) ? '#eff6ff' : 'white', cursor: 'pointer', fontSize: '0.82rem' }}>
-                    <input type="checkbox" checked={form.permissions.includes(p.key)} onChange={() => togglePerm(p.key)} style={{ cursor: 'pointer' }} />
-                    <span style={{ color: form.permissions.includes(p.key) ? '#1a56db' : '#374151', fontWeight: form.permissions.includes(p.key) ? 600 : 400 }}>{p.label}</span>
-                  </label>
-                ))}
+            {/* الصلاحيات — تُدار من صفحة الصلاحيات المخصصة */}
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
+                🔐 لإدارة الصلاحيات التفصيلية
               </div>
+              <a href="/settings/permissions" style={{ fontSize: '0.78rem', background: '#1a56db', color: 'white', padding: '5px 12px', borderRadius: '6px', textDecoration: 'none', fontWeight: 600 }}>
+                صفحة الصلاحيات ←
+              </a>
             </div>
           </div>
           <div className="modal-footer">
@@ -260,10 +255,10 @@ export default function EmployeesSettingsPage() {
   async function handleEdit(data: any) {
     if (!tenant) return
     const payload: any = {
-      role:        data.role,
-      username:    data.username || null,
-      permissions: data.permissions,
-      is_active:   data.is_active,
+      role:      data.role,
+      username:  data.username || null,
+      // لا نُعيد كتابة permissions — تُدار من صفحة الصلاحيات
+      is_active: data.is_active,
     }
     if (data.password) payload.password = data.password
     const { error } = await supabase.from('employees').update(payload).eq('id', data.id)
