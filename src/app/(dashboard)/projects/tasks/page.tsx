@@ -204,7 +204,7 @@ export default function ProjectTasksPage() {
   const [filterPriority,setFilterPriority]= useState('')
   const [showModal, setShowModal]  = useState(false)
   const [editTask,  setEditTask]   = useState<Task | null>(null)
-  const [view, setView] = useState<'board' | 'list'>('board')
+  const [view, setView] = useState<'board' | 'list'>('list')
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
@@ -315,14 +315,22 @@ export default function ProjectTasksPage() {
           {['عالي', 'متوسط', 'منخفض'].map(p => <option key={p}>{p}</option>)}
         </select>
         {/* مبدّل العرض */}
-        <div style={{ marginRight: 'auto', display: 'flex', gap: '4px', background: '#e5e7eb', padding: '3px', borderRadius: '8px' }}>
-          {([['board', '📋 لوحة'], ['list', '☰ قائمة']] as const).map(([v, l]) => (
+        <div style={{ marginRight: 'auto', display: 'flex', gap: '4px', background: '#e5e7eb', padding: '3px', borderRadius: '10px' }}>
+          {([
+            ['list',  '☰',  'قائمة'],
+            ['board', '📋', 'كانبان'],
+          ] as const).map(([v, icon, label]) => (
             <button key={v} onClick={() => setView(v)}
-              style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+              style={{
+                padding: '6px 14px', borderRadius: '7px', border: 'none',
+                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '5px',
                 background: view === v ? 'white' : 'transparent',
                 color:      view === v ? 'var(--primary)' : 'var(--text3)',
-                boxShadow:  view === v ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
-              {l}
+                boxShadow:  view === v ? '0 1px 4px rgba(0,0,0,0.12)' : 'none',
+                transition: 'all 0.15s',
+              }}>
+              <span>{icon}</span> {label}
             </button>
           ))}
         </div>
