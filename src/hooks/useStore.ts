@@ -95,13 +95,15 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'wathiq-store',
+      // لا نحفظ permissions في localStorage — تُجلب دائماً من DB
       partialize: (state) => ({
-        currentUser: state.currentUser,
+        currentUser: state.currentUser
+          ? { ...state.currentUser, permissions: [] } // نحفظ بدون permissions
+          : null,
         tenant: state.tenant,
         activeBranch: state.activeBranch,
         branches: state.branches,
       }),
-      // ── تحديث permissions من DB عند كل تحميل للصفحة ──
       onRehydrateStorage: () => async (state) => {
         if (!state?.currentUser?.id) return
         try {

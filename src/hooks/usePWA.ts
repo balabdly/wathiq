@@ -25,52 +25,45 @@ export function usePWA() {
     } else {
       document.cookie = 'wathiq_user=; path=/; max-age=0'
     }
-  }, [currentUser?.id])
+  }, [currentUser?.id, currentUser?.permissions])
 
-  // ── Realtime: تحديث permissions فوراً عند تغييرها ──
+  // ── جلب permissions من DB فوراً عند كل تحميل صفحة ──
   useEffect(() => {
     if (!currentUser?.id) return
 
-    // تحديث فوري عند التحميل
-    async function fetchPerms() {
+    async function syncPermissions() {
       const { data } = await supabase
         .from('employees')
-        .select('permissions, role, name')
+        .select('permissions, role')
         .eq('id', currentUser!.id)
         .single()
-      if (!data) return
-      // تحديث لو تغيّرت
-      if (
-        JSON.stringify(data.permissions) !== JSON.stringify(currentUser!.permissions) ||
-        data.role !== currentUser!.role
-      ) {
-        setCurrentUser({ ...currentUser!, permissions: data.permissions || [], role: data.role })
-      }
-    }
-    fetchPerms()
 
-    // Realtime subscription — يستمع لأي تغيير على هذا الموظف
+      if (!data) return
+
+      // تحديث دائماً من DB — permissions لا تُقرأ من localStorage
+      setCurrentUser({
+        ...currentUser!,
+        permissions: data.permissions || [],
+        role: data.role,
+      })
+    }
+
+    syncPermissions()
+
+    // Realtime للتحديث الفوري عند تغيير الصلاحيات
     const channel = supabase
-      .channel(`employee_perms_${currentUser.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event:  'UPDATE',
-          schema: 'public',
-          table:  'employees',
-          filter: `id=eq.${currentUser.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as any
-          if (updated.permissions || updated.role) {
-            setCurrentUser({
-              ...currentUser!,
-              permissions: updated.permissions || [],
-              role:        updated.role || currentUser!.role,
-            })
-          }
-        }
-      )
+      .channel(`perms_${currentUser.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'employees',
+        filter: `id=eq.${currentUser.id}`,
+      }, (payload) => {
+        const updated = payload.new as any
+        setCurrentUser({
+          ...currentUser!,
+          permissions: updated.permissions || [],
+          role: updated.role || currentUser!.role,
+        })
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
