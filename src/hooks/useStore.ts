@@ -2,30 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Tenant, Employee, Branch, Project, Visit, Material, StockLedger, Warehouse, Purchase, Client } from '@/types'
 
-// ── نوع موظف HR ──
-export type HREmployee = {
-  id: number
-  tenant_id: string
-  employee_id?: number        // الربط بـ employees (للـ login)
-  employee_number?: string
-  name?: string               // الاسم المدمج
-  first_name?: string
-  father_name?: string
-  grandfather_name?: string
-  family_name?: string
-  job_title?: string
-  department?: string
-  nationality?: string
-  is_active: boolean
-  basic_salary?: number
-  housing_allow?: number
-  transport_allow?: number
-  other_allow?: number
-  hire_date?: string
-  iqama_expiry?: string
-  passport_expiry?: string
-}
-
 interface AppState {
   // ── Auth ──
   currentUser: Employee | null
@@ -43,8 +19,7 @@ interface AppState {
   warehouses: Warehouse[]
   stockLedger: StockLedger[]
   purchases: Purchase[]
-  employees: Employee[]       // مستخدمو النظام (login/صلاحيات)
-  hrEmployees: HREmployee[]   // موظفو HR (بيانات وظيفية)
+  employees: Employee[]
   clients: Client[]
   // ── Setters ──
   setProjects: (projects: Project[]) => void
@@ -54,7 +29,6 @@ interface AppState {
   setStockLedger: (ledger: StockLedger[]) => void
   setPurchases: (purchases: Purchase[]) => void
   setEmployees: (employees: Employee[]) => void
-  setHREmployees: (hrEmployees: HREmployee[]) => void
   setClients: (clients: Client[]) => void
   // ── UI ──
   isLoading: boolean
@@ -66,6 +40,12 @@ interface AppState {
   // ── Reset ──
   reset: () => void
 }
+
+import { createClient } from '@supabase/supabase-js'
+const _sb = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export const useStore = create<AppState>()(
   persist(
@@ -87,7 +67,6 @@ export const useStore = create<AppState>()(
       stockLedger: [],
       purchases: [],
       employees: [],
-      hrEmployees: [],
       clients: [],
       // Setters
       setProjects: (projects) => set({ projects }),
@@ -97,7 +76,6 @@ export const useStore = create<AppState>()(
       setStockLedger: (stockLedger) => set({ stockLedger }),
       setPurchases: (purchases) => set({ purchases }),
       setEmployees: (employees) => set({ employees }),
-      setHREmployees: (hrEmployees) => set({ hrEmployees }),
       setClients: (clients) => set({ clients }),
       // UI
       isLoading: false,
@@ -110,18 +88,35 @@ export const useStore = create<AppState>()(
       reset: () => set({
         currentUser: null, tenant: null, activeBranch: null,
         projects: [], visits: [], materials: [], warehouses: [],
-        stockLedger: [], purchases: [], employees: [], hrEmployees: [], clients: [],
+        stockLedger: [], purchases: [], employees: [], clients: [],
       }),
     }),
     {
       name: 'wathiq-store',
-      // نحفظ فقط بيانات المصادقة — البيانات الثقيلة تُحمّل من جديد
       partialize: (state) => ({
         currentUser: state.currentUser,
         tenant: state.tenant,
         activeBranch: state.activeBranch,
         branches: state.branches,
       }),
+      // ── تحديث permissions من DB عند كل تحميل للصفحة ──
+      onRehydrateStorage: () => async (state) => {
+        if (!state?.currentUser?.id) return
+        try {
+          const { data } = await _sb
+            .from('employees')
+            .select('permissions, role')
+            .eq('id', state.currentUser.id)
+            .single()
+          if (data) {
+            state.setCurrentUser({
+              ...state.currentUser,
+              permissions: data.permissions || [],
+              role: data.role,
+            })
+          }
+        } catch {}
+      },
     }
   )
 )
