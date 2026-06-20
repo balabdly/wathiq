@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/hooks/useStore'
-import { loadHREmployees } from '@/lib/loadHREmployees'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
@@ -43,36 +42,8 @@ export default function LoginPage() {
         .eq('tenant_id', emp.tenant_id)
         .order('id')
 
-      // ── مزامنة الصلاحيات مع موديولات الـ tenant ──────────────────
-      // إذا كان موديول مفعّل في الـ tenant لكن غير موجود في permissions
-      // المستخدم (لأنه أُنشئ قبل إضافة الموديول) — نضيفه تلقائياً
-      const modules = (tenant as any)?.modules || {}
-      let perms: string[] = emp.permissions || []
-
-      const modulePermMap: Record<string, string> = {
-        finance:   'finance',
-        purchases: 'purchases',
-        employees: 'employees',
-        qhse:      'qhse',
-        reports:   'reports',
-        visits:    'visits_field',
-      }
-
-      let permsUpdated = false
-      Object.entries(modulePermMap).forEach(([module, perm]) => {
-        if (modules[module] === true && !perms.includes(perm)) {
-          perms = [...perms, perm]
-          permsUpdated = true
-        }
-      })
-
-      // إذا تغيرت الصلاحيات — حدّثها في قاعدة البيانات
-      if (permsUpdated) {
-        await supabase
-          .from('employees')
-          .update({ permissions: perms })
-          .eq('id', emp.id)
-      }
+      // ── تحميل permissions مباشرة من DB بدون تعديل ──
+      const perms: string[] = emp.permissions || []
 
       const updatedEmp = { ...emp, permissions: perms }
 
@@ -82,9 +53,6 @@ export default function LoginPage() {
 
       const userBranch = branches?.find((b: any) => b.id === emp.branch_id) || branches?.[0]
       if (userBranch) setActiveBranch(userBranch)
-
-      // ── تحميل موظفي HR في الـ store ──
-      await loadHREmployees(emp.tenant_id)
 
       toast.success(`أهلاً ${emp.name} 👋`)
       router.push('/dashboard')
