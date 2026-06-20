@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, Search, CheckCircle2, Clock, AlertTriangle, Circle, ChevronDown } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, Search, CheckCircle2, Clock, AlertTriangle, Circle, ChevronDown, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type Task = {
@@ -202,8 +202,9 @@ export default function ProjectTasksPage() {
   const [filterProject, setFilterProject] = useState('')
   const [filterStatus,  setFilterStatus]  = useState('')
   const [filterPriority,setFilterPriority]= useState('')
-  const [showModal, setShowModal]  = useState(false)
-  const [editTask,  setEditTask]   = useState<Task | null>(null)
+  const [showModal,   setShowModal]   = useState(false)
+  const [editTask,    setEditTask]    = useState<Task | null>(null)
+  const [detailTask,  setDetailTask]  = useState<Task | null>(null)
   const [view, setView] = useState<'board' | 'list'>('list')
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
@@ -395,6 +396,10 @@ export default function ProjectTasksPage() {
                       )}
                       {canEdit && (
                         <div style={{ display: 'flex', gap: '4px', borderTop: '1px solid var(--bg2)', paddingTop: '8px' }} onClick={e => e.stopPropagation()}>
+                          <button onClick={() => setDetailTask(task)}
+                            style={{ padding: '4px 8px', borderRadius: '5px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db' }}>
+                            <Eye style={{ width: '11px', height: '11px' }} />
+                          </button>
                           <button onClick={() => { setEditTask(task); setShowModal(true) }}
                             style={{ flex: 1, padding: '4px', borderRadius: '5px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.68rem', color: 'var(--text3)' }}>
                             تعديل
@@ -467,16 +472,22 @@ export default function ProjectTasksPage() {
                         </div>
                       </td>
                       <td style={{ padding: '12px 14px' }}>
-                        {canEdit && (
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={() => { setEditTask(task); setShowModal(true) }} className="btn btn-ghost btn-xs">
-                              <Pencil style={{ width: '13px', height: '13px' }} />
-                            </button>
-                            <button onClick={() => handleDelete(task.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                              <Trash2 style={{ width: '13px', height: '13px' }} />
-                            </button>
-                          </div>
-                        )}
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button onClick={() => setDetailTask(task)} className="btn btn-ghost btn-xs" title="تفاصيل"
+                            style={{ color: '#1a56db' }}>
+                            <Eye style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          {canEdit && (
+                            <>
+                              <button onClick={() => { setEditTask(task); setShowModal(true) }} className="btn btn-ghost btn-xs">
+                                <Pencil style={{ width: '13px', height: '13px' }} />
+                              </button>
+                              <button onClick={() => handleDelete(task.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
+                                <Trash2 style={{ width: '13px', height: '13px' }} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -495,6 +506,93 @@ export default function ProjectTasksPage() {
           onClose={() => { setShowModal(false); setEditTask(null) }}
           onSave={() => { setShowModal(false); setEditTask(null); loadAll() }}
         />
+      )}
+
+      {detailTask && (
+        <div className="modal-overlay"
+          onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }}
+          onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) setDetailTask(null) }}>
+          <div className="modal-box" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>{detailTask.title}</h3>
+                {detailTask.category && <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '2px' }}>{detailTask.category}</div>}
+              </div>
+              <button onClick={() => setDetailTask(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* الحالة والأولوية */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {(() => { const s = STATUS_STEPS.find(x => x.id === detailTask.status); return (
+                  <span style={{ background: s?.bg, color: s?.color, borderRadius: '20px', padding: '4px 14px', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    {s?.icon} {detailTask.status}
+                  </span>
+                )})()}
+                {(() => { const p = PRIORITY_COLOR[detailTask.priority]; return (
+                  <span style={{ background: p?.bg, color: p?.color, borderRadius: '20px', padding: '4px 14px', fontSize: '0.82rem', fontWeight: 700 }}>
+                    {detailTask.priority}
+                  </span>
+                )})()}
+              </div>
+
+              {/* تفاصيل */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                {[
+                  { label: 'المشروع',      value: (detailTask as any).project?.name || '—' },
+                  { label: 'المسؤول',      value: detailTask.assignee || '—' },
+                  { label: 'تاريخ البدء',  value: detailTask.start_date || '—' },
+                  { label: 'الاستحقاق',    value: detailTask.due_date  || '—' },
+                ].map(row => (
+                  <div key={row.label} style={{ background: 'var(--bg2,#f8fafc)', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '3px' }}>{row.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{row.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* الإنجاز */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '6px', fontWeight: 600 }}>
+                  <span>نسبة الإنجاز</span>
+                  <span style={{ color: 'var(--primary)' }}>{detailTask.progress}%</span>
+                </div>
+                <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: detailTask.status === 'مكتملة' ? '#0ea77b' : 'var(--primary)', width: `${detailTask.progress}%`, borderRadius: '4px', transition: 'width 0.3s' }} />
+                </div>
+              </div>
+
+              {/* الوصف */}
+              {detailTask.description && (
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '6px' }}>الوصف</div>
+                  <div style={{ background: 'var(--bg2,#f8fafc)', borderRadius: '8px', padding: '12px', fontSize: '0.875rem', lineHeight: 1.6 }}>
+                    {detailTask.description}
+                  </div>
+                </div>
+              )}
+
+              {/* الملاحظات */}
+              {detailTask.notes && (
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text3)', marginBottom: '6px' }}>ملاحظات</div>
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px', padding: '12px', fontSize: '0.875rem' }}>
+                    {detailTask.notes}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setDetailTask(null)} className="btn btn-ghost">إغلاق</button>
+              {canEdit && (
+                <button onClick={() => { setEditTask(detailTask); setDetailTask(null); setShowModal(true) }} className="btn btn-primary">
+                  <Pencil style={{ width: '14px', height: '14px' }} /> تعديل
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
