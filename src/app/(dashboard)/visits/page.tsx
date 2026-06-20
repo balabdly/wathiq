@@ -136,7 +136,6 @@ export default function VisitsPage() {
   const [statusTab,        setStatusTab]        = useState('all')
   const [projectFilter,    setProjectFilter]    = useState('')
 
-  const canEdit = currentUser?.permissions?.some(p => p.startsWith('visits'))
 
   useEffect(() => { loadVisits() }, [tenant?.id, activeBranch?.id])
 
