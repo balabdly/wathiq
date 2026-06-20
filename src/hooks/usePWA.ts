@@ -1,22 +1,14 @@
-'use client'
 import { useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
+import { supabase } from '@/lib/supabase'
 
-// ── تسجيل Service Worker ──
 export function usePWA() {
-  const { currentUser } = useStore()
+  const { currentUser, setCurrentUser } = useStore()
 
+  // تسجيل Service Worker
   useEffect(() => {
-    // تسجيل Service Worker
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((reg) => {
-          console.log('SW registered:', reg.scope)
-        })
-        .catch((err) => {
-          console.log('SW registration failed:', err)
-        })
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
     }
   }, [])
 
@@ -29,12 +21,35 @@ export function usePWA() {
         role:        currentUser.role,
         permissions: currentUser.permissions || [],
       }
-      // حفظ في cookie مشفر — يُقرأ من الـ Middleware
       document.cookie = `wathiq_user=${encodeURIComponent(JSON.stringify(userData))}; path=/; max-age=86400; SameSite=Strict`
     } else {
-      // مسح الـ cookie عند تسجيل الخروج
       document.cookie = 'wathiq_user=; path=/; max-age=0'
     }
+  }, [currentUser?.id])
+
+  // تحديث الصلاحيات تلقائياً كل دقيقة
+  useEffect(() => {
+    if (!currentUser?.id) return
+
+    async function refreshPermissions() {
+      const { data } = await supabase
+        .from('employees')
+        .select('permissions, role')
+        .eq('id', currentUser!.id)
+        .single()
+
+      if (data && JSON.stringify(data.permissions) !== JSON.stringify(currentUser!.permissions)) {
+        // الصلاحيات تغيّرت — حدّث الـ store
+        setCurrentUser({ ...currentUser!, permissions: data.permissions, role: data.role })
+      }
+    }
+
+    // تحديث فوري عند الدخول
+    refreshPermissions()
+
+    // تحديث كل 60 ثانية
+    const interval = setInterval(refreshPermissions, 60000)
+    return () => clearInterval(interval)
   }, [currentUser?.id])
 }
 
