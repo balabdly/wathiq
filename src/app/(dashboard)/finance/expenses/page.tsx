@@ -5,7 +5,12 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt, ArrowUpRight, ArrowDownRight, BarChart2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, getExpenseAccountCode, getCashAccountCode } from '@/lib/journal'
+import { createJournalEntry, getExpenseAccountCode } from '@/lib/journal'
+
+async function getCashAccountCode(_tenantId: string, accountId: number): Promise<string | null> {
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  return data?.code || null
+}
 
 // ════════════════════════════════════════
 // Types
