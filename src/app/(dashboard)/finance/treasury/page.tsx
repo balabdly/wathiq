@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, Search, Wallet, ArrowUpRight, ArrowDownRight, Building2, Users } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, Wallet, Users, ArrowLeftRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type CashAccount = {
@@ -253,215 +253,6 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
           <button onClick={handleSave} disabled={saving} className="btn btn-primary">
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             {account ? 'حفظ' : 'إضافة'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: إضافة حركة (قبض / صرف)
-// ════════════════════════════════════════
-function TransactionModal({ type, cashAccounts, accounts, costCenters, clients, vendors, tenantId, onClose, onSave }: {
-  type: 'قبض' | 'صرف'; cashAccounts: CashAccount[]
-  accounts: Account[]; costCenters: CostCenter[]
-  clients: {id:number,name:string}[]; vendors: {id:number,name:string}[]
-  tenantId: string; onClose: () => void; onSave: () => void
-}) {
-  const [saving, setSaving] = useState(false)
-  const today = new Date().toISOString().split('T')[0]
-  const [form, setForm] = useState({
-    transaction_date: today,
-    amount:           '',
-    description:      '',
-    cash_account_id:  cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
-    payment_method:   'تحويل بنكي',
-    reference_no:     '',
-    account_id:       '',
-    cost_center_id:   '',
-    party_name:       '',
-    status:           'معتمد',
-    notes:            '',
-  })
-  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  useEffect(() => { generateNumber() }, [])
-
-  async function generateNumber() {
-    const { count } = await supabase.from('finance_treasury').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const prefix = type === 'قبض' ? 'RCV' : 'PAY'
-    set('reference_no', `${prefix}-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`)
-  }
-
-  async function handleSave() {
-    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
-    if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
-    setSaving(true)
-
-    const payload: Record<string, any> = {
-      tenant_id: tenantId,
-      transaction_no: form.reference_no,
-      transaction_date: form.transaction_date,
-      type, amount: Number(form.amount),
-      description: form.description.trim(),
-      payment_method: form.payment_method,
-      reference_no: form.reference_no,
-      party_name: form.party_name || null,
-      status: form.status,
-      notes: form.notes || null,
-    }
-    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
-    if (form.account_id)      payload.account_id      = Number(form.account_id)
-    if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
-
-    // تأكد من أن tenant_id string
-    payload.tenant_id = String(payload.tenant_id)
-    const { data: trxData, error } = await supabase.from('finance_treasury').insert(payload).select('id').single()
-    if (error) {
-      console.error('Treasury error:', error)
-      toast.error('خطأ في الحفظ: ' + error.message)
-      setSaving(false); return
-    }
-
-    if (trxData) {
-      const selectedCashAccount = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
-      const cashAccountCode = selectedCashAccount?.account_id
-        ? await getCashAccountCode(tenantId, selectedCashAccount.account_id)
-        : '1111'
-
-      const otherAccountCode = form.account_id
-        ? null
-        : type === 'قبض' ? '1120' : '2110'
-
-      if (otherAccountCode && cashAccountCode) {
-        await createJournalEntry(tenantId, {
-          date: form.transaction_date,
-          description: `${type} — ${form.description}`,
-          referenceType: type,
-          referenceId: trxData.id,
-          lines: type === 'قبض' ? [
-            { accountCode: cashAccountCode,  debit: Number(form.amount), credit: 0,                   description: form.description },
-            { accountCode: otherAccountCode, debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
-          ] : [
-            { accountCode: otherAccountCode, debit: Number(form.amount), credit: 0,                   description: form.description },
-            { accountCode: cashAccountCode,  debit: 0,                   credit: Number(form.amount), description: form.party_name || form.description },
-          ]
-        })
-      }
-    }
-
-    toast.success(type === 'قبض' ? '✅ تم تسجيل المقبوض والقيد' : '✅ تم تسجيل المدفوع والقيد')
-    onSave(); setSaving(false)
-  }
-
-  const isReceipt = type === 'قبض'
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isReceipt
-              ? <ArrowUpRight style={{ width: '18px', height: '18px', color: '#0ea77b' }} />
-              : <ArrowDownRight style={{ width: '18px', height: '18px', color: '#c81e1e' }} />}
-            {isReceipt ? 'إضافة مقبوض' : 'إضافة مدفوع'}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
-            <X style={{ width: '18px', height: '18px' }} />
-          </button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>التاريخ *</label>
-              <input type="date" value={form.transaction_date} onChange={e => set('transaction_date', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المرجع</label>
-              <input value={form.reference_no} onChange={e => set('reference_no', e.target.value)} className="input" dir="ltr" />
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>البيان *</label>
-            <input value={form.description} onChange={e => set('description', e.target.value)} className="input"
-              placeholder={isReceipt ? 'مثال: تحصيل فاتورة' : 'مثال: سداد فاتورة مورد'} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: isReceipt ? '#ecfdf5' : '#fef2f2', padding: '14px', borderRadius: '10px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
-              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00"
-                style={{ borderColor: isReceipt ? '#bbf7d0' : '#fecaca', background: 'white' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-                {isReceipt ? '💰 استلم في' : '💰 صرف من'}
-              </label>
-              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                <optgroup label="🏦 حسابات بنكية">
-                  {cashAccounts.filter((a: any) => a.account_type === 'بنك').map((a: any) => <option key={a.id} value={a.id}>🏦 {a.name}</option>)}
-                </optgroup>
-                <optgroup label="💰 صناديق نقدية">
-                  {cashAccounts.filter((a: any) => a.account_type === 'صندوق').map((a: any) => <option key={a.id} value={a.id}>💰 {a.name}</option>)}
-                </optgroup>
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>{isReceipt ? 'المُدفِع' : 'المُدفَع له'}</label>
-              <select value={form.party_name} onChange={e => set('party_name', e.target.value)} className="select">
-                <option value="">— اختر أو اكتب —</option>
-                {(isReceipt ? clients : vendors).map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-              <input value={form.party_name} onChange={e => set('party_name', e.target.value)}
-                className="input" style={{ marginTop: '6px' }}
-                placeholder={isReceipt ? 'أو اكتب اسم العميل...' : 'أو اكتب اسم المورد...'} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>طريقة الدفع</label>
-              <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
-                {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية'].map(m => <option key={m}>{m}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحساب المحاسبي</label>
-              <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>مركز التكلفة</label>
-              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الحالة</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                {['معتمد', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>ملاحظات</label>
-              <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
-            </div>
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary"
-            style={{ background: isReceipt ? '#0ea77b' : '#c81e1e' }}>
-            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : (isReceipt ? '💵' : '💸')}
-            {isReceipt ? 'تسجيل المقبوض' : 'تسجيل المدفوع'}
           </button>
         </div>
       </div>
@@ -844,22 +635,18 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
 // ════════════════════════════════════════
 export default function FinanceTreasuryPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'transactions' | 'receipts' | 'payments' | 'custody' | 'accounts'>('transactions')
+  const [activeTab, setActiveTab] = useState<'accounts' | 'custody' | 'transfers'>('accounts')
+  const [transfers, setTransfers] = useState<any[]>([])
+  const [showTransferModal, setShowTransferModal] = useState(false)
 
-  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [custodies,    setCustodies]    = useState<Custody[]>([])
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
   const [projects,     setProjects]     = useState<Project[]>([])
   const [employees,    setEmployees]    = useState<Employee[]>([])
-  const [clients,      setClients]      = useState<{id:number,name:string}[]>([])
-  const [vendors,      setVendors]      = useState<{id:number,name:string}[]>([])
   const [loading,      setLoading]      = useState(true)
-  const [search,       setSearch]       = useState('')
 
-  const [showReceiptModal, setShowReceiptModal] = useState(false)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showCustodyModal, setShowCustodyModal] = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showSettleModal,  setShowSettleModal]  = useState(false)
@@ -904,26 +691,13 @@ export default function FinanceTreasuryPage() {
     setLoading(false)
   }
 
-  const totalIn       = transactions.filter(t => t.type === 'قبض').reduce((s, t) => s + Number(t.amount), 0)
-  const totalOut      = transactions.filter(t => t.type === 'صرف').reduce((s, t) => s + Number(t.amount), 0)
   const netBalance    = cashAccounts.reduce((s, a) => s + (a.balance || 0), 0)
   const openCustodies = custodies.filter(c => c.status === 'مفتوحة').reduce((s, c) => s + Number(c.amount) - Number(c.settled_amount), 0)
 
-  const receipts = transactions.filter(t => t.type === 'قبض')
-  const payments = transactions.filter(t => t.type === 'صرف')
-
-  const filtered = (activeTab === 'receipts' ? receipts
-    : activeTab === 'payments' ? payments
-    : transactions).filter(t =>
-      !search || t.description.includes(search) || (t.party_name || '').includes(search) || t.transaction_no.includes(search)
-  )
-
   const TABS = [
-    { id: 'transactions', label: '📋 كل الحركات',      color: '#374151' },
-    { id: 'receipts',     label: '💵 المقبوضات',        color: '#0ea77b' },
-    { id: 'payments',     label: '💸 المدفوعات',        color: '#c81e1e' },
-    { id: 'custody',      label: '👤 عهد الموظفين',     color: '#e6820a' },
-    { id: 'accounts',     label: '🏦 الحسابات النقدية', color: '#1a56db' },
+    { id: 'accounts',  label: '🏦 الحسابات النقدية', color: '#1a56db' },
+    { id: 'custody',   label: '👤 عهد وسلف',          color: '#e6820a' },
+    { id: 'transfers', label: '🔄 التحويلات',          color: '#7c3aed' },
   ]
 
   return (
@@ -934,27 +708,22 @@ export default function FinanceTreasuryPage() {
             <Wallet style={{ width: '20px', height: '20px', color: '#1a56db' }} />
             الخزينة
           </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>المقبوضات والمدفوعات — عهد الموظفين — الحسابات النقدية</p>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>الحسابات النقدية — العهد والسلف — التحويلات الداخلية</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          {(activeTab === 'transactions' || activeTab === 'receipts') && (
-            <button onClick={() => setShowReceiptModal(true)} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> قبض
-            </button>
-          )}
-          {(activeTab === 'transactions' || activeTab === 'payments') && (
-            <button onClick={() => setShowPaymentModal(true)} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> صرف
+          {activeTab === 'accounts' && (
+            <button onClick={() => { setEditAccount(null); setShowAccountModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> إضافة حساب
             </button>
           )}
           {activeTab === 'custody' && (
             <button onClick={() => setShowCustodyModal(true)} className="btn btn-primary" style={{ background: '#e6820a' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> إصدار عهدة
+              <Plus style={{ width: '16px', height: '16px' }} /> إصدار عهدة / سلفة
             </button>
           )}
-          {activeTab === 'accounts' && (
-            <button onClick={() => { setEditAccount(null); setShowAccountModal(true) }} className="btn btn-primary">
-              <Plus style={{ width: '16px', height: '16px' }} /> إضافة حساب
+          {activeTab === 'transfers' && (
+            <button onClick={() => setShowTransferModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+              <ArrowLeftRight style={{ width: '16px', height: '16px' }} /> تحويل جديد
             </button>
           )}
         </div>
@@ -963,14 +732,14 @@ export default function FinanceTreasuryPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
-          { label: 'الرصيد الإجمالي',  value: netBalance,    color: '#1a56db', bg: 'linear-gradient(135deg, #1a56db, #3b82f6)', white: true },
-          { label: 'إجمالي المقبوضات', value: totalIn,        color: '#0ea77b', bg: '#ecfdf5',                                  white: false },
-          { label: 'إجمالي المدفوعات', value: totalOut,       color: '#c81e1e', bg: '#fef2f2',                                  white: false },
-          { label: 'عهد مفتوحة',       value: openCustodies, color: '#e6820a', bg: '#fffbeb',                                  white: false },
+          { label: 'الرصيد الإجمالي',    value: netBalance.toLocaleString(),     color: 'white',    bg: 'linear-gradient(135deg, #1a56db, #3b82f6)' },
+          { label: 'عدد الحسابات',       value: String(cashAccounts.length),      color: '#1a56db',  bg: '#eff6ff' },
+          { label: 'عهد مفتوحة (ر.س)',  value: openCustodies.toLocaleString(),   color: '#e6820a',  bg: '#fffbeb' },
+          { label: 'عدد العهد المفتوحة', value: String(custodies.filter(c => c.status === 'مفتوحة').length), color: '#e6820a', bg: '#fffbeb' },
         ].map(kpi => (
           <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
-            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.white ? 'white' : kpi.color }}>{kpi.value.toLocaleString()}</div>
-            <div style={{ fontSize: '0.72rem', color: kpi.white ? 'rgba(255,255,255,0.8)' : '#9ca3af', marginTop: '3px' }}>{kpi.label} — ريال</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label}</div>
           </div>
         ))}
       </div>
@@ -978,7 +747,7 @@ export default function FinanceTreasuryPage() {
       {/* التابات */}
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => { setActiveTab(t.id as any); setSearch('') }}
+          <button key={t.id} onClick={() => { setActiveTab(t.id as any) }}
             style={{ padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
               background: activeTab === t.id ? t.color : 'transparent',
               color: activeTab === t.id ? 'white' : 'var(--text3)',
@@ -988,82 +757,6 @@ export default function FinanceTreasuryPage() {
         ))}
       </div>
 
-      {/* بحث */}
-      {activeTab !== 'accounts' && activeTab !== 'custody' && (
-        <div style={{ position: 'relative', width: '240px' }}>
-          <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px' }} placeholder="بحث..." />
-        </div>
-      )}
-
-      {/* الحركات */}
-      {(activeTab === 'transactions' || activeTab === 'receipts' || activeTab === 'payments') && (
-        loading
-          ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
-          : filtered.length === 0
-            ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
-                <Wallet style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-                <p style={{ color: '#9ca3af' }}>لا توجد حركات بعد</p>
-              </div>
-            : <div className="card" style={{ overflow: 'hidden' }}>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                        {['التاريخ','النوع','البيان','الجهة','الحساب النقدي','طريقة الدفع','المبلغ','الحالة',''].map(h => (
-                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map(t => (
-                        <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{t.transaction_date}</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600,
-                              background: t.type === 'قبض' ? '#ecfdf5' : '#fef2f2',
-                              color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
-                              {t.type === 'قبض' ? <ArrowUpRight style={{ width: '12px', height: '12px' }} /> : <ArrowDownRight style={{ width: '12px', height: '12px' }} />}
-                              {t.type}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 12px', maxWidth: '200px' }}>
-                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{t.transaction_no}</div>
-                          </td>
-                          <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{t.party_name || '—'}</td>
-                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.cash_account?.name || '—'}</td>
-                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{t.payment_method}</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 700, whiteSpace: 'nowrap', color: t.type === 'قبض' ? '#0ea77b' : '#c81e1e' }}>
-                            {t.type === 'قبض' ? '+' : '-'}{Number(t.amount).toLocaleString()} ر.س
-                          </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span className={'badge ' + (t.status === 'معتمد' ? 'badge-green' : t.status === 'معلق' ? 'badge-amber' : 'badge-gray')}>{t.status}</span>
-                          </td>
-                          <td style={{ padding: '10px 8px' }}>
-                            <button onClick={async () => { if (!confirm('حذف هذه الحركة؟')) return; await supabase.from('finance_treasury').delete().eq('id', t.id); loadAll(); toast.success('تم الحذف') }}
-                              className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
-                              <Trash2 style={{ width: '13px', height: '13px' }} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700, fontSize: '0.82rem' }}>
-                        <td colSpan={6} style={{ padding: '10px 12px' }}>الإجمالي ({filtered.length})</td>
-                        <td style={{ padding: '10px 12px', color: activeTab === 'receipts' ? '#0ea77b' : activeTab === 'payments' ? '#c81e1e' : 'var(--text)' }}>
-                          {filtered.reduce((s, t) => s + Number(t.amount), 0).toLocaleString()} ر.س
-                        </td>
-                        <td colSpan={2}></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-      )}
 
       {/* عهد الموظفين */}
       {activeTab === 'custody' && (
@@ -1153,15 +846,18 @@ export default function FinanceTreasuryPage() {
         </div>
       )}
 
+      {/* تاب التحويلات */}
+      {activeTab === 'transfers' && (
+        <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
+          <ArrowLeftRight style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+          <p style={{ color: '#9ca3af', marginBottom: '16px' }}>سجل التحويلات الداخلية بين الحسابات</p>
+          <button onClick={() => setShowTransferModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            <ArrowLeftRight style={{ width: '16px', height: '16px' }} /> تحويل جديد
+          </button>
+        </div>
+      )}
+
       {/* المودالات */}
-      {showReceiptModal && (
-        <TransactionModal type="قبض" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters} clients={clients} vendors={vendors}
-          tenantId={tenant!.id} onClose={() => setShowReceiptModal(false)} onSave={() => { setShowReceiptModal(false); loadAll() }} />
-      )}
-      {showPaymentModal && (
-        <TransactionModal type="صرف" cashAccounts={cashAccounts} accounts={accounts} costCenters={costCenters} clients={clients} vendors={vendors}
-          tenantId={tenant!.id} onClose={() => setShowPaymentModal(false)} onSave={() => { setShowPaymentModal(false); loadAll() }} />
-      )}
       {showCustodyModal && (
         <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts}
           tenantId={tenant!.id} onClose={() => setShowCustodyModal(false)} onSave={() => { setShowCustodyModal(false); loadAll() }} />
@@ -1176,6 +872,165 @@ export default function FinanceTreasuryPage() {
           tenantId={tenant!.id} onClose={() => { setShowSettleModal(false); setSettleCustody(null) }}
           onSave={() => { setShowSettleModal(false); setSettleCustody(null); loadAll() }} />
       )}
+      {showTransferModal && (
+        <TransferModal cashAccounts={cashAccounts} tenantId={tenant!.id}
+          onClose={() => setShowTransferModal(false)}
+          onSave={() => { setShowTransferModal(false); loadAll() }} />
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: تحويل بين الحسابات
+// ════════════════════════════════════════
+function TransferModal({ cashAccounts, tenantId, onClose, onSave }: {
+  cashAccounts: CashAccount[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' } as const
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    transfer_date:   today,
+    from_account_id: cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    to_account_id:   cashAccounts[1]?.id ? String(cashAccounts[1].id) : '',
+    amount:          '',
+    description:     '',
+    notes:           '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  const fromAcc = cashAccounts.find(a => a.id === Number(form.from_account_id))
+  const toAcc   = cashAccounts.find(a => a.id === Number(form.to_account_id))
+  const sameAcc = form.from_account_id === form.to_account_id
+
+  async function handleSave() {
+    if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (sameAcc) { toast.error('لا يمكن التحويل للحساب نفسه'); return }
+    if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
+    setSaving(true)
+    const amount = Number(form.amount)
+    const { count } = await supabase.from('finance_treasury').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const transferNo = `TRF-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+    await Promise.all([
+      supabase.from('finance_treasury').insert({
+        tenant_id: tenantId, transaction_no: `${transferNo}-OUT`, transaction_date: form.transfer_date,
+        type: 'صرف', amount, description: `تحويل إلى ${toAcc?.name} — ${form.description}`,
+        cash_account_id: Number(form.from_account_id), payment_method: 'تحويل داخلي',
+        reference_type: 'تحويل', reference_no: transferNo, party_name: toAcc?.name || '', status: 'معتمد', notes: form.notes || null,
+      }),
+      supabase.from('finance_treasury').insert({
+        tenant_id: tenantId, transaction_no: `${transferNo}-IN`, transaction_date: form.transfer_date,
+        type: 'قبض', amount, description: `تحويل من ${fromAcc?.name} — ${form.description}`,
+        cash_account_id: Number(form.to_account_id), payment_method: 'تحويل داخلي',
+        reference_type: 'تحويل', reference_no: transferNo, party_name: fromAcc?.name || '', status: 'معتمد', notes: form.notes || null,
+      }),
+    ])
+
+    // القيد المحاسبي
+    if (fromAcc?.account_id && toAcc?.account_id) {
+      const [{ data: fromCode }, { data: toCode }] = await Promise.all([
+        supabase.from('finance_accounts').select('code').eq('id', fromAcc.account_id).single(),
+        supabase.from('finance_accounts').select('code').eq('id', toAcc.account_id).single(),
+      ])
+      if (fromCode?.code && toCode?.code) {
+        const { count: jCount } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+        const entryNumber = `JE-${new Date().getFullYear()}-${String((jCount || 0) + 1).padStart(4, '0')}`
+        const { data: entry } = await supabase.from('finance_journal_entries').insert({
+          tenant_id: tenantId, entry_number: entryNumber, entry_date: form.transfer_date,
+          description: `تحويل داخلي ${transferNo} — ${form.description}`, reference_type: 'تحويل',
+          total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
+        }).select('id').single()
+        if (entry) {
+          await supabase.from('finance_journal_lines').insert([
+            { entry_id: entry.id, account_id: toAcc.account_id,   debit: amount, credit: 0,      description: `تحويل إلى ${toAcc.name}` },
+            { entry_id: entry.id, account_id: fromAcc.account_id, debit: 0,      credit: amount, description: `تحويل من ${fromAcc.name}` },
+          ])
+        }
+      }
+    }
+
+    toast.success(`✅ تم تحويل ${amount.toLocaleString()} ر.س من ${fromAcc?.name} إلى ${toAcc?.name}`)
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ArrowLeftRight style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            تحويل بين الحسابات
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px', background: '#f5f3ff', borderRadius: '12px', border: '1px solid #e9d5ff' }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>من</div>
+              <div style={{ fontWeight: 700, color: '#c81e1e', fontSize: '0.9rem' }}>{fromAcc ? (fromAcc.account_type === 'صندوق' ? '💰 ' : '🏦 ') + fromAcc.name : '—'}</div>
+              {fromAcc && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>رصيد: {(fromAcc.balance || 0).toLocaleString()} ر.س</div>}
+            </div>
+            <ArrowLeftRight style={{ width: '24px', height: '24px', color: '#7c3aed', flexShrink: 0 }} />
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>إلى</div>
+              <div style={{ fontWeight: 700, color: '#0ea77b', fontSize: '0.9rem' }}>{toAcc ? (toAcc.account_type === 'صندوق' ? '💰 ' : '🏦 ') + toAcc.name : '—'}</div>
+              {toAcc && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>رصيد: {(toAcc.balance || 0).toLocaleString()} ر.س</div>}
+            </div>
+          </div>
+          {sameAcc && <div style={{ padding: '8px 14px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.82rem', color: '#c81e1e', fontWeight: 600 }}>⚠️ لا يمكن التحويل للحساب نفسه</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>من حساب *</label>
+              <select value={form.from_account_id} onChange={e => set('from_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>إلى حساب *</label>
+              <select value={form.to_account_id} onChange={e => set('to_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" placeholder="0.00" />
+            </div>
+            <div>
+              <label style={lbl}>التاريخ *</label>
+              <input type="date" value={form.transfer_date} onChange={e => set('transfer_date', e.target.value)} className="input" />
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>البيان *</label>
+            <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="مثال: تغذية صندوق الفرع" />
+          </div>
+          {Number(form.amount) > 0 && !sameAcc && fromAcc && toAcc && (
+            <div style={{ padding: '12px 16px', background: '#f5f3ff', borderRadius: '10px', border: '1px solid #e9d5ff', fontSize: '0.8rem' }}>
+              <div style={{ fontWeight: 700, marginBottom: '8px', color: '#7c3aed' }}>📋 القيد المحاسبي:</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #e9d5ff' }}>
+                <span>مدين — {toAcc.name}</span>
+                <span style={{ fontWeight: 700, color: '#0ea77b' }}>{Number(form.amount).toLocaleString()} ر.س</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                <span>دائن — {fromAcc.name}</span>
+                <span style={{ fontWeight: 700, color: '#c81e1e' }}>{Number(form.amount).toLocaleString()} ر.س</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || sameAcc} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <ArrowLeftRight style={{ width: '15px', height: '15px' }} />}
+            تنفيذ التحويل
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
