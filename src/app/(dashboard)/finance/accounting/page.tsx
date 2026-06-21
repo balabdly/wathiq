@@ -534,6 +534,16 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   async function handleDelete(account: Account) {
     const hasChildren = accounts.some(a => a.parent_id === account.id)
     if (hasChildren) { toast.error('لا يمكن حذف حساب له فروع'); return }
+    // فحص وجود قيود محاسبية على الحساب
+    const { count } = await supabase.from('finance_journal_lines')
+      .select('*', { count: 'exact', head: true }).eq('account_id', account.id)
+    if ((count || 0) > 0) {
+      // يوجد قيود — عطّل بدل الحذف
+      if (!confirm(`الحساب "${account.name}" عليه ${count} قيد محاسبي ولا يمكن حذفه.\nهل تريد تعطيله بدلاً من الحذف؟`)) return
+      await supabase.from('finance_accounts').update({ is_active: false }).eq('id', account.id)
+      await loadAll(); toast.success('تم تعطيل الحساب ✅')
+      return
+    }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
     await supabase.from('finance_accounts').delete().eq('id', account.id)
     await loadAll(); toast.success('تم الحذف')
@@ -662,9 +672,10 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '1rem' }}>{hasChildren ? '📁' : '📄'}</span>
                           <div>
-                            <div style={{ fontWeight: hasChildren ? 700 : 500, fontSize: '0.9rem', color: account.is_active ? 'var(--text)' : '#9ca3af' }}>
+                            <div style={{ fontWeight: hasChildren ? 700 : 500, fontSize: '0.9rem', color: account.is_active ? 'var(--text)' : '#9ca3af', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               {account.name}
-                              {!hasChildren && <span style={{ marginRight: '6px', fontSize: '0.65rem', color: '#bfdbfe', background: '#eff6ff', padding: '1px 6px', borderRadius: '10px' }}>اضغط لكشف الحساب</span>}
+                              {!account.is_active && <span style={{ fontSize: '0.65rem', color: '#c81e1e', background: '#fef2f2', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>معطّل</span>}
+                              {!hasChildren && account.is_active && <span style={{ fontSize: '0.65rem', color: '#bfdbfe', background: '#eff6ff', padding: '1px 6px', borderRadius: '10px' }}>اضغط لكشف الحساب</span>}
                             </div>
                             {account.name_en && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{account.name_en}</div>}
                           </div>
@@ -710,9 +721,26 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                           <button onClick={() => { setEditAccount(account); setParentForNew(null); setShowModal(true) }} className="btn btn-ghost btn-xs">
                             <Pencil style={{ width: '12px', height: '12px' }} />
                           </button>
-                          {!hasChildren && (
+                          {!hasChildren && !account.is_parent && account.is_active && (
+                            <button onClick={async () => {
+                              if (!confirm(`تحويل "${account.name}" لحساب رئيسي؟\nسيصبح بإمكانك إضافة حسابات فرعية تحته.`)) return
+                              await supabase.from('finance_accounts').update({ is_parent: true, parent_id: null }).eq('id', account.id)
+                              await loadAll(); toast.success('✅ تم تحويله لحساب رئيسي')
+                            }} style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #e9d5ff', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                              ↑ رئيسي
+                            </button>
+                          )}
+                          {!hasChildren && account.is_active && (
                             <button onClick={() => handleDelete(account)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                               <Trash2 style={{ width: '12px', height: '12px' }} />
+                            </button>
+                          )}
+                          {!account.is_active && (
+                            <button onClick={async () => {
+                              await supabase.from('finance_accounts').update({ is_active: true }).eq('id', account.id)
+                              await loadAll(); toast.success('تم تنشيط الحساب ✅')
+                            }} style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                              تنشيط
                             </button>
                           )}
                         </div>
@@ -772,7 +800,7 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
     setLoading(true)
     const [eRes, aRes, cRes] = await Promise.all([
       supabase.from('finance_journal_entries').select('*').eq('tenant_id', tenantId).order('entry_date', { ascending: false }).limit(100),
-      supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('code'),
+      supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code'),
       supabase.from('finance_cost_centers').select('*').eq('tenant_id', tenantId).eq('is_active', true),
     ])
     setEntries(eRes.data || []); setAccounts(aRes.data || []); setCostCenters(cRes.data || [])
