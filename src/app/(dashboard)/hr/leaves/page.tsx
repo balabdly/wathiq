@@ -463,7 +463,7 @@ export default function LeavesPage() {
 
   // ── موظفون للسجل التاريخي ──
   const historyLeaves = historyEmp
-    ? allLeaves.filter(l => l.employee_id === historyEmp.employee_id) as Leave[]
+    ? allLeaves.filter(l => l.employee_id === historyEmp.id) as Leave[]
     : []
 
   return (
@@ -538,7 +538,7 @@ export default function LeavesPage() {
                                 onClick={() => {
                                   setHistoryEmp(emp)
                                   supabase.from('hr_leaves').select('*, employee:hr_employees!hr_leaves_employee_id_fkey(name)')
-                                    .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.employee_id)
+                                    .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.id)
                                     .order('start_date', { ascending: false })
                                     .then(({ data }) => setAllLeaves(prev => {
                                       const others = prev.filter(l => l.employee_id !== emp.employee_id)
@@ -727,7 +727,7 @@ export default function LeavesPage() {
       {historyEmp && (
         <EmployeeLeaveHistory
           emp={historyEmp}
-          leaves={allLeaves.filter(l => l.employee_id === historyEmp.employee_id) as Leave[]}
+          leaves={allLeaves.filter(l => l.employee_id === historyEmp.id) as Leave[]}
           onClose={() => setHistoryEmp(null)}
         />
       )}
