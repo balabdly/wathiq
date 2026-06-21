@@ -61,93 +61,111 @@ const Spinner = () => (
 )
 
 // ════════════════════════════════════════
-// مودال: إضافة / تعديل حساب
+// مودال: إضافة / تعديل حساب — قواعد محاسبية صارمة
 // ════════════════════════════════════════
 function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onSave }: {
   account: Account | null; accounts: Account[]; defaultParent?: Account | null
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
+
+  // تحديد الأب: إما من الحساب المعدَّل أو من defaultParent
+  const parentAcc = account?.parent_id
+    ? accounts.find(a => a.id === account.parent_id)
+    : defaultParent || null
+
+  // القواعد المورّثة من الأب
+  const inheritedType    = parentAcc?.account_type   || account?.account_type   || 'مصروفات'
+  const inheritedBalance = parentAcc?.normal_balance  || account?.normal_balance  ||
+    (['أصول','تكلفة','مصروفات'].includes(inheritedType) ? 'مدين' : 'دائن')
+  const inheritedClass   = parentAcc?.account_class   || account?.account_class   ||
+    (['أصول','خصوم','حقوق ملكية'].includes(inheritedType) ? 'ميزانية' : 'دخل')
+
+  // حساب الكود المقترح تلقائياً
+  function suggestCode(parentId: string): string {
+    if (!parentId) return ''
+    const par = accounts.find(a => a.id === Number(parentId))
+    if (!par) return ''
+    const parCode = par.code
+    const siblings = accounts
+      .filter(a => a.parent_id === Number(parentId))
+      .filter(a => !account || a.id !== account.id) // استبعاد الحساب المعدَّل نفسه
+      .map(a => parseInt(a.code))
+      .filter(n => !isNaN(n) && n > 0)
+    let next: number
+    if (siblings.length === 0) {
+      next = parseInt(parCode) * 10 + 1
+    } else {
+      next = Math.max(...siblings) + 1
+    }
+    // تجنب التكرار
+    while (accounts.some(a => String(a.id !== account?.id) && a.code === String(next))) next++
+    return String(next)
+  }
+
+  const initParentId = account?.parent_id ? String(account.parent_id)
+    : defaultParent?.id ? String(defaultParent.id) : ''
+
   const [form, setForm] = useState({
-    code:           account?.code           || '',
-    name:           account?.name           || '',
-    name_en:        account?.name_en        || '',
-    account_type:   account?.account_type   || 'مصروفات',
-    account_class:  account?.account_class  || 'دخل',
-    parent_id:      account?.parent_id ? String(account.parent_id) : defaultParent?.id ? String(defaultParent.id) : '',
-    is_parent:      account?.is_parent      ?? false,
-    normal_balance: account?.normal_balance || 'مدين',
-    is_active:      account?.is_active      ?? true,
-    notes:          account?.notes          || '',
+    code:       account?.code  || '',
+    name:       account?.name  || '',
+    name_en:    account?.name_en || '',
+    parent_id:  initParentId,
+    is_parent:  account?.is_parent ?? false,
+    is_active:  account?.is_active ?? true,
+    notes:      account?.notes || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  function handleTypeChange(type: string) {
-    const balance = ['أصول', 'تكلفة', 'مصروفات'].includes(type) ? 'مدين' : 'دائن'
-    const cls = ['أصول', 'خصوم', 'حقوق ملكية'].includes(type) ? 'ميزانية' : 'دخل'
-    setForm(f => ({ ...f, account_type: type, normal_balance: balance, account_class: cls }))
-  }
+  // الأب المحدد حالياً
+  const selectedParent = accounts.find(a => a.id === Number(form.parent_id)) || parentAcc
+
+  // الكود المقترح للعرض في placeholder
+  const suggestedCode = !form.code && form.parent_id ? suggestCode(form.parent_id) : ''
+
+  // هل الأب مقفل (جاء من defaultParent)
+  const isParentLocked = !!defaultParent && !account
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
 
-    // توليد رقم الحساب تلقائياً — قاعدة صارمة
+    // توليد الكود النهائي
     let finalCode = form.code.trim()
     if (!finalCode) {
       if (form.parent_id) {
-        const parent = accounts.find(a => a.id === Number(form.parent_id))
-        const parentCode = parent?.code || '5000'
-        // جلب أكواد الأبناء الحاليين وأخذ أكبر رقم + خطوة ثابتة
-        const siblings = accounts
-          .filter(a => a.parent_id === Number(form.parent_id))
-          .map(a => parseInt(a.code) || 0)
-          .filter(n => !isNaN(n) && n > 0)
-        const parentNum = parseInt(parentCode) || 0
-        if (siblings.length === 0) {
-          // أول ابن: كود الأب + 10
-          finalCode = String(parentNum + 10)
-        } else {
-          // التالي: أكبر ابن + 10
-          const maxSibling = Math.max(...siblings)
-          finalCode = String(maxSibling + 10)
-        }
+        finalCode = suggestCode(form.parent_id)
+        if (!finalCode) { toast.error('تعذّر توليد رقم الحساب'); setSaving(false); return }
       } else {
-        // حساب رئيسي بدون أب — حسب نوع الحساب
+        // حساب رئيسي بدون أب
         const TYPE_START: Record<string, number> = {
           'أصول': 1000, 'خصوم': 2000, 'حقوق ملكية': 3000,
           'إيرادات': 4000, 'تكلفة': 5000, 'مصروفات': 6000,
         }
-        const start = TYPE_START[form.account_type] || 9000
+        const start = TYPE_START[inheritedType] || 9000
         const existing = accounts
           .filter(a => !a.parent_id && parseInt(a.code) >= start && parseInt(a.code) < start + 1000)
-          .map(a => parseInt(a.code))
-          .filter(n => !isNaN(n))
-        const maxExisting = existing.length > 0 ? Math.max(...existing) : start - 100
-        finalCode = String(maxExisting + 100)
+          .map(a => parseInt(a.code)).filter(n => !isNaN(n))
+        const maxE = existing.length > 0 ? Math.max(...existing) : start - 100
+        finalCode = String(maxE + 100)
+        while (accounts.some(a => a.code === finalCode)) finalCode = String(parseInt(finalCode) + 10)
       }
-      // التأكد من عدم التكرار
-      while (accounts.some(a => a.code === finalCode)) {
-        finalCode = String(parseInt(finalCode) + 10)
-      }
-    } else {
-      // التحقق من عدم تكرار الكود المدخل يدوياً
-      if (!account && accounts.some(a => a.code === finalCode)) {
-        toast.error(`الكود ${finalCode} مستخدم مسبقاً`); setSaving(false); return
-      }
+    } else if (!account && accounts.some(a => a.code === finalCode)) {
+      toast.error(`الكود ${finalCode} مستخدم مسبقاً`); setSaving(false); return
     }
 
+    const par = accounts.find(a => a.id === Number(form.parent_id))
     const payload = {
       tenant_id:      tenantId,
       code:           finalCode,
       name:           form.name.trim(),
       name_en:        form.name_en || null,
-      account_type:   form.account_type,
-      account_class:  form.account_class,
+      account_type:   par?.account_type   || inheritedType,
+      account_class:  par?.account_class  || inheritedClass,
+      normal_balance: par?.normal_balance || inheritedBalance,
       parent_id:      form.parent_id ? Number(form.parent_id) : null,
-      level:          form.parent_id ? (accounts.find(a => a.id === Number(form.parent_id))?.level || 1) + 1 : 1,
+      level:          par ? (par.level || 1) + 1 : 1,
       is_parent:      form.is_parent,
-      normal_balance: form.normal_balance,
       is_active:      form.is_active,
       notes:          form.notes || null,
     }
@@ -158,100 +176,138 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
       const { error } = await supabase.from('finance_accounts').insert(payload)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     }
-    toast.success(account ? 'تم التعديل ✅' : '✅ تمت إضافة الحساب')
+    toast.success(account ? 'تم التعديل ✅' : `✅ تمت إضافة الحساب (${finalCode})`)
     onSave(); setSaving(false)
   }
 
-  const parentAccounts = accounts.filter(a => a.level < 5) // السماح بـ 5 مستويات
+  const typeColor = ACCOUNT_TYPE_COLOR[selectedParent?.account_type || inheritedType] || '#374151'
+  const parentAccounts = accounts.filter(a => a.is_parent && a.level < 5)
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '560px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <BookOpen style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             {account ? 'تعديل الحساب' : 'إضافة حساب جديد'}
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}><X style={{ width: '18px', height: '18px' }} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
         </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* معلومات مورّثة من الأب */}
+          {selectedParent && (
+            <div style={{ padding: '10px 14px', background: typeColor + '10', borderRadius: '10px', border: `1px solid ${typeColor}30`, display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الحساب الأب</span>
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: typeColor }}>{selectedParent.code} — {selectedParent.name}</div>
+              </div>
+              <div style={{ borderRight: '1px solid ' + typeColor + '30', paddingRight: '12px' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>النوع (مورّث)</span>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: typeColor }}>{selectedParent.account_type}</div>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الرصيد الطبيعي</span>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: typeColor }}>{selectedParent.normal_balance}</div>
+              </div>
+            </div>
+          )}
+
+          {/* الكود والاسم */}
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px' }}>
             <div>
-              <label style={labelStyle}>رمز الحساب (تلقائي إذا تُرك فارغاً)</label>
+              <label style={labelStyle}>رمز الحساب</label>
               <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr"
-                placeholder={form.parent_id ? 'مثال: 1.1.1 (تلقائي)' : 'مثال: 101 (تلقائي)'} />
+                placeholder={suggestedCode || 'تلقائي'} style={{ fontFamily: 'monospace', fontWeight: 700 }} />
+              {suggestedCode && !form.code && (
+                <div style={{ fontSize: '0.68rem', color: '#0ea77b', marginTop: '3px' }}>سيُولَّد تلقائياً: {suggestedCode}</div>
+              )}
             </div>
             <div>
               <label style={labelStyle}>اسم الحساب *</label>
-              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" />
+              <input value={form.name} onChange={e => set('name', e.target.value)} className="input" autoFocus
+                placeholder="مثال: أسفلت، خرسانة، رمل..." />
             </div>
           </div>
+
+          {/* الاسم الإنجليزي */}
           <div>
-            <label style={labelStyle}>الاسم بالإنجليزية</label>
+            <label style={labelStyle}>الاسم بالإنجليزية (اختياري)</label>
             <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" />
           </div>
+
+          {/* الحساب الأب — مقفل إذا جاء من زر + فرعي */}
+          {!isParentLocked ? (
+            <div>
+              <label style={labelStyle}>الحساب الأب</label>
+              <select value={form.parent_id} onChange={e => { set('parent_id', e.target.value); set('code', '') }} className="select">
+                <option value="">— حساب رئيسي بدون أب —</option>
+                {parentAccounts.map(a => (
+                  <option key={a.id} value={a.id}>{'  '.repeat(a.level - 1)}{a.code} — {a.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div style={{ padding: '8px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text3)' }}>
+              🔒 الحساب الأب محدد: <strong style={{ color: 'var(--text)' }}>{selectedParent?.code} — {selectedParent?.name}</strong>
+            </div>
+          )}
+
+          {/* نوع الحساب — عرض فقط إذا لا يوجد أب */}
+          {!form.parent_id && !account?.parent_id && (
+            <div>
+              <label style={labelStyle}>نوع الحساب *</label>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات'].map(t => {
+                  const tColor = ACCOUNT_TYPE_COLOR[t] || '#374151'
+                  return (
+                    <button key={t} type="button"
+                      onClick={() => setForm(f => ({ ...f,
+                        code: '',
+                      }))}
+                      style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                        borderColor: inheritedType === t ? tColor : 'var(--border)',
+                        background:  inheritedType === t ? tColor + '15' : 'white',
+                        color:       inheritedType === t ? tColor : 'var(--text3)',
+                        opacity: inheritedType === t ? 1 : 0.5,
+                      }}>
+                      {t}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>
+                💡 النوع يُورَّث تلقائياً من الأب — لا يمكن تغييره عند وجود أب
+              </div>
+            </div>
+          )}
+
+          {/* طبيعة الحساب */}
           <div>
-            <label style={labelStyle}>نوع الحساب *</label>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات'].map(t => (
-                <button key={t} type="button" onClick={() => handleTypeChange(t)}
-                  style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                    borderColor: form.account_type === t ? ACCOUNT_TYPE_COLOR[t] : 'var(--border)',
-                    background:  form.account_type === t ? ACCOUNT_TYPE_COLOR[t] + '15' : 'white',
-                    color:       form.account_type === t ? ACCOUNT_TYPE_COLOR[t] : 'var(--text3)' }}>
-                  {t}
+            <label style={labelStyle}>طبيعة الحساب</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {[
+                { val: false, label: '📄 فرعي', sub: 'يقبل قيوداً مباشرة' },
+                { val: true,  label: '📁 رئيسي', sub: 'يجمّع حسابات تحته' },
+              ].map(opt => (
+                <button key={String(opt.val)} type="button" onClick={() => set('is_parent', opt.val)}
+                  style={{ flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', textAlign: 'center',
+                    borderColor: form.is_parent === opt.val ? 'var(--primary)' : 'var(--border)',
+                    background:  form.is_parent === opt.val ? '#eff6ff' : 'white',
+                    color:       form.is_parent === opt.val ? 'var(--primary)' : 'var(--text3)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{opt.label}</div>
+                  <div style={{ fontSize: '0.68rem', marginTop: '2px', opacity: 0.7 }}>{opt.sub}</div>
                 </button>
               ))}
             </div>
           </div>
-          <div>
-            <label style={labelStyle}>الحساب الأب</label>
-            <select value={form.parent_id} onChange={e => set('parent_id', e.target.value)} className="select">
-              <option value="">— حساب رئيسي (بدون أب) —</option>
-              {parentAccounts.map(a => (
-                <option key={a.id} value={a.id}>{'—'.repeat(a.level - 1)} {a.code} — {a.name}</option>
-              ))}
-            </select>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={labelStyle}>الرصيد الطبيعي</label>
-              <select value={form.normal_balance} onChange={e => set('normal_balance', e.target.value)} className="select">
-                <option value="مدين">مدين (Dr)</option>
-                <option value="دائن">دائن (Cr)</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '28px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {[
-                    { val: false, label: 'فرعي (يقبل معاملات)' },
-                    { val: true,  label: 'رئيسي (يجمع حسابات)' },
-                  ].map(opt => (
-                    <button key={String(opt.val)} type="button"
-                      onClick={() => set('is_parent', opt.val)}
-                      style={{
-                        flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid',
-                        cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                        borderColor: form.is_parent === opt.val ? 'var(--primary)' : 'var(--border)',
-                        background: form.is_parent === opt.val ? '#eff6ff' : 'white',
-                        color: form.is_parent === opt.val ? 'var(--primary)' : 'var(--text3)',
-                      }}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                حساب تجميعي (لا يُقيَّد عليه)
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
-                <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} />
-                حساب نشط
-              </label>
-            </div>
-          </div>
+
+          {/* ملاحظات */}
           <div>
             <label style={labelStyle}>ملاحظات</label>
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
+            <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
           </div>
         </div>
         <div className="modal-footer">
