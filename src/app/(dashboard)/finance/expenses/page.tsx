@@ -88,6 +88,59 @@ function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
 }
 
 // ════════════════════════════════════════
+// مكوّن: بحث الحساب المحاسبي
+// ════════════════════════════════════════
+function AccountSearch({ accounts, value, onChange, required }: {
+  accounts: Account[]; value: string; onChange: (v: string) => void; required?: boolean
+}) {
+  const [query, setQuery] = useState('')
+  const [open,  setOpen]  = useState(false)
+  const selected = accounts.find(a => String(a.id) === value)
+
+  const filtered = query.length < 1 ? [] : accounts.filter(a =>
+    a.name.includes(query) || a.code.startsWith(query)
+  ).slice(0, 8)
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {selected && !open ? (
+        <div onClick={() => { setOpen(true); setQuery('') }}
+          style={{ padding: '9px 12px', border: `1px solid ${required ? '#fde68a' : 'var(--border)'}`, borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', background: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span><strong style={{ fontFamily: 'monospace', color: 'var(--primary)', marginLeft: '6px' }}>{selected.code}</strong>{selected.name}</span>
+          <X style={{ width: '12px', height: '12px', color: '#9ca3af' }} onClick={e => { e.stopPropagation(); onChange(''); setQuery('') }} />
+        </div>
+      ) : (
+        <input
+          value={query} autoFocus={open}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          className="input"
+          placeholder="ابحث بالاسم أو رقم الحساب..."
+          style={{ borderColor: required && !value ? '#f59e0b' : undefined }}
+        />
+      )}
+      {open && filtered.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 100, background: 'white', border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', marginTop: '4px', overflow: 'hidden' }}>
+          {filtered.map(a => (
+            <div key={a.id} onMouseDown={() => { onChange(String(a.id)); setQuery(''); setOpen(false) }}
+              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: '0.82rem', display: 'flex', gap: '10px', alignItems: 'center' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--primary)', minWidth: '48px' }}>{a.code}</span>
+              <span>{a.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {required && !value && (
+        <div style={{ fontSize: '0.68rem', color: '#e6820a', marginTop: '3px' }}>⚠️ الحساب المحاسبي إلزامي</div>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
 // مودال المصروف
 // ════════════════════════════════════════
 function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenantId, onClose, onSave }: {
@@ -119,21 +172,32 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  const netAmount = Number(form.amount) || 0
-  const vatAmount = form.payment_method !== 'آجل' ? Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100 : 0
+  // هل النوع مشاريع؟
+  const isProject = form.expense_type === 'مشاريع'
+
+  const netAmount   = Number(form.amount) || 0
+  const vatAmount   = form.payment_method !== 'آجل' ? Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100 : 0
   const totalAmount = netAmount + vatAmount
+
+  // فلترة الحسابات المحاسبية — فروع فقط (is_parent = false)
+  const leafAccounts = accounts.filter(a => !(a as any).is_parent)
 
   async function handleSave() {
     if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
     if (!form.amount || netAmount <= 0) { toast.error('المبلغ مطلوب'); return }
+    if (!form.account_id) { toast.error('الحساب المحاسبي إلزامي'); return }
     setSaving(true)
     try {
       const { count } = await supabase.from('finance_expenses').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
       const expenseNumber = expense?.expense_number || `EXP-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+      // الفئة: فقط لمصروفات المشاريع
+      const categoryValue = isProject ? form.category : null
+
       const payload: Record<string, any> = {
         tenant_id: tenantId, expense_number: expenseNumber,
         expense_date: form.expense_date, expense_type: form.expense_type,
-        category: form.category, description: form.description.trim(),
+        category: categoryValue, description: form.description.trim(),
         amount: netAmount, vat_rate: Number(form.vat_rate),
         vat_amount: vatAmount, total_amount: totalAmount,
         payment_method: form.payment_method,
@@ -142,10 +206,10 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         status: form.status, notes: form.notes || null,
       }
       if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
-      // account_id غير موجود في finance_expenses
       if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
-      if (form.project_id)      payload.project_id      = Number(form.project_id)
-      if (form.vendor_id)       payload.vendor_id       = Number(form.vendor_id)
+      if (form.vendor_id)       payload.vendor_id        = Number(form.vendor_id)
+      // المشروع فقط لنوع مشاريع
+      if (isProject && form.project_id) payload.project_id = Number(form.project_id)
 
       let savedId: number | null = null
       if (expense?.id) {
@@ -158,22 +222,24 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         savedId = data?.id
       }
 
-      // قيد محاسبي تلقائي للمصروفات الجديدة المدفوعة
-      if (!expense?.id && savedId && form.payment_method !== 'آجل' && form.cash_account_id) {
-        const expAccCode   = getExpenseAccountCode(form.expense_type, form.category)
-        const cashAccCode  = await getCashAccountCode(Number(form.cash_account_id))
-        await journalExpense({
-          tenantId,
-          date:               form.expense_date,
-          description:        form.description,
-          category:           form.category,
-          expenseId:          savedId,
-          amount:             netAmount,
-          vatAmount,
-          total:              totalAmount,
-          expenseAccountCode: expAccCode,
-          creditAccountCode:  cashAccCode,
-        })
+      // قيد محاسبي — يستخدم الحساب المحاسبي المختار مباشرة
+      if (!expense?.id && savedId && form.payment_method !== 'آجل' && form.cash_account_id && form.account_id) {
+        const selectedAcc = leafAccounts.find(a => String(a.id) === form.account_id)
+        const cashAccCode = await getCashAccountCode(Number(form.cash_account_id))
+        if (selectedAcc?.code && cashAccCode) {
+          await journalExpense({
+            tenantId,
+            date:               form.expense_date,
+            description:        form.description,
+            category:           categoryValue || form.expense_type,
+            expenseId:          savedId,
+            amount:             netAmount,
+            vatAmount,
+            total:              totalAmount,
+            expenseAccountCode: selectedAcc.code,
+            creditAccountCode:  cashAccCode,
+          })
+        }
       }
       toast.success(expense ? 'تم التعديل ✅' : 'تم الحفظ ✅')
       onSave()
@@ -182,10 +248,14 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     } finally { setSaving(false) }
   }
 
-  const cats = CATEGORIES[form.expense_type] || []
+  const TYPE_COLOR: Record<string, string> = {
+    'مشاريع': '#1a56db', 'تشغيلي': '#e6820a', 'إداري': '#6b7280'
+  }
+  const typeColor = TYPE_COLOR[form.expense_type] || '#374151'
+
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '620px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Receipt style={{ width: '18px', height: '18px', color: '#e6820a' }} />
@@ -196,37 +266,71 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          {/* النوع والتاريخ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>التاريخ *</label>
               <input type="date" value={form.expense_date} onChange={e => set('expense_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label style={lbl}>النوع *</label>
-              <select value={form.expense_type} onChange={e => { set('expense_type', e.target.value); set('category', CATEGORIES[e.target.value]?.[0] || '') }} className="select">
-                {Object.keys(CATEGORIES).map(t => <option key={t}>{t}</option>)}
-              </select>
+              <label style={lbl}>نوع المصروف *</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {Object.keys(TYPE_COLOR).map(t => (
+                  <button key={t} type="button"
+                    onClick={() => { set('expense_type', t); set('category', CATEGORIES[t]?.[0] || ''); set('project_id', ''); set('account_id', '') }}
+                    style={{ flex: 1, padding: '8px 4px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+                      borderColor: form.expense_type === t ? TYPE_COLOR[t] : 'var(--border)',
+                      background:  form.expense_type === t ? TYPE_COLOR[t] + '15' : 'white',
+                      color:       form.expense_type === t ? TYPE_COLOR[t] : 'var(--text3)' }}>
+                    {t === 'مشاريع' ? '🏗️' : t === 'تشغيلي' ? '⚙️' : '🏢'} {t}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={lbl}>الفئة *</label>
-              <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
-                {cats.map(c => <option key={c}>{c}</option>)}
-              </select>
+
+          {/* الفئة — فقط لمصروفات المشاريع */}
+          {isProject && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={lbl}>فئة المصروف</label>
+                <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
+                  {(CATEGORIES[form.expense_type] || []).map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>المشروع</label>
+                <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+                  <option value="">— بدون مشروع —</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
             </div>
-            <div>
-              <label style={lbl}>المشروع</label>
-              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                <option value="">— بدون مشروع —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-          </div>
+          )}
+
+          {/* البيان */}
           <div>
             <label style={lbl}>البيان / الوصف *</label>
-            <input value={form.description} onChange={e => set('description', e.target.value)} className="input" placeholder="وصف تفصيلي للمصروف..." />
+            <input value={form.description} onChange={e => set('description', e.target.value)} className="input"
+              placeholder={isProject ? 'مثال: شراء أسفلت للمشروع...' : 'مثال: فاتورة إيجار المكتب...'} autoFocus />
           </div>
+
+          {/* الحساب المحاسبي — إلزامي — بحث ذكي */}
+          <div>
+            <label style={lbl}>
+              الحساب المحاسبي *
+              <span style={{ marginRight: '6px', fontSize: '0.68rem', color: '#9ca3af', fontWeight: 400 }}>ابحث بالاسم أو الرقم</span>
+            </label>
+            <AccountSearch
+              accounts={leafAccounts}
+              value={form.account_id}
+              onChange={v => set('account_id', v)}
+              required={true}
+            />
+          </div>
+
+          {/* المبلغ والضريبة */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px', border: '1px solid #fde68a' }}>
             <div>
               <label style={lbl}>المبلغ (قبل الضريبة) *</label>
@@ -245,6 +349,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               </div>
             </div>
           </div>
+
+          {/* الدفع */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>طريقة الدفع</label>
@@ -257,6 +363,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               <CashAccountSelector paymentMethod={form.payment_method} value={form.cash_account_id} tenantId={tenantId} onChange={v => set('cash_account_id', v)} />
             </div>
           </div>
+
+          {/* المورد */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>المورد / الجهة</label>
@@ -267,32 +375,16 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               <input value={form.vendor_name} onChange={e => set('vendor_name', e.target.value)} className="input" style={{ marginTop: '6px' }} placeholder="أو اكتب اسم الجهة..." />
             </div>
             <div>
-              <label style={lbl}>الحساب المحاسبي</label>
-              <select value={form.account_id} onChange={e => set('account_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
               <label style={lbl}>رقم الإيصال</label>
-              <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" />
-            </div>
-            <div>
-              <label style={lbl}>مركز التكلفة</label>
-              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
-                {costCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={lbl}>الحالة</label>
+              <input value={form.receipt_no} onChange={e => set('receipt_no', e.target.value)} className="input" dir="ltr" style={{ marginTop: '0' }} />
+              <label style={{ ...lbl, marginTop: '10px' }}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 {['مدفوع', 'معلق', 'ملغي'].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
+
+          {/* ملاحظات */}
           <div>
             <label style={lbl}>ملاحظات</label>
             <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
