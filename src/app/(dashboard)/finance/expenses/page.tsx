@@ -5,12 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt, ArrowUpRight, ArrowDownRight, BarChart2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, getExpenseAccountCode } from '@/lib/journal'
-
-async function getCashAccountCode(_tenantId: string, accountId: number): Promise<string | null> {
-  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
-  return data?.code || null
-}
+import { createJournalEntry, getExpenseAccountCode, getCashAccountCode, journalExpense } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
@@ -165,21 +160,20 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
       // قيد محاسبي تلقائي للمصروفات الجديدة المدفوعة
       if (!expense?.id && savedId && form.payment_method !== 'آجل' && form.cash_account_id) {
-        const expAccCode = getExpenseAccountCode ? getExpenseAccountCode(form.expense_type, form.category) : '5110'
-        const cashAccCode = await getCashAccountCode(tenantId, Number(form.cash_account_id))
-        if (expAccCode && cashAccCode) {
-          await createJournalEntry({
-            tenantId,
-            date: form.expense_date,
-            description: `مصروف — ${form.description}`,
-            referenceType: 'مصروف', referenceId: savedId,
-            source: 'آلي',
-            lines: [
-              { accountCode: expAccCode,  debit: totalAmount, credit: 0,           description: form.category },
-              { accountCode: cashAccCode, debit: 0,           credit: totalAmount, description: form.description },
-            ]
-          })
-        }
+        const expAccCode   = getExpenseAccountCode(form.expense_type, form.category)
+        const cashAccCode  = await getCashAccountCode(Number(form.cash_account_id))
+        await journalExpense({
+          tenantId,
+          date:               form.expense_date,
+          description:        form.description,
+          category:           form.category,
+          expenseId:          savedId,
+          amount:             netAmount,
+          vatAmount,
+          total:              totalAmount,
+          expenseAccountCode: expAccCode,
+          creditAccountCode:  cashAccCode,
+        })
       }
       toast.success(expense ? 'تم التعديل ✅' : 'تم الحفظ ✅')
       onSave()
@@ -379,7 +373,7 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
 
     if (trxData) {
       const selectedCash = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
-      const cashCode = selectedCash?.account_id ? await getCashAccountCode(tenantId, selectedCash.account_id) : '1111'
+      const cashCode = selectedCash?.account_id ? await getCashAccountCode(selectedCash.id) : '1111'
       const otherCode = form.account_id ? null : (isReceipt ? '1120' : '2110')
       if (otherCode && cashCode) {
         await createJournalEntry({
