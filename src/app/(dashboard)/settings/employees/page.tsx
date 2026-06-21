@@ -264,11 +264,16 @@ export default function EmployeesSettingsPage() {
   const [loading,     setLoading]     = useState(true)
   const [search,      setSearch]      = useState('')
   const [activeTab,   setActiveTab]   = useState<'active' | 'inactive' | 'hr_pending'>('active')
-  const [showActivate,setShowActivate]= useState(false)
+  const [showModal,    setShowModal]    = useState(false)
   const [showEdit,    setShowEdit]    = useState(false)
   const [editEmp,     setEditEmp]     = useState<Emp | null>(null)
   const [activateHr,  setActivateHr]  = useState<HREmp | null>(null)
   const isAdmin = currentUser?.role === 'مدير عام'
+  // Split View state
+  const [selectedEmp, setSelectedEmp] = useState<Emp | null>(null)
+  const [userPerms,   setUserPerms]   = useState<string[]>([])
+  const [editForm,    setEditForm]    = useState({ role: '', username: '', password: '' })
+  const [saving,      setSaving]      = useState(false)
 
   useEffect(() => { load() }, [tenant?.id])
 
@@ -287,7 +292,28 @@ export default function EmployeesSettingsPage() {
     setLoading(false)
   }
 
-  async function handleActivate(data: any) {
+  function selectEmp(emp: Emp) {
+    setSelectedEmp(emp)
+    setUserPerms(emp.permissions || [])
+    setEditForm({ role: emp.role || '', username: emp.username || '', password: '' })
+  }
+
+  function togglePerm2(key: string) {
+    setUserPerms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key])
+  }
+
+  async function saveSelectedEmp() {
+    if (!selectedEmp || !tenant) return
+    setSaving(true)
+    const payload: any = { role: editForm.role, username: editForm.username || null, permissions: userPerms }
+    if (editForm.password) payload.password = editForm.password
+    const { error } = await supabase.from('employees').update(payload).eq('id', selectedEmp.id).eq('tenant_id', tenant.id)
+    setSaving(false)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    setEmployees(prev => prev.map(e => e.id === selectedEmp.id ? { ...e, ...payload } : e))
+    setSelectedEmp(prev => prev ? { ...prev, ...payload } : null)
+    toast.success('تم حفظ الصلاحيات ✅')
+  }
     if (!tenant) return
     const payload: any = {
       tenant_id:       tenant.id,
@@ -302,7 +328,7 @@ export default function EmployeesSettingsPage() {
     const { error } = await supabase.from('employees').insert(payload)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await load()
-    setShowActivate(false); setActivateHr(null)
+    setShowModal(false); setActivateHr(null)
     toast.success('✅ تم تنشيط ' + data.name + ' كمستخدم')
   }
 
@@ -419,7 +445,7 @@ export default function EmployeesSettingsPage() {
                   </div>
                 </div>
                 {isAdmin && (
-                  <button onClick={() => { setActivateHr(h); setShowActivate(true) }}
+                  <button onClick={() => { setActivateHr(h); setShowModal(true) }}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #86efac', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                     <UserPlus style={{ width: '14px', height: '14px' }} /> تنشيط
                   </button>
@@ -429,74 +455,140 @@ export default function EmployeesSettingsPage() {
           </div>
         )
       ) : (
-        /* ══ المستخدمون النشطون / المعطّلون ══ */
-        filtered.length === 0 ? (
-          <div className="card" style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
-            <Users style={{ width: '48px', height: '48px', margin: '0 auto 12px', color: '#e5e7eb' }} />
-            <p>لا يوجد مستخدمون</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {filtered.map(emp => (
-              <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '12px', background: 'white', border: `1px solid ${emp.is_active ? '#e5e7eb' : '#f3f4f6'}`, opacity: emp.is_active ? 1 : 0.7 }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: emp.is_active ? '#ecfdf5' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: emp.is_active ? '#0ea77b' : '#9ca3af', fontWeight: 700, fontSize: '1rem', flexShrink: 0 }}>
-                  {(emp.name || '?')[0]}
+        /* ══ Split View: قائمة + صلاحيات ══ */
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '16px', alignItems: 'start' }}>
+
+          {/* قائمة الموظفين */}
+          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text3)' }}>
+              {filtered.length} مستخدم
+            </div>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '0.82rem' }}>لا يوجد مستخدمون</div>
+            ) : filtered.map(emp => (
+              <div key={emp.id} onClick={() => isAdmin && selectEmp(emp)}
+                style={{
+                  padding: '11px 14px', borderBottom: '1px solid var(--bg2)',
+                  cursor: isAdmin ? 'pointer' : 'default',
+                  background: selectedEmp?.id === emp.id ? '#eff6ff' : 'white',
+                  borderRight: selectedEmp?.id === emp.id ? '3px solid #1a56db' : '3px solid transparent',
+                  opacity: emp.is_active ? 1 : 0.6, transition: 'background 0.1s',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: emp.is_active ? '#ecfdf5' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: emp.is_active ? '#0ea77b' : '#9ca3af', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+                    {(emp.name||'?')[0]}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{emp.role}</div>
+                  </div>
+                  <span style={{ fontSize: '0.65rem', background: '#e0e7ff', color: '#4338ca', borderRadius: '10px', padding: '1px 6px', fontWeight: 700, flexShrink: 0 }}>
+                    {emp.permissions?.length || 0}
+                  </span>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>{emp.name}</span>
-                    {emp.role === 'مدير عام' && (
-                      <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', background: '#fef2f2', color: '#c81e1e', fontWeight: 600 }}>مدير عام</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
-                    {emp.role && <span>💼 {emp.role}</span>}
-                    {emp.username && <span>👤 {emp.username}</span>}
-                    <span style={{ color: emp.is_active ? '#0ea77b' : '#c81e1e' }}>{emp.is_active ? '🟢 نشط' : '🔴 معطّل'}</span>
-                  </div>
-                  {emp.permissions && emp.permissions.length > 0 && (
-                    <div style={{ display: 'flex', gap: '4px', marginTop: '6px', flexWrap: 'wrap' }}>
-                      {emp.permissions.slice(0, 4).map(p => {
-                        const label = ALL_PERMISSIONS.find(x => x.key === p)?.label || p
-                        return (
-                          <span key={p} style={{ fontSize: '0.65rem', padding: '1px 7px', borderRadius: '10px', background: '#eff6ff', color: '#1a56db', border: '1px solid #bfdbfe' }}>{label}</span>
-                        )
-                      })}
-                      {emp.permissions.length > 4 && (
-                        <span style={{ fontSize: '0.65rem', padding: '1px 7px', borderRadius: '10px', background: '#f3f4f6', color: '#9ca3af' }}>+{emp.permissions.length - 4}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                {isAdmin && (
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button onClick={() => { setEditEmp(emp); setShowEdit(true) }}
-                      style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Pencil style={{ width: '13px', height: '13px' }} /> صلاحيات
-                    </button>
-                    <button onClick={() => handleToggleActive(emp)}
-                      style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${emp.is_active ? '#fecaca' : '#bbf7d0'}`, background: emp.is_active ? '#fef2f2' : '#ecfdf5', color: emp.is_active ? '#c81e1e' : '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {emp.is_active ? <><UserX style={{ width: '13px', height: '13px', display: 'inline', marginLeft: '3px' }} />تعطيل</> : <><UserCheck style={{ width: '13px', height: '13px', display: 'inline', marginLeft: '3px' }} />تفعيل</>}
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           </div>
-        )
+
+          {/* لوحة الصلاحيات */}
+          {selectedEmp ? (
+            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{ padding: '14px 18px', background: '#eff6ff', borderBottom: '2px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#1a56db', fontSize: '0.95rem' }}>{selectedEmp.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
+                    {userPerms.length} صلاحية · {selectedEmp.username}
+                    {!selectedEmp.is_active && <span style={{ color: '#c81e1e', marginRight: '6px' }}>· معطّل</span>}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => handleToggleActive(selectedEmp)}
+                    style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${selectedEmp.is_active ? '#fecaca' : '#bbf7d0'}`, background: selectedEmp.is_active ? '#fef2f2' : '#ecfdf5', color: selectedEmp.is_active ? '#c81e1e' : '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    {selectedEmp.is_active ? 'تعطيل' : 'تفعيل'}
+                  </button>
+                  <button onClick={saveSelectedEmp} disabled={saving} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '6px 16px' }}>
+                    <Save style={{ width: '13px', height: '13px' }} />
+                    {saving ? 'جاري الحفظ...' : 'حفظ'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' }}>
+                {/* بيانات الحساب */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>اسم المستخدم</label>
+                    <input value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>كلمة مرور جديدة</label>
+                    <input type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} placeholder="اتركه فارغاً للإبقاء" dir="ltr" />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>الدور الوظيفي</label>
+                    <input value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} />
+                  </div>
+                </div>
+
+                {/* أدوار جاهزة */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '7px', color: 'var(--text3)' }}>تطبيق دور جاهز:</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {Object.keys(DEFAULT_ROLES_PERMS).map(role => (
+                      <button key={role} type="button" onClick={() => setUserPerms(DEFAULT_ROLES_PERMS[role])}
+                        style={{ padding: '4px 12px', borderRadius: '20px', border: `1px solid ${editForm.role === role ? '#1a56db' : 'var(--border)'}`, background: editForm.role === role ? '#eff6ff' : 'white', color: editForm.role === role ? '#1a56db' : 'var(--text3)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* الصلاحيات */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '12px' }}>
+                    الصلاحيات <span style={{ color: '#6b7280', fontWeight: 400, fontSize: '0.75rem' }}>({userPerms.length} مختارة)</span>
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {PERMISSION_GROUPS.map(group => (
+                      <div key={group.label}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: group.color, marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: group.color }} /> {group.label}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {group.perms.map(perm => {
+                            const active = userPerms.includes(perm.id)
+                            return (
+                              <button key={perm.id} type="button" onClick={() => togglePerm2(perm.id)}
+                                style={{ padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s', border: `2px solid ${active ? group.color : '#e5e7eb'}`, background: active ? group.color + '18' : 'white', color: active ? group.color : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                {active && <span style={{ fontSize: '0.65rem' }}>✓</span>}
+                                {perm.icon} {perm.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', padding: '80px', textAlign: 'center', color: 'var(--text3)' }}>
+              <Shield style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 14px' }} />
+              <p style={{ fontWeight: 600 }}>اختر موظفاً من القائمة</p>
+              <p style={{ fontSize: '0.78rem', marginTop: '4px', color: '#9ca3af' }}>لعرض وتعديل صلاحياته وبياناته</p>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* المودالات */}
-      {showActivate && activateHr && (
+      {/* مودال تنشيط موظف جديد */}
+      {showModal && activateHr && (
         <ActivateModal hrEmp={activateHr}
-          onClose={() => { setShowActivate(false); setActivateHr(null) }}
+          onClose={() => { setShowModal(false); setActivateHr(null) }}
           onSave={handleActivate}
-          onGoToPermissions={() => { setShowActivate(false); setActivateHr(null); router.push('/settings/permissions') }} />
-      )}
-      {showEdit && editEmp && (
-        <EditPermissionsModal emp={editEmp}
-          onClose={() => { setShowEdit(false); setEditEmp(null) }}
-          onSave={handleEdit} />
+          onGoToPermissions={() => { setShowModal(false); setActivateHr(null) }} />
       )}
     </div>
   )
