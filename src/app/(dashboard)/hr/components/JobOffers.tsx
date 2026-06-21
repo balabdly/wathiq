@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Plus, FileText, Eye, Trash2, Printer } from 'lucide-react'
+import { Plus, FileText, Eye, Trash2, Printer, X, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { HREmployee } from '../hr_types'
 
