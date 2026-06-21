@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { FileText, Save, X, AlertTriangle } from 'lucide-react'
+import { FileText, Save, X, AlertTriangle, Plus, LogOut, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { HREmployee, Termination, GratuityResult } from '../hr_types'
 import { calcGratuity } from '../hr_utils'
