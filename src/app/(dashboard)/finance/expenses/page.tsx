@@ -142,7 +142,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         status: form.status, notes: form.notes || null,
       }
       if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
-      if (form.account_id)      payload.account_id      = Number(form.account_id)
+      // account_id غير موجود في finance_expenses
       if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
       if (form.project_id)      payload.project_id      = Number(form.project_id)
       if (form.vendor_id)       payload.vendor_id       = Number(form.vendor_id)
