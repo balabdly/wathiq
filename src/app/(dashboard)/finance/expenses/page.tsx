@@ -192,12 +192,10 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
       const expenseNumber = expense?.expense_number || `EXP-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
 
       // الفئة: فقط لمصروفات المشاريع
-      const categoryValue = isProject ? form.category : null
-
       const payload: Record<string, any> = {
         tenant_id: tenantId, expense_number: expenseNumber,
         expense_date: form.expense_date, expense_type: form.expense_type,
-        category: categoryValue, description: form.description.trim(),
+        category: null, description: form.description.trim(),
         amount: netAmount, vat_rate: Number(form.vat_rate),
         vat_amount: vatAmount, total_amount: totalAmount,
         payment_method: form.payment_method,
@@ -231,7 +229,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
             tenantId,
             date:               form.expense_date,
             description:        form.description,
-            category:           categoryValue || form.expense_type,
+            category:           form.expense_type,
             expenseId:          savedId,
             amount:             netAmount,
             vatAmount,
@@ -290,22 +288,14 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
             </div>
           </div>
 
-          {/* الفئة — فقط لمصروفات المشاريع */}
+          {/* المشروع — فقط لمصروفات المشاريع */}
           {isProject && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label style={lbl}>فئة المصروف</label>
-                <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
-                  {(CATEGORIES[form.expense_type] || []).map(c => <option key={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>المشروع</label>
-                <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                  <option value="">— بدون مشروع —</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
+            <div>
+              <label style={lbl}>المشروع</label>
+              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+                <option value="">— بدون مشروع —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
             </div>
           )}
 
