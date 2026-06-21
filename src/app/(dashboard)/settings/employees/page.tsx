@@ -314,6 +314,8 @@ export default function EmployeesSettingsPage() {
     setSelectedEmp(prev => prev ? { ...prev, ...payload } : null)
     toast.success('تم حفظ الصلاحيات ✅')
   }
+
+  async function handleActivate(data: any) {
     if (!tenant) return
     const payload: any = {
       tenant_id:       tenant.id,
