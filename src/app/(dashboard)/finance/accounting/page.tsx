@@ -723,11 +723,11 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                           </button>
                           {!hasChildren && !account.is_parent && account.is_active && (
                             <button onClick={async () => {
-                              if (!confirm(`تحويل "${account.name}" لحساب رئيسي؟\nسيصبح بإمكانك إضافة حسابات فرعية تحته.`)) return
-                              await supabase.from('finance_accounts').update({ is_parent: true, parent_id: null }).eq('id', account.id)
-                              await loadAll(); toast.success('✅ تم تحويله لحساب رئيسي')
+                              if (!confirm(`تحويل "${account.name}" لحساب رئيسي؟\nسيبقى في نفس مكانه ويمكنك إضافة حسابات فرعية تحته.`)) return
+                              await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', account.id)
+                              await loadAll(); toast.success('✅ تم — يمكنك الآن إضافة فروع تحته')
                             }} style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #e9d5ff', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                              ↑ رئيسي
+                              📁 رئيسي
                             </button>
                           )}
                           {!hasChildren && account.is_active && (
