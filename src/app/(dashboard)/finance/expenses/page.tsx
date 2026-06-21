@@ -160,7 +160,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
       // قيد محاسبي تلقائي للمصروفات الجديدة المدفوعة
       if (!expense?.id && savedId && form.payment_method !== 'آجل' && form.cash_account_id) {
-        const expAccCode = getExpenseAccountCode ? await getExpenseAccountCode(form.category) : '5110'
+        const expAccCode = getExpenseAccountCode ? await getExpenseAccountCode(form.category, tenantId) : '5110'
         const cashAccCode = await getCashAccountCode(tenantId, Number(form.cash_account_id))
         if (expAccCode && cashAccCode) {
           await createJournalEntry(tenantId, {
