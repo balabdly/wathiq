@@ -180,7 +180,11 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
   const totalAmount = netAmount + vatAmount
 
   // فلترة الحسابات المحاسبية — فروع فقط (is_parent = false)
-  const leafAccounts = accounts.filter(a => !(a as any).is_parent)
+  // فقط حسابات المصروفات والتكلفة الفرعية — قاعدة محاسبية صارمة
+  const leafAccounts = accounts.filter(a =>
+    !(a as any).is_parent &&
+    ['مصروفات', 'تكلفة'].includes((a as any).account_type)
+  )
 
   async function handleSave() {
     if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
@@ -803,7 +807,7 @@ export default function FinanceExpensesPage() {
   async function loadAll() {
     if (!tenant) return
     const [accRes, ccRes, projRes, venRes, cliRes, cashRes] = await Promise.all([
-      supabase.from('finance_accounts').select('id,code,name,account_type').eq('tenant_id', tenant.id).eq('is_parent', false).eq('is_active', true).order('code'),
+      supabase.from('finance_accounts').select('id,code,name,account_type,is_parent').eq('tenant_id', tenant.id).eq('is_active', true).order('code'),
       supabase.from('finance_cost_centers').select('id,code,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
