@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { Plus, FileText, Eye, Trash2, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { HREmployee } from './hr_types'
+import type { HREmployee } from '../hr_types'
 
 export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HREmployee[] }) {
   const [mode, setMode] = useState<'list' | 'create'>('list')

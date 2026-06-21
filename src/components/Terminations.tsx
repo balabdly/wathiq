@@ -4,8 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { FileText, Save, X, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { HREmployee, Termination, GratuityResult } from './hr_types'
-import { calcGratuity } from './hr_utils'
+import type { HREmployee, Termination, GratuityResult } from '../hr_types'
+import { calcGratuity } from '../hr_utils'
 
 export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: string; hrEmployees: HREmployee[] }) {
   const [terminations, setTerminations] = useState<Termination[]>([])

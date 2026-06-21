@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { X, Save, Building2, Briefcase } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { HREmployee, Department } from './hr_types'
-import { calcGOSI } from './hr_utils'
+import type { HREmployee, Department } from '../hr_types'
+import { calcGOSI } from '../hr_utils'
 
 export default function HREmployeeModal({ emp, departments, managers, onClose, onSave }: {
   emp: HREmployee | null

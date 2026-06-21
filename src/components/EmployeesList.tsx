@@ -5,8 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { Users, Search, Eye, Pencil, Trash2, ChevronRight, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { HREmployee } from './hr_types'
-import { calcGOSI } from './hr_utils'
+import type { HREmployee } from '../hr_types'
+import { calcGOSI } from '../hr_utils'
 
 const PAGE_SIZE = 10
 

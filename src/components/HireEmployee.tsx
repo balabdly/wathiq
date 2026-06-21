@@ -4,8 +4,8 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Save, User, Briefcase, DollarSign, Building2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { HREmployee, Department, JobTitle } from './hr_types'
-import { calcGOSI } from './hr_utils'
+import type { HREmployee, Department, JobTitle } from '../hr_types'
+import { calcGOSI } from '../hr_utils'
 
 const WORK_LOCATIONS = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الأحساء','القطيف','حائل','تبوك','الجوف','نجران','جيزان','عسير','الباحة']
 const CONTRACT_TYPES = ['دوام كامل','دوام جزئي','مؤقت','موسمي']
