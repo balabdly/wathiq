@@ -641,8 +641,6 @@ export default function FinanceTreasuryPage() {
 
   const [custodies,    setCustodies]    = useState<Custody[]>([])
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
-  const [accounts,     setAccounts]     = useState<Account[]>([])
-  const [costCenters,  setCostCenters]  = useState<CostCenter[]>([])
   const [projects,     setProjects]     = useState<Project[]>([])
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [loading,      setLoading]      = useState(true)
@@ -658,36 +656,26 @@ export default function FinanceTreasuryPage() {
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [trRes, cusRes, caRes, accRes, ccRes, projRes, empRes, clientsRes, vendorsRes] = await Promise.all([
-      supabase.from('finance_treasury').select('*, cash_account:finance_cash_accounts(name), account:finance_accounts(code,name)').eq('tenant_id', tenant.id).order('transaction_date', { ascending: false }).limit(200),
+    const [trRes, cusRes, caRes, projRes, empRes] = await Promise.all([
+      supabase.from('finance_treasury').select('type, amount, cash_account_id').eq('tenant_id', tenant.id),
       supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
       supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('finance_accounts').select('id,code,name').eq('tenant_id', tenant.id).eq('is_parent', false).order('code'),
-      supabase.from('finance_cost_centers').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id, employee_id, employee:employees!hr_employees_employee_id_fkey(name)').eq('tenant_id', tenant.id).eq('is_active', true),
-      supabase.from('finance_clients').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('finance_vendors').select('id,name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
-    setTransactions(trRes.data || [])
     setCustodies(cusRes.data || [])
-
     const trData = trRes.data || []
     const caData = (caRes.data || []).map((ca: CashAccount) => {
-      const cashIn  = trData.filter((t: Transaction) => t.type === 'قبض' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
-      const cashOut = trData.filter((t: Transaction) => t.type === 'صرف' && t.cash_account_id === ca.id).reduce((s: number, t: Transaction) => s + Number(t.amount), 0)
+      const cashIn  = trData.filter((t: any) => t.type === 'قبض' && t.cash_account_id === ca.id).reduce((s: number, t: any) => s + Number(t.amount), 0)
+      const cashOut = trData.filter((t: any) => t.type === 'صرف' && t.cash_account_id === ca.id).reduce((s: number, t: any) => s + Number(t.amount), 0)
       return { ...ca, balance: Number(ca.opening_balance) + cashIn - cashOut }
     })
     setCashAccounts(caData)
-    setAccounts(accRes.data || [])
-    setCostCenters(ccRes.data || [])
     setProjects(projRes.data || [])
     setEmployees((empRes.data || []).map((e: any) => ({
       id: e.id,
       name: Array.isArray(e.employee) ? e.employee[0]?.name : e.employee?.name || '—',
-    })).filter(e => e.name !== '—'))
-    setClients(clientsRes.data || [])
-    setVendors(vendorsRes.data || [])
+    })).filter((e: any) => e.name !== '—'))
     setLoading(false)
   }
 
