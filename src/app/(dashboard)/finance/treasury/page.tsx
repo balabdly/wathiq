@@ -112,13 +112,35 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 
       if (account) {
         // ── تعديل حساب موجود ──
+        const oldBalance = Number(account.opening_balance) || 0
+        const newBalance = Number(form.opening_balance) || 0
         await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
         if (account.account_id) {
           await supabase.from('finance_accounts')
             .update({ name: form.name.trim(), notes: form.iban || form.account_no || null })
             .eq('id', account.account_id)
         }
-        toast.success('✅ تم التعديل')
+        // قيد الرصيد الافتتاحي إذا تغيّر
+        if (account.account_id && newBalance !== oldBalance && newBalance > 0) {
+          const accCode = await getCashAccountCode(tenantId, account.account_id)
+          if (accCode) {
+            const diff = newBalance - oldBalance
+            await createJournalEntry(tenantId, {
+              date:          new Date().toISOString().split('T')[0],
+              description:   `رصيد افتتاحي — ${form.name.trim()}`,
+              referenceType: 'رصيد افتتاحي',
+              referenceId:   account.account_id,
+              lines: diff > 0 ? [
+                { accountCode: accCode, debit: diff,  credit: 0,     description: `رصيد افتتاحي ${form.name.trim()}` },
+                { accountCode: '3110',  debit: 0,     credit: diff,  description: 'أرصدة افتتاحية' },
+              ] : [
+                { accountCode: '3110',  debit: Math.abs(diff), credit: 0,             description: 'تعديل رصيد افتتاحي' },
+                { accountCode: accCode, debit: 0,              credit: Math.abs(diff), description: `تعديل رصيد ${form.name.trim()}` },
+              ]
+            })
+          }
+        }
+        toast.success('✅ تم التعديل' + (account.account_id && newBalance !== oldBalance && newBalance > 0 ? ' وسُجّل القيد الافتتاحي' : ''))
 
       } else {
         // ── إضافة حساب جديد ──
