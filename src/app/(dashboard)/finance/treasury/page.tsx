@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, Wallet, Users, ArrowLeftRight } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, Wallet, Users, ArrowLeftRight, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type CashAccount = {
