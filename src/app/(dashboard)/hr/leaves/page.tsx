@@ -541,7 +541,7 @@ export default function LeavesPage() {
                                     .eq('tenant_id', tenant?.id || '').eq('employee_id', emp.id)
                                     .order('start_date', { ascending: false })
                                     .then(({ data }) => setAllLeaves(prev => {
-                                      const others = prev.filter(l => l.employee_id !== emp.employee_id)
+                                      const others = prev.filter(l => l.employee_id !== emp.id)
                                       return [...others, ...(data || [])]
                                     }))
                                 }}
