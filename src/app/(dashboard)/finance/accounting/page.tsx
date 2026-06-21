@@ -92,22 +92,48 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
     if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
 
-    // توليد رقم الحساب تلقائياً إذا لم يكن موجوداً
+    // توليد رقم الحساب تلقائياً — قاعدة صارمة
     let finalCode = form.code.trim()
     if (!finalCode) {
       if (form.parent_id) {
         const parent = accounts.find(a => a.id === Number(form.parent_id))
-        const parentCode = parent?.code || '1'
-        const siblings = accounts.filter(a => a.parent_id === Number(form.parent_id))
-        finalCode = `${parentCode}.${siblings.length + 1}`
-      } else {
-        const TYPE_PREFIX: Record<string, string> = {
-          'أصول': '1', 'خصوم': '2', 'حقوق ملكية': '3',
-          'إيرادات': '4', 'تكلفة': '5', 'مصروفات': '6',
+        const parentCode = parent?.code || '5000'
+        // جلب أكواد الأبناء الحاليين وأخذ أكبر رقم + خطوة ثابتة
+        const siblings = accounts
+          .filter(a => a.parent_id === Number(form.parent_id))
+          .map(a => parseInt(a.code) || 0)
+          .filter(n => !isNaN(n) && n > 0)
+        const parentNum = parseInt(parentCode) || 0
+        if (siblings.length === 0) {
+          // أول ابن: كود الأب + 10
+          finalCode = String(parentNum + 10)
+        } else {
+          // التالي: أكبر ابن + 10
+          const maxSibling = Math.max(...siblings)
+          finalCode = String(maxSibling + 10)
         }
-        const prefix = TYPE_PREFIX[form.account_type] || '9'
-        const siblings = accounts.filter(a => !a.parent_id && a.code?.startsWith(prefix))
-        finalCode = `${prefix}${String(siblings.length + 1).padStart(2, '0')}`
+      } else {
+        // حساب رئيسي بدون أب — حسب نوع الحساب
+        const TYPE_START: Record<string, number> = {
+          'أصول': 1000, 'خصوم': 2000, 'حقوق ملكية': 3000,
+          'إيرادات': 4000, 'تكلفة': 5000, 'مصروفات': 6000,
+        }
+        const start = TYPE_START[form.account_type] || 9000
+        const existing = accounts
+          .filter(a => !a.parent_id && parseInt(a.code) >= start && parseInt(a.code) < start + 1000)
+          .map(a => parseInt(a.code))
+          .filter(n => !isNaN(n))
+        const maxExisting = existing.length > 0 ? Math.max(...existing) : start - 100
+        finalCode = String(maxExisting + 100)
+      }
+      // التأكد من عدم التكرار
+      while (accounts.some(a => a.code === finalCode)) {
+        finalCode = String(parseInt(finalCode) + 10)
+      }
+    } else {
+      // التحقق من عدم تكرار الكود المدخل يدوياً
+      if (!account && accounts.some(a => a.code === finalCode)) {
+        toast.error(`الكود ${finalCode} مستخدم مسبقاً`); setSaving(false); return
       }
     }
 
@@ -670,12 +696,12 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                       {/* الاسم */}
                       <td style={{ padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '1rem' }}>{hasChildren ? '📁' : '📄'}</span>
+                          <span style={{ fontSize: '1rem' }}>{(hasChildren || account.is_parent) ? '📁' : '📄'}</span>
                           <div>
                             <div style={{ fontWeight: hasChildren ? 700 : 500, fontSize: '0.9rem', color: account.is_active ? 'var(--text)' : '#9ca3af', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               {account.name}
                               {!account.is_active && <span style={{ fontSize: '0.65rem', color: '#c81e1e', background: '#fef2f2', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>معطّل</span>}
-                              {!hasChildren && account.is_active && <span style={{ fontSize: '0.65rem', color: '#bfdbfe', background: '#eff6ff', padding: '1px 6px', borderRadius: '10px' }}>اضغط لكشف الحساب</span>}
+                              {!hasChildren && !account.is_parent && account.is_active && <span style={{ fontSize: '0.65rem', color: '#bfdbfe', background: '#eff6ff', padding: '1px 6px', borderRadius: '10px' }}>اضغط لكشف الحساب</span>}
                             </div>
                             {account.name_en && <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{account.name_en}</div>}
                           </div>
@@ -712,7 +738,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                       {/* الإجراءات */}
                       <td style={{ padding: '14px 14px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          {hasChildren && (
+                          {(hasChildren || account.is_parent) && account.is_active && (
                             <button onClick={() => { setEditAccount(null); setParentForNew(account); setShowModal(true) }}
                               style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
                               + فرعي
