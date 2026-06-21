@@ -168,10 +168,12 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         const expAccCode = getExpenseAccountCode ? getExpenseAccountCode(form.expense_type, form.category) : '5110'
         const cashAccCode = await getCashAccountCode(tenantId, Number(form.cash_account_id))
         if (expAccCode && cashAccCode) {
-          await createJournalEntry(tenantId, {
+          await createJournalEntry({
+            tenantId,
             date: form.expense_date,
             description: `مصروف — ${form.description}`,
             referenceType: 'مصروف', referenceId: savedId,
+            source: 'آلي',
             lines: [
               { accountCode: expAccCode,  debit: totalAmount, credit: 0,           description: form.category },
               { accountCode: cashAccCode, debit: 0,           credit: totalAmount, description: form.description },
@@ -380,10 +382,12 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
       const cashCode = selectedCash?.account_id ? await getCashAccountCode(tenantId, selectedCash.account_id) : '1111'
       const otherCode = form.account_id ? null : (isReceipt ? '1120' : '2110')
       if (otherCode && cashCode) {
-        await createJournalEntry(tenantId, {
+        await createJournalEntry({
+          tenantId,
           date: form.transaction_date,
           description: `${type} — ${form.description}`,
           referenceType: type, referenceId: trxData.id,
+          source: 'آلي',
           lines: isReceipt ? [
             { accountCode: cashCode,  debit: Number(form.amount), credit: 0,                    description: form.description },
             { accountCode: otherCode, debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
