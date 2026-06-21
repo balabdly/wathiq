@@ -175,6 +175,10 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
     } else {
       const { error } = await supabase.from('finance_accounts').insert(payload)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+      // تحديث الأب تلقائياً → is_parent = true
+      if (payload.parent_id) {
+        await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', payload.parent_id)
+      }
     }
     toast.success(account ? 'تم التعديل ✅' : `✅ تمت إضافة الحساب (${finalCode})`)
     onSave(); setSaving(false)
@@ -627,7 +631,16 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
       return
     }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
+    const parentId = account.parent_id
     await supabase.from('finance_accounts').delete().eq('id', account.id)
+    // إذا الأب لم يعد له أبناء → is_parent = false
+    if (parentId) {
+      const { count } = await supabase.from('finance_accounts')
+        .select('*', { count: 'exact', head: true }).eq('parent_id', parentId)
+      if ((count || 0) === 0) {
+        await supabase.from('finance_accounts').update({ is_parent: false }).eq('id', parentId)
+      }
+    }
     await loadAll(); toast.success('تم الحذف')
   }
 
@@ -803,15 +816,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                           <button onClick={() => { setEditAccount(account); setParentForNew(null); setShowModal(true) }} className="btn btn-ghost btn-xs">
                             <Pencil style={{ width: '12px', height: '12px' }} />
                           </button>
-                          {!hasChildren && !account.is_parent && account.is_active && (
-                            <button onClick={async () => {
-                              if (!confirm(`تحويل "${account.name}" لحساب رئيسي؟\nسيبقى في نفس مكانه ويمكنك إضافة حسابات فرعية تحته.`)) return
-                              await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', account.id)
-                              await loadAll(); toast.success('✅ تم — يمكنك الآن إضافة فروع تحته')
-                            }} style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #e9d5ff', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                              📁 رئيسي
-                            </button>
-                          )}
+
                           {!hasChildren && account.is_active && (
                             <button onClick={() => handleDelete(account)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                               <Trash2 style={{ width: '12px', height: '12px' }} />
