@@ -268,253 +268,150 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 }
 
 // ════════════════════════════════════════
-// مودال: عهدة موظف
+// مودال: عهدة موظف (مصروف على الشركة)
 // ════════════════════════════════════════
-function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, onClose, onSave }: {
-  custody: Custody | null; employees: Employee[]; projects: Project[]
+function CustodyModal({ employees, projects, cashAccounts, tenantId, onClose, onSave }: {
+  employees: Employee[]; projects: Project[]
   cashAccounts: CashAccount[]; tenantId: string; onClose: () => void; onSave: () => void
 }) {
+  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' } as const
   const [saving, setSaving] = useState(false)
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
-    custody_date:    custody?.custody_date   || today,
-    employee_id:     custody?.employee_id    ? String(custody.employee_id) : '',
-    employee_name:   custody?.employee_name  || '',
-    custody_type:    custody?.custody_type   || 'عهدة نقدية',
-    amount:          custody?.amount         ? String(custody.amount) : '',
-    purpose:         custody?.purpose        || '',
-    project_id:      custody?.project_id     ? String(custody.project_id) : '',
-    due_date:        custody?.due_date       || '',
-    cash_account_id: cashAccounts[0]?.id     ? String(cashAccounts[0].id) : '',
-    notes:           custody?.notes          || '',
+    custody_date:    today,
+    employee_id:     '',
+    employee_name:   '',
+    amount:          '',
+    purpose:         '',
+    project_id:      '',
+    due_date:        '',
+    cash_account_id: cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    notes:           '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-
-  function handleEmployeeSelect(empId: string) {
-    set('employee_id', empId)
-    const emp = employees.find(e => e.id === Number(empId))
-    if (emp) set('employee_name', emp.name)
-  }
 
   async function handleSave() {
     if (!form.employee_name.trim()) { toast.error('اسم الموظف مطلوب'); return }
     if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
     if (!form.purpose.trim()) { toast.error('الغرض مطلوب'); return }
     setSaving(true)
+    try {
+      const { count } = await supabase.from('finance_employee_custody').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      const custodyNo = `CUS-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+      const amount = Number(form.amount)
 
-    const { count } = await supabase.from('finance_employee_custody').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const custodyNo = `CUS-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+      const payload: Record<string, any> = {
+        tenant_id: tenantId, custody_no: custodyNo,
+        custody_date: form.custody_date,
+        employee_name: form.employee_name.trim(),
+        custody_type: 'عهدة نقدية',
+        amount, purpose: form.purpose.trim(),
+        due_date: form.due_date || null,
+        settled_amount: 0, status: 'مفتوحة',
+        notes: form.notes || null,
+      }
+      if (form.employee_id)     payload.employee_id     = Number(form.employee_id)
+      if (form.project_id)      payload.project_id      = Number(form.project_id)
+      if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
 
-    const payload: Record<string, any> = {
-      tenant_id: tenantId, custody_no: custodyNo,
-      custody_date: form.custody_date,
-      employee_name: form.employee_name.trim(),
-      custody_type: form.custody_type,
-      amount: Number(form.amount),
-      purpose: form.purpose.trim(),
-      due_date: form.due_date || null,
-      settled_amount: 0, status: 'مفتوحة',
-      notes: form.notes || null,
-    }
-    if (form.employee_id)    payload.employee_id    = Number(form.employee_id)
-    if (form.project_id)     payload.project_id     = Number(form.project_id)
-    if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+      const { error } = await supabase.from('finance_employee_custody').insert(payload)
+      if (error) throw error
 
-    const { error } = await supabase.from('finance_employee_custody').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-
-    if (form.cash_account_id) {
-      await supabase.from('finance_treasury').insert({
-        tenant_id: tenantId,
-        transaction_no: `PAY-CUS-${custodyNo}`,
-        transaction_date: form.custody_date,
-        type: 'صرف',
-        amount: Number(form.amount),
-        description: `عهدة نقدية — ${form.employee_name} — ${form.purpose}`,
-        cash_account_id: Number(form.cash_account_id),
-        payment_method: 'نقداً',
-        reference_type: 'عهدة',
-        party_name: form.employee_name,
-        status: 'معتمد',
-      })
-    }
-
-    // ✅ قيد محاسبي للعهدة مع إنشاء حساب فرعي للموظف تلقائياً
-    if (form.cash_account_id) {
-      const cashAcc = cashAccounts.find((a: any) => a.id === Number(form.cash_account_id))
-      const cashAccountId = cashAcc?.account_id || null
-
-      // تحديد الحساب الرئيسي: 1150 عهد أو 1160 سلف
-      const parentCode = form.custody_type === 'سلفة راتب' ? '1160' : '1150'
-      const parentLabel = form.custody_type === 'سلفة راتب' ? 'سلف الرواتب' : 'عهد الموظفين'
-
-      // جلب الحساب الرئيسي
-      const { data: parentAcc } = await supabase
-        .from('finance_accounts')
-        .select('id, code')
-        .eq('tenant_id', tenantId)
-        .eq('code', parentCode)
-        .single()
-
-      if (!parentAcc) {
-        toast.error(`حساب ${parentCode} (${parentLabel}) غير موجود في شجرة الحسابات`)
-        setSaving(false); return
+      // سند صرف في الخزينة
+      if (form.cash_account_id) {
+        await supabase.from('finance_treasury').insert({
+          tenant_id: tenantId, transaction_no: `PAY-${custodyNo}`,
+          transaction_date: form.custody_date, type: 'صرف', amount,
+          description: `عهدة — ${form.employee_name} — ${form.purpose}`,
+          cash_account_id: Number(form.cash_account_id),
+          payment_method: 'نقداً', reference_type: 'عهدة',
+          party_name: form.employee_name, status: 'معتمد',
+        })
       }
 
-      // البحث عن حساب فرعي للموظف أو إنشاؤه
-      const empAccountName = `${form.custody_type === 'سلفة راتب' ? 'سلفة' : 'عهدة'} — ${form.employee_name}`
-      let empAccountId: number | null = null
-
-      // هل يوجد حساب لهذا الموظف مسبقاً؟
-      const { data: existingAcc } = await supabase
-        .from('finance_accounts')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('parent_id', parentAcc.id)
-        .eq('name', empAccountName)
-        .single()
-
-      if (existingAcc) {
-        empAccountId = existingAcc.id
-      } else {
-        // إنشاء حساب فرعي جديد للموظف
-        const { data: siblings } = await supabase
-          .from('finance_accounts')
-          .select('code')
-          .eq('tenant_id', tenantId)
-          .eq('parent_id', parentAcc.id)
-          .order('code', { ascending: false })
-          .limit(1)
-
-        // الكود التالي: مثلاً 1150 → 1151، 1152، 1153...
-        const lastCode = siblings?.[0]?.code
-        const nextNum = lastCode
-          ? String(parseInt(lastCode) + 1)
-          : `${parentCode}1`
-
-        const { data: newAcc } = await supabase
-          .from('finance_accounts')
-          .insert({
-            tenant_id:      tenantId,
-            code:           nextNum,
-            name:           empAccountName,
-            account_type:   'أصول',
-            account_class:  'ميزانية',
-            parent_id:      parentAcc.id,
-            level:          4,
-            is_parent:      false,
-            normal_balance: 'مدين',
-            is_active:      true,
-          })
-          .select('id')
-          .single()
-
-        empAccountId = newAcc?.id || null
+      // القيد المحاسبي: مدين 1150 عهد الموظفين / دائن الصندوق
+      const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+      if (cashAcc?.account_id) {
+        const { data: custodyAcc } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', '1150').single()
+        const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+        const { data: entry } = await supabase.from('finance_journal_entries').insert({
+          tenant_id: tenantId, entry_number: `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`,
+          entry_date: form.custody_date,
+          description: `عهدة — ${form.employee_name} — ${form.purpose}`,
+          reference_type: 'عهدة', total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
+        }).select('id').single()
+        if (entry && custodyAcc) {
+          await supabase.from('finance_journal_lines').insert([
+            { entry_id: entry.id, account_id: custodyAcc.id, debit: amount, credit: 0,      description: `عهدة: ${form.employee_name}` },
+            { entry_id: entry.id, account_id: cashAcc.account_id, debit: 0, credit: amount, description: form.purpose },
+          ])
+        }
       }
-
-      if (!empAccountId || !cashAccountId) {
-        toast.error('تعذّر إنشاء حساب الموظف في شجرة الحسابات')
-        setSaving(false); return
-      }
-
-      // إنشاء القيد المحاسبي
-      const { count } = await supabase.from('finance_journal_entries')
-        .select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-      const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-
-      const { data: entry } = await supabase.from('finance_journal_entries').insert({
-        tenant_id:    tenantId,
-        entry_number: entryNumber,
-        entry_date:   form.custody_date,
-        description:  `${form.custody_type} — ${form.employee_name} — ${form.purpose}`,
-        reference_type: 'عهدة',
-        total_debit:  Number(form.amount),
-        total_credit: Number(form.amount),
-        status:       'معتمد',
-        entry_source: 'آلي',
-      }).select('id').single()
-
-      if (entry) {
-        await supabase.from('finance_journal_lines').insert([
-          { entry_id: entry.id, account_id: empAccountId,  debit: Number(form.amount), credit: 0,                   description: `${form.custody_type}: ${form.employee_name}` },
-          { entry_id: entry.id, account_id: cashAccountId, debit: 0,                   credit: Number(form.amount), description: form.purpose },
-        ])
-      }
-    }
-
-    toast.success('✅ تم إصدار العهدة وتسجيل القيد المحاسبي')
-    onSave(); setSaving(false)
+      toast.success('✅ تم إصدار العهدة وتسجيل القيد')
+      onSave()
+    } catch (err: any) { toast.error('خطأ: ' + err.message) }
+    finally { setSaving(false) }
   }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '560px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '540px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Users style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            {custody ? 'تعديل عهدة' : 'إصدار عهدة موظف'}
+            إصدار عهدة موظف
           </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px', borderRadius: '6px' }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}>
             <X style={{ width: '18px', height: '18px' }} />
           </button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {['عهدة نقدية', 'سلفة راتب'].map(t => (
-              <button key={t} type="button" onClick={() => set('custody_type', t)}
-                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700,
-                  borderColor: form.custody_type === t ? '#e6820a' : 'var(--border)',
-                  background: form.custody_type === t ? '#fffbeb' : 'white',
-                  color: form.custody_type === t ? '#e6820a' : 'var(--text3)' }}>
-                {t === 'عهدة نقدية' ? '💼 عهدة نقدية' : '💳 سلفة راتب'}
-              </button>
-            ))}
+          <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
+            💼 العهدة: مبلغ تصرفه الشركة عبر موظف لأغراض العمل (مشتريات، مصاريف موقع، إلخ)
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الموظف *</label>
-              <select value={form.employee_id} onChange={e => handleEmployeeSelect(e.target.value)} className="select">
+              <label style={lbl}>الموظف *</label>
+              <select value={form.employee_id} onChange={e => { set('employee_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('employee_name', emp.name) }} className="select">
                 <option value="">— اختر الموظف —</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
+              <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" style={{ marginTop: '6px' }} placeholder="أو أدخل الاسم..." />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>أو أدخل الاسم يدوياً</label>
-              <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الإصدار *</label>
-              <input type="date" value={form.custody_date} onChange={e => set('custody_date', e.target.value)} className="input" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>تاريخ الاستحقاق</label>
-              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المبلغ *</label>
-              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الصرف من</label>
-              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              <label style={lbl}>المشروع</label>
+              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+                <option value="">— بدون مشروع —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>الغرض *</label>
-            <input value={form.purpose} onChange={e => set('purpose', e.target.value)} className="input" />
+            <label style={lbl}>الغرض *</label>
+            <input value={form.purpose} onChange={e => set('purpose', e.target.value)} className="input" placeholder="مثال: شراء مواد للموقع، مصاريف سفر..." />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', background: '#fffbeb', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={lbl}>المبلغ *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
+            </div>
+            <div>
+              <label style={lbl}>تاريخ الإصدار *</label>
+              <input type="date" value={form.custody_date} onChange={e => set('custody_date', e.target.value)} className="input" />
+            </div>
+            <div>
+              <label style={lbl}>تاريخ التسليم</label>
+              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
+            </div>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label>
-            <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-              <option value="">— اختياري —</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            <label style={lbl}>الصرف من *</label>
+            <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+              {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
             </select>
+          </div>
+          <div style={{ padding: '10px 14px', background: '#f5f3ff', borderRadius: '8px', fontSize: '0.78rem', color: '#5b21b6' }}>
+            📋 القيد: مدين حـ/ عهد الموظفين (1150) ← دائن حـ/ {cashAccounts.find(a => a.id === Number(form.cash_account_id))?.name || 'الصندوق'}
           </div>
         </div>
         <div className="modal-footer">
@@ -522,6 +419,170 @@ function CustodyModal({ custody, employees, projects, cashAccounts, tenantId, on
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
             إصدار العهدة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: سلفة موظف (قرض شخصي)
+// ════════════════════════════════════════
+function LoanModal({ employees, cashAccounts, tenantId, onClose, onSave }: {
+  employees: Employee[]; cashAccounts: CashAccount[]
+  tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' } as const
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    loan_date:       today,
+    employee_id:     '',
+    employee_name:   '',
+    amount:          '',
+    installments:    '1',
+    repay_method:    'خصم من الراتب',
+    cash_account_id: cashAccounts[0]?.id ? String(cashAccounts[0].id) : '',
+    notes:           '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const amount = Number(form.amount) || 0
+  const installAmt = Number(form.installments) > 0 ? Math.ceil(amount / Number(form.installments)) : amount
+
+  async function handleSave() {
+    if (!form.employee_name.trim()) { toast.error('اسم الموظف مطلوب'); return }
+    if (!form.amount || amount <= 0) { toast.error('مبلغ السلفة مطلوب'); return }
+    setSaving(true)
+    try {
+      const { count } = await supabase.from('finance_employee_custody').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      const loanNo = `LN-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+
+      const payload: Record<string, any> = {
+        tenant_id: tenantId, custody_no: loanNo,
+        custody_date: form.loan_date,
+        employee_name: form.employee_name.trim(),
+        custody_type: 'سلفة راتب',
+        amount, purpose: `سلفة — ${form.repay_method} — ${form.installments} قسط`,
+        settled_amount: 0, status: 'مفتوحة',
+        notes: form.notes ? `طريقة السداد: ${form.repay_method} | عدد الأقساط: ${form.installments}
+${form.notes}` : `طريقة السداد: ${form.repay_method} | عدد الأقساط: ${form.installments}`,
+      }
+      if (form.employee_id)     payload.employee_id     = Number(form.employee_id)
+      if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+
+      const { error } = await supabase.from('finance_employee_custody').insert(payload)
+      if (error) throw error
+
+      // سند صرف
+      if (form.cash_account_id) {
+        await supabase.from('finance_treasury').insert({
+          tenant_id: tenantId, transaction_no: `PAY-${loanNo}`,
+          transaction_date: form.loan_date, type: 'صرف', amount,
+          description: `سلفة راتب — ${form.employee_name}`,
+          cash_account_id: Number(form.cash_account_id),
+          payment_method: 'نقداً', reference_type: 'سلفة',
+          party_name: form.employee_name, status: 'معتمد',
+        })
+      }
+
+      // القيد المحاسبي: مدين 1160 سلف الرواتب / دائن الصندوق
+      const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+      if (cashAcc?.account_id) {
+        const { data: loanAcc } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', '1160').single()
+        const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+        const { data: entry } = await supabase.from('finance_journal_entries').insert({
+          tenant_id: tenantId, entry_number: `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`,
+          entry_date: form.loan_date,
+          description: `سلفة راتب — ${form.employee_name}`,
+          reference_type: 'سلفة', total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
+        }).select('id').single()
+        if (entry && loanAcc) {
+          await supabase.from('finance_journal_lines').insert([
+            { entry_id: entry.id, account_id: loanAcc.id,         debit: amount, credit: 0,      description: `سلفة: ${form.employee_name}` },
+            { entry_id: entry.id, account_id: cashAcc.account_id, debit: 0,      credit: amount, description: 'صرف سلفة راتب' },
+          ])
+        }
+      }
+      toast.success('✅ تم تسجيل السلفة والقيد المحاسبي')
+      onSave()
+    } catch (err: any) { toast.error('خطأ: ' + err.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '500px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Wallet style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            منح سلفة موظف
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '6px' }}>
+            <X style={{ width: '18px', height: '18px' }} />
+          </button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ padding: '8px 12px', background: '#f5f3ff', borderRadius: '8px', fontSize: '0.78rem', color: '#5b21b6' }}>
+            💳 السلفة: قرض شخصي للموظف يُسدَّد من راتبه أو نقداً
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>الموظف *</label>
+              <select value={form.employee_id} onChange={e => { set('employee_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('employee_name', emp.name) }} className="select">
+                <option value="">— اختر الموظف —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+              <input value={form.employee_name} onChange={e => set('employee_name', e.target.value)} className="input" style={{ marginTop: '6px' }} placeholder="أو أدخل الاسم..." />
+            </div>
+            <div>
+              <label style={lbl}>تاريخ السلفة *</label>
+              <input type="date" value={form.loan_date} onChange={e => set('loan_date', e.target.value)} className="input" />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', background: '#f5f3ff', padding: '14px', borderRadius: '10px' }}>
+            <div>
+              <label style={lbl}>مبلغ السلفة *</label>
+              <input type="number" value={form.amount} onChange={e => set('amount', e.target.value)} className="input" dir="ltr" min="0" />
+            </div>
+            <div>
+              <label style={lbl}>عدد الأقساط</label>
+              <input type="number" value={form.installments} onChange={e => set('installments', e.target.value)} className="input" dir="ltr" min="1" max="24" />
+              {amount > 0 && Number(form.installments) > 1 && (
+                <div style={{ fontSize: '0.7rem', color: '#7c3aed', marginTop: '4px' }}>
+                  قسط شهري: {installAmt.toLocaleString()} ر.س
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={lbl}>طريقة السداد</label>
+              <select value={form.repay_method} onChange={e => set('repay_method', e.target.value)} className="select">
+                {['خصم من الراتب', 'سداد نقدي', 'تحويل بنكي'].map(m => <option key={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>الصرف من *</label>
+              <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
+                {cashAccounts.map(a => <option key={a.id} value={a.id}>{a.account_type === 'صندوق' ? '💰' : '🏦'} {a.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>ملاحظات</label>
+            <input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" />
+          </div>
+          <div style={{ padding: '10px 14px', background: '#f5f3ff', borderRadius: '8px', fontSize: '0.78rem', color: '#5b21b6' }}>
+            📋 القيد: مدين حـ/ سلف الرواتب (1160) ← دائن حـ/ {cashAccounts.find(a => a.id === Number(form.cash_account_id))?.name || 'الصندوق'}
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            منح السلفة
           </button>
         </div>
       </div>
@@ -712,9 +773,14 @@ export default function FinanceTreasuryPage() {
             </button>
           )}
           {activeTab === 'custody' && (
-            <button onClick={() => setShowCustodyModal(true)} className="btn btn-primary" style={{ background: '#e6820a' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> إصدار عهدة / سلفة
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button onClick={() => setShowCustodyModal(true)} className="btn btn-primary" style={{ background: '#e6820a' }}>
+                <Plus style={{ width: '16px', height: '16px' }} /> 💼 عهدة
+              </button>
+              <button onClick={() => setShowLoanModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+                <Plus style={{ width: '16px', height: '16px' }} /> 💳 سلفة
+              </button>
+            </div>
           )}
           {activeTab === 'transfers' && (
             <button onClick={() => setShowTransferModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
@@ -887,8 +953,12 @@ export default function FinanceTreasuryPage() {
 
       {/* المودالات */}
       {showCustodyModal && (
-        <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts.filter(a => a.is_active)}
+        <CustodyModal employees={employees} projects={projects} cashAccounts={cashAccounts.filter(a => a.is_active)}
           tenantId={tenant!.id} onClose={() => setShowCustodyModal(false)} onSave={() => { setShowCustodyModal(false); loadAll() }} />
+      )}
+      {showLoanModal && (
+        <LoanModal employees={employees} cashAccounts={cashAccounts.filter(a => a.is_active)}
+          tenantId={tenant!.id} onClose={() => setShowLoanModal(false)} onSave={() => { setShowLoanModal(false); loadAll() }} />
       )}
       {showAccountModal && (
         <CashAccountModal account={editAccount} tenantId={tenant!.id}
