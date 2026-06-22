@@ -393,17 +393,17 @@ export default function Sidebar() {
             <SubLink href="/finance/treasury"    label="الخزينة"             icon={IC.treasury}   active={pathname.startsWith('/finance/treasury')} />
             <SubLink href="/finance/accounting"  label="الحسابات العامة"     icon={IC.accounting} active={pathname.startsWith('/finance/accounting')} />
           </NavSection>
+        )}
 
-          {/* ═══ الأصول الثابتة ═══ */}
-          {hasAssets && (
+        {hasAssets && (
           <NavSection label="الأصول الثابتة" icon={IC.assets}
             isActive={inAssets} isOpen={assetsOpen} onToggle={() => setAssetsOpen(o => !o)}>
-            <SubLink href="/assets"             label="سجل الأصول"      icon={IC.inventory}  active={pathname === '/assets'} />
-            <SubLink href="/assets/depreciation" label="الإهلاك"         icon={IC.reports}    active={pathname.startsWith('/assets/depreciation')} />
-            <SubLink href="/assets/maintenance"  label="الصيانة"         icon={IC.tasks}      active={pathname.startsWith('/assets/maintenance')} />
-            <SubLink href="/assets/disposal"     label="الاستبعاد"       icon={IC.purchases}  active={pathname.startsWith('/assets/disposal')} />
+            <SubLink href="/assets"              label="سجل الأصول"  icon={IC.inventory} active={pathname === '/assets'} />
+            <SubLink href="/assets/depreciation" label="الإهلاك"     icon={IC.reports}   active={pathname.startsWith('/assets/depreciation')} />
+            <SubLink href="/assets/maintenance"  label="الصيانة"     icon={IC.tasks}     active={pathname.startsWith('/assets/maintenance')} />
+            <SubLink href="/assets/disposal"     label="الاستبعاد"   icon={IC.purchases} active={pathname.startsWith('/assets/disposal')} />
           </NavSection>
-          )}
+        )}
 
         <Divider />
 
