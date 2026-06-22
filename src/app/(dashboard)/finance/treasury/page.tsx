@@ -666,7 +666,7 @@ export default function FinanceTreasuryPage() {
     const [trRes, cusRes, caRes, projRes, empRes] = await Promise.all([
       supabase.from('finance_treasury').select('type, amount, cash_account_id').eq('tenant_id', tenant.id),
       supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
-      supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('is_active', { ascending: false }).order('name'),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id, employee_id, employee:employees!hr_employees_employee_id_fkey(name)').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
@@ -814,21 +814,54 @@ export default function FinanceTreasuryPage() {
       {activeTab === 'accounts' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px' }}>
           {cashAccounts.map(ca => (
-            <div key={ca.id} className="card" style={{ padding: '20px', borderTop: '3px solid ' + (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') }}>
+            <div key={ca.id} className="card" style={{
+              padding: '20px',
+              borderTop: '3px solid ' + (ca.is_active ? (ca.account_type === 'صندوق' ? '#e6820a' : '#1a56db') : '#d1d5db'),
+              opacity: ca.is_active ? 1 : 0.65,
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '6px' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {ca.account_type === 'صندوق' ? '💰' : '🏦'} {ca.name}
+                    {!ca.is_active && (
+                      <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', background: '#f3f4f6', color: '#6b7280', fontWeight: 700 }}>
+                        غير نشط
+                      </span>
+                    )}
                   </div>
                   {ca.bank_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{ca.bank_name}</div>}
                   {ca.iban && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{ca.iban.substring(0, 14)}...</div>}
-                  {ca.account_id && (
-                    <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
-                  )}
+                  {ca.account_id
+                    ? <div style={{ fontSize: '0.7rem', color: '#0ea77b', marginTop: '4px' }}>✅ مرتبط بشجرة الحسابات</div>
+                    : <div style={{ fontSize: '0.7rem', color: '#e6820a', marginTop: '4px' }}>⚠️ غير مرتبط بشجرة الحسابات</div>
+                  }
                 </div>
-                <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs">
-                  <Pencil style={{ width: '13px', height: '13px' }} />
-                </button>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button onClick={() => { setEditAccount(ca); setShowAccountModal(true) }} className="btn btn-ghost btn-xs" title="تعديل">
+                    <Pencil style={{ width: '13px', height: '13px' }} />
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const { count } = await supabase.from('finance_treasury')
+                        .select('*', { count: 'exact', head: true }).eq('cash_account_id', ca.id)
+                      if (ca.is_active) {
+                        if (!confirm(`تعطيل حساب "${ca.name}"؟
+لن يمكن استخدامه في العمليات الجديدة ويمكن تنشيطه لاحقاً.`)) return
+                        await supabase.from('finance_cash_accounts').update({ is_active: false }).eq('id', ca.id)
+                        toast.success('تم تعطيل الحساب')
+                      } else {
+                        if (!confirm(`تنشيط حساب "${ca.name}"؟`)) return
+                        await supabase.from('finance_cash_accounts').update({ is_active: true }).eq('id', ca.id)
+                        toast.success('تم تنشيط الحساب ✅')
+                      }
+                      loadAll()
+                    }}
+                    className="btn btn-ghost btn-xs"
+                    title={ca.is_active ? 'تعطيل' : 'تنشيط'}
+                    style={{ color: ca.is_active ? '#e6820a' : '#0ea77b' }}>
+                    {ca.is_active ? '⏸' : '▶'}
+                  </button>
+                </div>
               </div>
               <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>الرصيد الحالي</div>
@@ -854,7 +887,7 @@ export default function FinanceTreasuryPage() {
 
       {/* المودالات */}
       {showCustodyModal && (
-        <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts}
+        <CustodyModal custody={null} employees={employees} projects={projects} cashAccounts={cashAccounts.filter(a => a.is_active)}
           tenantId={tenant!.id} onClose={() => setShowCustodyModal(false)} onSave={() => { setShowCustodyModal(false); loadAll() }} />
       )}
       {showAccountModal && (
@@ -868,7 +901,7 @@ export default function FinanceTreasuryPage() {
           onSave={() => { setShowSettleModal(false); setSettleCustody(null); loadAll() }} />
       )}
       {showTransferModal && (
-        <TransferModal cashAccounts={cashAccounts} tenantId={tenant!.id}
+        <TransferModal cashAccounts={cashAccounts.filter(a => a.is_active)} tenantId={tenant!.id}
           onClose={() => setShowTransferModal(false)}
           onSave={() => { setShowTransferModal(false); loadAll() }} />
       )}
