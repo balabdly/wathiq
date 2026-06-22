@@ -616,6 +616,60 @@ export default function PayrollPage() {
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
   }
 
+  // اعتماد المسير
+  async function handleApprove(month: number, year: number) {
+    if (!confirm(`اعتماد مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nبعد الاعتماد لا يمكن تعديله.`)) return
+    const recs = payrolls.filter(p => p.month === month && p.year === year)
+    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id)))
+    await load()
+    toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]}`)
+  }
+
+  // تسجيل الدفع — يُرحّل للأرشيف ويسجل قيد محاسبي
+  async function handlePay(month: number, year: number) {
+    if (!tenant) return
+    const recs = payrolls.filter(p => p.month === month && p.year === year)
+    if (!confirm(`تسجيل دفع مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nإجمالي الصافي: ${recs.reduce((s,p)=>s+Number(p.net_salary),0).toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي تلقائياً وينتقل للأرشيف.`)) return
+
+    // تحديث الحالة لمدفوع
+    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('id', p.id)))
+
+    // القيد المحاسبي: مدين رواتب الموظفين / دائن بنك الرواتب
+    const totalNet = recs.reduce((s, p) => s + Number(p.net_salary), 0)
+    const totalGosi = recs.reduce((s, p) => s + Number(p.gosi_deduction), 0)
+    const totalGross = recs.reduce((s, p) => s + Number(p.gross_salary), 0)
+
+    const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenant.id)
+    const entryNo = `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`
+
+    const { data: entry } = await supabase.from('finance_journal_entries').insert({
+      tenant_id: tenant.id, entry_number: entryNo,
+      entry_date: new Date().toISOString().split('T')[0],
+      description: `مسير رواتب ${ARABIC_MONTHS[month-1]} ${year}`,
+      reference_type: 'رواتب', total_debit: totalGross, total_credit: totalGross,
+      status: 'معتمد', entry_source: 'آلي',
+    }).select('id').single()
+
+    if (entry) {
+      // جلب حسابات الرواتب والتأمينات والبنك
+      const [salAcc, gosiAcc, bankAcc] = await Promise.all([
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5210').single(),
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5220').single(),
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id)
+          .in('account_type', ['أصول']).eq('is_parent', false).like('code', '111%').order('code').limit(1).single(),
+      ])
+      const lines = []
+      if (salAcc.data) lines.push({ entry_id: entry.id, account_id: salAcc.data.id, debit: totalNet,  credit: 0,         description: `رواتب صافية — ${ARABIC_MONTHS[month-1]}` })
+      if (gosiAcc.data && totalGosi > 0) lines.push({ entry_id: entry.id, account_id: gosiAcc.data.id, debit: totalGosi, credit: 0,         description: 'اشتراكات GOSI' })
+      if (bankAcc.data) lines.push({ entry_id: entry.id, account_id: bankAcc.data.id, debit: 0,        credit: totalGross, description: `دفع رواتب ${ARABIC_MONTHS[month-1]}` })
+      if (lines.length > 0) await supabase.from('finance_journal_lines').insert(lines)
+    }
+
+    await load()
+    toast.success(`✅ تم تسجيل دفع مسير ${ARABIC_MONTHS[month-1]} وتسجيل القيد المحاسبي — انتقل للمسيرات السابقة`)
+    setActiveTab('archive')
+  }
+
   function exportCSV(data: Payroll[], month: number, year: number) {
     const headers = ['الموظف','الراتب الأساسي','السكن','النقل','بدلات أخرى','إضافي','مكافآت','الإجمالي','تأمينات','خصم غياب','خصومات أخرى','صافي الراتب','أيام الحضور','الحالة']
     const csvRows = data.map(p => [p.emp_name||'',p.basic_salary,p.housing_allow,p.transport_allow,p.other_allow,p.overtime_pay,p.bonuses,p.gross_salary,p.gosi_deduction,p.absence_deduct,p.other_deduct,p.net_salary,p.present_days,p.status])
@@ -628,20 +682,14 @@ export default function PayrollPage() {
   // المسير الظاهر في التاب الرئيسي = ما يعرضه المستخدم حسب الفلتر
   const filteredPayrolls = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
 
-  // المسيرات السابقة = كل ما تجاوز يوم 10 من شهره التالي
-  const today2        = new Date()
-  const today2Month   = today2.getMonth() + 1
-  const today2Year    = today2.getFullYear()
-  const today2Day     = today2.getDate()
-  function isArchived(p: { month: number; year: number }): boolean {
-    // الشهر التالي للمسير
-    const nextMonth = p.month === 12 ? 1  : p.month + 1
-    const nextYear  = p.month === 12 ? p.year + 1 : p.year
-    // إذا كنا بعد يوم 10 من الشهر التالي → مؤرشف
-    if (nextYear < today2Year) return true
-    if (nextYear === today2Year && nextMonth < today2Month) return true
-    if (nextYear === today2Year && nextMonth === today2Month && today2Day > 10) return true
-    return false
+  // الأرشفة بالحالة: المسير مدفوع = في الأرشيف
+  function isArchived(p: { month: number; year: number; status?: string }): boolean {
+    return p.status === 'مدفوع'
+  }
+  // هل كل سجلات الشهر مدفوعة؟
+  function isMonthPaid(month: number, year: number): boolean {
+    const recs = payrolls.filter(p => p.month === month && p.year === year)
+    return recs.length > 0 && recs.every(p => p.status === 'مدفوع')
   }
   const vGross = filteredPayrolls.reduce((s, p) => s + p.gross_salary, 0)
   const vDeduct = filteredPayrolls.reduce((s, p) => s + p.gosi_deduction + p.absence_deduct + p.other_deduct, 0)
@@ -676,44 +724,59 @@ export default function PayrollPage() {
         <>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <select value={filterMonth} onChange={e => {
-                setFilterMonth(Number(e.target.value)); setMode('view')
-                const sel = Number(e.target.value)
-                const selYear = filterYear
-                if (isArchived({month: sel, year: selYear})) {
-                  toast('هذا المسير في الأرشيف — انتقل لتاب المسيرات السابقة', { icon: '📂' })
-                  setTimeout(() => setActiveTab('archive'), 1200)
-                }
-              }} className="select" style={{ width: 'auto' }}>
+              <select value={filterMonth} onChange={e => { setFilterMonth(Number(e.target.value)); setMode('view') }} className="select" style={{ width: 'auto' }}>
                 {ARABIC_MONTHS.map((m, i) => {
-                  const archived = isArchived({ month: i+1, year: filterYear })
-                  return <option key={i+1} value={i+1}>{archived ? '📂 ' : ''}{m}</option>
+                  const paid = isMonthPaid(i+1, filterYear)
+                  return <option key={i+1} value={i+1}>{paid ? '✅ ' : ''}{m}</option>
                 })}
               </select>
               <input type="number" value={filterYear} onChange={e => { setFilterYear(Number(e.target.value)); setMode('view') }} className="input" style={{ width: '88px' }} min="2020" max="2030" />
               {mode === 'view' && (
                 <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>
                   {filteredPayrolls.length} موظف
-                  {filteredPayrolls.length > 0 && !isArchived({month: filterMonth, year: filterYear}) && (() => {
-                    const nm = filterMonth === 12 ? 1 : filterMonth + 1
-                    const ny = filterMonth === 12 ? filterYear + 1 : filterYear
-                    const daysLeft = ny === today2Year && nm === today2Month ? 10 - today2Day : null
-                    return daysLeft !== null && daysLeft > 0
-                      ? <span style={{ marginRight: '8px', fontSize: '0.72rem', background: '#fffbeb', color: '#92400e', padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>ينتقل للأرشيف بعد {daysLeft} يوم</span>
-                      : null
-                  })()}
+
                 </span>
               )}
             </div>
             {mode === 'view' ? (
               isAdmin && (() => {
                 const check = canCreatePayroll(filterMonth, filterYear)
+                const isPaid     = isMonthPaid(filterMonth, filterYear)
+                const isApproved = filteredPayrolls.length > 0 && filteredPayrolls.every(p => p.status === 'معتمد')
+                const isDraft    = filteredPayrolls.length > 0 && filteredPayrolls.some(p => p.status === 'مسودة')
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                    <button onClick={enterCreateMode} disabled={!check.allowed} className="btn btn-primary" style={{ opacity: check.allowed ? 1 : 0.5 }}>
-                      <Banknote style={{ width: '16px', height: '16px' }} /> {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}
-                    </button>
-                    {!check.allowed && <span style={{ fontSize: '0.72rem', color: '#c81e1e' }}>{check.reason}</span>}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {/* زر الإنشاء/التعديل — فقط إذا لم يكن معتمداً أو مدفوعاً */}
+                    {!isPaid && !isApproved && (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                        <button onClick={enterCreateMode} disabled={!check.allowed} className="btn btn-primary" style={{ opacity: check.allowed ? 1 : 0.5 }}>
+                          <Banknote style={{ width: '16px', height: '16px' }} /> {filteredPayrolls.length > 0 ? 'تعديل المسير' : 'إنشاء مسير'}
+                        </button>
+                        {!check.allowed && <span style={{ fontSize: '0.72rem', color: '#c81e1e' }}>{check.reason}</span>}
+                      </div>
+                    )}
+                    {/* زر الاعتماد — يظهر عندما المسير مسودة */}
+                    {isDraft && !isApproved && (
+                      <button onClick={() => handleApprove(filterMonth, filterYear)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#0ea77b', color: 'white', fontWeight: 600, fontSize: '0.875rem', fontFamily: 'inherit' }}>
+                        ✅ اعتماد المسير
+                      </button>
+                    )}
+                    {/* زر الدفع — يظهر فقط بعد الاعتماد */}
+                    {isApproved && !isPaid && (
+                      <button onClick={() => handlePay(filterMonth, filterYear)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#1a56db', color: 'white', fontWeight: 600, fontSize: '0.875rem', fontFamily: 'inherit' }}>
+                        💳 تسجيل الدفع
+                      </button>
+                    )}
+                    {/* حالة المسير */}
+                    {filteredPayrolls.length > 0 && (
+                      <span style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: '20px', fontWeight: 700,
+                        background: isPaid ? '#ecfdf5' : isApproved ? '#eff6ff' : '#fffbeb',
+                        color: isPaid ? '#0ea77b' : isApproved ? '#1a56db' : '#92400e' }}>
+                        {isPaid ? '✅ مدفوع' : isApproved ? '🔒 معتمد' : '📝 مسودة'}
+                      </span>
+                    )}
                   </div>
                 )
               })()
@@ -937,7 +1000,7 @@ export default function PayrollPage() {
           })()}
         </>
       )}
-      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls.filter(isArchived)} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
+      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls.filter(p => p.status === 'مدفوع')} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
       {activeTab === 'settlements' && <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />}
       {activeTab === 'leave_comp' && <LeaveCompensationTab tenant={tenant} hrEmployees={hrEmployees} />}
       {editPayroll && <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />}
