@@ -60,31 +60,69 @@ const TYPE_COLOR: Record<string, { bg: string; color: string }> = {
 const fmt = (n: number) => Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
 // ════════════════════════════════════════
-// مكوّن: اختيار حساب الدفع
+// مكوّن: اختيار حساب الدفع (بنك / صندوق / عهدة)
 // ════════════════════════════════════════
 function CashAccountSelector({ paymentMethod, value, tenantId, onChange }: {
   paymentMethod: string; value: string; tenantId: string; onChange: (v: string) => void
 }) {
-  const [accounts, setAccounts] = useState<any[]>([])
+  const [cashAccounts, setCashAccounts] = useState<any[]>([])
+  const [custodies,    setCustodies]    = useState<any[]>([])
+
   useEffect(() => {
     supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenantId).eq('is_active', true).order('name')
-      .then(({ data }) => setAccounts(data || []))
+      .then(({ data }) => setCashAccounts(data || []))
+    // جلب العهد المفتوحة
+    supabase.from('finance_employee_custody')
+      .select('id, custody_no, employee_name, amount, settled_amount')
+      .eq('tenant_id', tenantId)
+      .eq('custody_type', 'عهدة نقدية')
+      .in('status', ['مفتوحة', 'جزئية'])
+      .order('custody_date', { ascending: false })
+      .then(({ data }) => setCustodies(data || []))
   }, [tenantId])
 
-  if (paymentMethod === 'آجل') return (
-    <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
-      📅 سيُسجَّل كالتزام في الذمم الدائنة
-    </div>
-  )
-  const banks = accounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
-  const boxes = accounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
-  return (
-    <select value={value} onChange={e => onChange(e.target.value)} className="select">
-      <option value="">— اختر الحساب —</option>
-      {banks.length > 0 && <optgroup label="🏦 حسابات بنكية">{banks.map(a => <option key={a.id} value={a.id}>🏦 {a.name}</option>)}</optgroup>}
-      {boxes.length > 0 && <optgroup label="💰 صناديق نقدية">{boxes.map(a => <option key={a.id} value={a.id}>💰 {a.name}</option>)}</optgroup>}
-    </select>
-  )
+  const banks  = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
+  const boxes  = cashAccounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
+
+  if (paymentMethod === 'تحويل بنكي' || paymentMethod === 'شيك' || paymentMethod === 'بطاقة ائتمانية') {
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)} className="select">
+        <option value="">— اختر البنك —</option>
+        {banks.map(a => <option key={a.id} value={`cash:${a.id}`}>🏦 {a.name}</option>)}
+      </select>
+    )
+  }
+
+  if (paymentMethod === 'نقداً') {
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)} className="select">
+        <option value="">— اختر الصندوق —</option>
+        {boxes.map(a => <option key={a.id} value={`cash:${a.id}`}>💰 {a.name}</option>)}
+      </select>
+    )
+  }
+
+  if (paymentMethod === 'عهدة موظف') {
+    return custodies.length === 0 ? (
+      <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
+        ⚠️ لا توجد عهد مفتوحة — أصدر عهدة أولاً من صفحة الخزينة
+      </div>
+    ) : (
+      <select value={value} onChange={e => onChange(e.target.value)} className="select">
+        <option value="">— اختر العهدة —</option>
+        {custodies.map(c => {
+          const remaining = Number(c.amount) - Number(c.settled_amount)
+          return (
+            <option key={c.id} value={`custody:${c.id}`}>
+              💼 {c.employee_name} — متبقي: {remaining.toLocaleString()} ر.س
+            </option>
+          )
+        })}
+      </select>
+    )
+  }
+
+  return <div style={{ padding: '8px 12px', background: 'var(--bg2)', borderRadius: '8px', fontSize: '0.78rem', color: 'var(--text3)' }}>—</div>
 }
 
 // ════════════════════════════════════════
@@ -207,7 +245,10 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         receipt_no: form.receipt_no.trim() || null,
         status: form.status, notes: form.notes || null,
       }
-      if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
+      // استخراج cash_account_id الحقيقي (بدون prefix)
+      if (form.cash_account_id && form.cash_account_id.startsWith('cash:')) {
+        payload.cash_account_id = Number(form.cash_account_id.replace('cash:', ''))
+      }
       if (form.cost_center_id)  payload.cost_center_id  = Number(form.cost_center_id)
       if (form.vendor_id)       payload.vendor_id        = Number(form.vendor_id)
       // المشروع فقط لنوع مشاريع
@@ -224,23 +265,45 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
         savedId = data?.id
       }
 
-      // قيد محاسبي — يستخدم الحساب المحاسبي المختار مباشرة
-      if (!expense?.id && savedId && form.payment_method !== 'آجل' && form.cash_account_id && form.account_id) {
+      // قيد محاسبي — حسب طريقة الدفع
+      if (!expense?.id && savedId && form.account_id && form.cash_account_id) {
         const selectedAcc = leafAccounts.find(a => String(a.id) === form.account_id)
-        const cashAccCode = await getCashAccountCode(Number(form.cash_account_id))
-        if (selectedAcc?.code && cashAccCode) {
-          await journalExpense({
-            tenantId,
-            date:               form.expense_date,
-            description:        form.description,
-            category:           form.expense_type,
-            expenseId:          savedId,
-            amount:             netAmount,
-            vatAmount,
-            total:              totalAmount,
-            expenseAccountCode: selectedAcc.code,
-            creditAccountCode:  cashAccCode,
-          })
+        if (selectedAcc?.code) {
+          let creditCode: string | null = null
+
+          if (form.payment_method === 'عهدة موظف' && form.cash_account_id.startsWith('custody:')) {
+            // دائن حـ/ عهد الموظفين 1150
+            creditCode = '1150'
+            // تحديث رصيد العهدة
+            const custodyId = Number(form.cash_account_id.replace('custody:', ''))
+            const { data: cus } = await supabase.from('finance_employee_custody')
+              .select('settled_amount, amount').eq('id', custodyId).single()
+            if (cus) {
+              const newSettled = Number(cus.settled_amount) + totalAmount
+              await supabase.from('finance_employee_custody').update({
+                settled_amount: newSettled,
+                status: newSettled >= Number(cus.amount) ? 'مُسوَّاة' : 'جزئية',
+              }).eq('id', custodyId)
+            }
+          } else if (form.cash_account_id.startsWith('cash:')) {
+            const cashId = Number(form.cash_account_id.replace('cash:', ''))
+            creditCode = await getCashAccountCode(cashId)
+          }
+
+          if (creditCode) {
+            await journalExpense({
+              tenantId,
+              date:               form.expense_date,
+              description:        form.description,
+              category:           form.expense_type,
+              expenseId:          savedId,
+              amount:             netAmount,
+              vatAmount,
+              total:              totalAmount,
+              expenseAccountCode: selectedAcc.code,
+              creditAccountCode:  creditCode,
+            })
+          }
         }
       }
       toast.success(expense ? 'تم التعديل ✅' : 'تم الحفظ ✅')
@@ -348,8 +411,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>طريقة الدفع</label>
-              <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="select">
-                {['تحويل بنكي', 'نقداً', 'شيك', 'بطاقة ائتمانية', 'آجل'].map(m => <option key={m}>{m}</option>)}
+              <select value={form.payment_method} onChange={e => { set('payment_method', e.target.value); set('cash_account_id', '') }} className="select">
+                {['تحويل بنكي', 'نقداً', 'عهدة موظف'].map(m => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
