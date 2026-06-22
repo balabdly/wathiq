@@ -63,7 +63,8 @@ function dailySalary(emp: HREmployee) {
 }
 function buildEmpNameMap(hrEmps: HREmployee[]): Record<number, string> {
   const map: Record<number, string> = {}
-  hrEmps.forEach(e => { map[e.employee_id] = e.name || `موظف #${e.employee_id}` })
+  // hr_payroll يخزن hr_employees.id — نبني الخريطة بـ e.id
+  hrEmps.forEach(e => { map[e.id] = e.name || `موظف #${e.id}` })
   return map
 }
 
@@ -535,15 +536,21 @@ export default function PayrollPage() {
     const check = canCreatePayroll(filterMonth, filterYear)
     if (!check.allowed) { toast.error(check.reason || 'غير مسموح بإنشاء مسير لهذا الشهر'); return }
     const existing = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
-    if (existing.length > 0 && existing.every(p => p.status === 'مدفوع')) {
-      toast.error('لا يمكن تعديل مسير مدفوع'); return
+    if (existing.length > 0) {
+      if (existing.every(p => p.status === 'مدفوع')) {
+        toast.error(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} مدفوع بالفعل ولا يمكن تعديله`)
+        return
+      }
+      // مسير موجود بحالة مسودة — نسأل المستخدم
+      if (!confirm(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} موجود مسبقاً (${existing.length} موظف).\nهل تريد فتحه للتعديل؟`)) return
     }
     const built: PayrollRow[] = activeHREmployees.map(emp => {
-      const ex = existing.find(p => p.employee_id === emp.employee_id)
+      // hr_payroll يخزن hr_employees.id في employee_id — نطابق بـ emp.id
+      const ex = existing.find(p => p.employee_id === emp.id)
       const gosiAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100)) : 0
       return calcRow({
-        employee_id: emp.employee_id,
-        name: emp.name || `موظف #${emp.employee_id}`,
+        employee_id: emp.id,  // نستخدم hr_employees.id مباشرة
+        name: emp.name || `موظف #${emp.id}`,
         role: emp.job_title || emp.department || '—',
         included: true,
         basic_salary: ex?.basic_salary ?? emp.basic_salary, housing_allow: ex?.housing_allow ?? emp.housing_allow,
@@ -552,7 +559,7 @@ export default function PayrollPage() {
         gosi_deduction: ex?.gosi_deduction ?? gosiAmt, absence_deduct: ex?.absence_deduct ?? 0,
         other_deduct: ex?.other_deduct ?? 0, present_days: ex?.present_days ?? 26,
         notes: ex?.notes ?? '', gross: 0, net: 0, existingId: ex?.id,
-        _pendingDeductIds: pendingDeducts.filter(d => d.employee_id === emp.employee_id).map(d => d.id),
+        _pendingDeductIds: pendingDeducts.filter(d => d.employee_id === emp.id).map(d => d.id),
       })
     })
     setRows(built); setExpandedRow(null); setMode('create')
