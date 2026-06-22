@@ -35,6 +35,7 @@ const IC = {
   employees:   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   chevron:     'M6 9l6 6 6-6',
+  assets:      'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
   branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
 }
 
@@ -242,6 +243,7 @@ export default function Sidebar() {
   const hasReports   = perms.includes('reports')
   const hasHR        = perms.some(p => ['hr','employees'].includes(p))
   const hasDashboard = perms.includes('dashboard')
+  const hasAssets    = perms.includes('assets')                         && tenantModules.assets    !== false
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
 
   // فلترة أنواع الزيارات حسب الصلاحيات
@@ -260,6 +262,7 @@ export default function Sidebar() {
   const inSettings = pathname.startsWith('/settings')
   const inReports  = pathname.startsWith('/reports')
   const inFinance  = pathname.startsWith('/finance')
+  const inAssets   = pathname.startsWith('/assets')
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
   const [projectsOpen, setProjectsOpen] = useState(false)
@@ -269,6 +272,7 @@ export default function Sidebar() {
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
   const [reportsOpen,  setReportsOpen]  = useState(pathname.startsWith('/reports'))
   const [financeOpen,  setFinanceOpen]  = useState(inFinance)
+  const [assetsOpen,   setAssetsOpen]   = useState(inAssets)
 
   return (
     <div className="sidebar" style={{
@@ -389,6 +393,17 @@ export default function Sidebar() {
             <SubLink href="/finance/treasury"    label="الخزينة"             icon={IC.treasury}   active={pathname.startsWith('/finance/treasury')} />
             <SubLink href="/finance/accounting"  label="الحسابات العامة"     icon={IC.accounting} active={pathname.startsWith('/finance/accounting')} />
           </NavSection>
+
+          {/* ═══ الأصول الثابتة ═══ */}
+          {hasAssets && (
+          <NavSection label="الأصول الثابتة" icon={IC.assets}
+            isActive={inAssets} isOpen={assetsOpen} onToggle={() => setAssetsOpen(o => !o)}>
+            <SubLink href="/assets"             label="سجل الأصول"      icon={IC.inventory}  active={pathname === '/assets'} />
+            <SubLink href="/assets/depreciation" label="الإهلاك"         icon={IC.reports}    active={pathname.startsWith('/assets/depreciation')} />
+            <SubLink href="/assets/maintenance"  label="الصيانة"         icon={IC.tasks}      active={pathname.startsWith('/assets/maintenance')} />
+            <SubLink href="/assets/disposal"     label="الاستبعاد"       icon={IC.purchases}  active={pathname.startsWith('/assets/disposal')} />
+          </NavSection>
+          )}
         )}
 
         <Divider />
