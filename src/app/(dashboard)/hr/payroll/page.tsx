@@ -449,9 +449,17 @@ export default function PayrollPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editPayroll, setEditPayroll] = useState<Payroll | null>(null)
-  // filterMonth/Year = الشهر الحالي دائماً (للمسير الجديد)
-  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
-  const [filterYear, setFilterYear]   = useState(new Date().getFullYear())
+  // المنطق: إذا اليوم ≤ 10 → اعرض مسير الشهر الماضي، وإلا اعرض الشهر الحالي
+  const _today = new Date()
+  const _day   = _today.getDate()
+  const _defMonth = _day <= 10
+    ? (_today.getMonth() === 0 ? 12 : _today.getMonth())      // الشهر الماضي
+    : _today.getMonth() + 1                                     // الشهر الحالي
+  const _defYear = _day <= 10 && _today.getMonth() === 0
+    ? _today.getFullYear() - 1                                  // السنة الماضية إذا يناير
+    : _today.getFullYear()
+  const [filterMonth, setFilterMonth] = useState(_defMonth)
+  const [filterYear, setFilterYear]   = useState(_defYear)
   const [mode, setMode] = useState<'view' | 'create'>('view')
   const [rows, setRows] = useState<PayrollRow[]>([])
   const [expandedRow, setExpandedRow] = useState<number | null>(null)
@@ -491,15 +499,26 @@ export default function PayrollPage() {
 
   function canCreatePayroll(month: number, year: number): { allowed: boolean; reason?: string } {
     const today = new Date()
-    const todayYear = today.getFullYear()
+    const todayYear  = today.getFullYear()
     const todayMonth = today.getMonth() + 1
-    const todayDay = today.getDate()
+    const todayDay   = today.getDate()
+    // لا يُسمح بمسير مستقبلي
     if (year > todayYear || (year === todayYear && month > todayMonth)) {
-      return { allowed: false, reason: `لا يمكن إنشاء مسير لشهر مستقبلي` }
+      return { allowed: false, reason: 'لا يمكن إنشاء مسير لشهر مستقبلي' }
     }
-    if (year === todayYear && month === todayMonth && todayDay < 20) {
-      return { allowed: false, reason: `يمكن إنشاء مسير ${ARABIC_MONTHS[month-1]} بعد يوم 20 من الشهر (اليوم الحالي: ${todayDay})` }
+    // الشهر الحالي — يُسمح من يوم 20 فقط
+    if (year === todayYear && month === todayMonth) {
+      if (todayDay < 20) return { allowed: false, reason: `إنشاء مسير ${ARABIC_MONTHS[month-1]} متاح من يوم 20 (اليوم: ${todayDay})` }
+      return { allowed: true }
     }
+    // الشهر الماضي — متاح دائماً طالما لم يتجاوز يوم 10 من الشهر الحالي
+    const prevMonth = todayMonth === 1 ? 12 : todayMonth - 1
+    const prevYear  = todayMonth === 1 ? todayYear - 1 : todayYear
+    if (month === prevMonth && year === prevYear) {
+      if (todayDay > 10) return { allowed: false, reason: `انتهت فترة تعديل مسير ${ARABIC_MONTHS[month-1]} (تجاوز يوم 10 من الشهر التالي)` }
+      return { allowed: true }
+    }
+    // أشهر أقدم — مسموح فقط للمدير (للتصحيح)
     return { allowed: true }
   }
 
@@ -599,7 +618,24 @@ export default function PayrollPage() {
     const a = document.createElement('a'); a.href = url; a.download = 'مسير_رواتب_' + ARABIC_MONTHS[month-1] + '_' + year + '.csv'; a.click(); URL.revokeObjectURL(url)
   }
 
+  // المسير الظاهر في التاب الرئيسي = ما يعرضه المستخدم حسب الفلتر
   const filteredPayrolls = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
+
+  // المسيرات السابقة = كل ما تجاوز يوم 10 من شهره التالي
+  const today2        = new Date()
+  const today2Month   = today2.getMonth() + 1
+  const today2Year    = today2.getFullYear()
+  const today2Day     = today2.getDate()
+  function isArchived(p: { month: number; year: number }): boolean {
+    // الشهر التالي للمسير
+    const nextMonth = p.month === 12 ? 1  : p.month + 1
+    const nextYear  = p.month === 12 ? p.year + 1 : p.year
+    // إذا كنا بعد يوم 10 من الشهر التالي → مؤرشف
+    if (nextYear < today2Year) return true
+    if (nextYear === today2Year && nextMonth < today2Month) return true
+    if (nextYear === today2Year && nextMonth === today2Month && today2Day > 10) return true
+    return false
+  }
   const vGross = filteredPayrolls.reduce((s, p) => s + p.gross_salary, 0)
   const vDeduct = filteredPayrolls.reduce((s, p) => s + p.gosi_deduction + p.absence_deduct + p.other_deduct, 0)
   const vNet = filteredPayrolls.reduce((s, p) => s + p.net_salary, 0)
@@ -633,11 +669,34 @@ export default function PayrollPage() {
         <>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <select value={filterMonth} onChange={e => { setFilterMonth(Number(e.target.value)); setMode('view') }} className="select" style={{ width: 'auto' }}>
-                {ARABIC_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+              <select value={filterMonth} onChange={e => {
+                setFilterMonth(Number(e.target.value)); setMode('view')
+                const sel = Number(e.target.value)
+                const selYear = filterYear
+                if (isArchived({month: sel, year: selYear})) {
+                  toast('هذا المسير في الأرشيف — انتقل لتاب المسيرات السابقة', { icon: '📂' })
+                  setTimeout(() => setActiveTab('archive'), 1200)
+                }
+              }} className="select" style={{ width: 'auto' }}>
+                {ARABIC_MONTHS.map((m, i) => {
+                  const archived = isArchived({ month: i+1, year: filterYear })
+                  return <option key={i+1} value={i+1}>{archived ? '📂 ' : ''}{m}</option>
+                })}
               </select>
               <input type="number" value={filterYear} onChange={e => { setFilterYear(Number(e.target.value)); setMode('view') }} className="input" style={{ width: '88px' }} min="2020" max="2030" />
-              {mode === 'view' && <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>{filteredPayrolls.length} موظف</span>}
+              {mode === 'view' && (
+                <span style={{ fontSize: '0.875rem', color: 'var(--text3)' }}>
+                  {filteredPayrolls.length} موظف
+                  {filteredPayrolls.length > 0 && !isArchived({month: filterMonth, year: filterYear}) && (() => {
+                    const nm = filterMonth === 12 ? 1 : filterMonth + 1
+                    const ny = filterMonth === 12 ? filterYear + 1 : filterYear
+                    const daysLeft = ny === today2Year && nm === today2Month ? 10 - today2Day : null
+                    return daysLeft !== null && daysLeft > 0
+                      ? <span style={{ marginRight: '8px', fontSize: '0.72rem', background: '#fffbeb', color: '#92400e', padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>ينتقل للأرشيف بعد {daysLeft} يوم</span>
+                      : null
+                  })()}
+                </span>
+              )}
             </div>
             {mode === 'view' ? (
               isAdmin && (() => {
@@ -871,7 +930,7 @@ export default function PayrollPage() {
           })()}
         </>
       )}
-      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
+      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls.filter(isArchived)} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
       {activeTab === 'settlements' && <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />}
       {activeTab === 'leave_comp' && <LeaveCompensationTab tenant={tenant} hrEmployees={hrEmployees} />}
       {editPayroll && <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />}
