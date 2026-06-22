@@ -713,7 +713,8 @@ export default function FinanceTreasuryPage() {
   const [employees,    setEmployees]    = useState<Employee[]>([])
   const [loading,      setLoading]      = useState(true)
 
-  const [showCustodyModal, setShowCustodyModal] = useState(false)
+  const [showCustodyModal,  setShowCustodyModal]  = useState(false)
+  const [showLoanModal,     setShowLoanModal]     = useState(false)
   const [showAccountModal, setShowAccountModal] = useState(false)
   const [showSettleModal,  setShowSettleModal]  = useState(false)
   const [editAccount,      setEditAccount]      = useState<CashAccount | null>(null)
