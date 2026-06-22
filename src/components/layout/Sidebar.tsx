@@ -404,7 +404,6 @@ export default function Sidebar() {
             <SubLink href="/assets/disposal"     label="الاستبعاد"       icon={IC.purchases}  active={pathname.startsWith('/assets/disposal')} />
           </NavSection>
           )}
-        )}
 
         <Divider />
 
