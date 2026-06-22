@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt, ArrowUpRight, ArrowDownRight, BarChart2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, getExpenseAccountCode, getCashAccountCode, journalExpense } from '@/lib/journal'
+import { createJournalEntry, getCashAccountCode, journalExpense } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
