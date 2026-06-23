@@ -652,8 +652,22 @@ export default function ProjectsPage() {
   const [statusFilter, setStatus] = useState('')
   const [typeFilter, setType]     = useState('')
   const [clientFilter, setClient] = useState('')
-  const savedView = (tenant as any)?.display_settings?.projectsView || 'kanban'
-  const [viewMode, setViewMode]   = useState<'kanban' | 'grid' | 'list'>(savedView as any)
+  const { displayPrefs, updateDisplayPref } = useStore()
+  const [viewMode, setViewMode] = useState<'kanban' | 'grid' | 'list'>(
+    (displayPrefs.projects as any) || 'kanban'
+  )
+  function changeView(mode: 'kanban' | 'grid' | 'list') {
+    setViewMode(mode)
+    updateDisplayPref('projects', mode as any)
+    // حفظ في قاعدة البيانات
+    if (tenant) {
+      import('@/lib/supabase').then(({ supabase }) => {
+        supabase.from('employees')
+          .update({ display_preferences: { ...displayPrefs, projects: mode } })
+          .eq('id', (window as any).__userId || 0)
+      })
+    }
+  }
   const [noteProject,  setNoteProject]  = useState<Project | null>(null)
   const [visitProject, setVisitProject] = useState<Project | null>(null)
   const [taskProject,  setTaskProject]  = useState<Project | null>(null)
@@ -959,7 +973,7 @@ export default function ProjectsPage() {
             { mode: 'grid',   icon: LayoutGrid, title: 'Grid' },
             { mode: 'list',   icon: List,       title: 'List' },
           ].map(({ mode, icon: Icon, title }) => (
-            <button key={mode} onClick={() => setViewMode(mode as any)} title={title}
+            <button key={mode} onClick={() => changeView(mode as any)} title={title}
               style={{ padding: '5px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', transition: 'all 0.15s',
                 background: viewMode === mode ? 'white' : 'transparent',
                 color:      viewMode === mode ? '#1a56db' : '#9ca3af',

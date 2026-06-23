@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
+import type { DisplayView } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Save, Building2, MapPin, Shield, AlertCircle, CheckCircle, Image, Upload, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -27,7 +28,7 @@ export default function SettingsCompanyPage() {
   const [form, setForm]         = useState<CompanyForm>(EMPTY)
   const [saving, setSaving]     = useState(false)
   const [loading, setLoading]   = useState(true)
-  const [tab, setTab]           = useState<'basic' | 'address' | 'financial' | 'logo'>('basic')
+  const [tab, setTab]           = useState<'basic' | 'address' | 'financial' | 'logo' | 'display'>('basic')
   const [logoUrl, setLogoUrl]   = useState<string | null>(null)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
@@ -149,6 +150,18 @@ export default function SettingsCompanyPage() {
     if (setTenant) setTenant({ ...tenant!, name: form.name })
     toast.success('✅ تم حفظ بيانات الشركة')
     setSaving(false)
+  }
+
+  const { displayPrefs, updateDisplayPref, currentUser } = useStore()
+
+  async function saveDisplayPref(key: string, value: DisplayView) {
+    updateDisplayPref(key as any, value)
+    if (currentUser?.id) {
+      const { supabase } = await import('@/lib/supabase')
+      await supabase.from('employees').update({
+        display_preferences: { ...displayPrefs, [key]: value }
+      }).eq('id', currentUser.id)
+    }
   }
 
   const TABS = [
@@ -441,7 +454,49 @@ export default function SettingsCompanyPage() {
       )}
 
       {/* زر الحفظ — يظهر في كل التابات عدا الشعار */}
-      {tab !== 'logo' && (
+      {tab === 'display' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ padding: '16px 20px', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe', fontSize: '0.82rem', color: '#1e3a5f' }}>
+            🎨 اختر طريقة عرض البيانات الافتراضية في كل قسم. يمكنك تغييرها في أي وقت من داخل كل صفحة.
+          </div>
+          {[
+            { key: 'projects',  label: 'المشاريع',    options: ['kanban', 'cards', 'list'] },
+            { key: 'visits',    label: 'الزيارات',    options: ['list', 'cards'] },
+            { key: 'tasks',     label: 'المهام',      options: ['list', 'cards', 'kanban'] },
+            { key: 'employees', label: 'الموظفون',    options: ['list', 'cards'] },
+            { key: 'materials', label: 'المواد',      options: ['list', 'cards'] },
+          ].map(item => (
+            <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{item.label}</div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  طريقة العرض الحالية: {displayPrefs[item.key as keyof typeof displayPrefs] === 'list' ? 'قائمة' : displayPrefs[item.key as keyof typeof displayPrefs] === 'cards' ? 'بطاقات' : 'كانبان'}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {item.options.map(opt => (
+                  <button key={opt} onClick={() => saveDisplayPref(item.key, opt as DisplayView)}
+                    style={{
+                      padding: '7px 14px', borderRadius: '8px', border: '1px solid',
+                      cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                      fontFamily: 'inherit', transition: 'all 0.15s',
+                      borderColor: displayPrefs[item.key as keyof typeof displayPrefs] === opt ? 'var(--primary)' : 'var(--border)',
+                      background: displayPrefs[item.key as keyof typeof displayPrefs] === opt ? '#eff6ff' : 'white',
+                      color: displayPrefs[item.key as keyof typeof displayPrefs] === opt ? 'var(--primary)' : 'var(--text3)',
+                    }}>
+                    {opt === 'list' ? '☰ قائمة' : opt === 'cards' ? '⊞ بطاقات' : '⊟ كانبان'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div style={{ padding: '12px 16px', background: '#ecfdf5', borderRadius: '8px', fontSize: '0.78rem', color: '#065f46', fontWeight: 600 }}>
+            ✅ التغييرات تُحفظ تلقائياً وتنطبق على كل أجهزتك
+          </div>
+        </div>
+      )}
+
+      {tab !== 'logo' && tab !== 'display' && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
           <button onClick={handleSave} disabled={saving}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 28px', borderRadius: '10px', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.95rem', background: 'var(--primary)', color: 'white', opacity: saving ? 0.7 : 1 }}>

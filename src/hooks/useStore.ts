@@ -1,4 +1,17 @@
 import { create } from 'zustand'
+
+export type DisplayView = 'list' | 'cards' | 'kanban'
+export type DisplayPrefs = {
+  projects:  DisplayView
+  visits:    DisplayView
+  tasks:     DisplayView
+  employees: DisplayView
+  materials: DisplayView
+}
+const DEFAULT_PREFS: DisplayPrefs = {
+  projects: 'list', visits: 'list', tasks: 'list',
+  employees: 'list', materials: 'list',
+}
 import { persist } from 'zustand/middleware'
 import type { Tenant, Employee, Branch, Project, Visit, Material, StockLedger, Warehouse, Purchase, Client } from '@/types'
 
@@ -38,6 +51,10 @@ interface AppState {
   setSidebarOpen: (v: boolean) => void
   activeHRTab: string
   setActiveHRTab: (tab: string) => void
+  // ── Display Prefs ──
+  displayPrefs: DisplayPrefs
+  setDisplayPrefs: (prefs: Partial<DisplayPrefs>) => void
+  updateDisplayPref: (key: keyof DisplayPrefs, value: DisplayView) => void
   // ── Reset ──
   reset: () => void
 }
@@ -86,6 +103,10 @@ export const useStore = create<AppState>()(
       setSidebarOpen: (isSidebarOpen) => set({ isSidebarOpen }),
       activeHRTab: 'employees',
       setActiveHRTab: (activeHRTab) => set({ activeHRTab }),
+      // Display Prefs
+      displayPrefs: DEFAULT_PREFS,
+      setDisplayPrefs: (prefs) => set(state => ({ displayPrefs: { ...state.displayPrefs, ...prefs } })),
+      updateDisplayPref: (key, value) => set(state => ({ displayPrefs: { ...state.displayPrefs, [key]: value } })),
       // Reset
       reset: () => set({
         currentUser: null, tenant: null, activeBranch: null,
@@ -103,6 +124,7 @@ export const useStore = create<AppState>()(
         tenant: state.tenant,
         activeBranch: state.activeBranch,
         branches: state.branches,
+        displayPrefs: state.displayPrefs,
       }),
       onRehydrateStorage: () => async (state) => {
         if (!state?.currentUser?.id) return
