@@ -17,9 +17,31 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
 }) {
-  const { tenant, currentUser } = useStore()
+  const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
-  const [photos, setPhotos] = useState<{ name: string; data: string }[]>([])
+  const [photos,   setPhotos]   = useState<{ name: string; data: string }[]>([])
+  const [locating, setLocating] = useState(false)
+  const [coords,   setCoords]   = useState<{ lat: number; lng: number } | null>(null)
+
+  async function detectLocation() {
+    if (!navigator.geolocation) { toast.error('المتصفح لا يدعم تحديد الموقع'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const { latitude: lat, longitude: lng } = pos.coords
+      try {
+        const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`)
+        const data = await res.json()
+        const addr = data.display_name || ''
+        set('location', addr.split(',').slice(0,3).join('،') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+        setCoords({ lat, lng })
+        toast.success('✅ تم تحديد الموقع')
+      } catch {
+        set('location', `${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+        setCoords({ lat, lng })
+      }
+      setLocating(false)
+    }, () => { toast.error('تعذّر تحديد الموقع'); setLocating(false) })
+  }
   const today = new Date().toISOString().split('T')[0]
 
   const [form, setForm] = useState({
@@ -52,6 +74,7 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
     try {
       const payload: Record<string, any> = {
         tenant_id:        tenant!.id,
+        branch_id:        activeBranch?.id || 1,
         type:             'سلامة',
         entry_type:       'ملاحظة',
         date:             form.date,
@@ -65,6 +88,8 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
         notes:            form.corrective || null,
         responsible_name: form.responsible_name || null,
         attachments:      photos.length > 0 ? photos : null,
+        latitude:         coords?.lat || null,
+        longitude:        coords?.lng || null,
       }
       if (form.project_id)     payload.project_id     = Number(form.project_id)
       if (form.responsible_id) payload.responsible_id = Number(form.responsible_id)
@@ -117,7 +142,17 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div><label style={lbl}>التاريخ *</label><input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" /></div>
-            <div><label style={lbl}>الموقع *</label><input value={form.location} onChange={e => set('location', e.target.value)} className="input" placeholder="موقع الملاحظة" /></div>
+            <div>
+              <label style={lbl}>الموقع *</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input value={form.location} onChange={e => set('location', e.target.value)} className="input" placeholder="موقع الملاحظة" style={{ flex: 1 }} />
+                <button type="button" onClick={detectLocation} disabled={locating}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                  {locating ? '...' : '📍 موقعي'}
+                </button>
+              </div>
+              {coords && <div style={{ fontSize: '0.68rem', color: '#0ea77b', marginTop: '3px' }}>✅ {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</div>}
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

@@ -43,9 +43,42 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
 }) {
-  const { tenant, currentUser } = useStore()
+  const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
   const today = new Date().toISOString().split('T')[0]
+  const [photos,   setPhotos]   = useState<{ name: string; data: string }[]>([])
+  const [locating, setLocating] = useState(false)
+  const [coords,   setCoords]   = useState<{ lat: number; lng: number; address: string } | null>(null)
+
+  async function detectLocation() {
+    if (!navigator.geolocation) { toast.error('المتصفح لا يدعم تحديد الموقع'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(async pos => {
+      const { latitude: lat, longitude: lng } = pos.coords
+      try {
+        const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`)
+        const data = await res.json()
+        const addr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+        setCoords({ lat, lng, address: addr })
+        set('location', addr.split(',').slice(0,3).join('،'))
+        toast.success('✅ تم تحديد الموقع')
+      } catch {
+        setCoords({ lat, lng, address: `${lat.toFixed(5)}, ${lng.toFixed(5)}` })
+        set('location', `${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+      }
+      setLocating(false)
+    }, () => { toast.error('تعذّر تحديد الموقع — تأكد من تفعيل الإذن'); setLocating(false) })
+  }
+
+  function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || [])
+    files.forEach(file => {
+      if (!file.type.startsWith('image/')) return
+      const reader = new FileReader()
+      reader.onload = ev => setPhotos(p => [...p, { name: file.name, data: ev.target?.result as string }])
+      reader.readAsDataURL(file)
+    })
+  }
 
   const [form, setForm] = useState({
     date:                 today,
@@ -92,6 +125,7 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
 
       const payload: Record<string, any> = {
         tenant_id:            tenant!.id,
+        branch_id:            activeBranch?.id || 1,
         type:                 'سلامة',
         entry_type:           'زيارة',
         date:                 form.date,
@@ -106,6 +140,10 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
         lifecycle:            overallSpecs === 'مطابق' ? 'اعتماد' : 'رصد',
         checklist:            checklistData,
         general_notes:        form.general_notes || null,
+        attachments:          photos.length > 0 ? photos : null,
+        latitude:             coords?.lat || null,
+        longitude:            coords?.lng || null,
+        location_address:     coords?.address || null,
         notes: failedItems.length > 0
           ? `بنود غير مطابقة: ${failedItems.map(f => f.no).join('، ')}`
           : null,
@@ -153,7 +191,17 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
               <div><label style={lbl}>التاريخ *</label><input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" /></div>
               <div><label style={lbl}>الوقت</label><input type="time" value={form.visit_time} onChange={e => set('visit_time', e.target.value)} className="input" /></div>
-              <div><label style={lbl}>الموقع *</label><input value={form.location} onChange={e => set('location', e.target.value)} className="input" placeholder="موقع العمل" /></div>
+              <div>
+                <label style={lbl}>الموقع *</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input value={form.location} onChange={e => set('location', e.target.value)} className="input" placeholder="موقع العمل" style={{ flex: 1 }} />
+                  <button type="button" onClick={detectLocation} disabled={locating}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #1a56db', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                    {locating ? '...' : '📍 موقعي'}
+                  </button>
+                </div>
+                {coords && <div style={{ fontSize: '0.68rem', color: '#0ea77b', marginTop: '3px' }}>✅ {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</div>}
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
               <div><label style={lbl}>رقم / اسم المشروع</label>
@@ -244,6 +292,30 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
               )}
             </div>
           )}
+
+          {/* صور ومرفقات الزيارة */}
+          <div>
+            <label style={lbl}>
+              📷 صور ومرفقات الزيارة
+              {photos.length > 0 && <span style={{ marginRight: '6px', fontSize: '0.72rem', background: '#eff6ff', color: '#1a56db', padding: '1px 6px', borderRadius: '10px' }}>{photos.length}</span>}
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', borderRadius: '8px', border: '2px dashed var(--border)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text3)' }}>
+              📎 اضغط لإضافة صور أو مرفقات
+              <input type="file" accept="image/*" multiple onChange={handlePhotos} style={{ display: 'none' }} />
+            </label>
+            {photos.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '8px' }}>
+                {photos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '1' }}>
+                    <img src={p.data} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button type="button" onClick={() => setPhotos(ph => ph.filter((_, idx) => idx !== i))}
+                      style={{ position: 'absolute', top: '3px', left: '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#c81e1e', color: 'white', border: 'none', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+                    <div style={{ position: 'absolute', bottom: 0, right: 0, left: 0, background: 'rgba(0,0,0,0.5)', padding: '2px 4px', fontSize: '0.6rem', color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* ملاحظات عامة */}
           <div>
