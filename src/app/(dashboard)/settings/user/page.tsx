@@ -55,7 +55,7 @@ export default function UserSettingsPage() {
         </div>
         <div>
           <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1a1a2e' }}>{currentUser?.name}</div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '3px' }}>{currentUser?.role} · {currentUser?.department}</div>
+          <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '3px' }}>{currentUser?.role}</div>
         </div>
       </div>
 
