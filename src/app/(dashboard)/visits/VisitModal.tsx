@@ -30,14 +30,17 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
     visit?.attachments?.map(a => ({ name: a.name, data: a.data || a.url || '' })) || []
   )
   const [form, setForm] = useState({
-    type:       (visit?.type      || 'جودة') as Visit['type'],
-    date:       visit?.date       || new Date().toISOString().split('T')[0],
-    engineer:   visit?.engineer   || '',
-    project_id: visit?.project_id || ('' as any),
-    location:   visit?.location   || '',
-    specs:      (visit?.specs     || 'مطابق') as Visit['specs'],
-    corrective: visit?.corrective || '',
-    notes:      visit?.notes      || '',
+    type:             (visit?.type      || 'جودة') as Visit['type'],
+    date:             visit?.date       || new Date().toISOString().split('T')[0],
+    engineer:         visit?.engineer   || '',
+    project_id:       visit?.project_id || ('' as any),
+    location:         visit?.location   || '',
+    specs:            (visit?.specs     || 'مطابق') as Visit['specs'],
+    corrective:       visit?.corrective || '',
+    notes:            visit?.notes      || '',
+    severity:         (visit as any)?.severity          || 'متوسط',
+    responsible_id:   (visit as any)?.responsible_id    || '',
+    responsible_name: (visit as any)?.responsible_name  || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
@@ -69,6 +72,11 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
       notes:       form.notes      || undefined,
       attachments: photos.length > 0 ? photos.map(p => ({ name: p.name, data: p.data })) : undefined,
     }
+    // حقول إضافية
+    ;(payload as any).severity         = form.severity
+    ;(payload as any).responsible_id   = form.responsible_id   || null
+    ;(payload as any).responsible_name = form.responsible_name || null
+    ;(payload as any).lifecycle        = 'رصد'
     // specs و corrective فقط عند الإضافة الجديدة
     if (!visit) {
       payload.specs      = form.specs
@@ -192,6 +200,49 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
                 <textarea value={form.corrective} onChange={e => set('corrective', e.target.value)}
                   className="input" style={{ minHeight: '80px', resize: 'none' }}
                   placeholder="صف المخالفة والإجراء التصحيحي المطلوب..." />
+              </div>
+            )}
+
+            {/* مستوى الخطورة — فقط عند غير مطابق */}
+            {(!visit || (visit as any).specs === 'غير مطابق') && form.specs === 'غير مطابق' && (
+              <div>
+                <label style={lbl}>مستوى الخطورة</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { val: 'عالي',   color: '#c81e1e', bg: '#fef2f2', icon: '🔴' },
+                    { val: 'متوسط',  color: '#e6820a', bg: '#fffbeb', icon: '🟡' },
+                    { val: 'منخفض', color: '#0ea77b', bg: '#ecfdf5', icon: '🟢' },
+                  ].map(opt => (
+                    <button key={opt.val} type="button" onClick={() => set('severity', opt.val)}
+                      style={{
+                        flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid',
+                        cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit',
+                        borderColor: form.severity === opt.val ? opt.color : 'var(--border)',
+                        background:  form.severity === opt.val ? opt.bg : 'white',
+                        color:       form.severity === opt.val ? opt.color : 'var(--text3)',
+                      }}>
+                      {opt.icon} {opt.val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* المسؤول عن التصحيح — فقط عند غير مطابق */}
+            {form.specs === 'غير مطابق' && (
+              <div>
+                <label style={lbl}>المسؤول عن التصحيح</label>
+                <select value={form.responsible_id}
+                  onChange={e => {
+                    const emp = engineers.find(x => x.id === Number(e.target.value))
+                    set('responsible_id', e.target.value)
+                    set('responsible_name', emp?.name || '')
+                  }} className="select">
+                  <option value="">— اختر المسؤول —</option>
+                  {engineers.map(m => (
+                    <option key={m.id} value={m.id}>{m.name}{m.job_title ? ` — ${m.job_title}` : ''}</option>
+                  ))}
+                </select>
               </div>
             )}
 

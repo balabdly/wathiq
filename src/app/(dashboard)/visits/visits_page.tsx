@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 
 const VisitModal  = dynamic(() => import('./VisitModal'),  { ssr: false })
 const VisitDetail = dynamic(() => import('./VisitDetail'), { ssr: false })
+import PhotoUploader from './PhotoUploader'
 
 const VISIT_TYPES = [
   { id: 'جودة',     icon: '🔍', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
@@ -25,86 +26,138 @@ const VISIT_TYPES = [
 // ══════════════════════════════════════
 // مودال الإجراء التصحيحي (موحّد)
 // ══════════════════════════════════════
+// ══ مودال: تصحيح الملاحظة (المرحلة 2) ══
 function CorrectiveModal({ visit, onClose, onSave }: {
   visit: Visit
   onClose: () => void
   onSave: (report: string, attachments: string[]) => Promise<void>
 }) {
-  const [report,      setReport]      = useState(visit.resolved_report || '')
-  const [files,       setFiles]       = useState<File[]>([])
-  const [previews,    setPreviews]    = useState<string[]>([])
-  const [uploading,   setUploading]   = useState(false)
-  const [saving,      setSaving]      = useState(false)
-  const isClosed = !!visit.resolved_report
-
-  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files || [])
-    setFiles(prev => [...prev, ...selected])
-    selected.forEach(f => {
-      const reader = new FileReader()
-      reader.onload = ev => setPreviews(prev => [...prev, ev.target?.result as string])
-      reader.readAsDataURL(f)
-    })
-  }
-
-  function removeFile(i: number) {
-    setFiles(prev => prev.filter((_, idx) => idx !== i))
-    setPreviews(prev => prev.filter((_, idx) => idx !== i))
-  }
+  const v = visit as any
+  const [notes,   setNotes]   = useState(v.correction_notes || '')
+  const [photos,  setPhotos]  = useState<{name:string;data:string}[]>(
+    v.correction_files?.map((f:any) => ({ name: f.name, data: f.data || f.url || '' })) || []
+  )
+  const [saving,  setSaving]  = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!report.trim()) { toast.error('أدخل تقرير الإجراء التصحيحي'); return }
+    if (!notes.trim()) { toast.error('أدخل تفاصيل التصحيح'); return }
     setSaving(true)
-    setUploading(files.length > 0)
-    // رفع المرفقات إلى Supabase Storage
-    const uploadedUrls: string[] = []
-    for (const file of files) {
-      const ext  = file.name.split('.').pop()
-      const path = `ncr/${visit.id}/${Date.now()}.${ext}`
-      const { data, error } = await supabase.storage.from('attachments').upload(path, file, { upsert: true })
-      if (!error && data) {
-        const { data: urlData } = supabase.storage.from('attachments').getPublicUrl(data.path)
-        uploadedUrls.push(urlData.publicUrl)
-      }
-    }
-    setUploading(false)
-    await onSave(report.trim(), uploadedUrls)
+    await onSave(notes.trim(), photos.map(p => p.data))
     setSaving(false)
   }
 
-  // render CorrectiveModal...
+  const sevStyle: Record<string,{bg:string;color:string}> = {
+    'عالي':  {bg:'#fef2f2',color:'#c81e1e'},
+    'متوسط': {bg:'#fffbeb',color:'#e6820a'},
+    'منخفض':{bg:'#ecfdf5',color:'#0ea77b'},
+  }
+  const sev = sevStyle[v.severity] || sevStyle['متوسط']
+
   return (
-    <div className="modal-overlay" onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }} onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
-      <div className="modal-box" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={e => { (e.currentTarget as any)._md = e.target }} onClick={e => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ fontWeight: 700 }}>📋 إغلاق NCR — إجراء تصحيحي</h3>
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🔧 تسجيل التصحيح
+          </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '12px', fontSize: '0.82rem', color: '#c81e1e' }}>
-            ⚠️ {visit.corrective || visit.notes || 'مخالفة تحتاج إجراء تصحيحي'}
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span></label>
-            <textarea value={report} onChange={e => setReport(e.target.value)}
-              className="input" style={{ minHeight: '90px', resize: 'none' }}
-              placeholder="اكتب تفاصيل الإجراء التصحيحي المتخذ..." />
-          </div>
-          {isClosed && (
-            <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '8px', padding: '12px', fontSize: '0.82rem', color: '#0ea77b' }}>
-              ✅ تم إغلاق NCR مسبقاً — {visit.resolved_by} في {formatDate(visit.resolved_date || '')}
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* بيانات الملاحظة */}
+            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem' }}>
+              <div style={{ fontWeight: 700, color: '#c81e1e', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>⚠️ {visit.corrective || visit.notes}</span>
+                {v.severity && <span style={{ padding: '2px 8px', borderRadius: '10px', background: sev.bg, color: sev.color, fontSize: '0.72rem' }}>{v.severity}</span>}
+              </div>
+              {v.responsible_name && <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>المسؤول: {v.responsible_name}</div>}
             </div>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          {!isClosed && (
-            <button onClick={handleSubmit} disabled={saving || !report.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
-              {saving ? 'جاري الحفظ...' : '✅ إغلاق NCR'}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+                تفاصيل التصحيح المُنفَّذ <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                className="input" style={{ minHeight: '90px', resize: 'none' }}
+                placeholder="صف الإجراء التصحيحي الذي تم تنفيذه..." />
+            </div>
+            <PhotoUploader photos={photos} onChange={setPhotos} label="صور / مرفقات التصحيح" />
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving || !notes.trim()} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+              {saving ? 'جاري الحفظ...' : '✅ تسجيل التصحيح'}
             </button>
-          )}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ══ مودال: اعتماد التصحيح (مهندس السلامة/الجودة — المرحلة 3) ══
+function ApprovalModal({ visit, approverName, onClose, onApprove }: {
+  visit: Visit
+  approverName: string
+  onClose: () => void
+  onApprove: (id: number, notes: string) => Promise<void>
+}) {
+  const v = visit as any
+  const [notes,  setNotes]  = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    await onApprove(visit.id, notes)
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => { (e.currentTarget as any)._md = e.target }} onClick={e => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>🛡️ اعتماد التصحيح</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* ملخص الملاحظة */}
+            <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', border: '1px solid var(--border)' }}>
+              <div style={{ fontWeight: 600, marginBottom: '4px' }}>الملاحظة: {visit.corrective}</div>
+              {v.responsible_name && <div style={{ color: '#6b7280' }}>المسؤول: {v.responsible_name}</div>}
+            </div>
+            {/* تقرير التصحيح */}
+            {v.correction_notes && (
+              <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '0.72rem', color: '#0ea77b', fontWeight: 700, marginBottom: '4px' }}>✅ تقرير التصحيح</div>
+                <div style={{ fontSize: '0.85rem' }}>{v.correction_notes}</div>
+                {v.correction_files?.length > 0 && (
+                  <PhotoUploader
+                    photos={v.correction_files.map((f:any) => ({ name: f.name, data: f.data || f.url || '' }))}
+                    onChange={() => {}}
+                    label={`مرفقات التصحيح (${v.correction_files.length})`}
+                  />
+                )}
+              </div>
+            )}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>ملاحظات الاعتماد (اختياري)</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                className="input" style={{ minHeight: '70px', resize: 'none' }}
+                placeholder="أي ملاحظات إضافية عند الاعتماد..." />
+            </div>
+            <div style={{ padding: '10px 14px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.78rem', color: '#1a56db', fontWeight: 600 }}>
+              🛡️ ستعتمد هذه الملاحظة باسمك: {approverName}
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary" style={{ background: '#1a56db' }}>
+              {saving ? 'جاري الحفظ...' : '🛡️ اعتماد التصحيح'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -132,6 +185,7 @@ export default function VisitsPage() {
   const [editVisit,        setEditVisit]        = useState<Visit | null>(null)
   const [detailVisit,      setDetail]           = useState<Visit | null>(null)
   const [correctiveVisit,  setCorrectiveVisit]  = useState<Visit | null>(null)
+  const [approvalVisit,    setApprovalVisit]    = useState<Visit | null>(null)
   const [selectedType,     setSelectedType]     = useState<string | null>(null)
   const [statusTab,        setStatusTab]        = useState('all')
   const [projectFilter,    setProjectFilter]    = useState('')
@@ -174,15 +228,37 @@ export default function VisitsPage() {
 
   async function handleResolve(id: number, report: string, attachments: string[] = []) {
     if (!tenant) return
+    // تحويل attachments (data URLs) إلى objects
+    const correctionFiles = attachments.map((d, i) => ({ name: `تصحيح-${i+1}.jpg`, data: d }))
     const { error } = await supabase.from('visits').update({
-      resolved_report: report, resolved_date: new Date().toISOString().split('T')[0],
-      resolved_by: currentUser?.name || '', status: 'مغلق', specs: 'مطابق',
-      ncr_attachments: attachments.length > 0 ? attachments : undefined,
+      correction_notes: report,
+      correction_files: correctionFiles.length > 0 ? correctionFiles : null,
+      correction_date:  new Date().toISOString().split('T')[0],
+      lifecycle:        'تصحيح',
+      resolved_by:      currentUser?.name || '',
     }).eq('id', id).eq('tenant_id', tenant.id)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await loadVisits()
     setCorrectiveVisit(null); setDetail(null)
-    toast.success('✅ تم إغلاق NCR')
+    toast.success('✅ تم تسجيل التصحيح — في انتظار الاعتماد')
+  }
+
+  async function handleApprove(id: number, notes: string) {
+    if (!tenant) return
+    const { error } = await supabase.from('visits').update({
+      resolved_report: notes || 'تم الاعتماد',
+      resolved_date:   new Date().toISOString().split('T')[0],
+      resolved_by:     currentUser?.name || '',
+      approval_notes:  notes || null,
+      approved_by:     currentUser?.name || '',
+      approved_date:   new Date().toISOString().split('T')[0],
+      lifecycle:       'اعتماد',
+      status:          'مغلق',
+    }).eq('id', id).eq('tenant_id', tenant.id)
+    if (error) { toast.error('خطأ: ' + error.message); return }
+    await loadVisits()
+    setApprovalVisit(null); setDetail(null)
+    toast.success('✅ تم اعتماد التصحيح وإغلاق الملاحظة')
   }
 
   // حسابات KPIs
@@ -360,19 +436,33 @@ export default function VisitsPage() {
 
                     {/* الحالة */}
                     <td style={{ padding: '12px 14px' }}>
-                      {isOpen ? (
-                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#fef2f2', color: '#c81e1e' }}>
-                          ⚠️ NCR مفتوحة
-                        </span>
-                      ) : isClosed ? (
-                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#ecfdf5', color: '#0ea77b' }}>
-                          ✓ NCR مغلقة
-                        </span>
-                      ) : (
-                        <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#f0fdf4', color: '#0ea77b' }}>
-                          ✓ مغلق
-                        </span>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {isNCR ? (() => {
+                          const lc = (v as any).lifecycle || 'رصد'
+                          const lcStyle: Record<string,{bg:string;color:string;icon:string}> = {
+                            'رصد':     { bg:'#fffbeb', color:'#e6820a', icon:'👁️' },
+                            'تصحيح':  { bg:'#eff6ff', color:'#1a56db', icon:'🔧' },
+                            'اعتماد': { bg:'#ecfdf5', color:'#0ea77b', icon:'🛡️' },
+                          }
+                          const s = lcStyle[lc] || lcStyle['رصد']
+                          return (
+                            <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: s.bg, color: s.color }}>
+                              {s.icon} {lc}
+                            </span>
+                          )
+                        })() : (
+                          <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 700, background: '#ecfdf5', color: '#0ea77b' }}>
+                            ✅ مطابق
+                          </span>
+                        )}
+                        {isNCR && (v as any).severity && (
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: 700,
+                            background: (v as any).severity === 'عالي' ? '#fef2f2' : (v as any).severity === 'متوسط' ? '#fffbeb' : '#ecfdf5',
+                            color:      (v as any).severity === 'عالي' ? '#c81e1e' : (v as any).severity === 'متوسط' ? '#e6820a' : '#0ea77b' }}>
+                            {(v as any).severity === 'عالي' ? '🔴' : (v as any).severity === 'متوسط' ? '🟡' : '🟢'} {(v as any).severity}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* الإجراءات */}
@@ -382,10 +472,16 @@ export default function VisitsPage() {
                           style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db' }}>
                           <Eye style={{ width: '13px', height: '13px' }} />
                         </button>
-                        {isOpen && canEdit && (
-                          <button onClick={() => setCorrectiveVisit(v)} title="إغلاق NCR"
+                        {isNCR && canEdit && (v as any).lifecycle !== 'تصحيح' && (v as any).lifecycle !== 'اعتماد' && (
+                          <button onClick={() => setCorrectiveVisit(v)} title="تسجيل التصحيح"
                             style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fca5a5', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            <ClipboardList style={{ width: '13px', height: '13px' }} />
+                            🔧
+                          </button>
+                        )}
+                        {isNCR && canEdit && (v as any).lifecycle === 'تصحيح' && (
+                          <button onClick={() => setApprovalVisit(v)} title="اعتماد التصحيح"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            🛡️
                           </button>
                         )}
                         {canEdit && (
@@ -423,6 +519,12 @@ export default function VisitsPage() {
         <CorrectiveModal visit={correctiveVisit}
           onClose={() => setCorrectiveVisit(null)}
           onSave={async (report, attachments) => { await handleResolve(correctiveVisit.id, report, attachments) }} />
+      )}
+      {approvalVisit && (
+        <ApprovalModal visit={approvalVisit}
+          approverName={currentUser?.name || ''}
+          onClose={() => setApprovalVisit(null)}
+          onApprove={handleApprove} />
       )}
 
       <style jsx global>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
