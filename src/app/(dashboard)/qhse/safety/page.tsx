@@ -531,6 +531,105 @@ function TrainingModal({ employees, tenantId, onClose, onSave }: {
 }
 
 // ════════════════════════════════════════
+// مودال: إضافة شهادة
+// ════════════════════════════════════════
+function CertModal({ employees, tenantId, onClose, onSave }: {
+  employees: Employee[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    title: '', cert_type: 'شهادة تأهيل', cert_number: '',
+    holder_id: '', holder_name: '',
+    issuer: '', issue_date: '', expiry_date: '',
+    notes: '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const today = new Date()
+  const daysLeft = form.expiry_date ? Math.round((new Date(form.expiry_date).getTime() - today.getTime()) / 86400000) : null
+
+  async function handleSave() {
+    if (!form.title.trim())    { toast.error('عنوان الشهادة مطلوب'); return }
+    if (!form.holder_name.trim()) { toast.error('اسم الحامل مطلوب'); return }
+    if (!form.expiry_date)     { toast.error('تاريخ الانتهاء مطلوب'); return }
+    setSaving(true)
+    const payload: Record<string, any> = {
+      tenant_id: tenantId, title: form.title.trim(),
+      cert_type: form.cert_type, cert_number: form.cert_number || null,
+      holder_name: form.holder_name.trim(), issuer: form.issuer || null,
+      issue_date: form.issue_date || null, expiry_date: form.expiry_date,
+      notes: form.notes || null,
+      status: daysLeft !== null && daysLeft < 0 ? 'منتهية' : 'سارية',
+    }
+    if (form.holder_id) payload.holder_id = Number(form.holder_id)
+    const { error } = await supabase.from('qhse_certificates').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    toast.success('✅ تم إضافة الشهادة')
+    onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '500px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Award style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            إضافة شهادة / رخصة
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['شهادة تأهيل','رخصة','اعتماد'].map(t => (
+              <button key={t} type="button" onClick={() => set('cert_type', t)}
+                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'inherit',
+                  borderColor: form.cert_type === t ? '#7c3aed' : 'var(--border)',
+                  background: form.cert_type === t ? '#f5f3ff' : 'white',
+                  color: form.cert_type === t ? '#7c3aed' : 'var(--text3)' }}>{t}</button>
+            ))}
+          </div>
+          <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>عنوان الشهادة *</label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="مثال: شهادة السلامة الكهربائية" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>الحامل *</label>
+              <select value={form.holder_id} onChange={e => { set('holder_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('holder_name', emp.name) }} className="select">
+                <option value="">— اختر الموظف —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+              <input value={form.holder_name} onChange={e => set('holder_name', e.target.value)} className="input" style={{ marginTop: '6px' }} placeholder="أو اكتب الاسم..." />
+            </div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>رقم الشهادة</label>
+              <input value={form.cert_number} onChange={e => set('cert_number', e.target.value)} className="input" dir="ltr" /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>الجهة المصدِرة</label>
+              <input value={form.issuer} onChange={e => set('issuer', e.target.value)} className="input" /></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>تاريخ الإصدار</label>
+              <input type="date" value={form.issue_date} onChange={e => set('issue_date', e.target.value)} className="input" /></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>تاريخ الانتهاء *</label>
+              <input type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} className="input" /></div>
+          </div>
+          {daysLeft !== null && (
+            <div style={{ padding: '8px 12px', borderRadius: '8px', fontSize: '0.78rem', fontWeight: 600,
+              background: daysLeft < 0 ? '#fef2f2' : daysLeft <= 30 ? '#fffbeb' : '#ecfdf5',
+              color:      daysLeft < 0 ? '#c81e1e' : daysLeft <= 30 ? '#e6820a' : '#0ea77b' }}>
+              {daysLeft < 0 ? `❌ منتهية منذ ${Math.abs(daysLeft)} يوم` : daysLeft === 0 ? '⚠️ تنتهي اليوم!' : daysLeft <= 30 ? `⚠️ تنتهي خلال ${daysLeft} يوم` : `✅ سارية — ${daysLeft} يوم متبقي`}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            حفظ الشهادة
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
 export default function SafetyPage() {
@@ -545,6 +644,8 @@ export default function SafetyPage() {
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [showModal,      setShowModal]      = useState<string | null>(null)
+  const [detailVisit,    setDetailVisit]    = useState<any | null>(null)
+  const [certs,          setCerts]          = useState<any[]>([])
   const [visitSubTab,    setVisitSubTab]    = useState<'inspection' | 'observation'>('inspection')
   const [riskSubTab,     setRiskSubTab]     = useState<'general' | 'projects'>('general')
   const [projectRisks,   setProjectRisks]   = useState<ProjectRisk[]>([])
@@ -576,6 +677,9 @@ export default function SafetyPage() {
     // جلب مخاطر المشاريع
     const pRiskRes = await supabase.from('project_risks').select('*, project:projects(name)').eq('tenant_id', tid).order('risk_score', { ascending: false })
     setProjectRisks(pRiskRes.data || [])
+    // جلب الشهادات
+    const certRes = await supabase.from('qhse_certificates').select('*').eq('tenant_id', tid).order('expiry_date')
+    setCerts(certRes.data || [])
     setLoading(false)
   }
 
@@ -616,6 +720,7 @@ export default function SafetyPage() {
     { id: 'risks',     label: 'تقييم المخاطر',              icon: '⚡' },
     { id: 'swp',       label: 'إجراءات العمل الآمنة',       icon: '🔐' },
     { id: 'trainings', label: 'التدريبات',                  icon: '🎓' },
+    { id: 'certs',     label: 'الشهادات',                   icon: '🏅' },
   ]
   const safetyVisitsFiltered = safetyVisits.filter(v => {
     const et = (v as any).entry_type || 'زيارة'
@@ -717,7 +822,7 @@ export default function SafetyPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['التاريخ','المهندس','الموقع','النتيجة','الخطورة','الحالة','المسؤول'].map(h => (
+                    {['التاريخ','المهندس','الموقع','النتيجة','الخطورة','الحالة','المسؤول',''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -751,6 +856,12 @@ export default function SafetyPage() {
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(v as any).responsible_name || '—'}</td>
+                        <td style={{ padding: '8px' }}>
+                          <button onClick={() => setDetailVisit(v)}
+                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                            👁️ تفاصيل
+                          </button>
+                        </td>
                       </tr>
                     )
                   })}
@@ -1042,7 +1153,180 @@ export default function SafetyPage() {
         </div>
       )}
 
+      {/* ══ تاب: الشهادات ══ */}
+      {tab === 'certs' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>شهادات السلامة والتأهيل للموظفين والمعدات</div>
+            <button onClick={() => setShowModal('cert')} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> إضافة شهادة
+            </button>
+          </div>
+          {certs.length === 0 ? (
+            <div className="card" style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <Award style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد شهادات مسجلة</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
+              {certs.map((c: any) => {
+                const today   = new Date()
+                const expiry  = new Date(c.expiry_date)
+                const daysLeft = Math.round((expiry.getTime() - today.getTime()) / 86400000)
+                const isExp   = daysLeft < 0
+                const isSoon  = daysLeft >= 0 && daysLeft <= 30
+                return (
+                  <div key={c.id} className="card" style={{ padding: '16px', borderTop: `3px solid ${isExp ? '#c81e1e' : isSoon ? '#e6820a' : '#0ea77b'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{c.title}</div>
+                      <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                        background: isExp ? '#fef2f2' : isSoon ? '#fffbeb' : '#ecfdf5',
+                        color:      isExp ? '#c81e1e' : isSoon ? '#e6820a' : '#0ea77b' }}>
+                        {isExp ? '❌ منتهية' : isSoon ? `⚠️ ${daysLeft} يوم` : '✅ سارية'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>👤 {c.holder_name}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '3px' }}>📅 تنتهي: {c.expiry_date}</div>
+                    {c.cert_number && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace', marginTop: '3px' }}>{c.cert_number}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* المودالات */}
+      {/* مودال تفاصيل الزيارة */}
+      {detailVisit && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDetailVisit(null)}>
+          <div className="modal-box" style={{ maxWidth: '680px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {(detailVisit as any).entry_type === 'ملاحظة' ? '⚠️ ملاحظة سلامة' : '📋 زيارة تفتيشية'}
+                <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--text3)' }}>{fmt(detailVisit.date)}</span>
+              </h3>
+              <button onClick={() => setDetailVisit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+            </div>
+            <div className="modal-body" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              {/* البيانات الأساسية */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                {[
+                  { label: 'المهندس',  value: detailVisit.engineer },
+                  { label: 'الموقع',   value: detailVisit.location || '—' },
+                  { label: 'التاريخ',  value: fmt(detailVisit.date) },
+                  ...(detailVisit.supervisor_name ? [{ label: 'مشرف الموقع', value: detailVisit.supervisor_name }] : []),
+                  ...(detailVisit.work_order_source ? [{ label: 'مصدر أمر العمل', value: detailVisit.work_order_source }] : []),
+                  ...(detailVisit.work_order_receiver ? [{ label: 'مستلم أمر العمل', value: detailVisit.work_order_receiver }] : []),
+                ].map((item, i) => (
+                  <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginBottom: '3px' }}>{item.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* الإحداثيات */}
+              {(detailVisit as any).latitude && (
+                <div style={{ padding: '8px 12px', background: '#ecfdf5', borderRadius: '8px', fontSize: '0.78rem', color: '#0ea77b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📍 الموقع الجغرافي: {Number((detailVisit as any).latitude).toFixed(5)}, {Number((detailVisit as any).longitude).toFixed(5)}
+                  <a href={`https://maps.google.com/?q=${(detailVisit as any).latitude},${(detailVisit as any).longitude}`} target="_blank"
+                    style={{ color: '#1a56db', fontSize: '0.72rem', marginRight: 'auto' }}>فتح في الخريطة ↗</a>
+                </div>
+              )}
+
+              {/* الخطورة والحالة */}
+              {detailVisit.specs === 'غير مطابق' && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {(detailVisit as any).severity && (() => {
+                    const s = SEVERITY_STYLE[(detailVisit as any).severity] || SEVERITY_STYLE['متوسط']
+                    return <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', background: s.bg, color: s.color }}>خطورة: {(detailVisit as any).severity}</span>
+                  })()}
+                  {(() => {
+                    const lc = (detailVisit as any).lifecycle || 'رصد'
+                    const ls = LIFECYCLE_STYLE[lc] || LIFECYCLE_STYLE['رصد']
+                    return <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', background: ls.bg, color: ls.color }}>{ls.icon} {lc}</span>
+                  })()}
+                  {(detailVisit as any).responsible_name && (
+                    <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', background: '#f5f3ff', color: '#7c3aed' }}>👤 {(detailVisit as any).responsible_name}</span>
+                  )}
+                </div>
+              )}
+
+              {/* وصف الملاحظة */}
+              {detailVisit.corrective && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#c81e1e', fontWeight: 700, marginBottom: '5px' }}>⚠️ {(detailVisit as any).entry_type === 'ملاحظة' ? 'وصف الملاحظة' : 'البنود غير المطابقة'}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#c81e1e', whiteSpace: 'pre-line' }}>{detailVisit.corrective}</div>
+                </div>
+              )}
+
+              {/* checklist الزيارة التفتيشية */}
+              {(detailVisit as any).entry_type !== 'ملاحظة' && (detailVisit as any).checklist?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '10px' }}>
+                    قائمة الفحص ({(detailVisit as any).checklist.filter((c: any) => c.result === 'نعم').length} مطابق /
+                    {' '}{(detailVisit as any).checklist.filter((c: any) => c.result === 'لا').length} غير مطابق)
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+                    {(detailVisit as any).checklist.map((c: any, i: number) => (
+                      <div key={i} style={{
+                        display: 'grid', gridTemplateColumns: '28px 1fr auto', gap: '8px',
+                        padding: '8px 12px', alignItems: 'center',
+                        borderBottom: i < (detailVisit as any).checklist.length - 1 ? '1px solid #f1f5f9' : 'none',
+                        background: c.result === 'نعم' ? '#f0fdf4' : c.result === 'لا' ? '#fef2f2' : 'white',
+                      }}>
+                        <div style={{ fontSize: '0.72rem', color: '#6b7280', textAlign: 'center', fontWeight: 700 }}>{c.no}</div>
+                        <div style={{ fontSize: '0.8rem', lineHeight: 1.4 }}>{c.item}</div>
+                        <span style={{ padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap',
+                          background: c.result === 'نعم' ? '#ecfdf5' : c.result === 'لا' ? '#fef2f2' : '#f3f4f6',
+                          color:      c.result === 'نعم' ? '#0ea77b' : c.result === 'لا' ? '#c81e1e' : '#6b7280' }}>
+                          {c.result}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* الصور */}
+              {detailVisit.attachments?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '8px' }}>📷 الصور والمرفقات ({detailVisit.attachments.length})</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                    {detailVisit.attachments.map((a: any, i: number) => (
+                      <a key={i} href={a.data} target="_blank" style={{ borderRadius: '8px', overflow: 'hidden', aspectRatio: '1', display: 'block' }}>
+                        <img src={a.data} alt={a.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* الملاحظات العامة */}
+              {(detailVisit as any).general_notes && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '6px' }}>ملاحظات عامة</div>
+                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{(detailVisit as any).general_notes}</div>
+                </div>
+              )}
+
+              {/* تقرير التصحيح */}
+              {(detailVisit as any).correction_notes && (
+                <div style={{ border: '1px solid #bbf7d0', borderRadius: '8px', overflow: 'hidden' }}>
+                  <div style={{ background: '#ecfdf5', padding: '8px 12px', fontWeight: 700, fontSize: '0.82rem', color: '#0ea77b' }}>✅ تقرير التصحيح</div>
+                  <div style={{ padding: '10px 12px', fontSize: '0.85rem' }}>{(detailVisit as any).correction_notes}</div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setDetailVisit(null)} className="btn btn-ghost">إغلاق</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal === 'inspection' && (
         <InspectionVisitModal projects={projects} employees={employees}
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
@@ -1065,6 +1349,12 @@ export default function SafetyPage() {
       )}
       {showModal === 'training' && (
         <TrainingModal employees={employees} tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+
+      {/* مودال إضافة شهادة */}
+      {showModal === 'cert' && (
+        <CertModal employees={employees} tenantId={tenant!.id}
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
       )}
 
