@@ -1,514 +1,686 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 import {
-  Shield, AlertTriangle, Award, BookOpen, Eye,
-  Plus, X, Save, ChevronDown, ChevronUp,
-  Package, CheckCircle, Clock, XCircle
+  Plus, X, Save, Search, Shield, AlertTriangle, CheckCircle2,
+  ClipboardList, Zap, BookOpen, Award, Eye, Pencil, Clock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-// ── Helpers ──────────────────────────────────────────────────
-const fmtDate  = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
-const fmtDays  = (d: string) => {
-  if (!d) return null
-  return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+// ════════════════════════════════════════
+// Types
+// ════════════════════════════════════════
+type Visit = {
+  id: number; type: string; date: string; engineer: string
+  specs: string; corrective?: string; notes?: string
+  location?: string; project_id?: number
+  severity?: string; lifecycle?: string
+  responsible_name?: string; correction_notes?: string
+}
+type Incident = {
+  id: number; incident_no: string; incident_date: string; title: string
+  incident_type: string; severity: string; status: string
+  injured_name?: string; location?: string; project_id?: number
+  description?: string; immediate_action?: string; corrective_action?: string
+  reported_by?: string; lost_time_days?: number
+}
+type Risk = {
+  id: number; risk_no: string; title: string; risk_category?: string
+  likelihood: number; severity: number; risk_score: number
+  risk_level?: string; control_measures?: string
+  responsible_name?: string; status: string; review_date?: string
+}
+type SWP = {
+  id: number; proc_no: string; title: string; work_type: string
+  description?: string; steps: any[]; ppe_required: any[]
+  hazards?: string; precautions?: string; version: string
+  approved_by?: string; is_active: boolean
+}
+type Training = {
+  id: number; training_no: string; title: string; training_date: string
+  trainer?: string; duration_hours?: number; status: string
+  attendees: any[]; location?: string
+}
+type Project  = { id: number; name: string }
+type Employee = { id: number; name: string; job_title?: string }
+
+const fmt = (d: string) => new Date(d).toLocaleDateString('ar-SA')
+const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
+  'عالي':   { bg: '#fef2f2', color: '#c81e1e' },
+  'متوسط':  { bg: '#fffbeb', color: '#e6820a' },
+  'منخفض': { bg: '#ecfdf5', color: '#0ea77b' },
+}
+const LIFECYCLE_STYLE: Record<string, { bg: string; color: string; icon: string }> = {
+  'رصد':     { bg: '#fffbeb', color: '#e6820a', icon: '👁️' },
+  'تصحيح':  { bg: '#eff6ff', color: '#1a56db', icon: '🔧' },
+  'اعتماد': { bg: '#ecfdf5', color: '#0ea77b', icon: '🛡️' },
+}
+const RISK_LEVEL = (score: number) =>
+  score >= 15 ? { label: 'عالي جداً', color: '#c81e1e', bg: '#fef2f2' } :
+  score >= 10 ? { label: 'عالي',      color: '#e6820a', bg: '#fffbeb' } :
+  score >= 6  ? { label: 'متوسط',     color: '#e6820a', bg: '#fffbeb' } :
+                { label: 'منخفض',    color: '#0ea77b', bg: '#ecfdf5' }
+
+const lbl: React.CSSProperties = {
+  display: 'block', fontSize: '0.875rem',
+  fontWeight: 600, color: 'var(--text)', marginBottom: '6px'
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string, string]> = {
-    'سارية':   ['#d1fae5','#065f46','✅'],
-    'قاربت':   ['#fef3c7','#92400e','⚠️'],
-    'منتهية':  ['#fee2e2','#b91c1c','❌'],
-    'مفتوح':   ['#fef3c7','#92400e','🔴'],
-    'مغلق':    ['#d1fae5','#065f46','✅'],
-    'ناجح':    ['#d1fae5','#065f46','✓'],
-    'راسب':    ['#fee2e2','#b91c1c','✗'],
-  }
-  const [bg, color, icon] = map[status] || ['#f3f4f6','#374151','•']
-  return (
-    <span style={{ background: bg, color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>
-      {icon} {status}
-    </span>
-  )
-}
-
-function SeverityBadge({ severity }: { severity: string }) {
-  const map: Record<string, [string, string]> = {
-    'عالية':    ['#fee2e2','#b91c1c'],
-    'متوسطة':  ['#fef3c7','#92400e'],
-    'منخفضة':  ['#d1fae5','#065f46'],
-  }
-  const [bg, color] = map[severity] || ['#f3f4f6','#374151']
-  return <span style={{ background: bg, color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{severity}</span>
-}
-
-// ── Modal ─────────────────────────────────────────────────────
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e9ecef' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={20} /></button>
-        </div>
-        <div style={{ padding: 20 }}>{children}</div>
-      </div>
-    </div>
-  )
-}
-
-// ── Section ───────────────────────────────────────────────────
-function Section({ title, icon: Icon, color, children, action }: {
-  title: string; icon: any; color: string; children: React.ReactNode; action?: React.ReactNode
+// ════════════════════════════════════════
+// مودال: تسجيل حادث
+// ════════════════════════════════════════
+function IncidentModal({ projects, employees, tenantId, onClose, onSave }: {
+  projects: Project[]; employees: Employee[]; tenantId: string
+  onClose: () => void; onSave: () => void
 }) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="card overflow-hidden">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: open ? '1px solid #e9ecef' : 'none', cursor: 'pointer' }}
-        onClick={() => setOpen(o => !o)}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon size={17} style={{ color }} />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{title}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={e => e.stopPropagation()}>
-          {action}
-          <button onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
-            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-      </div>
-      {open && <div>{children}</div>}
-    </div>
-  )
-}
-
-// ══════════════════════════════════════════════════════════════
-// الصفحة الرئيسية
-// ══════════════════════════════════════════════════════════════
-export default function SafetyPage() {
-  const { tenant, activeBranch } = useStore()
-  const router = useRouter()
-  const tid = tenant?.id
-  const bid = activeBranch?.id
-
-  // بيانات
-  const [incidents,        setIncidents]       = useState<any[]>([])
-  const [certs,            setCerts]           = useState<any[]>([])
-  const [trainings,        setTrainings]       = useState<any[]>([])
-  const [trainingRecords,  setTrainingRecords] = useState<any[]>([])
-  const [safetyVisits,     setSafetyVisits]    = useState<any[]>([])
-  const [safetyMaterials,  setSafetyMaterials] = useState<any[]>([])
-  const [employees,        setEmployees]       = useState<any[]>([])
-  const [loading,          setLoading]         = useState(true)
-
-  // Modals
-  const [showIncidentModal,  setShowIncidentModal]  = useState(false)
-  const [showCertModal,      setShowCertModal]      = useState(false)
-  const [showTrainingModal,  setShowTrainingModal]  = useState(false)
-  const [showRecordModal,    setShowRecordModal]    = useState(false)
-  const [editIncident,       setEditIncident]       = useState<any>(null)
-  const [editCert,           setEditCert]           = useState<any>(null)
-
-  // نماذج
-  const [incidentForm, setIncidentForm] = useState({
-    type: '', date: '', time: '', location: '', project_id: '',
-    severity: 'متوسطة', description: '', injured: '',
-    action: '', lesson: '', reported_by: '', status: 'مفتوح',
+  const [saving, setSaving] = useState(false)
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    incident_date: today, incident_time: '',
+    title: '', description: '', location: '',
+    project_id: '', incident_type: 'حادث',
+    severity: 'متوسط', injured_name: '', injured_id: '',
+    injury_type: '', injury_part: '', lost_time_days: '0',
+    immediate_action: '', root_cause: '', reported_by: '',
   })
-  const [certForm, setCertForm] = useState({
-    category: 'safety', type: '', name: '', cert_no: '',
-    issuer: '', issue_date: '', expiry_date: '', notify_days: 30, notes: '',
-  })
-  const [trainingForm, setTrainingForm] = useState({
-    name: '', code: '', category: 'safety', duration_days: 1,
-    validity_months: 24, is_mandatory: true, provider: '', notes: '',
-  })
-  const [recordForm, setRecordForm] = useState({
-    training_id: '', employee_id: '', training_date: '',
-    expiry_date: '', result: 'ناجح', cert_number: '', provider: '', score: '', notes: '',
-  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  const loadData = useCallback(async () => {
-    if (!tid) return
-    setLoading(true)
-    try {
-      const [inc, cert, tr, trr, vis, mat, emp] = await Promise.all([
-        supabase.from('qhse_incidents').select('*').eq('tenant_id', tid).order('date', { ascending: false }),
-        supabase.from('qhse_certs').select('*').eq('tenant_id', tid).in('category', ['safety','fire','first_aid']).order('expiry_date'),
-        supabase.from('qhse_trainings').select('*').eq('tenant_id', tid).eq('is_active', true).order('name'),
-        supabase.from('qhse_training_records').select('*, hr_employees(name, department), qhse_trainings(name, validity_months)').eq('tenant_id', tid).order('expiry_date'),
-        supabase.from('visits').select('*').eq('tenant_id', tid).eq('branch_id', bid).eq('type', 'سلامة').order('date', { ascending: false }),
-        supabase.from('materials').select('*').eq('tenant_id', tid).eq('branch_id', bid).eq('category', 'safety').order('name'),
-        supabase.from('hr_employees').select('id, name, department').eq('tenant_id', tid).eq('is_active', true).order('name'),
-      ])
-      setIncidents(inc.data || [])
-      setCerts(cert.data || [])
-      setTrainings(tr.data || [])
-      setTrainingRecords(trr.data || [])
-      setSafetyVisits(vis.data || [])
-      setSafetyMaterials(mat.data || [])
-      setEmployees(emp.data || [])
-    } catch (e) { console.error(e) }
-    setLoading(false)
-  }, [tid, bid])
-
-  useEffect(() => { loadData() }, [loadData])
-
-  // ── احتساب أيام بدون حوادث ──
-  const lastIncident = incidents.find(i => i.status !== 'مغلق')
-  const daysSafe = lastIncident
-    ? Math.floor((Date.now() - new Date(lastIncident.date).getTime()) / 86400000)
-    : incidents.length > 0
-      ? Math.floor((Date.now() - new Date(incidents[0].date).getTime()) / 86400000)
-      : null
-
-  const openIncidents    = incidents.filter(i => i.status === 'مفتوح').length
-  const expiredCerts     = certs.filter(c => c.expiry_date && new Date(c.expiry_date) < new Date()).length
-  const expiringSoon     = certs.filter(c => { const d = fmtDays(c.expiry_date); return d !== null && d >= 0 && d <= 60 }).length
-  const overdueTraining  = trainingRecords.filter(r => r.status === 'منتهية').length
-  const soonTraining     = trainingRecords.filter(r => r.status === 'قاربت').length
-  const lowSafeMat       = safetyMaterials.filter(m => m.qty <= m.reorder).length
-  const thisMonthVisits  = safetyVisits.filter(v => {
-    const d = new Date(v.date)
-    const n = new Date()
-    return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
-  }).length
-
-  // ── حفظ الحادثة ──
-  async function saveIncident() {
-    if (!incidentForm.type || !incidentForm.date || !incidentForm.location) {
-      toast.error('يرجى تعبئة النوع والتاريخ والموقع'); return
+  async function handleSave() {
+    if (!form.title.trim()) { toast.error('عنوان الحادث مطلوب'); return }
+    setSaving(true)
+    const { count } = await supabase.from('qhse_incidents').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const payload: Record<string, any> = {
+      tenant_id: tenantId,
+      incident_no: `INC-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
+      incident_date: form.incident_date,
+      incident_time: form.incident_time || null,
+      title: form.title.trim(), description: form.description || null,
+      location: form.location || null, incident_type: form.incident_type,
+      severity: form.severity, status: 'مفتوح',
+      injured_name: form.injured_name || null,
+      injury_type: form.injury_type || null,
+      injury_part: form.injury_part || null,
+      lost_time_days: Number(form.lost_time_days) || 0,
+      immediate_action: form.immediate_action || null,
+      root_cause: form.root_cause || null,
+      reported_by: form.reported_by || null,
     }
-    const payload = { ...incidentForm, tenant_id: tid, branch_id: bid }
-    const { error } = editIncident
-      ? await supabase.from('qhse_incidents').update(payload).eq('id', editIncident.id)
-      : await supabase.from('qhse_incidents').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success(editIncident ? '✅ تم تحديث الحادثة' : '✅ تم تسجيل الحادثة')
-    setShowIncidentModal(false); setEditIncident(null)
-    setIncidentForm({ type:'',date:'',time:'',location:'',project_id:'',severity:'متوسطة',description:'',injured:'',action:'',lesson:'',reported_by:'',status:'مفتوح' })
-    loadData()
+    if (form.project_id)  payload.project_id  = Number(form.project_id)
+    if (form.injured_id)  payload.injured_id  = Number(form.injured_id)
+    const { error } = await supabase.from('qhse_incidents').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    toast.success('✅ تم تسجيل الحادث')
+    onSave()
   }
-
-  // ── حفظ الشهادة ──
-  async function saveCert() {
-    if (!certForm.name || !certForm.expiry_date) {
-      toast.error('يرجى تعبئة اسم الشهادة وتاريخ الانتهاء'); return
-    }
-    const payload = { ...certForm, tenant_id: tid, branch_id: bid }
-    const { error } = editCert
-      ? await supabase.from('qhse_certs').update(payload).eq('id', editCert.id)
-      : await supabase.from('qhse_certs').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم حفظ الشهادة')
-    setShowCertModal(false); setEditCert(null)
-    setCertForm({ category:'safety',type:'',name:'',cert_no:'',issuer:'',issue_date:'',expiry_date:'',notify_days:30,notes:'' })
-    loadData()
-  }
-
-  // ── حفظ الدورة ──
-  async function saveTraining() {
-    if (!trainingForm.name) { toast.error('يرجى إدخال اسم الدورة'); return }
-    const { error } = await supabase.from('qhse_trainings').insert({ ...trainingForm, tenant_id: tid, branch_id: bid })
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم إضافة الدورة')
-    setShowTrainingModal(false)
-    setTrainingForm({ name:'',code:'',category:'safety',duration_days:1,validity_months:24,is_mandatory:true,provider:'',notes:'' })
-    loadData()
-  }
-
-  // ── حفظ سجل حضور ──
-  async function saveRecord() {
-    if (!recordForm.training_id || !recordForm.employee_id || !recordForm.training_date) {
-      toast.error('يرجى تعبئة الدورة والموظف والتاريخ'); return
-    }
-    // احتساب تاريخ الانتهاء تلقائياً
-    const training = trainings.find(t => t.id === Number(recordForm.training_id))
-    let expiry = recordForm.expiry_date
-    if (!expiry && training) {
-      const d = new Date(recordForm.training_date)
-      d.setMonth(d.getMonth() + training.validity_months)
-      expiry = d.toISOString().split('T')[0]
-    }
-    const { error } = await supabase.from('qhse_training_records').insert({
-      ...recordForm, expiry_date: expiry,
-      training_id: Number(recordForm.training_id),
-      employee_id: Number(recordForm.employee_id),
-      score: recordForm.score ? Number(recordForm.score) : null,
-      tenant_id: tid, branch_id: bid,
-    })
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم تسجيل الحضور')
-    setShowRecordModal(false)
-    setRecordForm({ training_id:'',employee_id:'',training_date:'',expiry_date:'',result:'ناجح',cert_number:'',provider:'',score:'',notes:'' })
-    loadData()
-  }
-
-  const iS = (k: string, v: any) => setIncidentForm(f => ({ ...f, [k]: v }))
-  const iC = (k: string, v: any) => setCertForm(f => ({ ...f, [k]: v }))
-  const iT = (k: string, v: any) => setTrainingForm(f => ({ ...f, [k]: v }))
-  const iR = (k: string, v: any) => setRecordForm(f => ({ ...f, [k]: v }))
-
-  if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-    </div>
-  )
 
   return (
-    <div className="space-y-5 fade-in" dir="rtl">
-
-      {/* Header */}
-      <div>
-        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Shield size={20} style={{ color: 'var(--primary)' }} />
-          السلامة والصحة المهنية (HSE)
-        </h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 2 }}>
-          إدارة الحوادث، الشهادات، التدريب، وزيارات السلامة الميدانية
-        </p>
-      </div>
-
-      {/* ══ المؤشرات ══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-
-        {/* أيام بدون حوادث */}
-        <div style={{ background: daysSafe === null || daysSafe > 30 ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : 'linear-gradient(135deg,#fef2f2,#fee2e2)', borderRadius: 14, padding: '16px 18px', border: '1px solid', borderColor: daysSafe === null || daysSafe > 30 ? '#bbf7d0' : '#fecaca' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>🛡️</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: daysSafe === null || daysSafe > 30 ? '#065f46' : '#b91c1c' }}>
-            {daysSafe ?? '—'}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>يوم بدون حوادث</div>
-        </div>
-
-        {/* الحوادث المفتوحة */}
-        <div style={{ background: openIncidents > 0 ? '#fef2f2' : '#f8f9fa', borderRadius: 14, padding: '16px 18px', border: '1px solid', borderColor: openIncidents > 0 ? '#fecaca' : '#e9ecef' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>⚠️</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: openIncidents > 0 ? '#b91c1c' : '#374151' }}>{openIncidents}</div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>حادثة مفتوحة</div>
-          <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>إجمالي: {incidents.length}</div>
-        </div>
-
-        {/* الشهادات */}
-        <div style={{ background: expiredCerts > 0 ? '#fef2f2' : expiringSoon > 0 ? '#fffbeb' : '#f0fdf4', borderRadius: 14, padding: '16px 18px', border: '1px solid', borderColor: expiredCerts > 0 ? '#fecaca' : expiringSoon > 0 ? '#fde68a' : '#bbf7d0' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>🏆</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: expiredCerts > 0 ? '#b91c1c' : expiringSoon > 0 ? '#92400e' : '#065f46' }}>
-            {expiredCerts > 0 ? expiredCerts : expiringSoon > 0 ? expiringSoon : certs.length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>
-            {expiredCerts > 0 ? 'شهادة منتهية' : expiringSoon > 0 ? 'شهادة تقترب' : 'شهادة سارية'}
-          </div>
-        </div>
-
-        {/* التدريب */}
-        <div style={{ background: overdueTraining > 0 ? '#fef2f2' : soonTraining > 0 ? '#fffbeb' : '#f8f9fa', borderRadius: 14, padding: '16px 18px', border: '1px solid', borderColor: overdueTraining > 0 ? '#fecaca' : soonTraining > 0 ? '#fde68a' : '#e9ecef' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>📚</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: overdueTraining > 0 ? '#b91c1c' : soonTraining > 0 ? '#92400e' : '#374151' }}>
-            {overdueTraining > 0 ? overdueTraining : soonTraining}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>
-            {overdueTraining > 0 ? 'تدريب منتهي' : 'تدريب يقترب'}
-          </div>
-        </div>
-
-        {/* زيارات السلامة */}
-        <div style={{ background: '#eff6ff', borderRadius: 14, padding: '16px 18px', border: '1px solid #bfdbfe' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>🔍</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: '#1d4ed8' }}>{thisMonthVisits}</div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>زيارة سلامة هذا الشهر</div>
-          <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>إجمالي: {safetyVisits.length}</div>
-        </div>
-
-        {/* مواد السلامة */}
-        <div style={{ background: lowSafeMat > 0 ? '#fef2f2' : '#f0fdf4', borderRadius: 14, padding: '16px 18px', border: '1px solid', borderColor: lowSafeMat > 0 ? '#fecaca' : '#bbf7d0' }}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>📦</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color: lowSafeMat > 0 ? '#b91c1c' : '#065f46' }}>{lowSafeMat}</div>
-          <div style={{ fontSize: '0.8rem', color: '#374151', fontWeight: 600 }}>مادة سلامة منخفضة</div>
-          <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>إجمالي: {safetyMaterials.length}</div>
-        </div>
-
-        {/* موظفون بحاجة تجديد */}
-        <div style={{ background: overdueTraining > 0 ? '#fef2f2' : '#f8f9fa', borderRadius: 14, padding: '16px 18px', border: '1px solid #e9ecef', gridColumn: 'span 2' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <div style={{ fontSize: 24 }}>👷</div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 800 }}>{overdueTraining} موظف</div>
-              <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>بحاجة لتجديد دورات السلامة</div>
-            </div>
-          </div>
-          {overdueTraining > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-              {trainingRecords.filter(r => r.status === 'منتهية').slice(0, 5).map((r: any) => (
-                <span key={r.id} style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 20, fontSize: 11 }}>
-                  {r.hr_employees?.name}
-                </span>
-              ))}
-              {overdueTraining > 5 && <span style={{ fontSize: 11, color: '#6b7280' }}>+{overdueTraining - 5} آخرين</span>}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ══ الحوادث ══ */}
-      <Section title="⚠️ الحوادث والإصابات" icon={AlertTriangle} color="#dc2626"
-        action={
-          <button onClick={() => setShowIncidentModal(true)}
-            className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> تسجيل حادثة
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '600px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
+            تسجيل حادث / إصابة
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            <X style={{ width: '18px', height: '18px' }} />
           </button>
-        }>
-        {incidents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-            <div>لا توجد حوادث مسجلة</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa' }}>
-                  {['النوع','التاريخ','الموقع','الخطورة','المصاب','الإجراء','الحالة',''].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {incidents.map((inc, i) => (
-                  <tr key={inc.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={{ padding: '9px 14px', fontWeight: 500 }}>{inc.type}</td>
-                    <td style={{ padding: '9px 14px', color: '#6b7280' }}>{fmtDate(inc.date)}</td>
-                    <td style={{ padding: '9px 14px' }}>{inc.location}</td>
-                    <td style={{ padding: '9px 14px' }}><SeverityBadge severity={inc.severity} /></td>
-                    <td style={{ padding: '9px 14px', color: '#6b7280' }}>{inc.injured || '—'}</td>
-                    <td style={{ padding: '9px 14px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280' }}>{inc.action || '—'}</td>
-                    <td style={{ padding: '9px 14px' }}><StatusBadge status={inc.status} /></td>
-                    <td style={{ padding: '9px 14px' }}>
-                      <button onClick={() => { setEditIncident(inc); setIncidentForm({ type:inc.type,date:inc.date,time:inc.time||'',location:inc.location,project_id:inc.project_id||'',severity:inc.severity,description:inc.description||'',injured:inc.injured||'',action:inc.action||'',lesson:inc.lesson||'',reported_by:inc.reported_by||'',status:inc.status }); setShowIncidentModal(true) }}
-                        style={{ background: 'none', border: '1px solid #e9ecef', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: '#6b7280' }}>
-                        تعديل
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* ══ الشهادات ══ */}
-      <Section title="🏆 شهادات السلامة المؤسسية" icon={Award} color="#f59e0b"
-        action={
-          <button onClick={() => setShowCertModal(true)} className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> إضافة شهادة
-          </button>
-        }>
-        {certs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🏆</div>
-            <div>لا توجد شهادات مضافة</div>
+          {/* نوع الحادث والخطورة */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px' }}>
+            {['حادث','إصابة','كاد يقع','مرض مهني'].map(t => (
+              <button key={t} type="button" onClick={() => set('incident_type', t)}
+                style={{ padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, fontFamily: 'inherit',
+                  borderColor: form.incident_type === t ? '#c81e1e' : 'var(--border)',
+                  background: form.incident_type === t ? '#fef2f2' : 'white',
+                  color: form.incident_type === t ? '#c81e1e' : 'var(--text3)' }}>
+                {t}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, padding: 16 }}>
-            {certs.map((cert: any) => {
-              const days = fmtDays(cert.expiry_date)
-              const isExpired = days !== null && days < 0
-              const isSoon    = days !== null && days >= 0 && days <= 60
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {['عالي','متوسط','منخفض'].map(s => {
+              const st = SEVERITY_STYLE[s]
               return (
-                <div key={cert.id} style={{
-                  borderRadius: 12, padding: 16,
-                  border: `1px solid ${isExpired ? '#fecaca' : isSoon ? '#fde68a' : '#bbf7d0'}`,
-                  background: isExpired ? '#fef2f2' : isSoon ? '#fffbeb' : '#f0fdf4',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{cert.name}</div>
-                    <StatusBadge status={isExpired ? 'منتهية' : isSoon ? 'قاربت' : 'سارية'} />
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {cert.cert_no && <div>رقم الشهادة: <strong>{cert.cert_no}</strong></div>}
-                    {cert.issuer   && <div>الجهة: <strong>{cert.issuer}</strong></div>}
-                    <div>تاريخ الانتهاء: <strong style={{ color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#065f46' }}>{fmtDate(cert.expiry_date)}</strong></div>
-                    {days !== null && (
-                      <div style={{ fontWeight: 600, color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#065f46' }}>
-                        {isExpired ? `منتهية منذ ${Math.abs(days)} يوم` : `تنتهي بعد ${days} يوم`}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => { setEditCert(cert); setCertForm({ category:cert.category,type:cert.type||'',name:cert.name,cert_no:cert.cert_no||'',issuer:cert.issuer||'',issue_date:cert.issue_date||'',expiry_date:cert.expiry_date||'',notify_days:cert.notify_days||30,notes:cert.notes||'' }); setShowCertModal(true) }}
-                    style={{ marginTop: 10, background: 'none', border: '1px solid #e9ecef', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, color: '#6b7280', width: '100%' }}>
-                    تعديل
-                  </button>
-                </div>
+                <button key={s} type="button" onClick={() => set('severity', s)}
+                  style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, fontFamily: 'inherit',
+                    borderColor: form.severity === s ? st.color : 'var(--border)',
+                    background: form.severity === s ? st.bg : 'white',
+                    color: form.severity === s ? st.color : 'var(--text3)' }}>
+                  {s === 'عالي' ? '🔴' : s === 'متوسط' ? '🟡' : '🟢'} {s}
+                </button>
               )
             })}
           </div>
-        )}
-      </Section>
 
-      {/* ══ التدريب ══ */}
-      <Section title="📚 خطة التدريب على السلامة" icon={BookOpen} color="#7c3aed"
-        action={
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowRecordModal(true)} className="btn btn-primary btn-sm gap-1.5">
-              <Plus size={14} /> تسجيل حضور
-            </button>
-            <button onClick={() => setShowTrainingModal(true)} className="btn btn-ghost btn-sm gap-1.5 border border-gray-200">
-              <Plus size={14} /> إضافة دورة
-            </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>التاريخ *</label><input type="date" value={form.incident_date} onChange={e => set('incident_date', e.target.value)} className="input" /></div>
+            <div><label style={lbl}>الوقت</label><input type="time" value={form.incident_time} onChange={e => set('incident_time', e.target.value)} className="input" /></div>
           </div>
-        }>
-        <div style={{ padding: 16 }}>
-          {/* الدورات المتاحة */}
-          {trainings.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#374151', marginBottom: 8 }}>الدورات الإلزامية</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {trainings.map((t: any) => (
-                  <div key={t.id} style={{ padding: '6px 12px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 20, fontSize: 12 }}>
-                    <span style={{ fontWeight: 600, color: '#3730a3' }}>{t.name}</span>
-                    <span style={{ color: '#6b7280', marginRight: 6 }}>• كل {t.validity_months} شهر</span>
-                  </div>
-                ))}
+
+          <div><label style={lbl}>عنوان الحادث *</label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="وصف مختصر للحادث" /></div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>الموقع</label><input value={form.location} onChange={e => set('location', e.target.value)} className="input" /></div>
+            <div><label style={lbl}>المشروع</label>
+              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+                <option value="">— بدون مشروع —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div><label style={lbl}>وصف الحادث</label>
+            <textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} /></div>
+
+          {/* بيانات المصاب */}
+          <div style={{ padding: '12px', background: '#fef2f2', borderRadius: '10px', border: '1px solid #fecaca' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#c81e1e', marginBottom: '10px' }}>🚑 بيانات المصاب (إن وجد)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div><label style={lbl}>اسم المصاب</label>
+                <select value={form.injured_id} onChange={e => { set('injured_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('injured_name', emp.name) }} className="select">
+                  <option value="">— اختر الموظف —</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                <input value={form.injured_name} onChange={e => set('injured_name', e.target.value)} className="input" style={{ marginTop: '6px' }} placeholder="أو اكتب الاسم..." />
+              </div>
+              <div>
+                <div><label style={lbl}>نوع الإصابة</label>
+                  <select value={form.injury_type} onChange={e => set('injury_type', e.target.value)} className="select">
+                    <option value="">— اختر —</option>
+                    {['كسر','جرح','حرق','صدمة كهربائية','سقوط','إجهاد','أخرى'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><label style={lbl}>الجزء المصاب</label>
+                <input value={form.injury_part} onChange={e => set('injury_part', e.target.value)} className="input" placeholder="اليد، القدم، الرأس..." />
+              </div>
+              <div><label style={lbl}>أيام الغياب</label>
+                <input type="number" value={form.lost_time_days} onChange={e => set('lost_time_days', e.target.value)} className="input" min="0" dir="ltr" />
               </div>
             </div>
-          )}
+          </div>
 
-          {/* سجلات التدريب */}
-          {trainingRecords.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-              <div>لا توجد سجلات تدريب</div>
+          <div><label style={lbl}>الإجراء الفوري</label>
+            <textarea value={form.immediate_action} onChange={e => set('immediate_action', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} placeholder="ما تم فعله فور وقوع الحادث..." /></div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>السبب الجذري</label>
+              <input value={form.root_cause} onChange={e => set('root_cause', e.target.value)} className="input" /></div>
+            <div><label style={lbl}>بلّغ عنه</label>
+              <input value={form.reported_by} onChange={e => set('reported_by', e.target.value)} className="input" /></div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            تسجيل الحادث
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: تقييم مخاطر
+// ════════════════════════════════════════
+function RiskModal({ projects, employees, tenantId, onClose, onSave }: {
+  projects: Project[]; employees: Employee[]; tenantId: string
+  onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    title: '', description: '', location: '', project_id: '',
+    risk_category: 'كهربائي', likelihood: 3, severity: 3,
+    control_measures: '', responsible_id: '', responsible_name: '',
+    review_date: '', notes: '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  const score = form.likelihood * form.severity
+  const rl = RISK_LEVEL(score)
+
+  async function handleSave() {
+    if (!form.title.trim()) { toast.error('عنوان المخاطرة مطلوب'); return }
+    setSaving(true)
+    const { count } = await supabase.from('qhse_risks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const payload: Record<string, any> = {
+      tenant_id: tenantId,
+      risk_no: `RISK-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
+      title: form.title.trim(), description: form.description || null,
+      location: form.location || null, risk_category: form.risk_category,
+      likelihood: form.likelihood, severity: form.severity,
+      risk_level: rl.label, control_measures: form.control_measures || null,
+      responsible_name: form.responsible_name || null,
+      review_date: form.review_date || null, status: 'نشط', notes: form.notes || null,
+    }
+    if (form.project_id)     payload.project_id     = Number(form.project_id)
+    if (form.responsible_id) payload.responsible_id = Number(form.responsible_id)
+    const { error } = await supabase.from('qhse_risks').insert(payload)
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    toast.success('✅ تم تسجيل المخاطرة')
+    onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '560px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Zap style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+            تقييم مخاطرة
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div><label style={lbl}>عنوان المخاطرة *</label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>الفئة</label>
+              <select value={form.risk_category} onChange={e => set('risk_category', e.target.value)} className="select">
+                {['كهربائي','ميكانيكي','كيميائي','بيئي','بشري','أخرى'].map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>الموقع</label>
+              <input value={form.location} onChange={e => set('location', e.target.value)} className="input" /></div>
+          </div>
+          {/* مصفوفة المخاطر */}
+          <div style={{ background: '#fffbeb', padding: '14px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '12px' }}>⚡ مصفوفة تقييم المخاطر</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={lbl}>الاحتمالية (1-5)</label>
+                <input type="range" min="1" max="5" value={form.likelihood} onChange={e => set('likelihood', Number(e.target.value))} style={{ width: '100%' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text3)' }}>
+                  <span>نادر</span><span style={{ fontWeight: 700, color: '#e6820a' }}>{form.likelihood}</span><span>محقق</span>
+                </div>
+              </div>
+              <div>
+                <label style={lbl}>الخطورة (1-5)</label>
+                <input type="range" min="1" max="5" value={form.severity} onChange={e => set('severity', Number(e.target.value))} style={{ width: '100%' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text3)' }}>
+                  <span>بسيط</span><span style={{ fontWeight: 700, color: '#e6820a' }}>{form.severity}</span><span>كارثي</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: '12px', textAlign: 'center', padding: '10px', borderRadius: '8px', background: rl.bg }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: rl.color }}>{score}</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: rl.color }}>مستوى الخطر: {rl.label}</div>
+            </div>
+          </div>
+          <div><label style={lbl}>إجراءات السيطرة</label>
+            <textarea value={form.control_measures} onChange={e => set('control_measures', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>المسؤول</label>
+              <select value={form.responsible_id} onChange={e => { set('responsible_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('responsible_name', emp.name) }} className="select">
+                <option value="">— اختر —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </select>
+            </div>
+            <div><label style={lbl}>تاريخ المراجعة</label>
+              <input type="date" value={form.review_date} onChange={e => set('review_date', e.target.value)} className="input" /></div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            حفظ التقييم
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: إجراء عمل آمن (SWP)
+// ════════════════════════════════════════
+function SWPModal({ tenantId, onClose, onSave }: { tenantId: string; onClose: () => void; onSave: () => void }) {
+  const [saving, setSaving] = useState(false)
+  const [steps, setSteps] = useState<string[]>([''])
+  const [ppe, setPpe] = useState<string[]>([])
+  const [form, setForm] = useState({
+    title: '', work_type: '', description: '',
+    hazards: '', precautions: '', approved_by: '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+  const PPE_OPTIONS = ['خوذة','قفازات','نظارات واقية','حذاء أمان','صدرية عاكسة','حزام أمان','كمامة','سدادات أذن','واقي وجه']
+
+  async function handleSave() {
+    if (!form.title.trim() || !form.work_type.trim()) { toast.error('العنوان ونوع العمل مطلوبان'); return }
+    setSaving(true)
+    const { count } = await supabase.from('qhse_safe_work_procedures').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const { error } = await supabase.from('qhse_safe_work_procedures').insert({
+      tenant_id: tenantId,
+      proc_no: `SWP-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
+      title: form.title.trim(), work_type: form.work_type.trim(),
+      description: form.description || null,
+      steps: steps.filter(s => s.trim()).map((s, i) => ({ step: i+1, text: s })),
+      ppe_required: ppe,
+      hazards: form.hazards || null, precautions: form.precautions || null,
+      approved_by: form.approved_by || null, is_active: true,
+    })
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    toast.success('✅ تم حفظ الإجراء')
+    onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <BookOpen style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+            إجراء عمل آمن
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>عنوان الإجراء *</label>
+              <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="مثال: إجراء اللحام الآمن" /></div>
+            <div><label style={lbl}>نوع العمل *</label>
+              <input value={form.work_type} onChange={e => set('work_type', e.target.value)} className="input" placeholder="لحام، حفر، رفع أثقال..." /></div>
+          </div>
+          <div><label style={lbl}>الوصف العام</label>
+            <textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+          {/* خطوات الإجراء */}
+          <div>
+            <label style={lbl}>خطوات الإجراء</label>
+            {steps.map((step, i) => (
+              <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#1a56db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0, marginTop: '8px' }}>{i+1}</span>
+                <input value={step} onChange={e => { const s = [...steps]; s[i] = e.target.value; setSteps(s) }} className="input" placeholder={`الخطوة ${i+1}`} />
+                {steps.length > 1 && (
+                  <button type="button" onClick={() => setSteps(steps.filter((_,idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '4px' }}><X style={{ width: '14px', height: '14px' }} /></button>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={() => setSteps([...steps, ''])} style={{ fontSize: '0.78rem', color: '#1a56db', background: 'none', border: '1px dashed #1a56db', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', marginTop: '4px' }}>+ إضافة خطوة</button>
+          </div>
+          {/* معدات الوقاية */}
+          <div>
+            <label style={lbl}>معدات الوقاية الشخصية المطلوبة (PPE)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {PPE_OPTIONS.map(p => (
+                <button key={p} type="button" onClick={() => setPpe(ppe.includes(p) ? ppe.filter(x => x !== p) : [...ppe, p])}
+                  style={{ padding: '4px 10px', borderRadius: '16px', border: '1px solid', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                    borderColor: ppe.includes(p) ? '#1a56db' : 'var(--border)',
+                    background: ppe.includes(p) ? '#eff6ff' : 'white',
+                    color: ppe.includes(p) ? '#1a56db' : 'var(--text3)' }}>
+                  {ppe.includes(p) ? '✓ ' : ''}{p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>المخاطر المحتملة</label>
+              <textarea value={form.hazards} onChange={e => set('hazards', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+            <div><label style={lbl}>الاحتياطات</label>
+              <textarea value={form.precautions} onChange={e => set('precautions', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+          </div>
+          <div><label style={lbl}>اعتمد بواسطة</label>
+            <input value={form.approved_by} onChange={e => set('approved_by', e.target.value)} className="input" /></div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            حفظ الإجراء
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: تسجيل تدريب
+// ════════════════════════════════════════
+function TrainingModal({ employees, tenantId, onClose, onSave }: {
+  employees: Employee[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [selected, setSelected] = useState<number[]>([])
+  const [form, setForm] = useState({
+    title: '', trainer: '', training_date: new Date().toISOString().split('T')[0],
+    duration_hours: '', location: '', content: '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSave() {
+    if (!form.title.trim()) { toast.error('عنوان التدريب مطلوب'); return }
+    setSaving(true)
+    const { count } = await supabase.from('qhse_trainings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    const { error } = await supabase.from('qhse_trainings').insert({
+      tenant_id: tenantId,
+      training_no: `TRN-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
+      title: form.title.trim(), training_type: 'سلامة',
+      trainer: form.trainer || null,
+      training_date: form.training_date,
+      duration_hours: Number(form.duration_hours) || null,
+      location: form.location || null, content: form.content || null,
+      attendees: selected.map(id => ({ id, name: employees.find(e => e.id === id)?.name || '', attended: true })),
+      status: 'مجدول',
+    })
+    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+    toast.success('✅ تم تسجيل التدريب')
+    onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '540px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Award style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            تسجيل تدريب
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div><label style={lbl}>عنوان التدريب *</label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="مثال: تدريب السلامة الكهربائية" /></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>التاريخ *</label><input type="date" value={form.training_date} onChange={e => set('training_date', e.target.value)} className="input" /></div>
+            <div><label style={lbl}>المدة (ساعات)</label><input type="number" value={form.duration_hours} onChange={e => set('duration_hours', e.target.value)} className="input" dir="ltr" /></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>المدرب</label><input value={form.trainer} onChange={e => set('trainer', e.target.value)} className="input" /></div>
+            <div><label style={lbl}>الموقع</label><input value={form.location} onChange={e => set('location', e.target.value)} className="input" /></div>
+          </div>
+          <div>
+            <label style={lbl}>المشاركون ({selected.length} محدد)</label>
+            <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {employees.map(e => (
+                <label key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '6px', cursor: 'pointer', background: selected.includes(e.id) ? '#eff6ff' : 'transparent' }}>
+                  <input type="checkbox" checked={selected.includes(e.id)} onChange={() => setSelected(s => s.includes(e.id) ? s.filter(x => x !== e.id) : [...s, e.id])} />
+                  <span style={{ fontSize: '0.85rem' }}>{e.name}</span>
+                  {e.job_title && <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{e.job_title}</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div><label style={lbl}>محتوى التدريب</label>
+            <textarea value={form.content} onChange={e => set('content', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />}
+            حفظ التدريب
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// الصفحة الرئيسية
+// ════════════════════════════════════════
+export default function SafetyPage() {
+  const { tenant, visits, setVisits } = useStore()
+  const [tab,       setTab]       = useState('visits')
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [risks,     setRisks]     = useState<Risk[]>([])
+  const [swps,      setSwps]      = useState<SWP[]>([])
+  const [trainings, setTrainings] = useState<Training[]>([])
+  const [projects,  setProjects]  = useState<Project[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [search,    setSearch]    = useState('')
+  const [showModal, setShowModal] = useState<string | null>(null)
+
+  useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
+
+  async function loadAll() {
+    if (!tenant) return
+    setLoading(true)
+    const tid = tenant.id
+    const [incRes, riskRes, swpRes, trnRes, projRes, empRes, visRes] = await Promise.all([
+      supabase.from('qhse_incidents').select('*').eq('tenant_id', tid).order('incident_date', { ascending: false }),
+      supabase.from('qhse_risks').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
+      supabase.from('qhse_safe_work_procedures').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
+      supabase.from('qhse_trainings').select('*').eq('tenant_id', tid).order('training_date', { ascending: false }),
+      supabase.from('projects').select('id,name').eq('tenant_id', tid).order('name'),
+      supabase.from('hr_employees').select('id,name,job_title').eq('tenant_id', tid).eq('is_active', true).order('name'),
+      supabase.from('visits').select('*').eq('tenant_id', tid).in('type', ['سلامة']).order('date', { ascending: false }),
+    ])
+    setIncidents(incRes.data || [])
+    setRisks(riskRes.data || [])
+    setSwps(swpRes.data || [])
+    setTrainings(trnRes.data || [])
+    setProjects(projRes.data || [])
+    setEmployees(empRes.data || [])
+    if (visRes.data) setVisits([...visits.filter(v => v.type !== 'سلامة'), ...visRes.data])
+    setLoading(false)
+  }
+
+  const safetyVisits = visits.filter(v => v.type === 'سلامة')
+  const openNCR      = safetyVisits.filter(v => v.specs === 'غير مطابق' && (v as any).lifecycle !== 'اعتماد').length
+  const openIncidents = incidents.filter(i => i.status !== 'مغلق').length
+  const highRisks    = risks.filter(r => r.risk_score >= 10 && r.status === 'نشط').length
+
+  const TABS = [
+    { id: 'visits',    label: 'الزيارات وملاحظات السلامة', icon: '📋' },
+    { id: 'incidents', label: 'الحوادث والإصابات',          icon: '🚨' },
+    { id: 'risks',     label: 'تقييم المخاطر',              icon: '⚡' },
+    { id: 'swp',       label: 'إجراءات العمل الآمنة',       icon: '🔐' },
+    { id: 'trainings', label: 'التدريبات',                  icon: '🎓' },
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Shield style={{ width: '20px', height: '20px', color: '#c81e1e' }} />
+            السلامة والصحة المهنية
+          </h1>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>إدارة الزيارات الميدانية والحوادث والمخاطر والتدريبات</p>
+        </div>
+        <button onClick={() => {
+          if (tab === 'visits')    setShowModal('visit')
+          if (tab === 'incidents') setShowModal('incident')
+          if (tab === 'risks')     setShowModal('risk')
+          if (tab === 'swp')       setShowModal('swp')
+          if (tab === 'trainings') setShowModal('training')
+        }} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+          <Plus style={{ width: '16px', height: '16px' }} /> إضافة
+        </button>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+        {[
+          { label: 'زيارات السلامة', value: safetyVisits.length, color: '#1a56db', bg: '#eff6ff' },
+          { label: 'ملاحظات مفتوحة', value: openNCR,            color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'حوادث مفتوحة',   value: openIncidents,      color: '#e6820a', bg: '#fffbeb' },
+          { label: 'مخاطر عالية',    value: highRisks,           color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'تدريبات',        value: trainings.length,    color: '#7c3aed', bg: '#f5f3ff' },
+        ].map(kpi => (
+          <div key={kpi.label} className="card" style={{ padding: '14px', background: kpi.bg, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '3px' }}>{kpi.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* التابات */}
+      <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '10px', overflowX: 'auto' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setSearch('') }}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s',
+              background: tab === t.id ? 'white' : 'transparent',
+              color: tab === t.id ? '#c81e1e' : 'var(--text3)',
+              boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
+            <span>{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* بحث */}
+      <div style={{ position: 'relative', maxWidth: '340px' }}>
+        <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px' }} placeholder="بحث..." />
+      </div>
+
+      {/* ══ تاب: الزيارات وملاحظات السلامة ══ */}
+      {tab === 'visits' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {safetyVisits.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <Shield style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد زيارات سلامة مسجلة</p>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
-                  <tr style={{ background: '#f8f9fa' }}>
-                    {['الموظف','القسم','الدورة','تاريخ التدريب','تاريخ الانتهاء','المتبقي','النتيجة','الحالة'].map(h => (
-                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef', whiteSpace: 'nowrap' }}>{h}</th>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['التاريخ','المهندس','الموقع','النتيجة','الخطورة','الحالة','المسؤول'].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {trainingRecords.map((r: any, i: number) => {
-                    const days = fmtDays(r.expiry_date)
+                  {safetyVisits.filter(v => !search || v.engineer.includes(search) || (v.notes || '').includes(search) || (v.location || '').includes(search)).map(v => {
+                    const lc = (v as any).lifecycle || 'رصد'
+                    const lcS = LIFECYCLE_STYLE[lc] || LIFECYCLE_STYLE['رصد']
+                    const sev = (v as any).severity
+                    const sevS = sev ? SEVERITY_STYLE[sev] : null
                     return (
-                      <tr key={r.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                        <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.hr_employees?.name || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.hr_employees?.department || '—'}</td>
-                        <td style={{ padding: '9px 14px' }}>{r.qhse_trainings?.name || '—'}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{fmtDate(r.training_date)}</td>
-                        <td style={{ padding: '9px 14px', color: '#6b7280' }}>{fmtDate(r.expiry_date)}</td>
-                        <td style={{ padding: '9px 14px', fontWeight: 600, color: days !== null && days < 0 ? '#b91c1c' : days !== null && days <= 60 ? '#92400e' : '#065f46' }}>
-                          {days !== null ? (days < 0 ? `منتهية منذ ${Math.abs(days)} يوم` : `${days} يوم`) : '—'}
+                      <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(v.date)}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 600 }}>{v.engineer}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text3)' }}>{v.location || '—'}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                            background: v.specs === 'مطابق' ? '#ecfdf5' : '#fef2f2',
+                            color: v.specs === 'مطابق' ? '#0ea77b' : '#c81e1e' }}>
+                            {v.specs === 'مطابق' ? '✅ مطابق' : '❌ غير مطابق'}
+                          </span>
                         </td>
-                        <td style={{ padding: '9px 14px' }}><StatusBadge status={r.result} /></td>
-                        <td style={{ padding: '9px 14px' }}><StatusBadge status={r.status} /></td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {sevS ? <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: sevS.bg, color: sevS.color }}>{sev}</span> : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: lcS.bg, color: lcS.color }}>
+                            {lcS.icon} {lc}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(v as any).responsible_name || '—'}</td>
                       </tr>
                     )
                   })}
@@ -517,336 +689,219 @@ export default function SafetyPage() {
             </div>
           )}
         </div>
-      </Section>
+      )}
 
-      {/* ══ زيارات السلامة ══ */}
-      <Section title="🔍 زيارات السلامة الميدانية" icon={Eye} color="#0891b2"
-        action={
-          <button onClick={() => router.push('/visits')} className="btn btn-ghost btn-sm gap-1.5 border border-gray-200">
-            <Plus size={14} /> إضافة زيارة
-          </button>
-        }>
-        {safetyVisits.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
-            <div>لا توجد زيارات سلامة مسجلة</div>
-            <button onClick={() => router.push('/visits')} style={{ marginTop: 10, padding: '6px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#1d4ed8' }}>
-              انتقل لصفحة الزيارات
-            </button>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa' }}>
-                  {['التاريخ','المهندس','الموقع','النتيجة','NCR','تاريخ الإغلاق'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {safetyVisits.map((v: any, i: number) => (
-                  <tr key={v.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={{ padding: '9px 14px', color: '#6b7280' }}>{fmtDate(v.date)}</td>
-                    <td style={{ padding: '9px 14px', fontWeight: 500 }}>{v.engineer}</td>
-                    <td style={{ padding: '9px 14px' }}>{v.location || '—'}</td>
-                    <td style={{ padding: '9px 14px' }}><StatusBadge status={v.specs === 'مطابق' ? 'سارية' : 'مفتوح'} /></td>
-                    <td style={{ padding: '9px 14px' }}>
-                      {v.specs === 'غير مطابق'
-                        ? <StatusBadge status={v.resolved_report ? 'مغلق' : 'مفتوح'} />
-                        : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
-                    </td>
-                    <td style={{ padding: '9px 14px', color: '#6b7280' }}>{v.resolved_date ? fmtDate(v.resolved_date) : '—'}</td>
+      {/* ══ تاب: الحوادث ══ */}
+      {tab === 'incidents' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {incidents.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <AlertTriangle style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد حوادث مسجلة — هذا جيد! 👍</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['رقم الحادث','التاريخ','العنوان','النوع','الخطورة','المصاب','أيام غياب','الحالة'].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+                </thead>
+                <tbody>
+                  {incidents.filter(i => !search || i.title.includes(search) || (i.location || '').includes(search)).map(inc => {
+                    const sevS = SEVERITY_STYLE[inc.severity] || SEVERITY_STYLE['متوسط']
+                    return (
+                      <tr key={inc.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#c81e1e', fontWeight: 700 }}>{inc.incident_no}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(inc.incident_date)}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 600, maxWidth: '180px' }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inc.title}</div>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 600, background: '#fef2f2', color: '#c81e1e' }}>{inc.incident_type}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: sevS.bg, color: sevS.color }}>{inc.severity}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{inc.injured_name || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem', textAlign: 'center' }}>{inc.lost_time_days || 0}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                            background: inc.status === 'مغلق' ? '#ecfdf5' : inc.status === 'تحت التحقيق' ? '#eff6ff' : '#fffbeb',
+                            color: inc.status === 'مغلق' ? '#0ea77b' : inc.status === 'تحت التحقيق' ? '#1a56db' : '#e6820a' }}>
+                            {inc.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* ══ مواد السلامة ══ */}
-      <Section title="📦 مخزون مواد السلامة" icon={Package} color="#d97706">
-        {safetyMaterials.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
-            <div>لا توجد مواد سلامة في المخزون</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>تأكد من تصنيف المواد بـ category = safety في صفحة المخزون</div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, padding: 16 }}>
-            {safetyMaterials.map((m: any) => {
-              const isLow = m.qty <= m.reorder
-              return (
-                <div key={m.id} style={{ padding: 14, borderRadius: 10, border: `1px solid ${isLow ? '#fecaca' : '#e9ecef'}`, background: isLow ? '#fef2f2' : 'white' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>{m.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>
-                      الكمية: <strong style={{ color: isLow ? '#b91c1c' : '#374151' }}>{m.qty}</strong> {m.unit}
-                    </div>
-                    {isLow
-                      ? <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>⚠️ منخفض</span>
-                      : <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>✅ كافي</span>}
-                  </div>
-                  <div style={{ marginTop: 6, height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min((m.qty / Math.max(m.reorder * 2, 1)) * 100, 100)}%`, background: isLow ? '#ef4444' : '#10b981', borderRadius: 2 }} />
-                  </div>
-                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>حد الأمان: {m.reorder} {m.unit}</div>
+      {/* ══ تاب: تقييم المخاطر ══ */}
+      {tab === 'risks' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {risks.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <Zap style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد مخاطر مسجلة</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['رقم المخاطرة','العنوان','الفئة','الاحتمالية','الخطورة','الدرجة','المستوى','المسؤول','الحالة'].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {risks.filter(r => !search || r.title.includes(search)).map(r => {
+                    const rl = RISK_LEVEL(r.risk_score)
+                    return (
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#e6820a', fontWeight: 700 }}>{r.risk_no}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 600, maxWidth: '160px' }}>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{r.risk_category || '—'}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{r.likelihood}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{r.severity}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          <span style={{ display: 'inline-block', width: '32px', height: '32px', borderRadius: '50%', background: rl.bg, color: rl.color, fontWeight: 800, fontSize: '0.85rem', lineHeight: '32px', textAlign: 'center' }}>{r.risk_score}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: rl.bg, color: rl.color }}>{rl.label}</span>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text3)' }}>{r.responsible_name || '—'}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                            background: r.status === 'مغلق' ? '#ecfdf5' : r.status === 'تحت المعالجة' ? '#eff6ff' : '#fffbeb',
+                            color: r.status === 'مغلق' ? '#0ea77b' : r.status === 'تحت المعالجة' ? '#1a56db' : '#e6820a' }}>
+                            {r.status}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ تاب: إجراءات العمل الآمنة ══ */}
+      {tab === 'swp' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+          {swps.length === 0 ? (
+            <div className="card" style={{ padding: '60px', textAlign: 'center', color: '#9ca3af', gridColumn: '1/-1' }}>
+              <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد إجراءات مسجلة</p>
+            </div>
+          ) : swps.filter(s => !search || s.title.includes(search) || s.work_type.includes(search)).map(s => (
+            <div key={s.id} className="card" style={{ padding: '18px', borderTop: `3px solid ${s.is_active ? '#1a56db' : '#9ca3af'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{s.proc_no} · الإصدار {s.version}</div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </Section>
-
-      {/* ════════════════════════════════
-          Modals
-      ════════════════════════════════ */}
-
-      {/* Modal الحادثة */}
-      {showIncidentModal && (
-        <Modal title={editIncident ? 'تعديل الحادثة' : 'تسجيل حادثة جديدة'} onClose={() => { setShowIncidentModal(false); setEditIncident(null) }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">نوع الحادثة *</label>
-                <select value={incidentForm.type} onChange={e => iS('type', e.target.value)} className="input">
-                  <option value="">— اختر —</option>
-                  {['إصابة','حريق','سقوط','صعق كهربائي','حادث مركبة','إغماء','أخرى'].map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                  background: s.is_active ? '#eff6ff' : '#f3f4f6', color: s.is_active ? '#1a56db' : '#6b7280' }}>
+                  {s.is_active ? 'فعّال' : 'موقوف'}
+                </span>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">درجة الخطورة</label>
-                <select value={incidentForm.severity} onChange={e => iS('severity', e.target.value)} className="input">
-                  <option value="منخفضة">منخفضة</option>
-                  <option value="متوسطة">متوسطة</option>
-                  <option value="عالية">عالية</option>
-                </select>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                <span style={{ padding: '2px 10px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', fontSize: '0.75rem', fontWeight: 600 }}>🔧 {s.work_type}</span>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التاريخ *</label>
-                <input type="date" value={incidentForm.date} onChange={e => iS('date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الوقت</label>
-                <input type="time" value={incidentForm.time} onChange={e => iS('time', e.target.value)} className="input" />
-              </div>
+              {s.ppe_required.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                  {s.ppe_required.map((p: string) => (
+                    <span key={p} style={{ padding: '2px 6px', borderRadius: '6px', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.68rem' }}>🦺 {p}</span>
+                  ))}
+                </div>
+              )}
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{s.steps.length} خطوة{s.approved_by ? ` · اعتمد: ${s.approved_by}` : ''}</div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الموقع *</label>
-              <input value={incidentForm.location} onChange={e => iS('location', e.target.value)} className="input" placeholder="موقع الحادثة" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">وصف الحادثة</label>
-              <textarea value={incidentForm.description} onChange={e => iS('description', e.target.value)} className="input" rows={3} placeholder="تفاصيل ما حدث..." />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">المصاب (إن وجد)</label>
-                <input value={incidentForm.injured} onChange={e => iS('injured', e.target.value)} className="input" placeholder="اسم المصاب" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">أبلغ عنها</label>
-                <input value={incidentForm.reported_by} onChange={e => iS('reported_by', e.target.value)} className="input" placeholder="اسم المبلّغ" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الإجراء المتخذ</label>
-              <textarea value={incidentForm.action} onChange={e => iS('action', e.target.value)} className="input" rows={2} placeholder="الإجراءات الفورية..." />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الدروس المستفادة</label>
-              <textarea value={incidentForm.lesson} onChange={e => iS('lesson', e.target.value)} className="input" rows={2} placeholder="ماذا تعلمنا..." />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
-              <select value={incidentForm.status} onChange={e => iS('status', e.target.value)} className="input">
-                <option value="مفتوح">مفتوح</option>
-                <option value="قيد المعالجة">قيد المعالجة</option>
-                <option value="مغلق">مغلق</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-              <button onClick={() => { setShowIncidentModal(false); setEditIncident(null) }} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveIncident} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+          ))}
+        </div>
       )}
 
-      {/* Modal الشهادة */}
-      {showCertModal && (
-        <Modal title={editCert ? 'تعديل الشهادة' : 'إضافة شهادة سلامة'} onClose={() => { setShowCertModal(false); setEditCert(null) }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التصنيف</label>
-                <select value={certForm.category} onChange={e => iC('category', e.target.value)} className="input">
-                  <option value="safety">سلامة عامة</option>
-                  <option value="fire">مكافحة الحرائق</option>
-                  <option value="first_aid">إسعافات أولية</option>
-                  <option value="environment">بيئة</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">نوع الشهادة</label>
-                <input value={certForm.type} onChange={e => iC('type', e.target.value)} className="input" placeholder="ISO 45001 / OHSAS..." />
-              </div>
+      {/* ══ تاب: التدريبات ══ */}
+      {tab === 'trainings' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {trainings.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <Award style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+              <p>لا توجد تدريبات مسجلة</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">اسم الشهادة *</label>
-              <input value={certForm.name} onChange={e => iC('name', e.target.value)} className="input" placeholder="مثال: شهادة ISO 45001 لنظام إدارة السلامة" />
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['رقم التدريب','العنوان','التاريخ','المدرب','المشاركون','المدة','الحالة'].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {trainings.filter(t => !search || t.title.includes(search)).map(t => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#7c3aed', fontWeight: 700 }}>{t.training_no}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.title}</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(t.training_date)}</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{t.trainer || '—'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{t.attendees.length}</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{t.duration_hours ? `${t.duration_hours} ساعة` : '—'}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                          background: t.status === 'منعقد' ? '#ecfdf5' : t.status === 'ملغي' ? '#fef2f2' : '#eff6ff',
+                          color: t.status === 'منعقد' ? '#0ea77b' : t.status === 'ملغي' ? '#c81e1e' : '#1a56db' }}>
+                          {t.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">رقم الشهادة</label>
-                <input value={certForm.cert_no} onChange={e => iC('cert_no', e.target.value)} className="input" dir="ltr" placeholder="CERT-0001" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المصدرة</label>
-                <input value={certForm.issuer} onChange={e => iC('issuer', e.target.value)} className="input" placeholder="اسم الجهة" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الإصدار</label>
-                <input type="date" value={certForm.issue_date} onChange={e => iC('issue_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الانتهاء *</label>
-                <input type="date" value={certForm.expiry_date} onChange={e => iC('expiry_date', e.target.value)} className="input" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">التنبيه قبل الانتهاء (يوم)</label>
-              <input type="number" value={certForm.notify_days} onChange={e => iC('notify_days', Number(e.target.value))} className="input" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
-              <textarea value={certForm.notes} onChange={e => iC('notes', e.target.value)} className="input" rows={2} />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowCertModal(false); setEditCert(null) }} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveCert} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+          )}
+        </div>
       )}
 
-      {/* Modal الدورة */}
-      {showTrainingModal && (
-        <Modal title="إضافة دورة تدريبية" onClose={() => setShowTrainingModal(false)}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">اسم الدورة *</label>
-                <input value={trainingForm.name} onChange={e => iT('name', e.target.value)} className="input" placeholder="مكافحة الحرائق" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">كود الدورة</label>
-                <input value={trainingForm.code} onChange={e => iT('code', e.target.value)} className="input" dir="ltr" placeholder="HSE-001" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التصنيف</label>
-                <select value={trainingForm.category} onChange={e => iT('category', e.target.value)} className="input">
-                  <option value="safety">سلامة عامة</option>
-                  <option value="fire">مكافحة الحرائق</option>
-                  <option value="first_aid">إسعافات أولية</option>
-                  <option value="environment">بيئة</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">مدة الدورة (يوم)</label>
-                <input type="number" value={trainingForm.duration_days} onChange={e => iT('duration_days', Number(e.target.value))} className="input" min={1} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">صلاحية الشهادة (شهر)</label>
-                <input type="number" value={trainingForm.validity_months} onChange={e => iT('validity_months', Number(e.target.value))} className="input" min={1} />
-                <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>السلامة ومكافحة الحرائق = 24 شهر</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المقدمة</label>
-                <input value={trainingForm.provider} onChange={e => iT('provider', e.target.value)} className="input" placeholder="اسم الجهة" />
-              </div>
-            </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input type="checkbox" checked={trainingForm.is_mandatory} onChange={e => iT('is_mandatory', e.target.checked)} />
-              <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>دورة إلزامية لجميع الموظفين</span>
-            </label>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
-              <textarea value={trainingForm.notes} onChange={e => iT('notes', e.target.value)} className="input" rows={2} />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowTrainingModal(false)} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveTraining} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+      {/* المودالات */}
+      {showModal === 'incident' && (
+        <IncidentModal projects={projects} employees={employees} tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+      {showModal === 'risk' && (
+        <RiskModal projects={projects} employees={employees} tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+      {showModal === 'swp' && (
+        <SWPModal tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+      {showModal === 'training' && (
+        <TrainingModal employees={employees} tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
       )}
 
-      {/* Modal تسجيل حضور */}
-      {showRecordModal && (
-        <Modal title="تسجيل حضور دورة تدريبية" onClose={() => setShowRecordModal(false)}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الدورة *</label>
-              <select value={recordForm.training_id} onChange={e => iR('training_id', e.target.value)} className="input">
-                <option value="">— اختر الدورة —</option>
-                {trainings.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الموظف *</label>
-              <select value={recordForm.employee_id} onChange={e => iR('employee_id', e.target.value)} className="input">
-                <option value="">— اختر الموظف —</option>
-                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name} — {e.department}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ التدريب *</label>
-                <input type="date" value={recordForm.training_date} onChange={e => iR('training_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  تاريخ الانتهاء
-                  <span style={{ fontSize: 10, color: '#9ca3af', marginRight: 4 }}>(يُحتسب تلقائياً)</span>
-                </label>
-                <input type="date" value={recordForm.expiry_date} onChange={e => iR('expiry_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">النتيجة</label>
-                <select value={recordForm.result} onChange={e => iR('result', e.target.value)} className="input">
-                  <option value="ناجح">ناجح</option>
-                  <option value="راسب">راسب</option>
-                  <option value="غائب">غائب</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الدرجة</label>
-                <input type="number" value={recordForm.score} onChange={e => iR('score', e.target.value)} className="input" placeholder="من 100" min={0} max={100} />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">رقم الشهادة</label>
-                <input value={recordForm.cert_number} onChange={e => iR('cert_number', e.target.value)} className="input" dir="ltr" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المقدمة</label>
-                <input value={recordForm.provider} onChange={e => iR('provider', e.target.value)} className="input" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
-              <textarea value={recordForm.notes} onChange={e => iR('notes', e.target.value)} className="input" rows={2} />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowRecordModal(false)} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveRecord} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <style jsx global>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
