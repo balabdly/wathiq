@@ -169,6 +169,7 @@ export default function SettingsCompanyPage() {
     { id: 'address',   label: '📍 العنوان' },
     { id: 'financial', label: '💰 البيانات المالية' },
     { id: 'logo',      label: '🖼️ الشعار' },
+    { id: 'display',   label: '🎨 تفضيلات العرض' },
   ]
 
   if (loading) return (
