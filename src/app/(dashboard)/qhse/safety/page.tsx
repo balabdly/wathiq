@@ -949,8 +949,8 @@ export default function SafetyPage() {
                             {awaitingReview && (
                               <span style={{ fontSize: '0.65rem', color: '#1a56db', fontWeight: 600 }}>بانتظار المراجعة (محاولة {lastAttempt.attempt_no})</span>
                             )}
-                            {(v.rejection_count || 0) > 0 && lc === 'رصد' && (
-                              <span style={{ fontSize: '0.65rem', color: '#c81e1e', fontWeight: 700 }}>🔁 مرفوضة سابقاً ({v.rejection_count})</span>
+                            {((v as any).rejection_count || 0) > 0 && lc === 'رصد' && (
+                              <span style={{ fontSize: '0.65rem', color: '#c81e1e', fontWeight: 700 }}>🔁 مرفوضة سابقاً ({(v as any).rejection_count})</span>
                             )}
                           </div>
                         </td>
