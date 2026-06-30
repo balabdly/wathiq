@@ -633,7 +633,7 @@ function CertModal({ employees, tenantId, onClose, onSave }: {
 // الصفحة الرئيسية
 // ════════════════════════════════════════
 export default function SafetyPage() {
-  const { tenant, visits, setVisits } = useStore()
+  const { tenant, currentUser, visits, setVisits } = useStore()
   const [tab,       setTab]       = useState('visits')
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [risks,     setRisks]     = useState<Risk[]>([])
@@ -655,6 +655,18 @@ export default function SafetyPage() {
   const [projectRisks,   setProjectRisks]   = useState<ProjectRisk[]>([])
   const [selectedRisks,  setSelectedRisks]  = useState<number[]>([])
   const [importing,      setImporting]      = useState(false)
+  // ══ RBAC ودورة التصحيح/الاعتماد ══
+  const [approvers,       setApprovers]       = useState<{ employee_id: number; employee_name: string }[]>([])
+  const [corrections,     setCorrections]     = useState<Record<number, any[]>>({}) // visit_id -> سجل المحاولات
+  const [showCorrectModal, setShowCorrectModal] = useState<any | null>(null) // الزيارة المراد تصحيحها
+  const [showReviewModal,  setShowReviewModal]  = useState<any | null>(null) // الزيارة المراد مراجعتها
+
+  // هل المستخدم الحالي معتمد معتمد (مهندس سلامة أو نائبه)؟
+  const isApprover = approvers.some(a => a.employee_id === (currentUser as any)?.hr_employee_id || a.employee_name === currentUser?.name)
+  // هل المستخدم الحالي هو المسؤول المُسنَد لهذه الزيارة تحديداً؟
+  function isResponsibleFor(v: any) {
+    return v.responsible_name === currentUser?.name || v.responsible_id === (currentUser as any)?.hr_employee_id
+  }
 
   useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
 
@@ -662,7 +674,7 @@ export default function SafetyPage() {
     if (!tenant) return
     setLoading(true)
     const tid = tenant.id
-    const [incRes, riskRes, swpRes, trnRes, projRes, empRes, visRes] = await Promise.all([
+    const [incRes, riskRes, swpRes, trnRes, projRes, empRes, visRes, apprRes] = await Promise.all([
       supabase.from('qhse_incidents').select('*').eq('tenant_id', tid).order('incident_date', { ascending: false }),
       supabase.from('qhse_risks').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('qhse_safe_work_procedures').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
@@ -670,6 +682,7 @@ export default function SafetyPage() {
       supabase.from('projects').select('id,name').eq('tenant_id', tid).order('name'),
       supabase.from('hr_employees').select('id,name,job_title').eq('tenant_id', tid).eq('is_active', true).order('name'),
       supabase.from('visits').select('*').eq('tenant_id', tid).in('type', ['سلامة']).order('date', { ascending: false }),
+      supabase.from('qhse_approvers').select('employee_id,employee_name').eq('tenant_id', tid).eq('module', 'سلامة').eq('is_active', true),
     ])
     setIncidents(incRes.data || [])
     setRisks(riskRes.data || [])
@@ -678,13 +691,81 @@ export default function SafetyPage() {
     setProjects(projRes.data || [])
     setEmployees(empRes.data || [])
     if (visRes.data) setVisits([...visits.filter(v => v.type !== 'سلامة'), ...visRes.data])
+    setApprovers(apprRes.data || [])
     // جلب مخاطر المشاريع
     const pRiskRes = await supabase.from('project_risks').select('*, project:projects(name)').eq('tenant_id', tid).order('risk_score', { ascending: false })
     setProjectRisks(pRiskRes.data || [])
     // جلب الشهادات
     const certRes = await supabase.from('qhse_certificates').select('*').eq('tenant_id', tid).order('expiry_date')
     setCerts(certRes.data || [])
+    // جلب سجل التصحيحات لكل الزيارات غير المطابقة دفعة واحدة
+    const visitIds = (visRes.data || []).filter((v: any) => v.specs === 'غير مطابق').map((v: any) => v.id)
+    if (visitIds.length > 0) {
+      const { data: corrData } = await supabase.from('visit_corrections').select('*').eq('tenant_id', tid).in('visit_id', visitIds).order('attempt_no', { ascending: true })
+      const grouped: Record<number, any[]> = {}
+      ;(corrData || []).forEach((c: any) => {
+        if (!grouped[c.visit_id]) grouped[c.visit_id] = []
+        grouped[c.visit_id].push(c)
+      })
+      setCorrections(grouped)
+    }
     setLoading(false)
+  }
+
+  // ══ تسجيل محاولة تصحيح جديدة ══
+  async function submitCorrection(visit: any, notes: string, files: { name: string; data: string }[]) {
+    if (!tenant) return
+    const prevAttempts = corrections[visit.id] || []
+    const attemptNo = prevAttempts.length + 1
+    await supabase.from('visit_corrections').insert({
+      tenant_id: tenant.id, visit_id: visit.id, attempt_no: attemptNo,
+      correction_notes: notes,
+      correction_files: files.length > 0 ? files : [],
+      corrected_by_name: currentUser?.name || null,
+      corrected_by_id: (currentUser as any)?.hr_employee_id || null,
+      review_status: 'بانتظار المراجعة',
+    })
+    await supabase.from('visits').update({ lifecycle: 'تصحيح', current_attempt: attemptNo }).eq('id', visit.id)
+    toast.success(`✅ تم تسجيل محاولة التصحيح رقم ${attemptNo} — بانتظار اعتماد مهندس السلامة`)
+    setShowCorrectModal(null)
+    setDetailVisit(null)
+    loadAll()
+  }
+
+  // ══ اعتماد أو رفض آخر محاولة تصحيح ══
+  async function reviewCorrection(visit: any, decision: 'معتمد' | 'مرفوض', reasonOrNotes: string) {
+    if (!tenant) return
+    const attempts = corrections[visit.id] || []
+    const last = attempts[attempts.length - 1]
+    if (!last) return
+    await supabase.from('visit_corrections').update({
+      review_status: decision,
+      reviewed_by_name: currentUser?.name || null,
+      reviewed_by_id: (currentUser as any)?.hr_employee_id || null,
+      reviewed_at: new Date().toISOString(),
+      ...(decision === 'مرفوض' ? { rejection_reason: reasonOrNotes } : { approval_notes: reasonOrNotes }),
+    }).eq('id', last.id)
+
+    if (decision === 'معتمد') {
+      await supabase.from('visits').update({
+        lifecycle: 'اعتماد', status: 'مغلق',
+        resolved_report: reasonOrNotes || 'تم الاعتماد',
+        resolved_by: currentUser?.name || null,
+        resolved_date: new Date().toISOString().split('T')[0],
+        approved_by: currentUser?.name || null,
+        approved_date: new Date().toISOString().split('T')[0],
+      }).eq('id', visit.id)
+      toast.success('✅ تم اعتماد التصحيح نهائياً')
+    } else {
+      await supabase.from('visits').update({
+        lifecycle: 'رصد', // يرجع للمسؤول لإعادة التصحيح
+        rejection_count: (visit.rejection_count || 0) + 1,
+      }).eq('id', visit.id)
+      toast('🔁 تم رفض التصحيح وإرجاعه للمسؤول', { icon: '⚠️' })
+    }
+    setShowReviewModal(null)
+    setDetailVisit(null)
+    loadAll()
   }
 
   const safetyVisits = visits.filter(v => v.type === 'سلامة')
@@ -725,6 +806,7 @@ export default function SafetyPage() {
     { id: 'swp',       label: 'إجراءات العمل الآمنة',       icon: '🔐' },
     { id: 'trainings', label: 'التدريبات',                  icon: '🎓' },
     { id: 'certs',     label: 'الشهادات',                   icon: '🏅' },
+    { id: 'approvers', label: 'مهندسو الاعتماد',            icon: '🛡️' },
   ]
   const safetyVisitsFiltered = safetyVisits.filter(v => {
     const et = (v as any).entry_type || 'زيارة'
@@ -837,6 +919,11 @@ export default function SafetyPage() {
                     const lcS = LIFECYCLE_STYLE[lc] || LIFECYCLE_STYLE['رصد']
                     const sev = (v as any).severity
                     const sevS = sev ? SEVERITY_STYLE[sev] : null
+                    const attempts = corrections[v.id] || []
+                    const lastAttempt = attempts[attempts.length - 1]
+                    const awaitingReview = lc === 'تصحيح' && lastAttempt?.review_status === 'بانتظار المراجعة'
+                    const canCorrect = v.specs === 'غير مطابق' && lc === 'رصد' && isResponsibleFor(v)
+                    const canReview  = v.specs === 'غير مطابق' && awaitingReview && isApprover
                     return (
                       <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
@@ -855,16 +942,38 @@ export default function SafetyPage() {
                           {sevS ? <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: sevS.bg, color: sevS.color }}>{sev}</span> : '—'}
                         </td>
                         <td style={{ padding: '10px 12px' }}>
-                          <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: lcS.bg, color: lcS.color }}>
-                            {lcS.icon} {lc}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700, background: lcS.bg, color: lcS.color, width: 'fit-content' }}>
+                              {lcS.icon} {lc}
+                            </span>
+                            {awaitingReview && (
+                              <span style={{ fontSize: '0.65rem', color: '#1a56db', fontWeight: 600 }}>بانتظار المراجعة (محاولة {lastAttempt.attempt_no})</span>
+                            )}
+                            {(v.rejection_count || 0) > 0 && lc === 'رصد' && (
+                              <span style={{ fontSize: '0.65rem', color: '#c81e1e', fontWeight: 700 }}>🔁 مرفوضة سابقاً ({v.rejection_count})</span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(v as any).responsible_name || '—'}</td>
                         <td style={{ padding: '8px' }}>
-                          <button onClick={() => setDetailVisit(v)}
-                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
-                            👁️ تفاصيل
-                          </button>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {canCorrect && (
+                              <button onClick={() => setShowCorrectModal(v)}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: '#fef2f2', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#c81e1e', fontFamily: 'inherit' }}>
+                                🔧 تصحيح
+                              </button>
+                            )}
+                            {canReview && (
+                              <button onClick={() => setShowReviewModal(v)}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: '#eff6ff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#1a56db', fontFamily: 'inherit' }}>
+                                🛡️ مراجعة
+                              </button>
+                            )}
+                            <button onClick={() => setDetailVisit(v)}
+                              style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                              👁️ تفاصيل
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -1236,6 +1345,11 @@ export default function SafetyPage() {
         </div>
       )}
 
+      {/* ══ تاب: إدارة مهندسي الاعتماد ══ */}
+      {tab === 'approvers' && (
+        <ApproversPanel tenant={tenant} employees={employees} approvers={approvers} onChanged={loadAll} />
+      )}
+
       {/* المودالات */}
       {/* مودال تفاصيل الزيارة */}
       {detailVisit && (
@@ -1352,11 +1466,88 @@ export default function SafetyPage() {
                 </div>
               )}
 
-              {/* تقرير التصحيح */}
-              {(detailVisit as any).correction_notes && (
-                <div style={{ border: '1px solid #bbf7d0', borderRadius: '8px', overflow: 'hidden' }}>
-                  <div style={{ background: '#ecfdf5', padding: '8px 12px', fontWeight: 700, fontSize: '0.82rem', color: '#0ea77b' }}>✅ تقرير التصحيح</div>
-                  <div style={{ padding: '10px 12px', fontSize: '0.85rem' }}>{(detailVisit as any).correction_notes}</div>
+              {/* سجل محاولات التصحيح الكامل */}
+              {detailVisit.specs === 'غير مطابق' && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: '10px' }}>
+                    📜 سجل محاولات التصحيح {(corrections[detailVisit.id]?.length || 0) > 0 ? `(${corrections[detailVisit.id].length})` : ''}
+                  </div>
+                  {(!corrections[detailVisit.id] || corrections[detailVisit.id].length === 0) ? (
+                    <div style={{ padding: '14px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text3)' }}>
+                      لم يُسجَّل أي تصحيح بعد
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {corrections[detailVisit.id].map((c: any) => (
+                        <div key={c.id} style={{
+                          border: `1px solid ${c.review_status === 'معتمد' ? '#bbf7d0' : c.review_status === 'مرفوض' ? '#fecaca' : '#fde68a'}`,
+                          borderRadius: '8px', overflow: 'hidden',
+                        }}>
+                          <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px',
+                            background: c.review_status === 'معتمد' ? '#ecfdf5' : c.review_status === 'مرفوض' ? '#fef2f2' : '#fffbeb',
+                          }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: c.review_status === 'معتمد' ? '#0ea77b' : c.review_status === 'مرفوض' ? '#c81e1e' : '#92400e' }}>
+                              محاولة {c.attempt_no} — {c.corrected_by_name}
+                            </span>
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                              background: c.review_status === 'معتمد' ? '#0ea77b' : c.review_status === 'مرفوض' ? '#c81e1e' : '#e6820a', color: 'white' }}>
+                              {c.review_status === 'معتمد' ? '✅ معتمد' : c.review_status === 'مرفوض' ? '❌ مرفوض' : '⏳ بانتظار المراجعة'}
+                            </span>
+                          </div>
+                          <div style={{ padding: '10px 12px', fontSize: '0.82rem' }}>
+                            <div>{c.correction_notes}</div>
+                            {c.correction_files?.length > 0 && (
+                              <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
+                                {c.correction_files.map((f: any, i: number) => (
+                                  <a key={i} href={f.data} target="_blank" style={{ width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden', display: 'block' }}>
+                                    <img src={f.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                            {c.review_status === 'مرفوض' && c.rejection_reason && (
+                              <div style={{ marginTop: '8px', padding: '8px 10px', background: '#fef2f2', borderRadius: '6px', fontSize: '0.78rem', color: '#c81e1e' }}>
+                                <strong>سبب الرفض ({c.reviewed_by_name}):</strong> {c.rejection_reason}
+                              </div>
+                            )}
+                            {c.review_status === 'معتمد' && c.approval_notes && (
+                              <div style={{ marginTop: '8px', padding: '8px 10px', background: '#ecfdf5', borderRadius: '6px', fontSize: '0.78rem', color: '#0ea77b' }}>
+                                <strong>ملاحظات الاعتماد ({c.reviewed_by_name}):</strong> {c.approval_notes}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* أزرار الإجراء — نفس منطق RBAC في الجدول */}
+                  {(() => {
+                    const lc = (detailVisit as any).lifecycle || 'رصد'
+                    const attempts = corrections[detailVisit.id] || []
+                    const lastAttempt = attempts[attempts.length - 1]
+                    const awaitingReview = lc === 'تصحيح' && lastAttempt?.review_status === 'بانتظار المراجعة'
+                    const canCorrect = lc === 'رصد' && isResponsibleFor(detailVisit)
+                    const canReview  = awaitingReview && isApprover
+                    if (!canCorrect && !canReview) return null
+                    return (
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        {canCorrect && (
+                          <button onClick={() => setShowCorrectModal(detailVisit)}
+                            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#c81e1e', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit' }}>
+                            🔧 تسجيل تصحيح
+                          </button>
+                        )}
+                        {canReview && (
+                          <button onClick={() => setShowReviewModal(detailVisit)}
+                            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#1a56db', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit' }}>
+                            🛡️ مراجعة التصحيح
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -1614,7 +1805,274 @@ export default function SafetyPage() {
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
       )}
 
+      {/* مودال تسجيل محاولة تصحيح — للمسؤول المُسنَد فقط */}
+      {showCorrectModal && (
+        <CorrectionModal visit={showCorrectModal}
+          attemptNo={(corrections[showCorrectModal.id]?.length || 0) + 1}
+          onClose={() => setShowCorrectModal(null)}
+          onSubmit={(notes, files) => submitCorrection(showCorrectModal, notes, files)} />
+      )}
+
+      {/* مودال المراجعة (اعتماد/رفض) — لمهندس السلامة ونائبه فقط */}
+      {showReviewModal && (
+        <ReviewModal visit={showReviewModal}
+          lastAttempt={(corrections[showReviewModal.id] || [])[(corrections[showReviewModal.id] || []).length - 1]}
+          onClose={() => setShowReviewModal(null)}
+          onDecide={(decision, text) => reviewCorrection(showReviewModal, decision, text)} />
+      )}
+
       <style jsx global>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مكوّن: إدارة مهندسي الاعتماد (سلامة) — يضيفها مدير المشروع
+// ════════════════════════════════════════
+function ApproversPanel({ tenant, employees, approvers, onChanged }: {
+  tenant: any; employees: Employee[]
+  approvers: { employee_id: number; employee_name: string }[]
+  onChanged: () => void
+}) {
+  const [selected, setSelected] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function addApprover() {
+    if (!selected || !tenant) return
+    const emp = employees.find(e => e.id === Number(selected))
+    if (!emp) return
+    setSaving(true)
+    const { error } = await supabase.from('qhse_approvers').insert({
+      tenant_id: tenant.id, employee_id: emp.id, employee_name: emp.name,
+      module: 'سلامة', is_active: true,
+    })
+    if (error) toast.error('خطأ: ' + error.message)
+    else toast.success(`✅ تم تعيين ${emp.name} كمعتمد`)
+    setSelected('')
+    setSaving(false)
+    onChanged()
+  }
+
+  async function removeApprover(employeeId: number) {
+    if (!tenant) return
+    await supabase.from('qhse_approvers').delete().eq('tenant_id', tenant.id).eq('employee_id', employeeId).eq('module', 'سلامة')
+    toast.success('تم إلغاء صلاحية الاعتماد')
+    onChanged()
+  }
+
+  const availableEmployees = employees.filter(e => !approvers.some(a => a.employee_id === e.id))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '560px' }}>
+      <div style={{ padding: '12px 16px', background: '#eff6ff', borderRadius: '10px', border: '1px solid #bfdbfe', fontSize: '0.82rem', color: '#1a56db' }}>
+        🛡️ المعتمدون هنا (مهندس السلامة ونائبه) هم وحدهم المخوّلون باعتماد أو رفض محاولات تصحيح ملاحظات السلامة. هذه صلاحية مستقلة تُمنح يدوياً ولا ترتبط بالمسمى الوظيفي.
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <select value={selected} onChange={e => setSelected(e.target.value)} className="select" style={{ flex: 1 }}>
+          <option value="">— اختر موظفاً لتعيينه معتمداً —</option>
+          {availableEmployees.map(e => <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>)}
+        </select>
+        <button onClick={addApprover} disabled={!selected || saving} className="btn btn-primary" style={{ background: '#1a56db' }}>
+          <Plus style={{ width: '15px', height: '15px' }} /> تعيين
+        </button>
+      </div>
+
+      <div className="card" style={{ overflow: 'hidden' }}>
+        {approvers.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+            <Shield style={{ width: '36px', height: '36px', color: 'var(--border)', margin: '0 auto 10px' }} />
+            <p style={{ fontSize: '0.85rem' }}>لا يوجد معتمدون بعد — لن تستطيع أي ملاحظة الانتقال لمرحلة الاعتماد</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {approvers.map(a => (
+              <div key={a.employee_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--bg2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>🛡️</div>
+                  <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{a.employee_name}</span>
+                </div>
+                <button onClick={() => removeApprover(a.employee_id)}
+                  style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: '#c81e1e', fontFamily: 'inherit' }}>
+                  إلغاء الصلاحية
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: تسجيل محاولة تصحيح (RBAC: المسؤول المُسنَد فقط)
+// ════════════════════════════════════════
+function CorrectionModal({ visit, attemptNo, onClose, onSubmit }: {
+  visit: any; attemptNo: number
+  onClose: () => void
+  onSubmit: (notes: string, files: { name: string; data: string }[]) => void
+}) {
+  const [notes, setNotes] = useState('')
+  const [photos, setPhotos] = useState<{ name: string; data: string }[]>([])
+  const [saving, setSaving] = useState(false)
+
+  function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    Array.from(e.target.files || []).forEach(file => {
+      if (!file.type.startsWith('image/')) return
+      const reader = new FileReader()
+      reader.onload = ev => setPhotos(p => [...p, { name: file.name, data: ev.target?.result as string }])
+      reader.readAsDataURL(file)
+    })
+  }
+
+  function submit() {
+    if (!notes.trim()) { toast.error('تفاصيل التصحيح مطلوبة'); return }
+    setSaving(true)
+    onSubmit(notes.trim(), photos)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>🔧 تسجيل تصحيح — محاولة {attemptNo}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', color: '#c81e1e', whiteSpace: 'pre-line' }}>
+            ⚠️ {visit.corrective}
+          </div>
+          {attemptNo > 1 && (
+            <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
+              هذه محاولتك رقم {attemptNo} — تم رفض المحاولة السابقة، يُرجى معالجة سبب الرفض الموضح في سجل المحاولات
+            </div>
+          )}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>تفاصيل التصحيح المُنفَّذ *</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="input" style={{ minHeight: '90px', resize: 'none' }}
+              placeholder="صف الإجراء التصحيحي الذي تم تنفيذه..." autoFocus />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>📷 صور إثبات التصحيح</label>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', borderRadius: '8px', border: '2px dashed var(--border)', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text3)' }}>
+              📎 اضغط لإضافة صور
+              <input type="file" accept="image/*" multiple onChange={handlePhotos} style={{ display: 'none' }} />
+            </label>
+            {photos.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '8px' }}>
+                {photos.map((p, i) => (
+                  <div key={i} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '1' }}>
+                    <img src={p.data} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button type="button" onClick={() => setPhotos(ph => ph.filter((_, idx) => idx !== i))}
+                      style={{ position: 'absolute', top: '3px', left: '3px', width: '18px', height: '18px', borderRadius: '50%', background: '#c81e1e', color: 'white', border: 'none', cursor: 'pointer', fontSize: '11px' }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.76rem', color: '#1a56db' }}>
+            سيُرسَل هذا التصحيح لمهندس السلامة لاعتماده أو رفضه
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+            {saving ? '...' : '✅ إرسال للمراجعة'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: مراجعة التصحيح — اعتماد أو رفض (RBAC: مهندس السلامة ونائبه فقط)
+// ════════════════════════════════════════
+function ReviewModal({ visit, lastAttempt, onClose, onDecide }: {
+  visit: any; lastAttempt: any
+  onClose: () => void
+  onDecide: (decision: 'معتمد' | 'مرفوض', text: string) => void
+}) {
+  const [mode, setMode] = useState<'review' | 'reject'>('review')
+  const [text, setText] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function approve() {
+    setSaving(true)
+    onDecide('معتمد', text)
+  }
+  function reject() {
+    if (!text.trim()) { toast.error('سبب الرفض مطلوب'); return }
+    setSaving(true)
+    onDecide('مرفوض', text.trim())
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '540px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>🛡️ مراجعة التصحيح</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', border: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>الملاحظة الأصلية:</div>
+            <div style={{ color: 'var(--text3)', whiteSpace: 'pre-line' }}>{visit.corrective}</div>
+          </div>
+
+          {lastAttempt && (
+            <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px 14px' }}>
+              <div style={{ fontSize: '0.72rem', color: '#0ea77b', fontWeight: 700, marginBottom: '6px' }}>
+                ✅ التصحيح المُقدَّم (محاولة {lastAttempt.attempt_no}) — {lastAttempt.corrected_by_name}
+              </div>
+              <div style={{ fontSize: '0.85rem' }}>{lastAttempt.correction_notes}</div>
+              {lastAttempt.correction_files?.length > 0 && (
+                <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
+                  {lastAttempt.correction_files.map((f: any, i: number) => (
+                    <a key={i} href={f.data} target="_blank" style={{ width: '64px', height: '64px', borderRadius: '8px', overflow: 'hidden', display: 'block' }}>
+                      <img src={f.data} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button type="button" onClick={() => setMode('review')}
+              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit',
+                borderColor: mode === 'review' ? '#0ea77b' : 'var(--border)', background: mode === 'review' ? '#ecfdf5' : 'white', color: mode === 'review' ? '#0ea77b' : 'var(--text3)' }}>
+              ✅ اعتماد
+            </button>
+            <button type="button" onClick={() => setMode('reject')}
+              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit',
+                borderColor: mode === 'reject' ? '#c81e1e' : 'var(--border)', background: mode === 'reject' ? '#fef2f2' : 'white', color: mode === 'reject' ? '#c81e1e' : 'var(--text3)' }}>
+              ❌ رفض وإعادة
+            </button>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>
+              {mode === 'review' ? 'ملاحظات الاعتماد (اختياري)' : 'سبب الرفض *'}
+            </label>
+            <textarea value={text} onChange={e => setText(e.target.value)} className="input" style={{ minHeight: '80px', resize: 'none' }}
+              placeholder={mode === 'review' ? 'أي ملاحظات إضافية عند الاعتماد...' : 'وضّح للمسؤول ما الذي يحتاج إعادة معالجته...'} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          {mode === 'review' ? (
+            <button onClick={approve} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+              {saving ? '...' : '✅ اعتماد نهائي'}
+            </button>
+          ) : (
+            <button onClick={reject} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+              {saving ? '...' : '🔁 رفض وإرجاع للمسؤول'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

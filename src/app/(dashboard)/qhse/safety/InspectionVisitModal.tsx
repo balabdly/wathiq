@@ -90,6 +90,8 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
     work_order_source:    '',
     work_order_receiver:  '',
     general_notes:        '',
+    responsible_id:       '',
+    responsible_name:     '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
@@ -144,6 +146,8 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
         latitude:             coords?.lat || null,
         longitude:            coords?.lng || null,
         location_address:     coords?.address || null,
+        responsible_id:       failedItems.length > 0 && form.responsible_id ? Number(form.responsible_id) : null,
+        responsible_name:     failedItems.length > 0 ? (form.responsible_name || null) : null,
         notes: failedItems.length > 0
           ? `بنود غير مطابقة: ${failedItems.map(f => f.no).join('، ')}`
           : null,
@@ -290,6 +294,27 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
                   مستوى الخطورة: {totalNo >= 5 ? '🔴 عالي' : totalNo >= 2 ? '🟡 متوسط' : '🟢 منخفض'}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* المسؤول عن التصحيح — يظهر فقط عند وجود بنود غير مطابقة */}
+          {totalNo > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '12px 14px' }}>
+              <label style={{ ...lbl, color: '#92400e' }}>👤 المسؤول عن التصحيح *</label>
+              <select value={form.responsible_id}
+                onChange={e => {
+                  const emp = employees.find(x => x.id === Number(e.target.value))
+                  set('responsible_id', e.target.value)
+                  set('responsible_name', emp?.name || '')
+                }} className="select">
+                <option value="">— اختر المسؤول —</option>
+                {employees.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}{m.job_title ? ` — ${m.job_title}` : ''}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: '0.72rem', color: '#92400e', marginTop: '6px' }}>
+                سيكون هذا الشخص وحده المخوّل بتسجيل تصحيح هذه البنود غير المطابقة
+              </div>
             </div>
           )}
 
