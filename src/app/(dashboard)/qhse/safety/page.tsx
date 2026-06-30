@@ -645,6 +645,10 @@ export default function SafetyPage() {
   const [search,    setSearch]    = useState('')
   const [showModal,      setShowModal]      = useState<string | null>(null)
   const [detailVisit,    setDetailVisit]    = useState<any | null>(null)
+  const [detailSWP,      setDetailSWP]      = useState<any | null>(null)
+  const [detailRisk,     setDetailRisk]     = useState<any | null>(null)
+  const [detailIncident, setDetailIncident] = useState<any | null>(null)
+  const [detailTraining, setDetailTraining] = useState<any | null>(null)
   const [certs,          setCerts]          = useState<any[]>([])
   const [visitSubTab,    setVisitSubTab]    = useState<'inspection' | 'observation'>('inspection')
   const [riskSubTab,     setRiskSubTab]     = useState<'general' | 'projects'>('general')
@@ -895,7 +899,8 @@ export default function SafetyPage() {
                   {incidents.filter(i => !search || i.title.includes(search) || (i.location || '').includes(search)).map(inc => {
                     const sevS = SEVERITY_STYLE[inc.severity] || SEVERITY_STYLE['متوسط']
                     return (
-                      <tr key={inc.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                      <tr key={inc.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
+                        onClick={() => setDetailIncident(inc)}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#c81e1e', fontWeight: 700 }}>{inc.incident_no}</td>
@@ -977,7 +982,8 @@ export default function SafetyPage() {
                   {risks.filter(r => !search || r.title.includes(search)).map(r => {
                     const rl = RISK_LEVEL(r.risk_score)
                     return (
-                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
+                        onClick={() => setDetailRisk(r)}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#e6820a', fontWeight: 700 }}>{r.risk_no}</td>
@@ -1081,7 +1087,8 @@ export default function SafetyPage() {
               <p>لا توجد إجراءات مسجلة</p>
             </div>
           ) : swps.filter(s => !search || s.title.includes(search) || s.work_type.includes(search)).map(s => (
-            <div key={s.id} className="card" style={{ padding: '18px', borderTop: `3px solid ${s.is_active ? '#1a56db' : '#9ca3af'}` }}>
+            <div key={s.id} className="card" style={{ padding: '18px', borderTop: `3px solid ${s.is_active ? '#1a56db' : '#9ca3af'}`, cursor: 'pointer' }}
+              onClick={() => setDetailSWP(s)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</div>
@@ -1128,7 +1135,8 @@ export default function SafetyPage() {
                 </thead>
                 <tbody>
                   {trainings.filter(t => !search || t.title.includes(search)).map(t => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                    <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
+                      onClick={() => setDetailTraining(t)}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#7c3aed', fontWeight: 700 }}>{t.training_no}</td>
@@ -1350,6 +1358,222 @@ export default function SafetyPage() {
       {showModal === 'training' && (
         <TrainingModal employees={employees} tenantId={tenant!.id}
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+
+      {/* مودال تفاصيل SWP */}
+      {detailSWP && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDetailSWP(null)}>
+          <div className="modal-box" style={{ maxWidth: '600px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <BookOpen style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+                {detailSWP.title}
+              </h3>
+              <button onClick={() => setDetailSWP(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+            </div>
+            <div className="modal-body" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                {[
+                  { label: 'رقم الإجراء', value: detailSWP.proc_no },
+                  { label: 'نوع العمل',   value: detailSWP.work_type },
+                  { label: 'الإصدار',     value: detailSWP.version },
+                ].map((item, i) => (
+                  <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginBottom: '3px' }}>{item.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              {detailSWP.description && <div style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>{detailSWP.description}</div>}
+              {detailSWP.ppe_required?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '8px' }}>🦺 معدات الوقاية الشخصية المطلوبة</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {detailSWP.ppe_required.map((p: string) => <span key={p} style={{ padding: '3px 10px', borderRadius: '16px', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.78rem', fontWeight: 600 }}>✓ {p}</span>)}
+                  </div>
+                </div>
+              )}
+              {detailSWP.steps?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '10px' }}>📋 خطوات الإجراء</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {detailSWP.steps.map((s: any) => (
+                      <div key={s.step} style={{ display: 'flex', gap: '10px', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px', alignItems: 'flex-start' }}>
+                        <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#1a56db', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>{s.step}</span>
+                        <span style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{s.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {detailSWP.hazards && <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>⚠️ المخاطر المحتملة</div><div style={{ background: '#fef2f2', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem', color: '#c81e1e' }}>{detailSWP.hazards}</div></div>}
+              {detailSWP.precautions && <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>🛡️ الاحتياطات</div><div style={{ background: '#eff6ff', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailSWP.precautions}</div></div>}
+              {detailSWP.approved_by && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>اعتمد بواسطة: {detailSWP.approved_by}</div>}
+            </div>
+            <div className="modal-footer"><button onClick={() => setDetailSWP(null)} className="btn btn-ghost">إغلاق</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تفاصيل المخاطرة */}
+      {detailRisk && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDetailRisk(null)}>
+          <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap style={{ width: '18px', height: '18px', color: '#e6820a' }} />
+                {detailRisk.title}
+              </h3>
+              <button onClick={() => setDetailRisk(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {(() => { const rl = RISK_LEVEL(detailRisk.risk_score); return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div style={{ textAlign: 'center', padding: '12px', background: '#fffbeb', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#e6820a' }}>{detailRisk.likelihood}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الاحتمالية</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '12px', background: '#fffbeb', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#e6820a' }}>{detailRisk.severity}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الخطورة</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '12px', background: rl.bg, borderRadius: '8px' }}>
+                    <div style={{ fontSize: '1.4rem', fontWeight: 800, color: rl.color }}>{detailRisk.risk_score}</div>
+                    <div style={{ fontSize: '0.68rem', color: rl.color, fontWeight: 700 }}>{rl.label}</div>
+                  </div>
+                </div>
+              )})()}
+              {detailRisk.risk_category && <div style={{ padding: '6px 12px', background: '#f5f3ff', borderRadius: '6px', fontSize: '0.82rem', color: '#7c3aed', fontWeight: 600 }}>الفئة: {detailRisk.risk_category}</div>}
+              {detailRisk.description && <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '5px' }}>الوصف</div><div style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>{detailRisk.description}</div></div>}
+              {detailRisk.control_measures && <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '5px' }}>🛡️ إجراءات السيطرة</div><div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailRisk.control_measures}</div></div>}
+              {detailRisk.responsible_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>المسؤول: {detailRisk.responsible_name}</div>}
+              {detailRisk.review_date && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>تاريخ المراجعة: {fmt(detailRisk.review_date)}</div>}
+            </div>
+            <div className="modal-footer"><button onClick={() => setDetailRisk(null)} className="btn btn-ghost">إغلاق</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تفاصيل الحادث */}
+      {detailIncident && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDetailIncident(null)}>
+          <div className="modal-box" style={{ maxWidth: '600px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle style={{ width: '18px', height: '18px', color: '#c81e1e' }} />
+                {detailIncident.title}
+              </h3>
+              <button onClick={() => setDetailIncident(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+            </div>
+            <div className="modal-body" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', fontFamily: 'monospace', background: '#f3f4f6', color: '#374151' }}>{detailIncident.incident_no}</span>
+                <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', background: '#fef2f2', color: '#c81e1e' }}>{detailIncident.incident_type}</span>
+                {(() => { const s = SEVERITY_STYLE[detailIncident.severity] || SEVERITY_STYLE['متوسط']; return <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem', background: s.bg, color: s.color }}>{detailIncident.severity}</span> })()}
+                <span style={{ padding: '4px 12px', borderRadius: '20px', fontWeight: 700, fontSize: '0.78rem',
+                  background: detailIncident.status === 'مغلق' ? '#ecfdf5' : detailIncident.status === 'تحت التحقيق' ? '#eff6ff' : '#fffbeb',
+                  color:      detailIncident.status === 'مغلق' ? '#0ea77b' : detailIncident.status === 'تحت التحقيق' ? '#1a56db' : '#e6820a' }}>{detailIncident.status}</span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                {[
+                  { label: 'التاريخ', value: fmt(detailIncident.incident_date) },
+                  { label: 'الوقت',   value: detailIncident.incident_time || '—' },
+                  { label: 'الموقع',  value: detailIncident.location || '—' },
+                ].map((item, i) => (
+                  <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginBottom: '3px' }}>{item.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {detailIncident.description && (
+                <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>وصف الحادث</div>
+                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailIncident.description}</div></div>
+              )}
+
+              {/* بيانات المصاب */}
+              {detailIncident.injured_name && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 14px' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#c81e1e', marginBottom: '10px' }}>🚑 بيانات المصاب</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.82rem' }}>
+                    <div><span style={{ color: 'var(--text3)' }}>الاسم: </span><strong>{detailIncident.injured_name}</strong></div>
+                    <div><span style={{ color: 'var(--text3)' }}>نوع الإصابة: </span><strong>{detailIncident.injury_type || '—'}</strong></div>
+                    <div><span style={{ color: 'var(--text3)' }}>الجزء المصاب: </span><strong>{detailIncident.injury_part || '—'}</strong></div>
+                    <div><span style={{ color: 'var(--text3)' }}>أيام الغياب: </span><strong>{detailIncident.lost_time_days || 0}</strong></div>
+                  </div>
+                </div>
+              )}
+
+              {detailIncident.immediate_action && (
+                <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>⚡ الإجراء الفوري</div>
+                  <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailIncident.immediate_action}</div></div>
+              )}
+
+              {detailIncident.root_cause && (
+                <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>🔍 السبب الجذري</div>
+                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailIncident.root_cause}</div></div>
+              )}
+
+              {detailIncident.corrective_action && (
+                <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>✅ الإجراء التصحيحي</div>
+                  <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailIncident.corrective_action}</div></div>
+              )}
+
+              {detailIncident.reported_by && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>بلّغ عنه: {detailIncident.reported_by}</div>}
+            </div>
+            <div className="modal-footer"><button onClick={() => setDetailIncident(null)} className="btn btn-ghost">إغلاق</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تفاصيل التدريب */}
+      {detailTraining && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDetailTraining(null)}>
+          <div className="modal-box" style={{ maxWidth: '560px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Award style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+                {detailTraining.title}
+              </h3>
+              <button onClick={() => setDetailTraining(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+            </div>
+            <div className="modal-body" style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                {[
+                  { label: 'التاريخ', value: fmt(detailTraining.training_date) },
+                  { label: 'المدرب',  value: detailTraining.trainer || '—' },
+                  { label: 'المدة',   value: detailTraining.duration_hours ? `${detailTraining.duration_hours} ساعة` : '—' },
+                ].map((item, i) => (
+                  <div key={i} style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginBottom: '3px' }}>{item.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+              {detailTraining.location && <div style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>📍 {detailTraining.location}</div>}
+              {detailTraining.content && (
+                <div><div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '6px' }}>محتوى التدريب</div>
+                  <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '10px 12px', fontSize: '0.85rem' }}>{detailTraining.content}</div></div>
+              )}
+              {detailTraining.attendees?.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '8px' }}>👥 المشاركون ({detailTraining.attendees.length})</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {detailTraining.attendees.map((a: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: '#f8fafc', borderRadius: '6px', fontSize: '0.82rem' }}>
+                        <span>{a.name}</span>
+                        <span style={{ color: a.attended ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>{a.attended ? '✓ حضر' : '✗ غاب'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer"><button onClick={() => setDetailTraining(null)} className="btn btn-ghost">إغلاق</button></div>
+          </div>
+        </div>
       )}
 
       {/* مودال إضافة شهادة */}
