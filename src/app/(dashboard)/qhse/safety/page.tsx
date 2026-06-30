@@ -890,7 +890,7 @@ export default function SafetyPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم الحادث','التاريخ','العنوان','النوع','الخطورة','المصاب','أيام غياب','الحالة'].map(h => (
+                    {['رقم الحادث','التاريخ','العنوان','النوع','الخطورة','المصاب','أيام غياب','الحالة',''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -899,8 +899,7 @@ export default function SafetyPage() {
                   {incidents.filter(i => !search || i.title.includes(search) || (i.location || '').includes(search)).map(inc => {
                     const sevS = SEVERITY_STYLE[inc.severity] || SEVERITY_STYLE['متوسط']
                     return (
-                      <tr key={inc.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
-                        onClick={() => setDetailIncident(inc)}
+                      <tr key={inc.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#c81e1e', fontWeight: 700 }}>{inc.incident_no}</td>
@@ -922,6 +921,12 @@ export default function SafetyPage() {
                             color: inc.status === 'مغلق' ? '#0ea77b' : inc.status === 'تحت التحقيق' ? '#1a56db' : '#e6820a' }}>
                             {inc.status}
                           </span>
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          <button onClick={() => setDetailIncident(inc)}
+                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                            👁️ تفاصيل
+                          </button>
                         </td>
                       </tr>
                     )
@@ -973,7 +978,7 @@ export default function SafetyPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم المخاطرة','العنوان','الفئة','الاحتمالية','الخطورة','الدرجة','المستوى','المسؤول','الحالة'].map(h => (
+                    {['رقم المخاطرة','العنوان','الفئة','الاحتمالية','الخطورة','الدرجة','المستوى','المسؤول','الحالة',''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -982,8 +987,7 @@ export default function SafetyPage() {
                   {risks.filter(r => !search || r.title.includes(search)).map(r => {
                     const rl = RISK_LEVEL(r.risk_score)
                     return (
-                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
-                        onClick={() => setDetailRisk(r)}
+                      <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#e6820a', fontWeight: 700 }}>{r.risk_no}</td>
@@ -1006,6 +1010,12 @@ export default function SafetyPage() {
                             color: r.status === 'مغلق' ? '#0ea77b' : r.status === 'تحت المعالجة' ? '#1a56db' : '#e6820a' }}>
                             {r.status}
                           </span>
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          <button onClick={() => setDetailRisk(r)}
+                            style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                            👁️ تفاصيل
+                          </button>
                         </td>
                       </tr>
                     )
@@ -1080,38 +1090,55 @@ export default function SafetyPage() {
 
       {/* ══ تاب: إجراءات العمل الآمنة ══ */}
       {tab === 'swp' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+        <div className="card" style={{ overflow: 'hidden' }}>
           {swps.length === 0 ? (
-            <div className="card" style={{ padding: '60px', textAlign: 'center', color: '#9ca3af', gridColumn: '1/-1' }}>
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
               <BookOpen style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
               <p>لا توجد إجراءات مسجلة</p>
             </div>
-          ) : swps.filter(s => !search || s.title.includes(search) || s.work_type.includes(search)).map(s => (
-            <div key={s.id} className="card" style={{ padding: '18px', borderTop: `3px solid ${s.is_active ? '#1a56db' : '#9ca3af'}`, cursor: 'pointer' }}
-              onClick={() => setDetailSWP(s)}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.title}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{s.proc_no} · الإصدار {s.version}</div>
-                </div>
-                <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
-                  background: s.is_active ? '#eff6ff' : '#f3f4f6', color: s.is_active ? '#1a56db' : '#6b7280' }}>
-                  {s.is_active ? 'فعّال' : 'موقوف'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
-                <span style={{ padding: '2px 10px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', fontSize: '0.75rem', fontWeight: 600 }}>🔧 {s.work_type}</span>
-              </div>
-              {s.ppe_required.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
-                  {s.ppe_required.map((p: string) => (
-                    <span key={p} style={{ padding: '2px 6px', borderRadius: '6px', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.68rem' }}>🦺 {p}</span>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['رقم الإجراء','العنوان','نوع العمل','الإصدار','معدات الوقاية','الخطوات','الحالة',''].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {swps.filter(s => !search || s.title.includes(search) || s.work_type.includes(search)).map(s => (
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#1a56db', fontWeight: 700 }}>{s.proc_no}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, maxWidth: '200px' }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{ padding: '2px 10px', borderRadius: '10px', background: '#f5f3ff', color: '#7c3aed', fontSize: '0.75rem', fontWeight: 600 }}>🔧 {s.work_type}</span>
+                      </td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{s.version}</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{s.ppe_required?.length || 0} عنصر</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)', textAlign: 'center' }}>{s.steps?.length || 0}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: 700,
+                          background: s.is_active ? '#eff6ff' : '#f3f4f6', color: s.is_active ? '#1a56db' : '#6b7280' }}>
+                          {s.is_active ? 'فعّال' : 'موقوف'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        <button onClick={() => setDetailSWP(s)}
+                          style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                          👁️ تفاصيل
+                        </button>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              )}
-              <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{s.steps.length} خطوة{s.approved_by ? ` · اعتمد: ${s.approved_by}` : ''}</div>
+                </tbody>
+              </table>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -1128,15 +1155,14 @@ export default function SafetyPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم التدريب','العنوان','التاريخ','المدرب','المشاركون','المدة','الحالة'].map(h => (
+                    {['رقم التدريب','العنوان','التاريخ','المدرب','المشاركون','المدة','الحالة',''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {trainings.filter(t => !search || t.title.includes(search)).map(t => (
-                    <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
-                      onClick={() => setDetailTraining(t)}
+                    <tr key={t.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#7c3aed', fontWeight: 700 }}>{t.training_no}</td>
@@ -1151,6 +1177,12 @@ export default function SafetyPage() {
                           color: t.status === 'منعقد' ? '#0ea77b' : t.status === 'ملغي' ? '#c81e1e' : '#1a56db' }}>
                           {t.status}
                         </span>
+                      </td>
+                      <td style={{ padding: '8px' }}>
+                        <button onClick={() => setDetailTraining(t)}
+                          style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                          👁️ تفاصيل
+                        </button>
                       </td>
                     </tr>
                   ))}
