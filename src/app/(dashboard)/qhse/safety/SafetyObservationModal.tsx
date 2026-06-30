@@ -51,8 +51,6 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
     engineer:         currentUser?.name || '',
     description:      '',
     severity:         'متوسط',
-    responsible_id:   '',
-    responsible_name: '',
     corrective:       '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
@@ -86,13 +84,11 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
         severity:         form.severity,
         corrective:       form.description.trim(),
         notes:            form.corrective || null,
-        responsible_name: form.responsible_name || null,
         attachments:      photos.length > 0 ? photos : null,
         latitude:         coords?.lat || null,
         longitude:        coords?.lng || null,
       }
-      if (form.project_id)     payload.project_id     = Number(form.project_id)
-      if (form.responsible_id) payload.responsible_id = Number(form.responsible_id)
+      if (form.project_id) payload.project_id = Number(form.project_id)
 
       const { error } = await supabase.from('visits').insert(payload)
       if (error) throw error
@@ -186,20 +182,6 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
               placeholder="ما يجب فعله لمعالجة الملاحظة..." />
           </div>
 
-          {/* المسؤول عن التصحيح */}
-          <div>
-            <label style={lbl}>المسؤول عن التصحيح</label>
-            <select value={form.responsible_id}
-              onChange={e => {
-                set('responsible_id', e.target.value)
-                const emp = employees.find(x => x.id === Number(e.target.value))
-                if (emp) set('responsible_name', emp.name)
-              }} className="select">
-              <option value="">— اختر المسؤول —</option>
-              {employees.map(e => <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>)}
-            </select>
-          </div>
-
           {/* صور الملاحظة */}
           <div>
             <label style={lbl}>
@@ -227,8 +209,7 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
 
           {/* تنبيه دورة الحياة */}
           <div style={{ padding: '10px 14px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', fontSize: '0.78rem', color: '#92400e' }}>
-            📋 ستدخل الملاحظة دورة: <strong>رصد → تصحيح → اعتماد</strong>
-            {form.responsible_name && <span> — المسؤول: <strong>{form.responsible_name}</strong></span>}
+            📋 ستدخل الملاحظة دورة: <strong>رصد → إسناد → تصحيح → اعتماد</strong> — سيقوم مهندس السلامة بتحديد المسؤول عن التصحيح لاحقاً
           </div>
         </div>
 

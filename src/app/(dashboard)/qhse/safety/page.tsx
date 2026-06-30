@@ -61,6 +61,7 @@ const SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
 }
 const LIFECYCLE_STYLE: Record<string, { bg: string; color: string; icon: string }> = {
   'رصد':     { bg: '#fffbeb', color: '#e6820a', icon: '👁️' },
+  'إسناد':   { bg: '#f5f3ff', color: '#7c3aed', icon: '📌' },
   'تصحيح':  { bg: '#eff6ff', color: '#1a56db', icon: '🔧' },
   'اعتماد': { bg: '#ecfdf5', color: '#0ea77b', icon: '🛡️' },
 }
@@ -662,6 +663,7 @@ export default function SafetyPage() {
   const [corrections,     setCorrections]     = useState<Record<number, any[]>>({}) // visit_id -> سجل المحاولات
   const [showCorrectModal, setShowCorrectModal] = useState<any | null>(null) // الزيارة المراد تصحيحها
   const [showReviewModal,  setShowReviewModal]  = useState<any | null>(null) // الزيارة المراد مراجعتها
+  const [showAssignModal,  setShowAssignModal]  = useState<any | null>(null) // الزيارة المراد إسنادها
 
   // هل المستخدم الحالي معتمد معتمد (مهندس سلامة أو نائبه)؟
   const isApprover = approvers.some(a => a.employee_id === (currentUser as any)?.hr_employee_id || a.employee_name === currentUser?.name)
@@ -714,6 +716,23 @@ export default function SafetyPage() {
     setLoading(false)
   }
 
+  // ══ إسناد المسؤول عن التصحيح — يقوم بها فقط مهندس السلامة/نائبه ══
+  async function submitAssignment(visit: any, responsibleId: number, responsibleName: string) {
+    if (!tenant) return
+    await supabase.from('visits').update({
+      responsible_id:   responsibleId,
+      responsible_name: responsibleName,
+      assigned_by_id:   (currentUser as any)?.hr_employee_id || null,
+      assigned_by_name: currentUser?.name || null,
+      assigned_at:      new Date().toISOString(),
+      lifecycle:        'إسناد',
+    }).eq('id', visit.id)
+    toast.success(`✅ تم إسناد المهمة إلى ${responsibleName}`)
+    setShowAssignModal(null)
+    setDetailVisit(null)
+    loadAll()
+  }
+
   // ══ تسجيل محاولة تصحيح جديدة ══
   async function submitCorrection(visit: any, notes: string, files: { name: string; data: string }[]) {
     if (!tenant) return
@@ -760,7 +779,7 @@ export default function SafetyPage() {
       toast.success('✅ تم اعتماد التصحيح نهائياً')
     } else {
       await supabase.from('visits').update({
-        lifecycle: 'رصد', // يرجع للمسؤول لإعادة التصحيح
+        lifecycle: 'إسناد', // يرجع لنفس المسؤول المُسنَد لإعادة التصحيح، لا يحتاج إسناداً جديداً
         rejection_count: (visit.rejection_count || 0) + 1,
       }).eq('id', visit.id)
       toast('🔁 تم رفض التصحيح وإرجاعه للمسؤول', { icon: '⚠️' })
@@ -924,7 +943,8 @@ export default function SafetyPage() {
                     const attempts = corrections[v.id] || []
                     const lastAttempt = attempts[attempts.length - 1]
                     const awaitingReview = lc === 'تصحيح' && lastAttempt?.review_status === 'بانتظار المراجعة'
-                    const canCorrect = v.specs === 'غير مطابق' && lc === 'رصد' && isResponsibleFor(v)
+                    const canAssign  = v.specs === 'غير مطابق' && lc === 'رصد' && isApprover
+                    const canCorrect = v.specs === 'غير مطابق' && lc === 'إسناد' && isResponsibleFor(v)
                     const canReview  = v.specs === 'غير مطابق' && awaitingReview && isApprover
                     return (
                       <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
@@ -951,7 +971,10 @@ export default function SafetyPage() {
                             {awaitingReview && (
                               <span style={{ fontSize: '0.65rem', color: '#1a56db', fontWeight: 600 }}>بانتظار المراجعة (محاولة {lastAttempt.attempt_no})</span>
                             )}
-                            {((v as any).rejection_count || 0) > 0 && lc === 'رصد' && (
+                            {v.specs === 'غير مطابق' && lc === 'رصد' && !canAssign && (
+                              <span style={{ fontSize: '0.65rem', color: '#7c3aed', fontWeight: 600 }}>بانتظار إسناد مهندس السلامة</span>
+                            )}
+                            {((v as any).rejection_count || 0) > 0 && lc === 'إسناد' && (
                               <span style={{ fontSize: '0.65rem', color: '#c81e1e', fontWeight: 700 }}>🔁 مرفوضة سابقاً ({(v as any).rejection_count})</span>
                             )}
                           </div>
@@ -959,6 +982,12 @@ export default function SafetyPage() {
                         <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{(v as any).responsible_name || '—'}</td>
                         <td style={{ padding: '8px' }}>
                           <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {canAssign && (
+                              <button onClick={() => setShowAssignModal(v)}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: '#f5f3ff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed', fontFamily: 'inherit' }}>
+                                📌 إسناد
+                              </button>
+                            )}
                             {canCorrect && (
                               <button onClick={() => setShowCorrectModal(v)}
                                 style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: '#fef2f2', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, color: '#c81e1e', fontFamily: 'inherit' }}>
@@ -1530,11 +1559,18 @@ export default function SafetyPage() {
                     const attempts = corrections[detailVisit.id] || []
                     const lastAttempt = attempts[attempts.length - 1]
                     const awaitingReview = lc === 'تصحيح' && lastAttempt?.review_status === 'بانتظار المراجعة'
-                    const canCorrect = lc === 'رصد' && isResponsibleFor(detailVisit)
+                    const canAssign  = lc === 'رصد' && isApprover
+                    const canCorrect = lc === 'إسناد' && isResponsibleFor(detailVisit)
                     const canReview  = awaitingReview && isApprover
-                    if (!canCorrect && !canReview) return null
+                    if (!canAssign && !canCorrect && !canReview) return null
                     return (
                       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                        {canAssign && (
+                          <button onClick={() => setShowAssignModal(detailVisit)}
+                            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#7c3aed', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit' }}>
+                            📌 إسناد المسؤول
+                          </button>
+                        )}
                         {canCorrect && (
                           <button onClick={() => setShowCorrectModal(detailVisit)}
                             style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: '#c81e1e', color: 'white', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit' }}>
@@ -1807,6 +1843,13 @@ export default function SafetyPage() {
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
       )}
 
+      {/* مودال إسناد المسؤول — لمهندس السلامة ونائبه فقط */}
+      {showAssignModal && (
+        <AssignmentModal visit={showAssignModal} employees={employees}
+          onClose={() => setShowAssignModal(null)}
+          onSubmit={(responsibleId, responsibleName) => submitAssignment(showAssignModal, responsibleId, responsibleName)} />
+      )}
+
       {/* مودال تسجيل محاولة تصحيح — للمسؤول المُسنَد فقط */}
       {showCorrectModal && (
         <CorrectionModal visit={showCorrectModal}
@@ -1902,6 +1945,58 @@ function ApproversPanel({ tenant, employees, approvers, onChanged }: {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
+// مودال: إسناد المسؤول عن التصحيح (RBAC: مهندس السلامة/نائبه فقط)
+// ════════════════════════════════════════
+function AssignmentModal({ visit, employees, onClose, onSubmit }: {
+  visit: any; employees: Employee[]
+  onClose: () => void
+  onSubmit: (responsibleId: number, responsibleName: string) => void
+}) {
+  const [selectedId, setSelectedId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function submit() {
+    if (!selectedId) { toast.error('اختر الموظف المسؤول عن التصحيح'); return }
+    const emp = employees.find(e => e.id === Number(selectedId))
+    if (!emp) return
+    setSaving(true)
+    onSubmit(emp.id, emp.name)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '480px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>📌 إسناد المسؤول عن التصحيح</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', color: '#c81e1e', whiteSpace: 'pre-line' }}>
+            ⚠️ {visit.corrective}
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>اختر الموظف المسؤول عن تنفيذ التصحيح *</label>
+            <select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="select" autoFocus>
+              <option value="">— اختر الموظف —</option>
+              {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}{emp.job_title ? ` — ${emp.job_title}` : ''}</option>)}
+            </select>
+          </div>
+          <div style={{ padding: '8px 12px', background: '#f5f3ff', borderRadius: '8px', fontSize: '0.76rem', color: '#7c3aed' }}>
+            بعد الإسناد، يصبح هذا الموظف وحده المخوّل بتسجيل التصحيح لهذه المخالفة
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? '...' : '📌 تأكيد الإسناد'}
+          </button>
+        </div>
       </div>
     </div>
   )
