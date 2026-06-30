@@ -634,6 +634,8 @@ function CertModal({ employees, tenantId, onClose, onSave }: {
 // ════════════════════════════════════════
 export default function SafetyPage() {
   const { tenant, currentUser, visits, setVisits } = useStore()
+  const perms: string[] = currentUser?.permissions || []
+  const canManageApprovers = perms.includes('qhse_manage_approvers')
   const [tab,       setTab]       = useState('visits')
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [risks,     setRisks]     = useState<Risk[]>([])
@@ -806,7 +808,7 @@ export default function SafetyPage() {
     { id: 'swp',       label: 'إجراءات العمل الآمنة',       icon: '🔐' },
     { id: 'trainings', label: 'التدريبات',                  icon: '🎓' },
     { id: 'certs',     label: 'الشهادات',                   icon: '🏅' },
-    { id: 'approvers', label: 'مهندسو الاعتماد',            icon: '🛡️' },
+    ...(canManageApprovers ? [{ id: 'approvers', label: 'مهندسو الاعتماد', icon: '🛡️' }] : []),
   ]
   const safetyVisitsFiltered = safetyVisits.filter(v => {
     const et = (v as any).entry_type || 'زيارة'
@@ -1345,8 +1347,8 @@ export default function SafetyPage() {
         </div>
       )}
 
-      {/* ══ تاب: إدارة مهندسي الاعتماد ══ */}
-      {tab === 'approvers' && (
+      {/* ══ تاب: إدارة مهندسي الاعتماد — محمي بصلاحية qhse_manage_approvers ══ */}
+      {tab === 'approvers' && canManageApprovers && (
         <ApproversPanel tenant={tenant} employees={employees} approvers={approvers} onChanged={loadAll} />
       )}
 
