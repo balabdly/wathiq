@@ -8,6 +8,10 @@ import {
 } from 'lucide-react'
 import QualityInspectionModal from './QualityInspectionModal'
 import QualityObservationModal from './QualityObservationModal'
+import CustomerFeedbackModal from './CustomerFeedbackModal'
+import SupplierModal from './SupplierModal'
+import SupplierEvalModal from './SupplierEvalModal'
+import QualityKpiModal from './QualityKpiModal'
 import toast from 'react-hot-toast'
 
 // ════════════════════════════════════════
@@ -744,15 +748,21 @@ export default function QualityPage() {
   const [projects,  setProjects]  = useState<Project[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [certs,     setCerts]     = useState<any[]>([])
+  const [feedbacks,  setFeedbacks]  = useState<any[]>([])
+  const [suppliers,  setSuppliers]  = useState<any[]>([])
+  const [supplierEvals, setSupplierEvals] = useState<any[]>([])
+  const [kpis,       setKpis]       = useState<any[]>([])
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [showModal, setShowModal] = useState<string | null>(null)
   const [visitSubTab, setVisitSubTab] = useState<'inspection' | 'observation' | 'ncr'>('inspection')
+  const [supplierSubTab, setSupplierSubTab] = useState<'list' | 'evals'>('list')
 
   const [detailVisit,    setDetailVisit]    = useState<any | null>(null)
   const [detailAudit,    setDetailAudit]    = useState<Audit | null>(null)
   const [detailCapa,     setDetailCapa]     = useState<CAPA | null>(null)
   const [detailTraining, setDetailTraining] = useState<Training | null>(null)
+  const [editItem,       setEditItem]       = useState<any | null>(null)
 
   const [approvers,        setApprovers]        = useState<{ employee_id: number; employee_name: string }[]>([])
   const [corrections,      setCorrections]      = useState<Record<number, any[]>>({})
@@ -771,7 +781,8 @@ export default function QualityPage() {
     if (!tenant) return
     setLoading(true)
     const tid = tenant.id
-    const [audRes, capaRes, trnRes, projRes, empRes, visRes, apprRes] = await Promise.all([
+    const [audRes, capaRes, trnRes, projRes, empRes, visRes, apprRes,
+            fbRes, supRes, supEvalRes, kpiRes] = await Promise.all([
       supabase.from('qhse_audits').select('*').eq('tenant_id', tid).order('audit_date', { ascending: false }),
       supabase.from('qhse_capa').select('*').eq('tenant_id', tid).order('created_at', { ascending: false }),
       supabase.from('qhse_trainings').select('*').eq('tenant_id', tid).eq('training_type', 'جودة').order('training_date', { ascending: false }),
@@ -779,6 +790,10 @@ export default function QualityPage() {
       supabase.from('hr_employees').select('id,name,job_title').eq('tenant_id', tid).eq('is_active', true).order('name'),
       supabase.from('visits').select('*').eq('tenant_id', tid).eq('type', 'جودة').order('date', { ascending: false }),
       supabase.from('qhse_approvers').select('employee_id,employee_name').eq('tenant_id', tid).eq('module', 'جودة').eq('is_active', true),
+      supabase.from('quality_customer_feedback').select('*').eq('tenant_id', tid).order('date', { ascending: false }),
+      supabase.from('quality_suppliers').select('*').eq('tenant_id', tid).order('name'),
+      supabase.from('quality_supplier_evaluations').select('*, quality_suppliers(name)').eq('tenant_id', tid).order('eval_date', { ascending: false }),
+      supabase.from('quality_kpis').select('*').eq('tenant_id', tid).order('year', { ascending: false }),
     ])
     setAudits(audRes.data || [])
     setCapas(capaRes.data || [])
@@ -787,6 +802,10 @@ export default function QualityPage() {
     setEmployees(empRes.data || [])
     if (visRes.data) setVisits([...visits.filter(v => v.type !== 'جودة'), ...visRes.data])
     setApprovers(apprRes.data || [])
+    setFeedbacks(fbRes.data || [])
+    setSuppliers(supRes.data || [])
+    setSupplierEvals(supEvalRes.data || [])
+    setKpis(kpiRes.data || [])
     const certRes = await supabase.from('qhse_certificates').select('*').eq('tenant_id', tid).eq('cert_type_module', 'جودة').order('expiry_date')
     setCerts(certRes.data || [])
 
@@ -875,17 +894,23 @@ export default function QualityPage() {
   }
 
   const qualityVisits = visits.filter(v => v.type === 'جودة')
-  const openIssues   = qualityVisits.filter(v => v.specs === 'غير مطابق' && (v as any).lifecycle !== 'اعتماد').length
+  const openIssues    = qualityVisits.filter(v => v.specs === 'غير مطابق' && (v as any).lifecycle !== 'اعتماد').length
   const ncrCount      = qualityVisits.filter(v => !!(v as any).ncr_no).length
   const openAudits    = audits.filter(a => a.overall_result === 'غير مطابق').length
   const openCapas     = capas.filter(c => c.status !== 'مغلق').length
+  const openFeedbacks = feedbacks.filter(f => f.status !== 'مغلق').length
+  const unqualifiedSuppliers = suppliers.filter(s => s.qualification_status === 'غير مؤهل').length
+  const missedKpis    = kpis.filter(k => k.status === 'متأخر').length
 
   const TABS = [
     { id: 'visits',    label: 'زيارات الجودة',                icon: '📋' },
     { id: 'audits',    label: 'التدقيق',                       icon: '🔍' },
     { id: 'certs',     label: 'شهادات الجودة',                 icon: '🏅' },
-    { id: 'capa',      label: 'إجراءات التحسين المستمر',       icon: '🔄' },
+    { id: 'capa',      label: 'إجراءات التحسين',               icon: '🔄' },
     { id: 'trainings', label: 'التدريب',                       icon: '🎓' },
+    { id: 'feedback',  label: 'رضا العملاء',                   icon: '⭐' },
+    { id: 'suppliers', label: 'الموردون',                       icon: '🏭' },
+    { id: 'kpis',      label: 'مؤشرات الأداء',                 icon: '📊' },
     ...(canManageApprovers ? [{ id: 'approvers', label: 'مهندسو الاعتماد', icon: '🛡️' }] : []),
   ]
 
@@ -922,20 +947,27 @@ export default function QualityPage() {
           {tab === 'certs'     && <button onClick={() => setShowModal('cert')}     className="btn btn-primary" style={{ background: '#7c3aed' }}><Plus style={{ width: '16px', height: '16px' }} /> إضافة شهادة</button>}
           {tab === 'capa'      && <button onClick={() => setShowModal('capa')}     className="btn btn-primary" style={{ background: '#7c3aed' }}><Plus style={{ width: '16px', height: '16px' }} /> إجراء تحسين</button>}
           {tab === 'trainings' && <button onClick={() => setShowModal('training')} className="btn btn-primary" style={{ background: '#7c3aed' }}><Plus style={{ width: '16px', height: '16px' }} /> تسجيل تدريب</button>}
+          {tab === 'feedback' && <button onClick={() => { setEditItem(null); setShowModal('feedback') }} className="btn btn-primary" style={{ background: '#e6820a' }}><Plus style={{ width: '16px', height: '16px' }} /> تسجيل ملاحظة عميل</button>}
+          {tab === 'suppliers' && supplierSubTab === 'list' && <button onClick={() => { setEditItem(null); setShowModal('supplier') }} className="btn btn-primary" style={{ background: '#1a56db' }}><Plus style={{ width: '16px', height: '16px' }} /> إضافة مورد</button>}
+          {tab === 'suppliers' && supplierSubTab === 'evals' && <button onClick={() => { setEditItem(null); setShowModal('supplier_eval') }} className="btn btn-primary" style={{ background: '#0ea77b' }}><Plus style={{ width: '16px', height: '16px' }} /> تقييم مورد</button>}
+          {tab === 'kpis' && <button onClick={() => { setEditItem(null); setShowModal('kpi') }} className="btn btn-primary" style={{ background: '#1a56db' }}><Plus style={{ width: '16px', height: '16px' }} /> إضافة مؤشر</button>}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '8px' }}>
         {[
-          { label: 'زيارات الجودة',     value: qualityVisits.length, color: '#1a56db', bg: '#eff6ff' },
-          { label: 'قيود مفتوحة',       value: openIssues,           color: '#c81e1e', bg: '#fef2f2' },
-          { label: 'عدم مطابقات NCR',   value: ncrCount,              color: '#e6820a', bg: '#fffbeb' },
-          { label: 'تدقيقات غير مطابقة', value: openAudits,           color: '#c81e1e', bg: '#fef2f2' },
-          { label: 'إجراءات تحسين مفتوحة', value: openCapas,          color: '#7c3aed', bg: '#f5f3ff' },
+          { label: 'زيارات الجودة',       value: qualityVisits.length, color: '#1a56db', bg: '#eff6ff' },
+          { label: 'قيود مفتوحة',         value: openIssues,           color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'عدم مطابقات NCR',     value: ncrCount,             color: '#e6820a', bg: '#fffbeb' },
+          { label: 'تدقيق غير مطابق',     value: openAudits,           color: '#c81e1e', bg: '#fef2f2' },
+          { label: 'CAPA مفتوحة',         value: openCapas,            color: '#7c3aed', bg: '#f5f3ff' },
+          { label: 'شكاوى مفتوحة',        value: openFeedbacks,        color: openFeedbacks > 0 ? '#c81e1e' : '#0ea77b', bg: openFeedbacks > 0 ? '#fef2f2' : '#ecfdf5' },
+          { label: 'موردون غير مؤهلين',   value: unqualifiedSuppliers, color: unqualifiedSuppliers > 0 ? '#c81e1e' : '#0ea77b', bg: unqualifiedSuppliers > 0 ? '#fef2f2' : '#ecfdf5' },
+          { label: 'KPI متأخر',           value: missedKpis,           color: missedKpis > 0 ? '#c81e1e' : '#0ea77b', bg: missedKpis > 0 ? '#fef2f2' : '#ecfdf5' },
         ].map(kpi => (
-          <div key={kpi.label} className="card" style={{ padding: '14px', background: kpi.bg, textAlign: 'center' }}>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '3px' }}>{kpi.label}</div>
+          <div key={kpi.label} className="card" style={{ padding: '12px 8px', background: kpi.bg, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text3)', marginTop: '3px', lineHeight: 1.3 }}>{kpi.label}</div>
           </div>
         ))}
       </div>
@@ -1257,6 +1289,302 @@ export default function QualityPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══ تاب: رضا العملاء والشكاوى ══ */}
+      {tab === 'feedback' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {feedbacks.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>⭐</div>
+              <p>لا توجد ملاحظات عملاء مسجلة</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['الرقم','النوع','التاريخ','العميل','التصنيف','الخطورة','المسؤول','الرضا','الحالة',''].map(h => (
+                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedbacks.filter(f => !search || f.client_name?.includes(search) || f.description?.includes(search)).map(f => {
+                    const typeColor: Record<string,string> = { 'شكوى':'#c81e1e','اقتراح':'#1a56db','إطراء':'#0ea77b','استفسار':'#e6820a' }
+                    const typeIcon:  Record<string,string> = { 'شكوى':'⚠️','اقتراح':'💡','إطراء':'⭐','استفسار':'❓' }
+                    return (
+                      <tr key={f.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db', fontWeight: 700 }}>{f.ref_no}</td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, background: (typeColor[f.type] || '#374151') + '15', color: typeColor[f.type] || '#374151' }}>
+                            {typeIcon[f.type]} {f.type}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.82rem' }}>{new Date(f.date).toLocaleDateString('ar-SA')}</td>
+                        <td style={{ padding: '9px 12px', fontWeight: 600 }}>{f.client_name}</td>
+                        <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.78rem' }}>{f.category || '—'}</td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
+                            background: f.severity === 'عالية' || f.severity === 'حرجة' ? '#fef2f2' : f.severity === 'متوسطة' ? '#fffbeb' : '#ecfdf5',
+                            color:      f.severity === 'عالية' || f.severity === 'حرجة' ? '#c81e1e' : f.severity === 'متوسطة' ? '#e6820a' : '#0ea77b' }}>
+                            {f.severity}
+                          </span>
+                        </td>
+                        <td style={{ padding: '9px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{f.assigned_to_name || '—'}</td>
+                        <td style={{ padding: '9px 12px', textAlign: 'center', fontSize: '0.82rem' }}>
+                          {f.satisfaction_rating ? '⭐'.repeat(f.satisfaction_rating) : '—'}
+                        </td>
+                        <td style={{ padding: '9px 12px' }}>
+                          <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
+                            background: f.status === 'مغلق' ? '#ecfdf5' : f.status === 'قيد المعالجة' ? '#eff6ff' : '#fef2f2',
+                            color:      f.status === 'مغلق' ? '#0ea77b' : f.status === 'قيد المعالجة' ? '#1a56db' : '#c81e1e' }}>
+                            {f.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px' }}>
+                          <button onClick={() => { setEditItem(f); setShowModal('feedback') }}
+                            style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'inherit' }}>
+                            تعديل
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ تاب: الموردون ══ */}
+      {tab === 'suppliers' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
+            {[
+              { id: 'list',  label: '🏭 قائمة الموردين', count: suppliers.length },
+              { id: 'evals', label: '📊 التقييمات',       count: supplierEvals.length },
+            ].map(st => (
+              <button key={st.id} onClick={() => setSupplierSubTab(st.id as any)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
+                  background: supplierSubTab === st.id ? 'white' : 'transparent',
+                  color: supplierSubTab === st.id ? '#1a56db' : 'var(--text3)',
+                  boxShadow: supplierSubTab === st.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
+                {st.label}
+                <span style={{ background: supplierSubTab === st.id ? '#eff6ff' : '#e5e7eb', color: supplierSubTab === st.id ? '#1a56db' : '#6b7280', padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem' }}>{st.count}</span>
+              </button>
+            ))}
+          </div>
+          {supplierSubTab === 'list' && (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              {suppliers.length === 0 ? (
+                <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>🏭</div><p>لا يوجد موردون مسجلون</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['الكود','المورد','التصنيف','ISO','التقييم','حالة التأهيل','إعادة تأهيل',''].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suppliers.filter(s => !search || s.name?.includes(search)).map(s => {
+                        const rd = s.requalification_due ? Math.ceil((new Date(s.requalification_due).getTime() - Date.now()) / 86400000) : null
+                        const sc: Record<string,{bg:string;color:string}> = {
+                          'مؤهل':         { bg:'#ecfdf5', color:'#0ea77b' },
+                          'مشروط':        { bg:'#fffbeb', color:'#e6820a' },
+                          'غير مؤهل':    { bg:'#fef2f2', color:'#c81e1e' },
+                          'قيد التقييم': { bg:'#eff6ff', color:'#1a56db' },
+                        }
+                        const cs = sc[s.qualification_status] || { bg:'#f3f4f6', color:'#374151' }
+                        return (
+                          <tr key={s.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db', fontWeight: 700 }}>{s.supplier_code}</td>
+                            <td style={{ padding: '9px 12px', fontWeight: 600 }}>{s.name}</td>
+                            <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.78rem' }}>{s.category}</td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {s.iso_certified ? <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, background: '#ecfdf5', color: '#0ea77b' }}>✅</span>
+                                : <span style={{ color: '#9ca3af', fontSize: '0.72rem' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700,
+                              color: Number(s.overall_rating) >= 4 ? '#0ea77b' : Number(s.overall_rating) >= 3 ? '#e6820a' : s.overall_rating ? '#c81e1e' : 'var(--text3)' }}>
+                              {s.overall_rating ? `${Number(s.overall_rating).toFixed(1)}/5` : '—'}
+                            </td>
+                            <td style={{ padding: '9px 12px' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, background: cs.bg, color: cs.color }}>
+                                {s.qualification_status}
+                              </span>
+                            </td>
+                            <td style={{ padding: '9px 12px' }}>
+                              {rd === null ? '—' : rd < 0 ? <span style={{ color: '#c81e1e', fontSize: '0.72rem', fontWeight: 700 }}>❌ انتهى</span>
+                                : rd <= 30 ? <span style={{ color: '#e6820a', fontSize: '0.72rem', fontWeight: 700 }}>⚠️ {rd} يوم</span>
+                                : <span style={{ color: 'var(--text3)', fontSize: '0.78rem' }}>{new Date(s.requalification_due).toLocaleDateString('ar-SA')}</span>}
+                            </td>
+                            <td style={{ padding: '8px' }}>
+                              <button onClick={() => { setEditItem(s); setShowModal('supplier') }}
+                                style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'inherit' }}>
+                                تعديل
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+          {supplierSubTab === 'evals' && (
+            <div className="card" style={{ overflow: 'hidden' }}>
+              {supplierEvals.length === 0 ? (
+                <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div><p>لا توجد تقييمات موردين</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['المورد','التاريخ','الفترة','الجودة','التسليم','الامتثال','السلامة','المتوسط','CAPA',''].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {supplierEvals.filter(e => !search || (e as any).quality_suppliers?.name?.includes(search)).map(ev => (
+                        <tr key={ev.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600 }}>{(ev as any).quality_suppliers?.name || '—'}</td>
+                          <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.82rem' }}>{new Date(ev.eval_date).toLocaleDateString('ar-SA')}</td>
+                          <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.78rem' }}>{ev.eval_period || '—'}</td>
+                          {['quality_score','delivery_score','compliance_score','safety_score'].map(f => (
+                            <td key={f} style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 700,
+                              color: Number((ev as any)[f]) >= 4 ? '#0ea77b' : Number((ev as any)[f]) >= 3 ? '#e6820a' : Number((ev as any)[f]) > 0 ? '#c81e1e' : 'var(--text3)' }}>
+                              {(ev as any)[f] ? `${(ev as any)[f]}/5` : '—'}
+                            </td>
+                          ))}
+                          <td style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 800,
+                            color: Number(ev.overall_score) >= 4 ? '#0ea77b' : Number(ev.overall_score) >= 3 ? '#e6820a' : '#c81e1e' }}>
+                            {ev.overall_score ? Number(ev.overall_score).toFixed(1) : '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {ev.corrective_needed ? <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700, background: '#fffbeb', color: '#e6820a' }}>⚠️</span>
+                              : <span style={{ color: '#9ca3af', fontSize: '0.72rem' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <button onClick={() => { setEditItem(ev); setShowModal('supplier_eval') }}
+                              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'inherit' }}>
+                              تعديل
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ تاب: مؤشرات الأداء KPIs ══ */}
+      {tab === 'kpis' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {kpis.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {[
+                { label: 'مؤشرات محققة',    value: kpis.filter(k => k.status === 'محقق').length,        color: '#0ea77b', bg: '#ecfdf5', border: '#bbf7d0' },
+                { label: 'قيد التحقيق',     value: kpis.filter(k => k.status === 'قيد التحقيق').length, color: '#e6820a', bg: '#fffbeb', border: '#fde68a' },
+                { label: 'لم تتحقق / CAPA', value: kpis.filter(k => k.status === 'متأخر').length,       color: '#c81e1e', bg: '#fef2f2', border: '#fecaca' },
+              ].map((k, i) => (
+                <div key={i} className="card" style={{ padding: 14, background: k.bg, border: `1px solid ${k.border}`, textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#374151', marginTop: 3 }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {kpis.length === 0 ? (
+              <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div><p>لا توجد مؤشرات أداء مسجلة</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['المؤشر','التصنيف','الفترة','الهدف','الفعلي','التحقق','الحالة',''].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kpis.filter(k => !search || k.kpi_name?.includes(search)).map(k => {
+                      const pct = k.actual != null && k.target ? Math.min(Number(k.actual) / Number(k.target) * 100, 120).toFixed(0) : null
+                      return (
+                        <tr key={k.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '9px 12px', fontWeight: 600, maxWidth: 220 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.kpi_name}</div>
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600, background: '#eff6ff', color: '#1a56db' }}>{k.kpi_category}</span>
+                          </td>
+                          <td style={{ padding: '9px 12px', color: 'var(--text3)', fontSize: '0.78rem' }}>{k.month ? `${k.month} ` : ''}{k.year}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 700 }}>{k.target} {k.unit}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 700,
+                            color: k.status === 'محقق' ? '#0ea77b' : k.status === 'متأخر' ? '#c81e1e' : 'var(--text3)' }}>
+                            {k.actual != null ? `${k.actual} ${k.unit}` : '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px', minWidth: 100 }}>
+                            {pct ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ flex: 1, height: 5, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${pct}%`, borderRadius: 3,
+                                    background: Number(pct) >= 100 ? '#0ea77b' : Number(pct) >= 90 ? '#e6820a' : '#c81e1e' }} />
+                                </div>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, minWidth: 32 }}>{pct}%</span>
+                              </div>
+                            ) : '—'}
+                          </td>
+                          <td style={{ padding: '9px 12px' }}>
+                            {k.status ? (
+                              <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
+                                background: k.status === 'محقق' ? '#ecfdf5' : k.status === 'قيد التحقيق' ? '#fffbeb' : '#fef2f2',
+                                color:      k.status === 'محقق' ? '#0ea77b' : k.status === 'قيد التحقيق' ? '#e6820a' : '#c81e1e' }}>
+                                {k.status === 'محقق' ? '✅' : k.status === 'قيد التحقيق' ? '⚠️' : '❌'} {k.status}
+                              </span>
+                            ) : <span style={{ color: 'var(--text3)', fontSize: '0.72rem' }}>لم يُدخَل</span>}
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <button onClick={() => { setEditItem(k); setShowModal('kpi') }}
+                              style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'inherit' }}>
+                              تعديل
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1595,6 +1923,42 @@ export default function QualityPage() {
       {showModal === 'training' && (
         <TrainingModal employees={employees} tenantId={tenant!.id}
           onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+
+      {showModal === 'training' && (
+        <TrainingModal employees={employees} tenantId={tenant!.id}
+          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+      )}
+
+      {showModal === 'feedback' && (
+        <CustomerFeedbackModal
+          projects={projects} employees={employees}
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
+      )}
+
+      {showModal === 'supplier' && (
+        <SupplierModal
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
+      )}
+
+      {showModal === 'supplier_eval' && (
+        <SupplierEvalModal
+          suppliers={suppliers} projects={projects}
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
+      )}
+
+      {showModal === 'kpi' && (
+        <QualityKpiModal
+          projects={projects}
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
       )}
 
       {showAssignModal && (
