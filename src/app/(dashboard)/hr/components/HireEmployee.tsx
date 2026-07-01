@@ -101,8 +101,10 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const finalNationality = form.nationality === 'سعودي' ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
       const fullName = [form.first_name, form.father_name, form.grandfather_name, form.family_name].filter(Boolean).join(' ')
 
-      // توليد رقم الموظف
-      const { data: empNum, error: empNumError } = await supabase.rpc('generate_employee_number', { p_tenant_id: tenant.id })
+      // ✅ توليد رقم الموظف مع تحديد نوع البيانات بشكل صحيح
+      const { data: empNum, error: empNumError } = await supabase.rpc('generate_employee_number', { 
+        p_tenant_id: tenant.id as any 
+      })
       if (empNumError || !empNum) {
         throw new Error('فشل توليد رقم الموظف: ' + (empNumError?.message || 'رقم غير صحيح'))
       }
