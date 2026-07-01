@@ -630,11 +630,7 @@ export default function AttendancePage() {
   const [showImport, setShowImport] = useState(false)
   const [showCheckout, setShowCheckout] = useState(false)
   const [checkoutRecord, setCheckoutRecord] = useState<Attendance | null>(null)
-  const canManageAttendance =
-    currentUser?.role === 'مدير عام' ||
-    currentUser?.role === 'مدير HR' ||
-    currentUser?.role === 'مدير الموارد البشرية' ||
-    (currentUser?.permissions || []).includes('hr')
+  const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => { load() }, [tenant?.id])
 
@@ -730,7 +726,7 @@ export default function AttendancePage() {
           <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="input" style={{ width: 'auto' }} />
           {filterDate && <button onClick={() => setFilterDate('')} className="btn btn-ghost btn-sm">مسح</button>}
         </div>
-        {canManageAttendance && (
+        {isAdmin && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button onClick={downloadTemplate} className="btn btn-ghost btn-sm" title="تحميل قالب Excel">
               <Download style={{ width: '15px', height: '15px' }} /> قالب Excel
@@ -784,7 +780,7 @@ export default function AttendancePage() {
                   <td style={{ textAlign: 'center', color: r.overtime_hours ? '#e6820a' : 'var(--text3)', fontWeight: 600 }}>{r.overtime_hours || '—'}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.notes || '—'}</td>
                   <td>
-                    {canManageAttendance && (
+                    {isAdmin && (
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                         {r.status === 'حضور' && r.check_in && !r.check_out && (
                           <button
@@ -835,3 +831,4 @@ export default function AttendancePage() {
     </div>
   )
 }
+
