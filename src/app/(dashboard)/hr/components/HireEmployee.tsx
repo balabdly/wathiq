@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 import type { HREmployee, Department, JobTitle } from '../hr_types'
 import { calcGOSI } from '../hr_utils'
 
-const WORK_LOCATIONS = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الأحساء','القطيف','حائل','تبوك','الجوف','نجران','جيزان','عسير','الباحة']
+const WORK_LOCATIONS = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الأحساء','القطيف','حائل','تبوك','الجوف','نجران','عسير','جازان','الباحة']
 const CONTRACT_TYPES = ['دوام كامل','دوام جزئي','مؤقت','موسمي']
 const GENDERS       = ['ذكر','أنثى']
 const MARITAL       = ['أعزب','متزوج','مطلق','أرمل']
@@ -102,7 +102,10 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const fullName = [form.first_name, form.father_name, form.grandfather_name, form.family_name].filter(Boolean).join(' ')
 
       // توليد رقم الموظف
-      const { data: empNum } = await supabase.rpc('generate_employee_number', { p_tenant_id: tenant.id })
+      const { data: empNum, error: empNumError } = await supabase.rpc('generate_employee_number', { p_tenant_id: tenant.id })
+      if (empNumError || !empNum) {
+        throw new Error('فشل توليد رقم الموظف: ' + (empNumError?.message || 'رقم غير صحيح'))
+      }
 
       // إنشاء حساب دخول
       const { data: existingEmp } = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('name', fullName).eq('is_active', true).maybeSingle()
@@ -117,27 +120,43 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
         newEmp = createdEmp
       }
 
-      // إدراج في hr_employees
+      // إدراج في hr_employees مع حفظ الاسم الكامل
       const hrPayload: Record<string, any> = {
-        tenant_id: tenant.id, employee_id: newEmp?.id || null,
+        tenant_id: tenant.id, 
+        employee_id: newEmp?.id || null,
         employee_number: empNum,
-        first_name: form.first_name.trim(), father_name: form.father_name.trim(),
-        grandfather_name: form.grandfather_name.trim() || null, family_name: form.family_name.trim(),
-        first_name_en: form.first_name_en.trim() || null, family_name_en: form.family_name_en.trim() || null,
-        national_id: form.national_id.trim(), nationality: finalNationality,
-        birth_date: form.birth_date || null, gender: form.gender, marital_status: form.marital_status,
-        hire_date: form.hire_date || null, contract_type: form.contract_type,
-        job_title: form.job_title, department: form.department, work_location: form.work_location || null,
+        name: fullName, // ✅ إضافة الاسم الكامل
+        first_name: form.first_name.trim(), 
+        father_name: form.father_name.trim(),
+        grandfather_name: form.grandfather_name.trim() || null, 
+        family_name: form.family_name.trim(),
+        first_name_en: form.first_name_en.trim() || null, 
+        family_name_en: form.family_name_en.trim() || null,
+        national_id: form.national_id.trim(), 
+        nationality: finalNationality,
+        birth_date: form.birth_date || null, 
+        gender: form.gender, 
+        marital_status: form.marital_status,
+        hire_date: form.hire_date || null, 
+        contract_type: form.contract_type,
+        job_title: form.job_title, 
+        department: form.department, 
+        work_location: form.work_location || null,
         direct_manager: form.direct_manager && Number(form.direct_manager) > 0 ? Number(form.direct_manager) : null,
         basic_salary: Number(form.basic_salary) || 0,
         housing_allow: Number(form.housing_allow) || 0,
         transport_allow: Number(form.transport_allow) || 0,
         other_allow: Number(form.other_allow) || 0,
-        gosi_enrolled: form.gosi_enrolled, gosi_pct: form.gosi_pct,
-        bank_name: form.bank_name.trim(), iban: form.iban.trim(),
-        iqama_number: form.iqama_number.trim() || null, iqama_expiry: form.iqama_expiry || null,
-        passport_number: form.passport_number.trim() || null, passport_expiry: form.passport_expiry || null,
-        notes: form.notes.trim() || null, is_active: true,
+        gosi_enrolled: form.gosi_enrolled, 
+        gosi_pct: form.gosi_pct,
+        bank_name: form.bank_name.trim(), 
+        iban: form.iban.trim(),
+        iqama_number: form.iqama_number.trim() || null, 
+        iqama_expiry: form.iqama_expiry || null,
+        passport_number: form.passport_number.trim() || null, 
+        passport_expiry: form.passport_expiry || null,
+        notes: form.notes.trim() || null, 
+        is_active: true,
       }
       Object.keys(hrPayload).forEach(k => { if (hrPayload[k] === undefined) delete hrPayload[k] })
 
@@ -198,7 +217,7 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
           <div style={{ display: 'flex', gap: '8px' }}>
             {['سعودي','وافد'].map(n => (
               <button key={n} type="button" onClick={() => set('nationality', n)}
-                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `2px solid ${form.nationality === n ? (n==='سعودي'?'#1a56db':'#e6820a') : '#e5e7eb'}`, background: form.nationality === n ? (n==='سعودي'?'#eff6ff':'#fffbeb') : 'white', color: form.nationality === n ? (n==='سعودي'?'#1a56db':'#e6820a') : 'var(--text3)', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem' }}>
+                style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `2px solid ${form.nationality === n ? (n==='سعودي'?'#1a56db':'#e6820a') : '#e5e7eb'}`, background: form.nationality === n ? (n==='سعودي'?'#eff6ff':'#fffbeb') : 'white', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', transition: 'all 0.2s' }}>
                 {n === 'سعودي' ? '🇸🇦 سعودي' : '🌍 وافد'}
               </button>
             ))}
@@ -331,7 +350,7 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
         </>}
         <div style={{ gridColumn: '1/-1' }}>
           <Field label="ملاحظات">
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="أي ملاحظات إضافية..." />
+            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="أي ملاحظات إضافية" />
           </Field>
         </div>
       </Section>
