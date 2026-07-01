@@ -408,6 +408,83 @@ function ImportModal({
   )
 }
 
+// ─── مودال الانصراف السريع ────────────────────────────────────────────────────
+function CheckoutModal({ record, onClose, onSave }: {
+  record: Attendance
+  onClose: () => void
+  onSave: (id: number, checkOut: string) => Promise<void>
+}) {
+  const [checkOut, setCheckOut] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!checkOut) {
+      setError('يرجى إدخال وقت الانصراف')
+      return
+    }
+    if (record.check_in && checkOut <= record.check_in) {
+      setError('وقت الانصراف يجب أن يكون بعد وقت الحضور')
+      return
+    }
+    setError('')
+    setSaving(true)
+    await onSave(record.id, checkOut)
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '400px', width: '95vw' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Clock style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+            تسجيل الانصراف
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.85rem', color: '#1e40af', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span><strong>الموظف:</strong> {record.employee?.name || `#${record.employee_id}`}</span>
+              <span><strong>التاريخ:</strong> {record.date}</span>
+              <span><strong>وقت الحضور:</strong> {record.check_in}</span>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الانصراف <span className="text-red-500">*</span></label>
+              <input
+                type="time"
+                value={checkOut}
+                onChange={e => { setCheckOut(e.target.value); setError('') }}
+                className="input"
+                autoFocus
+                required
+              />
+            </div>
+            {error && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#c81e1e', fontSize: '0.82rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '8px 12px' }}>
+                <AlertCircle style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                {error}
+              </div>
+            )}
+          </div>
+          <div className="modal-footer">
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button type="submit" disabled={saving} className="btn btn-primary" style={{ background: '#1a56db' }}>
+              {saving
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Save className="w-4 h-4" />
+              }
+              تسجيل الانصراف
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function AttendanceModal({ record, employees, onClose, onSave }: {
   record: Attendance | null
   employees: any[]
@@ -551,6 +628,8 @@ export default function AttendancePage() {
   const [showModal, setShowModal] = useState(false)
   const [editRecord, setEditRecord] = useState<Attendance | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [showCheckout, setShowCheckout] = useState(false)
+  const [checkoutRecord, setCheckoutRecord] = useState<Attendance | null>(null)
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => { load() }, [tenant?.id])
@@ -590,6 +669,14 @@ export default function AttendancePage() {
     await supabase.from('hr_attendance').delete().eq('id', id)
     setRecords(r => r.filter(x => x.id !== id))
     toast.success('تم الحذف')
+  }
+
+  async function handleCheckout(id: number, checkOut: string) {
+    await supabase.from('hr_attendance').update({ check_out: checkOut }).eq('id', id)
+    await load()
+    setShowCheckout(false)
+    setCheckoutRecord(null)
+    toast.success('تم تسجيل الانصراف ✅')
   }
 
   const filtered = records.filter(r =>
@@ -678,13 +765,34 @@ export default function AttendancePage() {
                   <td style={{ fontSize: '0.875rem' }}>{formatDate(r.date)}</td>
                   <td><span className={`badge ${STATUS_COLOR[r.status] || 'badge-gray'}`}>{r.status}</span></td>
                   <td style={{ textAlign: 'center', fontWeight: 600, color: '#0ea77b' }}>{r.check_in || '—'}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 600, color: '#1a56db' }}>{r.check_out || '—'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    {r.check_out ? (
+                      <span style={{ fontWeight: 600, color: '#1a56db' }}>{r.check_out}</span>
+                    ) : r.status === 'حضور' && r.check_in ? (
+                      <span style={{ fontSize: '0.73rem', color: '#e6820a', fontWeight: 600, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                        لم يُسجَّل
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text3)' }}>—</span>
+                    )}
+                  </td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.hours_worked || '—'}</td>
                   <td style={{ textAlign: 'center', color: r.overtime_hours ? '#e6820a' : 'var(--text3)', fontWeight: 600 }}>{r.overtime_hours || '—'}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.notes || '—'}</td>
                   <td>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                        {r.status === 'حضور' && r.check_in && !r.check_out && (
+                          <button
+                            onClick={() => { setCheckoutRecord(r); setShowCheckout(true) }}
+                            className="btn btn-ghost btn-xs"
+                            style={{ color: '#1a56db', fontWeight: 600, gap: '3px' }}
+                            title="تسجيل الانصراف"
+                          >
+                            <Clock style={{ width: '13px', height: '13px' }} />
+                            انصراف
+                          </button>
+                        )}
                         <button onClick={() => { setEditRecord(r); setShowModal(true) }} className="btn btn-ghost btn-xs"><Pencil style={{ width: '14px', height: '14px' }} /></button>
                         <button onClick={() => handleDelete(r.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}><Trash2 style={{ width: '14px', height: '14px' }} /></button>
                       </div>
@@ -710,6 +818,14 @@ export default function AttendancePage() {
           branchId={activeBranch?.id}
           onClose={() => setShowImport(false)}
           onDone={() => { setShowImport(false); load() }}
+        />
+      )}
+
+      {showCheckout && checkoutRecord && (
+        <CheckoutModal
+          record={checkoutRecord}
+          onClose={() => { setShowCheckout(false); setCheckoutRecord(null) }}
+          onSave={handleCheckout}
         />
       )}
     </div>
