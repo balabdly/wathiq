@@ -101,10 +101,12 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const finalNationality = form.nationality === 'سعودي' ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
       const fullName = [form.first_name, form.father_name, form.grandfather_name, form.family_name].filter(Boolean).join(' ')
 
-      // ✅ توليد رقم الموظف مع التأكد من نوع البيانات الصحيح (UUID)
-      const { data: empNum, error: empNumError } = await supabase.rpc('generate_employee_number', { 
-        p_tenant_id: tenant.id
-      })
+      // ✅ توليد رقم الموظف مع استخدام head: false لتجنب الغموض في اختيار الدالة
+      const { data: empNum, error: empNumError } = await supabase.rpc(
+        'generate_employee_number',
+        { p_tenant_id: tenant.id },
+        { head: false }
+      )
       if (empNumError || !empNum) {
         throw new Error('فشل توليد رقم الموظف: ' + (empNumError?.message || 'رقم غير صحيح'))
       }
