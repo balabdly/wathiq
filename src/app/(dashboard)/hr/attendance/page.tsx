@@ -1,10 +1,11 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Clock, Plus, Search, Pencil, Trash2, X, Save } from 'lucide-react'
+import { Clock, Plus, Search, Pencil, Trash2, X, Save, Upload, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
 
 type Attendance = {
   id: number
@@ -15,6 +16,349 @@ type Attendance = {
   overtime_hours?: number
   notes?: string
   employee?: { name: string; job_title?: string }
+}
+
+// ─── ثوابت الاستيراد ────────────────────────────────────────────────────────
+const VALID_STATUSES = ['حضور', 'غياب', 'إجازة', 'مأمورية', 'عطلة']
+
+const TEMPLATE_COLUMNS = [
+  'اسم الموظف',
+  'التاريخ',
+  'الحالة',
+  'ساعات العمل',
+  'ساعات إضافية',
+  'ملاحظات',
+]
+
+type ImportRow = {
+  rowIndex: number
+  اسم_الموظف: string
+  التاريخ: string
+  الحالة: string
+  ساعات_العمل: string
+  ساعات_إضافية: string
+  ملاحظات: string
+  employee_id?: number
+  errors: string[]
+  valid: boolean
+}
+
+// ─── تحميل قالب Excel ────────────────────────────────────────────────────────
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    TEMPLATE_COLUMNS,
+    ['أحمد محمد', new Date().toISOString().split('T')[0], 'حضور', '8', '0', ''],
+  ])
+  ws['!cols'] = TEMPLATE_COLUMNS.map(() => ({ wch: 20 }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'الحضور')
+  XLSX.writeFile(wb, 'قالب_الحضور.xlsx')
+}
+
+// ─── تحليل وتحقق من صف الاستيراد ─────────────────────────────────────────
+function parseAndValidateRow(
+  raw: Record<string, unknown>,
+  rowIndex: number,
+  employees: { id: number; name: string }[]
+): ImportRow {
+  const errors: string[] = []
+
+  const اسم_الموظف = String(raw['اسم الموظف'] ?? '').trim()
+  const التاريخ    = String(raw['التاريخ']    ?? '').trim()
+  const الحالة     = String(raw['الحالة']     ?? '').trim()
+  const ساعات_العمل   = String(raw['ساعات العمل']   ?? '').trim()
+  const ساعات_إضافية  = String(raw['ساعات إضافية']  ?? '').trim()
+  const ملاحظات    = String(raw['ملاحظات']    ?? '').trim()
+
+  // التحقق من الموظف
+  let employee_id: number | undefined
+  if (!اسم_الموظف) {
+    errors.push('اسم الموظف مطلوب')
+  } else {
+    const match = employees.find(e => e.name.trim() === اسم_الموظف)
+    if (!match) errors.push(`الموظف "${اسم_الموظف}" غير موجود في النظام`)
+    else employee_id = match.id
+  }
+
+  // التحقق من التاريخ
+  if (!التاريخ) {
+    errors.push('التاريخ مطلوب')
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(التاريخ) || isNaN(Date.parse(التاريخ))) {
+    errors.push('صيغة التاريخ غير صحيحة (المطلوب: YYYY-MM-DD)')
+  }
+
+  // التحقق من الحالة
+  if (!الحالة) {
+    errors.push('الحالة مطلوبة')
+  } else if (!VALID_STATUSES.includes(الحالة)) {
+    errors.push(`الحالة "${الحالة}" غير مقبولة. القيم المسموح بها: ${VALID_STATUSES.join('، ')}`)
+  }
+
+  // التحقق من ساعات العمل (اختياري عند غياب/إجازة/مأمورية/عطلة)
+  if (ساعات_العمل !== '') {
+    const v = Number(ساعات_العمل)
+    if (isNaN(v) || v < 0 || v > 24) errors.push('ساعات العمل يجب أن تكون رقمًا بين 0 و 24')
+  }
+
+  // التحقق من ساعات إضافية (اختياري)
+  if (ساعات_إضافية !== '') {
+    const v = Number(ساعات_إضافية)
+    if (isNaN(v) || v < 0 || v > 12) errors.push('ساعات إضافية يجب أن تكون رقمًا بين 0 و 12')
+  }
+
+  return {
+    rowIndex,
+    اسم_الموظف,
+    التاريخ,
+    الحالة,
+    ساعات_العمل,
+    ساعات_إضافية,
+    ملاحظات,
+    employee_id,
+    errors,
+    valid: errors.length === 0,
+  }
+}
+
+// ─── مودال الاستيراد ─────────────────────────────────────────────────────────
+function ImportModal({
+  employees,
+  tenantId,
+  branchId,
+  onClose,
+  onDone,
+}: {
+  employees: { id: number; name: string }[]
+  tenantId: string
+  branchId?: number
+  onClose: () => void
+  onDone: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [rows, setRows] = useState<ImportRow[]>([])
+  const [importing, setImporting] = useState(false)
+  const [fileName, setFileName] = useState('')
+
+  const validRows   = rows.filter(r => r.valid)
+  const invalidRows = rows.filter(r => !r.valid)
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
+      toast.error('نوع الملف غير مدعوم. يُرجى رفع ملف .xlsx أو .csv')
+      return
+    }
+    setFileName(file.name)
+
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const data = new Uint8Array(ev.target!.result as ArrayBuffer)
+        const wb   = XLSX.read(data, { type: 'array', cellDates: false })
+        const ws   = wb.Sheets[wb.SheetNames[0]]
+        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
+          defval: '',
+          raw: false,
+        })
+
+        if (json.length === 0) {
+          toast.error('الملف فارغ أو لا يحتوي على بيانات')
+          return
+        }
+
+        // التحقق من وجود الأعمدة المطلوبة
+        const headers = Object.keys(json[0])
+        const missing = TEMPLATE_COLUMNS.filter(c => !headers.includes(c))
+        if (missing.length > 0) {
+          toast.error(`الأعمدة التالية مفقودة: ${missing.join('، ')}`)
+          setRows([])
+          return
+        }
+
+        const parsed = json.map((raw, i) => parseAndValidateRow(raw, i + 2, employees))
+        setRows(parsed)
+      } catch {
+        toast.error('تعذّر قراءة الملف. تأكد أن الملف غير تالف.')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  async function handleImport() {
+    if (validRows.length === 0) return
+    setImporting(true)
+    try {
+      const payload = validRows.map(r => ({
+        tenant_id: tenantId,
+        branch_id: branchId ?? null,
+        employee_id: r.employee_id!,
+        date: r.التاريخ,
+        status: r.الحالة,
+        hours_worked: r.ساعات_العمل !== '' ? Number(r.ساعات_العمل) : null,
+        overtime_hours: r.ساعات_إضافية !== '' ? Number(r.ساعات_إضافية) : null,
+        notes: r.ملاحظات || null,
+      }))
+
+      const { error } = await supabase.from('hr_attendance').insert(payload)
+      if (error) throw error
+
+      toast.success(`تم استيراد ${validRows.length} سجل بنجاح ✅`)
+      onDone()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'حدث خطأ أثناء الاستيراد'
+      toast.error(msg)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '780px', width: '95vw' }} onClick={e => e.stopPropagation()}>
+        {/* رأس المودال */}
+        <div className="modal-header">
+          <h3 className="font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Upload style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
+            استيراد سجلات الحضور من Excel
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* قسم رفع الملف */}
+          <div
+            style={{
+              border: '2px dashed var(--border)',
+              borderRadius: '10px',
+              padding: '24px',
+              textAlign: 'center',
+              background: 'var(--bg2)',
+              cursor: 'pointer',
+            }}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Upload style={{ width: '32px', height: '32px', color: 'var(--text3)', margin: '0 auto 8px' }} />
+            <p style={{ color: 'var(--text2)', fontSize: '0.9rem', fontWeight: 600 }}>
+              {fileName || 'انقر أو اسحب ملف Excel هنا'}
+            </p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.78rem', marginTop: '4px' }}>
+              الصيغ المدعومة: .xlsx، .xls، .csv
+            </p>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={{ display: 'none' }}
+              onChange={handleFile}
+            />
+          </div>
+
+          {/* ملاحظة أسماء الأعمدة */}
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.8rem', color: '#1d4ed8' }}>
+            <strong>الأعمدة المطلوبة: </strong>{TEMPLATE_COLUMNS.join(' | ')}
+            <br />
+            <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+              تأكد أن أسماء الأعمدة مطابقة تمامًا. اسم الموظف يجب أن يطابق الاسم المُسجّل في النظام.
+            </span>
+          </div>
+
+          {/* ملخص */}
+          {rows.length > 0 && (
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ background: '#ecfdf5', color: '#0ea77b', borderRadius: '6px', padding: '4px 12px', fontSize: '0.82rem', fontWeight: 600 }}>
+                <CheckCircle2 style={{ width: '14px', height: '14px', display: 'inline', marginLeft: '4px' }} />
+                {validRows.length} صف صحيح
+              </span>
+              {invalidRows.length > 0 && (
+                <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '6px', padding: '4px 12px', fontSize: '0.82rem', fontWeight: 600 }}>
+                  <AlertCircle style={{ width: '14px', height: '14px', display: 'inline', marginLeft: '4px' }} />
+                  {invalidRows.length} صف به أخطاء
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* جدول المعاينة */}
+          {rows.length > 0 && (
+            <div style={{ maxHeight: '320px', overflowY: 'auto', overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>الصف</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>اسم الموظف</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>التاريخ</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>الحالة</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ساعات العمل</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ساعات إضافية</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ملاحظات</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr
+                      key={r.rowIndex}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: r.valid ? undefined : '#fff5f5',
+                      }}
+                    >
+                      <td style={{ padding: '7px 10px', color: 'var(--text3)' }}>{r.rowIndex}</td>
+                      <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.اسم_الموظف || '—'}</td>
+                      <td style={{ padding: '7px 10px' }}>{r.التاريخ || '—'}</td>
+                      <td style={{ padding: '7px 10px' }}>{r.الحالة || '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.ساعات_العمل || '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.ساعات_إضافية || '—'}</td>
+                      <td style={{ padding: '7px 10px', color: 'var(--text3)' }}>{r.ملاحظات || '—'}</td>
+                      <td style={{ padding: '7px 10px', minWidth: '160px' }}>
+                        {r.valid ? (
+                          <span style={{ color: '#0ea77b', fontSize: '0.75rem', fontWeight: 600 }}>✓ صحيح</span>
+                        ) : (
+                          <div>
+                            {r.errors.map((err, i) => (
+                              <div key={i} style={{ color: '#c81e1e', fontSize: '0.73rem', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+                                <AlertCircle style={{ width: '12px', height: '12px', flexShrink: 0, marginTop: '2px' }} />
+                                {err}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* تذييل المودال */}
+        <div className="modal-footer">
+          <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          {rows.length > 0 && validRows.length > 0 && (
+            <button
+              type="button"
+              onClick={handleImport}
+              disabled={importing}
+              className="btn btn-primary"
+            >
+              {importing
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <Upload className="w-4 h-4" />
+              }
+              استيراد {validRows.length} سجل صحيح
+              {invalidRows.length > 0 && ` (تجاهل ${invalidRows.length} صف بأخطاء)`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function AttendanceModal({ record, employees, onClose, onSave }: {
@@ -108,6 +452,7 @@ export default function AttendancePage() {
   const [filterDate, setFilterDate] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editRecord, setEditRecord] = useState<Attendance | null>(null)
+  const [showImport, setShowImport] = useState(false)
   const isAdmin = currentUser?.role === 'مدير عام'
 
   useEffect(() => { load() }, [tenant?.id])
@@ -197,9 +542,17 @@ export default function AttendancePage() {
           {filterDate && <button onClick={() => setFilterDate('')} className="btn btn-ghost btn-sm">مسح</button>}
         </div>
         {isAdmin && (
-          <button onClick={() => { setEditRecord(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '16px', height: '16px' }} /> تسجيل حضور
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button onClick={downloadTemplate} className="btn btn-ghost btn-sm" title="تحميل قالب Excel">
+              <Download style={{ width: '15px', height: '15px' }} /> قالب Excel
+            </button>
+            <button onClick={() => setShowImport(true)} className="btn btn-ghost btn-sm" title="استيراد من Excel">
+              <Upload style={{ width: '15px', height: '15px' }} /> استيراد
+            </button>
+            <button onClick={() => { setEditRecord(null); setShowModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '16px', height: '16px' }} /> تسجيل حضور
+            </button>
+          </div>
         )}
       </div>
 
@@ -248,6 +601,16 @@ export default function AttendancePage() {
         <AttendanceModal record={editRecord} employees={hrEmployees}
           onClose={() => { setShowModal(false); setEditRecord(null) }}
           onSave={handleSave} />
+      )}
+
+      {showImport && tenant && (
+        <ImportModal
+          employees={hrEmployees.map(e => ({ id: e.id, name: e.name }))}
+          tenantId={tenant.id}
+          branchId={activeBranch?.id}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); load() }}
+        />
       )}
     </div>
   )
