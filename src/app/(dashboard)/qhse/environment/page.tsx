@@ -1,248 +1,143 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import {
-  Leaf, Award, Trash2, Zap, AlertTriangle,
-  ClipboardCheck, Plus, X, Save, ChevronDown, ChevronUp
-} from 'lucide-react'
+import { Leaf, Plus, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+import IncidentModal      from './IncidentModal'
+import EnvCertModal       from './EnvCertModal'
+import TrainingModal      from './TrainingModal'
+import TrainingRecordModal from './TrainingRecordModal'
 
-// ── Helpers ──────────────────────────────────────────────────
+// ════════════════════════════════════════
+// Helpers
+// ════════════════════════════════════════
 const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
-const fmtNum  = (n: number) => (n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-const WASTE_TYPES     = ['كهربائية (WEEE)', 'كيميائية / خطرة', 'معادن وخردة', 'ورق وكرتون', 'نفايات عامة', 'بلاستيك', 'زيوت محروقة', 'أخرى']
-const DISPOSAL_METHODS = ['إعادة تدوير', 'نقل لجهة معتمدة', 'حرق معتمد', 'دفن صحي', 'بيع كخردة']
-const RESOURCE_TYPES  = ['كهرباء', 'مياه', 'وقود (ديزل)', 'وقود (بنزين)', 'غاز طبيعي', 'غاز LPG']
-const RESOURCE_UNITS  = { 'كهرباء': 'كيلوواط/ساعة', 'مياه': 'م³', 'وقود (ديزل)': 'لتر', 'وقود (بنزين)': 'لتر', 'غاز طبيعي': 'م³', 'غاز LPG': 'كجم' }
-const COMPLIANCE_CATS = ['ترخيص بيئي', 'تصريح صرف', 'اشتراط نظامي', 'معيار دولي', 'متطلب محلي']
+const fmtDays = (d: string) => {
+  if (!d) return null
+  return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+}
 
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, [string, string]> = {
-    'ممتثل':          ['#d1fae5', '#065f46'],
-    'غير ممتثل':     ['#fee2e2', '#b91c1c'],
-    'قيد التجديد':   ['#fef3c7', '#92400e'],
-    'معالج':          ['#d1fae5', '#065f46'],
-    'معلق':           ['#fef3c7', '#92400e'],
-    'سارية':          ['#d1fae5', '#065f46'],
-    'قاربت':          ['#fef3c7', '#92400e'],
-    'منتهية':         ['#fee2e2', '#b91c1c'],
+  const map: Record<string, [string, string, string]> = {
+    'سارية':        ['#d1fae5','#065f46','✅'],
+    'قاربت':        ['#fef3c7','#92400e','⚠️'],
+    'منتهية':       ['#fee2e2','#b91c1c','❌'],
+    'مفتوح':        ['#fef3c7','#92400e','🔴'],
+    'مغلق':         ['#d1fae5','#065f46','✅'],
+    'ناجح':         ['#d1fae5','#065f46','✓'],
+    'راسب':         ['#fee2e2','#b91c1c','✗'],
+    'قيد المعالجة': ['#eff6ff','#1d4ed8','🔄'],
   }
-  const [bg, color] = map[status] || ['#f3f4f6', '#374151']
-  return <span style={{ background: bg, color, padding: '2px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{status}</span>
-}
-
-function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  const [bg, color, icon] = map[status] || ['#f3f4f6','#374151','•']
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-      <div style={{ background: 'white', borderRadius: 16, width: '100%', maxWidth: wide ? 700 : 580, maxHeight: '90vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e9ecef', position: 'sticky', top: 0, background: 'white', zIndex: 1 }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: 0 }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={20} /></button>
-        </div>
-        <div style={{ padding: 20 }}>{children}</div>
-      </div>
-    </div>
+    <span style={{ background: bg, color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      {icon} {status}
+    </span>
   )
 }
 
-function Section({ title, icon: Icon, color, children, action }: {
-  title: string; icon: any; color: string; children: React.ReactNode; action?: React.ReactNode
-}) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="card overflow-hidden">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: open ? '1px solid #e9ecef' : 'none', cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon size={17} style={{ color }} />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{title}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={e => e.stopPropagation()}>
-          {action}
-          <button onClick={() => setOpen(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
-            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-      </div>
-      {open && <div>{children}</div>}
-    </div>
-  )
+function SeverityBadge({ severity }: { severity: string }) {
+  const map: Record<string, [string, string]> = {
+    'عالية':   ['#fee2e2','#b91c1c'],
+    'متوسطة': ['#fef3c7','#92400e'],
+    'منخفضة': ['#d1fae5','#065f46'],
+  }
+  const [bg, color] = map[severity] || ['#f3f4f6','#374151']
+  return <span style={{ background: bg, color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{severity}</span>
 }
 
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════
+// الصفحة الرئيسية
+// ════════════════════════════════════════
 export default function EnvironmentPage() {
   const { tenant, activeBranch } = useStore()
   const router = useRouter()
   const tid = tenant?.id
   const bid = activeBranch?.id
 
-  const [certs,       setCerts]      = useState<any[]>([])
-  const [waste,       setWaste]      = useState<any[]>([])
-  const [energy,      setEnergy]     = useState<any[]>([])
-  const [compliance,  setCompliance] = useState<any[]>([])
-  const [envVisits,   setEnvVisits]  = useState<any[]>([])
-  const [envIncidents,setEnvInc]     = useState<any[]>([])
-  const [loading,     setLoading]    = useState(true)
+  const [tab,    setTab]    = useState('incidents')
+  const [search, setSearch] = useState('')
 
-  // Modals
-  const [showCertModal,       setShowCertModal]       = useState(false)
-  const [showWasteModal,      setShowWasteModal]      = useState(false)
-  const [showEnergyModal,     setShowEnergyModal]     = useState(false)
-  const [showComplianceModal, setShowComplianceModal] = useState(false)
-  const [editCert,            setEditCert]            = useState<any>(null)
-  const [editWaste,           setEditWaste]           = useState<any>(null)
-  const [editCompliance,      setEditCompliance]      = useState<any>(null)
+  // بيانات
+  const [incidents,       setIncidents]       = useState<any[]>([])
+  const [certs,           setCerts]           = useState<any[]>([])
+  const [trainings,       setTrainings]       = useState<any[]>([])
+  const [trainingRecords, setTrainingRecords] = useState<any[]>([])
+  const [safetyVisits,    setSafetyVisits]    = useState<any[]>([])
+  const [safetyMaterials, setSafetyMaterials] = useState<any[]>([])
+  const [employees,       setEmployees]       = useState<any[]>([])
+  const [loading,         setLoading]         = useState(true)
 
-  // نموذج الشهادة
-  const [certForm, setCertForm] = useState({
-    category: 'environment', type: 'ISO 14001', name: '',
-    cert_no: '', issuer: '', issue_date: '', expiry_date: '', notify_days: 60, notes: '',
-  })
-
-  // نموذج النفايات
-  const [wasteForm, setWasteForm] = useState({
-    waste_date: '', waste_type: 'نفايات عامة', description: '',
-    quantity: '', unit: 'كجم', disposal_method: 'إعادة تدوير',
-    disposal_party: '', cert_number: '', project_name: '',
-    cost: '', notes: '', status: 'معالج',
-  })
-
-  // نموذج الطاقة
-  const [energyForm, setEnergyForm] = useState({
-    record_date: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(),
-    resource_type: 'كهرباء', quantity: '', unit: 'كيلوواط/ساعة',
-    cost: '', meter_reading: '', source: '', location: '', notes: '',
-  })
-
-  // نموذج الامتثال
-  const [complianceForm, setComplianceForm] = useState({
-    requirement: '', category: 'ترخيص بيئي', authority: '',
-    description: '', due_date: '', status: 'ممتثل',
-    evidence: '', responsible: '', notes: '',
-  })
+  // حالة المودالات
+  const [showIncidentModal,  setShowIncidentModal]  = useState(false)
+  const [showCertModal,      setShowCertModal]      = useState(false)
+  const [showTrainingModal,  setShowTrainingModal]  = useState(false)
+  const [showRecordModal,    setShowRecordModal]    = useState(false)
+  const [editIncident,       setEditIncident]       = useState<any>(null)
+  const [editCert,           setEditCert]           = useState<any>(null)
 
   const loadData = useCallback(async () => {
     if (!tid) return
     setLoading(true)
     try {
-      const [c, w, e, comp, v, inc] = await Promise.all([
-        supabase.from('qhse_certs').select('*').eq('tenant_id', tid).eq('category', 'environment').order('expiry_date'),
-        supabase.from('qhse_waste_records').select('*').eq('tenant_id', tid).order('waste_date', { ascending: false }),
-        supabase.from('qhse_energy_records').select('*').eq('tenant_id', tid).order('year', { ascending: false }).order('month', { ascending: false }),
-        supabase.from('qhse_compliance').select('*').eq('tenant_id', tid).order('due_date'),
-        supabase.from('visits').select('*').eq('tenant_id', tid).eq('branch_id', bid).eq('type', 'بيئة').order('date', { ascending: false }),
-        supabase.from('qhse_incidents').select('*').eq('tenant_id', tid).eq('type', 'بيئي').order('date', { ascending: false }),
+      const [inc, cert, tr, trr, vis, mat, emp] = await Promise.all([
+        supabase.from('qhse_incidents').select('*').eq('tenant_id', tid).order('date', { ascending: false }),
+        supabase.from('qhse_certs').select('*').eq('tenant_id', tid)
+          .in('category', ['safety','fire','first_aid','environment']).order('expiry_date'),
+        supabase.from('qhse_trainings').select('*').eq('tenant_id', tid).eq('is_active', true).order('name'),
+        supabase.from('qhse_training_records')
+          .select('*, hr_employees(name, department), qhse_trainings(name, validity_months)')
+          .eq('tenant_id', tid).order('expiry_date'),
+        supabase.from('visits').select('*').eq('tenant_id', tid).eq('branch_id', bid)
+          .eq('type', 'سلامة').order('date', { ascending: false }),
+        supabase.from('materials').select('*').eq('tenant_id', tid).eq('branch_id', bid)
+          .eq('category', 'safety').order('name'),
+        supabase.from('hr_employees').select('id, name, department')
+          .eq('tenant_id', tid).eq('is_active', true).order('name'),
       ])
-      setCerts(c.data || [])
-      setWaste(w.data || [])
-      setEnergy(e.data || [])
-      setCompliance(comp.data || [])
-      setEnvVisits(v.data || [])
-      setEnvInc(inc.data || [])
-    } catch (err) { console.error(err) }
+      setIncidents(inc.data || [])
+      setCerts(cert.data || [])
+      setTrainings(tr.data || [])
+      setTrainingRecords(trr.data || [])
+      setSafetyVisits(vis.data || [])
+      setSafetyMaterials(mat.data || [])
+      setEmployees(emp.data || [])
+    } catch (e) { console.error(e) }
     setLoading(false)
   }, [tid, bid])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // ── حفظ الشهادة ──
-  async function saveCert() {
-    if (!certForm.name || !certForm.expiry_date) { toast.error('يرجى تعبئة الاسم وتاريخ الانتهاء'); return }
-    const payload = { ...certForm, tenant_id: tid, branch_id: bid }
-    const { error } = editCert
-      ? await supabase.from('qhse_certs').update(payload).eq('id', editCert.id)
-      : await supabase.from('qhse_certs').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم حفظ الشهادة')
-    setShowCertModal(false); setEditCert(null)
-    setCertForm({ category:'environment',type:'ISO 14001',name:'',cert_no:'',issuer:'',issue_date:'',expiry_date:'',notify_days:60,notes:'' })
-    loadData()
-  }
+  // ══ KPIs ══
+  const lastIncident = incidents.find(i => i.status !== 'مغلق')
+  const daysSafe = lastIncident
+    ? Math.floor((Date.now() - new Date(lastIncident.date).getTime()) / 86400000)
+    : incidents.length > 0
+      ? Math.floor((Date.now() - new Date(incidents[0].date).getTime()) / 86400000)
+      : null
 
-  // ── حفظ النفايات ──
-  async function saveWaste() {
-    if (!wasteForm.waste_date || !wasteForm.waste_type || !wasteForm.quantity) { toast.error('يرجى تعبئة التاريخ والنوع والكمية'); return }
-    const payload = { ...wasteForm, quantity: Number(wasteForm.quantity), cost: wasteForm.cost ? Number(wasteForm.cost) : null, tenant_id: tid, branch_id: bid }
-    const { error } = editWaste
-      ? await supabase.from('qhse_waste_records').update(payload).eq('id', editWaste.id)
-      : await supabase.from('qhse_waste_records').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم تسجيل النفايات')
-    setShowWasteModal(false); setEditWaste(null)
-    setWasteForm({ waste_date:'',waste_type:'نفايات عامة',description:'',quantity:'',unit:'كجم',disposal_method:'إعادة تدوير',disposal_party:'',cert_number:'',project_name:'',cost:'',notes:'',status:'معالج' })
-    loadData()
-  }
+  const openIncidents   = incidents.filter(i => i.status === 'مفتوح').length
+  const expiredCerts    = certs.filter(c => c.expiry_date && new Date(c.expiry_date) < new Date()).length
+  const expiringSoon    = certs.filter(c => { const d = fmtDays(c.expiry_date); return d !== null && d >= 0 && d <= 60 }).length
+  const overdueTraining = trainingRecords.filter(r => r.status === 'منتهية').length
+  const soonTraining    = trainingRecords.filter(r => r.status === 'قاربت').length
+  const lowSafeMat      = safetyMaterials.filter(m => m.qty <= m.reorder).length
+  const thisMonthVisits = safetyVisits.filter(v => {
+    const d = new Date(v.date); const n = new Date()
+    return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
+  }).length
 
-  // ── حفظ استهلاك الطاقة ──
-  async function saveEnergy() {
-    if (!energyForm.record_date || !energyForm.resource_type || !energyForm.quantity) { toast.error('يرجى تعبئة التاريخ والنوع والكمية'); return }
-    const payload = {
-      ...energyForm,
-      quantity: Number(energyForm.quantity),
-      cost: energyForm.cost ? Number(energyForm.cost) : null,
-      meter_reading: energyForm.meter_reading ? Number(energyForm.meter_reading) : null,
-      tenant_id: tid, branch_id: bid,
-    }
-    const { error } = await supabase.from('qhse_energy_records').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم تسجيل الاستهلاك')
-    setShowEnergyModal(false)
-    setEnergyForm({ record_date:'',month:new Date().getMonth()+1,year:new Date().getFullYear(),resource_type:'كهرباء',quantity:'',unit:'كيلوواط/ساعة',cost:'',meter_reading:'',source:'',location:'',notes:'' })
-    loadData()
-  }
+  const TABS = [
+    { id: 'incidents', label: 'الحوادث والإصابات',  icon: '⚠️' },
+    { id: 'certs',     label: 'الشهادات البيئية',    icon: '🏆' },
+    { id: 'training',  label: 'التدريب',             icon: '📚' },
+    { id: 'visits',    label: 'الزيارات الميدانية',  icon: '🔍' },
+    { id: 'materials', label: 'مخزون مواد السلامة',  icon: '📦' },
+  ]
 
-  // ── حفظ متطلب الامتثال ──
-  async function saveCompliance() {
-    if (!complianceForm.requirement) { toast.error('يرجى إدخال المتطلب'); return }
-    const payload = { ...complianceForm, tenant_id: tid, branch_id: bid }
-    const { error } = editCompliance
-      ? await supabase.from('qhse_compliance').update(payload).eq('id', editCompliance.id)
-      : await supabase.from('qhse_compliance').insert(payload)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success('✅ تم حفظ متطلب الامتثال')
-    setShowComplianceModal(false); setEditCompliance(null)
-    setComplianceForm({ requirement:'',category:'ترخيص بيئي',authority:'',description:'',due_date:'',status:'ممتثل',evidence:'',responsible:'',notes:'' })
-    loadData()
-  }
-
-  const iCert = (k: string, v: any) => setCertForm(f => ({ ...f, [k]: v }))
-  const iWaste = (k: string, v: any) => setWasteForm(f => ({ ...f, [k]: v }))
-  const iEnergy = (k: string, v: any) => setEnergyForm(f => ({ ...f, [k]: v }))
-  const iComp = (k: string, v: any) => setComplianceForm(f => ({ ...f, [k]: v }))
-
-  // ── إحصاءات ──
-  const expiredCerts      = certs.filter(c => c.expiry_date && new Date(c.expiry_date) < new Date()).length
-  const nonCompliant      = compliance.filter(c => c.status === 'غير ممتثل').length
-  const pendingRenewal    = compliance.filter(c => c.status === 'قيد التجديد').length
-  const totalWasteKg      = waste.reduce((s, w) => s + (w.unit === 'كجم' ? Number(w.quantity || 0) : Number(w.quantity || 0) * (w.unit === 'طن' ? 1000 : 1)), 0)
-  const thisMonthEnergy   = energy.filter(e => e.month === new Date().getMonth() + 1 && e.year === new Date().getFullYear())
-  const electricityMTD    = thisMonthEnergy.filter(e => e.resource_type === 'كهرباء').reduce((s, e) => s + Number(e.quantity || 0), 0)
-
-  // ── ملخص الطاقة الشهري ──
-  const energyByMonth = (() => {
-    const map: Record<string, Record<string, number>> = {}
-    energy.forEach(e => {
-      const key = `${e.year}-${String(e.month).padStart(2, '0')}`
-      if (!map[key]) map[key] = {}
-      if (!map[key][e.resource_type]) map[key][e.resource_type] = 0
-      map[key][e.resource_type] += Number(e.quantity || 0)
-    })
-    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6)
-  })()
-
-  // ── ملخص النفايات حسب النوع ──
-  const wasteByType = (() => {
-    const map: Record<string, number> = {}
-    waste.forEach(w => {
-      if (!map[w.waste_type]) map[w.waste_type] = 0
-      map[w.waste_type] += Number(w.quantity || 0)
-    })
-    return Object.entries(map).sort((a, b) => b[1] - a[1])
-  })()
+  function onModalSave() { loadData() }
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
@@ -251,533 +146,396 @@ export default function EnvironmentPage() {
   )
 
   return (
-    <div className="space-y-5 fade-in" dir="rtl">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }} dir="rtl">
 
-      {/* Header */}
-      <div>
-        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Leaf size={20} style={{ color: '#059669' }} />
-          إدارة البيئة (ENV)
-        </h1>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 2 }}>
-          شهادات البيئة، إدارة النفايات، استهلاك الطاقة، والامتثال البيئي
-        </p>
+      {/* ══ Header ══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Leaf size={20} style={{ color: '#0ea77b' }} />
+            الإدارة البيئية والسلامة
+          </h1>
+          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: 2 }}>
+            إدارة الحوادث والشهادات والتدريب وزيارات السلامة الميدانية
+          </p>
+        </div>
+
+        {/* أزرار الإضافة — تتغيّر حسب التاب */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {tab === 'incidents' && (
+            <button onClick={() => setShowIncidentModal(true)} className="btn btn-primary" style={{ background: '#dc2626' }}>
+              <Plus size={16} /> تسجيل حادثة
+            </button>
+          )}
+          {tab === 'certs' && (
+            <button onClick={() => setShowCertModal(true)} className="btn btn-primary" style={{ background: '#f59e0b' }}>
+              <Plus size={16} /> إضافة شهادة
+            </button>
+          )}
+          {tab === 'training' && (
+            <>
+              <button onClick={() => setShowRecordModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+                <Plus size={16} /> تسجيل حضور
+              </button>
+              <button onClick={() => setShowTrainingModal(true)} className="btn btn-ghost" style={{ border: '1px solid var(--border)' }}>
+                <Plus size={16} /> إضافة دورة
+              </button>
+            </>
+          )}
+          {tab === 'visits' && (
+            <button onClick={() => router.push('/visits')} className="btn btn-ghost" style={{ border: '1px solid var(--border)' }}>
+              <Plus size={16} /> إضافة زيارة
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* شريط ملخص */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+      {/* ══ KPIs ══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
         {[
-          { label: 'شهادة منتهية',    val: expiredCerts,   color: expiredCerts > 0 ? '#dc2626' : '#059669',   bg: expiredCerts > 0 ? '#fef2f2' : '#f0fdf4' },
-          { label: 'غير ممتثل',       val: nonCompliant,   color: nonCompliant > 0 ? '#dc2626' : '#059669',   bg: nonCompliant > 0 ? '#fef2f2' : '#f0fdf4' },
-          { label: 'قيد التجديد',     val: pendingRenewal, color: pendingRenewal > 0 ? '#d97706' : '#059669', bg: pendingRenewal > 0 ? '#fffbeb' : '#f0fdf4' },
-          { label: 'إجمالي النفايات (كجم)', val: Math.round(totalWasteKg), color: '#059669', bg: '#f0fdf4' },
-          { label: 'كهرباء هذا الشهر (kWh)', val: Math.round(electricityMTD), color: '#1d4ed8', bg: '#eff6ff' },
-        ].map(item => (
-          <div key={item.label} style={{ background: item.bg, borderRadius: 12, padding: '12px 14px', border: `1px solid ${item.color}30` }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: item.color }}>{item.val.toLocaleString('ar-SA')}</div>
-            <div style={{ fontSize: '0.72rem', color: '#374151', fontWeight: 500, marginTop: 2 }}>{item.label}</div>
+          {
+            icon: '🛡️', value: daysSafe ?? '—', label: 'يوم بدون حوادث',
+            bg: daysSafe === null || daysSafe > 30 ? '#f0fdf4' : '#fef2f2',
+            color: daysSafe === null || daysSafe > 30 ? '#065f46' : '#b91c1c',
+            border: daysSafe === null || daysSafe > 30 ? '#bbf7d0' : '#fecaca',
+          },
+          { icon: '⚠️', value: openIncidents, label: 'حادثة مفتوحة',
+            bg: openIncidents > 0 ? '#fef2f2' : '#f8f9fa',
+            color: openIncidents > 0 ? '#b91c1c' : '#374151',
+            border: openIncidents > 0 ? '#fecaca' : '#e9ecef' },
+          { icon: '🏆',
+            value: expiredCerts > 0 ? expiredCerts : expiringSoon > 0 ? expiringSoon : certs.length,
+            label: expiredCerts > 0 ? 'شهادة منتهية' : expiringSoon > 0 ? 'شهادة تقترب' : 'شهادة سارية',
+            bg: expiredCerts > 0 ? '#fef2f2' : expiringSoon > 0 ? '#fffbeb' : '#f0fdf4',
+            color: expiredCerts > 0 ? '#b91c1c' : expiringSoon > 0 ? '#92400e' : '#065f46',
+            border: expiredCerts > 0 ? '#fecaca' : expiringSoon > 0 ? '#fde68a' : '#bbf7d0' },
+          { icon: '📚',
+            value: overdueTraining > 0 ? overdueTraining : soonTraining,
+            label: overdueTraining > 0 ? 'تدريب منتهي' : 'تدريب يقترب',
+            bg: overdueTraining > 0 ? '#fef2f2' : soonTraining > 0 ? '#fffbeb' : '#f8f9fa',
+            color: overdueTraining > 0 ? '#b91c1c' : soonTraining > 0 ? '#92400e' : '#374151',
+            border: overdueTraining > 0 ? '#fecaca' : '#e9ecef' },
+          { icon: '🔍', value: thisMonthVisits, label: 'زيارة هذا الشهر',
+            bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+          { icon: '📦', value: lowSafeMat, label: 'مادة منخفضة',
+            bg: lowSafeMat > 0 ? '#fef2f2' : '#f0fdf4',
+            color: lowSafeMat > 0 ? '#b91c1c' : '#065f46',
+            border: lowSafeMat > 0 ? '#fecaca' : '#bbf7d0' },
+        ].map((kpi, i) => (
+          <div key={i} className="card" style={{ padding: 14, background: kpi.bg, border: `1px solid ${kpi.border}`, textAlign: 'center' }}>
+            <div style={{ fontSize: 22, marginBottom: 4 }}>{kpi.icon}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.7rem', color: '#374151', fontWeight: 600, marginTop: 2 }}>{kpi.label}</div>
           </div>
         ))}
       </div>
 
-      {/* ══ شهادات البيئة ══ */}
-      <Section title="🏆 شهادات البيئة" icon={Award} color="#059669"
-        action={
-          <button onClick={() => setShowCertModal(true)} className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> إضافة شهادة
+      {/* ══ التابات ══ */}
+      <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 10, overflowX: 'auto' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); setSearch('') }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap',
+              transition: 'all 0.15s',
+              background: tab === t.id ? 'white' : 'transparent',
+              color: tab === t.id ? '#0ea77b' : 'var(--text3)',
+              boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+            }}>
+            <span>{t.icon}</span> {t.label}
           </button>
-        }>
-        {certs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 36, color: '#9ca3af' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🏆</div>
-            <div style={{ fontWeight: 600 }}>لا توجد شهادات بيئية مضافة</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>أضف ISO 14001 وغيرها من الشهادات البيئية</div>
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12, padding: 16 }}>
-            {certs.map((cert: any) => {
-              const days = cert.expiry_date ? Math.ceil((new Date(cert.expiry_date).getTime() - Date.now()) / 86400000) : null
-              const isExpired = days !== null && days < 0
-              const isSoon    = days !== null && days >= 0 && days <= 90
-              return (
-                <div key={cert.id} style={{ borderRadius: 12, padding: 16, border: '1px solid', borderColor: isExpired ? '#fecaca' : isSoon ? '#fde68a' : '#bbf7d0', background: isExpired ? '#fef2f2' : isSoon ? '#fffbeb' : '#f0fdf4' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{cert.name || cert.type}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>{cert.type}</div>
-                    </div>
-                    <StatusBadge status={isExpired ? 'منتهية' : isSoon ? 'قاربت' : 'سارية'} />
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {cert.cert_no  && <div>📋 رقم: <strong>{cert.cert_no}</strong></div>}
-                    {cert.issuer   && <div>🏢 الجهة: <strong>{cert.issuer}</strong></div>}
-                    <div>⏰ الانتهاء: <strong style={{ color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#065f46' }}>{fmtDate(cert.expiry_date)}</strong></div>
-                    {days !== null && <div style={{ fontWeight: 700, color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#059669' }}>
-                      {isExpired ? `⚠️ منتهية منذ ${Math.abs(days)} يوم` : `✅ تنتهي بعد ${days} يوم`}
-                    </div>}
-                  </div>
-                  <button onClick={() => { setEditCert(cert); setCertForm({ category:cert.category,type:cert.type||'',name:cert.name||'',cert_no:cert.cert_no||'',issuer:cert.issuer||'',issue_date:cert.issue_date||'',expiry_date:cert.expiry_date||'',notify_days:cert.notify_days||60,notes:cert.notes||'' }); setShowCertModal(true) }}
-                    style={{ marginTop: 10, background: 'none', border: '1px solid #e9ecef', borderRadius: 8, padding: '5px 12px', cursor: 'pointer', fontSize: 12, color: '#6b7280', width: '100%' }}>
-                    تعديل
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </Section>
+        ))}
+      </div>
 
-      {/* ══ إدارة النفايات ══ */}
-      <Section title="🗑️ إدارة النفايات" icon={Trash2} color="#6b7280"
-        action={
-          <button onClick={() => setShowWasteModal(true)} className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> تسجيل نفايات
-          </button>
-        }>
-        <div style={{ padding: 16 }}>
-          {/* ملخص حسب النوع */}
-          {wasteByType.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#374151', marginBottom: 10 }}>توزيع النفايات حسب النوع</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 8 }}>
-                {wasteByType.map(([type, qty]) => (
-                  <div key={type} style={{ background: '#f8f9fa', borderRadius: 8, padding: '10px 12px', border: '1px solid #e9ecef' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 3 }}>{type}</div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{qty.toLocaleString('ar-SA')} كجم</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      {/* ══ بحث ══ */}
+      <div style={{ position: 'relative', maxWidth: 340 }}>
+        <Search size={15} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} className="input"
+          style={{ paddingRight: 32 }} placeholder="بحث..." />
+      </div>
 
-          {/* جدول السجلات */}
-          {waste.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>🗑️</div>
-              <div style={{ fontWeight: 600 }}>لا توجد سجلات نفايات</div>
+      {/* ══════════════════════════════════ */}
+      {/* تاب: الحوادث والإصابات            */}
+      {/* ══════════════════════════════════ */}
+      {tab === 'incidents' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {incidents.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+              <p>لا توجد حوادث مسجلة — هذا جيد!</p>
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
-                  <tr style={{ background: '#f8f9fa' }}>
-                    {['التاريخ','النوع','الكمية','طريقة التخلص','الجهة','المشروع','شهادة التخلص','الحالة',''].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef', whiteSpace: 'nowrap' }}>{h}</th>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['النوع','التاريخ','الموقع','الخطورة','المصاب','الإجراء','الحالة',''].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {waste.map((w: any, i: number) => (
-                    <tr key={w.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{fmtDate(w.waste_date)}</td>
-                      <td style={{ padding: '9px 12px', fontWeight: 500 }}>{w.waste_type}</td>
-                      <td style={{ padding: '9px 12px', fontWeight: 600 }}>{fmtNum(w.quantity)} {w.unit}</td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{w.disposal_method || '—'}</td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{w.disposal_party || '—'}</td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{w.project_name || '—'}</td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{w.cert_number || '—'}</td>
-                      <td style={{ padding: '9px 12px' }}><StatusBadge status={w.status} /></td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <button onClick={() => { setEditWaste(w); setWasteForm({ waste_date:w.waste_date,waste_type:w.waste_type,description:w.description||'',quantity:String(w.quantity),unit:w.unit,disposal_method:w.disposal_method||'إعادة تدوير',disposal_party:w.disposal_party||'',cert_number:w.cert_number||'',project_name:w.project_name||'',cost:String(w.cost||''),notes:w.notes||'',status:w.status }); setShowWasteModal(true) }}
-                          style={{ background: 'none', border: '1px solid #e9ecef', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: '#6b7280' }}>تعديل</button>
-                      </td>
-                    </tr>
-                  ))}
+                  {incidents
+                    .filter(i => !search || i.type?.includes(search) || i.location?.includes(search) || i.description?.includes(search))
+                    .map(inc => (
+                      <tr key={inc.id}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '9px 14px', fontWeight: 500 }}>{inc.type}</td>
+                        <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{fmtDate(inc.date)}</td>
+                        <td style={{ padding: '9px 14px' }}>{inc.location}</td>
+                        <td style={{ padding: '9px 14px' }}><SeverityBadge severity={inc.severity} /></td>
+                        <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{inc.injured || '—'}</td>
+                        <td style={{ padding: '9px 14px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text3)' }}>{inc.action || '—'}</td>
+                        <td style={{ padding: '9px 14px' }}><StatusBadge status={inc.status} /></td>
+                        <td style={{ padding: '8px 14px' }}>
+                          <button onClick={() => { setEditIncident(inc); setShowIncidentModal(true) }}
+                            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                            تعديل
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-      </Section>
+      )}
 
-      {/* ══ استهلاك الطاقة ══ */}
-      <Section title="⚡ استهلاك الطاقة والموارد" icon={Zap} color="#f59e0b"
-        action={
-          <button onClick={() => setShowEnergyModal(true)} className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> تسجيل استهلاك
-          </button>
-        }>
-        <div style={{ padding: 16 }}>
-          {/* ملخص شهري */}
-          {energyByMonth.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#374151', marginBottom: 10 }}>الاستهلاك الشهري (آخر 6 أشهر)</div>
+      {/* ══════════════════════════════════ */}
+      {/* تاب: الشهادات البيئية             */}
+      {/* ══════════════════════════════════ */}
+      {tab === 'certs' && (
+        <>
+          {certs.length === 0 ? (
+            <div className="card" style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🏆</div>
+              <p>لا توجد شهادات مضافة</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+              {certs
+                .filter(c => !search || c.name?.includes(search) || c.issuer?.includes(search))
+                .map((cert: any) => {
+                  const days      = fmtDays(cert.expiry_date)
+                  const isExpired = days !== null && days < 0
+                  const isSoon    = days !== null && days >= 0 && days <= 60
+                  return (
+                    <div key={cert.id} className="card" style={{ padding: 16, borderTop: `3px solid ${isExpired ? '#fecaca' : isSoon ? '#fde68a' : '#bbf7d0'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{cert.name}</div>
+                        <StatusBadge status={isExpired ? 'منتهية' : isSoon ? 'قاربت' : 'سارية'} />
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text3)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {cert.cert_no && <div>رقم الشهادة: <strong>{cert.cert_no}</strong></div>}
+                        {cert.issuer  && <div>الجهة: <strong>{cert.issuer}</strong></div>}
+                        <div>تاريخ الانتهاء: <strong style={{ color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#065f46' }}>{fmtDate(cert.expiry_date)}</strong></div>
+                        {days !== null && (
+                          <div style={{ fontWeight: 600, color: isExpired ? '#b91c1c' : isSoon ? '#92400e' : '#065f46' }}>
+                            {isExpired ? `منتهية منذ ${Math.abs(days)} يوم` : `تنتهي بعد ${days} يوم`}
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => { setEditCert(cert); setShowCertModal(true) }}
+                        style={{ marginTop: 10, background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', width: '100%', fontFamily: 'inherit' }}>
+                        تعديل
+                      </button>
+                    </div>
+                  )
+                })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════ */}
+      {/* تاب: التدريب                      */}
+      {/* ══════════════════════════════════ */}
+      {tab === 'training' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {trainings.length > 0 && (
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 10 }}>الدورات الإلزامية</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {trainings.map((t: any) => (
+                  <div key={t.id} style={{ padding: '6px 12px', background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 20, fontSize: 12 }}>
+                    <span style={{ fontWeight: 600, color: '#3730a3' }}>{t.name}</span>
+                    <span style={{ color: '#6b7280', marginRight: 6 }}>• كل {t.validity_months} شهر</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {trainingRecords.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
+                <p>لا توجد سجلات تدريب</p>
+              </div>
+            ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
-                    <tr style={{ background: '#f8f9fa' }}>
-                      <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef' }}>الشهر</th>
-                      {['كهرباء (kWh)', 'مياه (م³)', 'وقود (لتر)'].map(h => (
-                        <th key={h} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef', whiteSpace: 'nowrap' }}>{h}</th>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['الموظف','القسم','الدورة','تاريخ التدريب','تاريخ الانتهاء','المتبقي','النتيجة','الحالة'].map(h => (
+                        <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {energyByMonth.map(([month, data]) => (
-                      <tr key={month} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                        <td style={{ padding: '8px 12px', fontWeight: 600 }}>{month}</td>
-                        <td style={{ padding: '8px 12px', color: '#1d4ed8' }}>{(data['كهرباء'] || 0).toLocaleString('ar-SA')}</td>
-                        <td style={{ padding: '8px 12px', color: '#0891b2' }}>{(data['مياه'] || 0).toLocaleString('ar-SA')}</td>
-                        <td style={{ padding: '8px 12px', color: '#d97706' }}>{((data['وقود (ديزل)'] || 0) + (data['وقود (بنزين)'] || 0)).toLocaleString('ar-SA')}</td>
-                      </tr>
-                    ))}
+                    {trainingRecords
+                      .filter(r => !search || r.hr_employees?.name?.includes(search) || r.qhse_trainings?.name?.includes(search))
+                      .map((r: any) => {
+                        const days = fmtDays(r.expiry_date)
+                        return (
+                          <tr key={r.id}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                            <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.hr_employees?.name || '—'}</td>
+                            <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{r.hr_employees?.department || '—'}</td>
+                            <td style={{ padding: '9px 14px' }}>{r.qhse_trainings?.name || '—'}</td>
+                            <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{fmtDate(r.training_date)}</td>
+                            <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{fmtDate(r.expiry_date)}</td>
+                            <td style={{ padding: '9px 14px', fontWeight: 600,
+                              color: days !== null && days < 0 ? '#b91c1c' : days !== null && days <= 60 ? '#92400e' : '#065f46' }}>
+                              {days !== null ? (days < 0 ? `منتهية منذ ${Math.abs(days)} يوم` : `${days} يوم`) : '—'}
+                            </td>
+                            <td style={{ padding: '9px 14px' }}><StatusBadge status={r.result} /></td>
+                            <td style={{ padding: '9px 14px' }}><StatusBadge status={r.status} /></td>
+                          </tr>
+                        )
+                      })}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        </div>
+      )}
 
-          {energy.length === 0 && (
-            <div style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
-              <div style={{ fontSize: 36, marginBottom: 8 }}>⚡</div>
-              <div style={{ fontWeight: 600 }}>لا توجد سجلات استهلاك</div>
+      {/* ══════════════════════════════════ */}
+      {/* تاب: الزيارات الميدانية           */}
+      {/* ══════════════════════════════════ */}
+      {tab === 'visits' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {safetyVisits.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+              <p>لا توجد زيارات سلامة مسجلة</p>
+              <button onClick={() => router.push('/visits')}
+                style={{ marginTop: 10, padding: '6px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#1d4ed8', fontFamily: 'inherit' }}>
+                انتقل لصفحة الزيارات
+              </button>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                    {['التاريخ','المهندس','الموقع','النتيجة','NCR','تاريخ الإغلاق'].map(h => (
+                      <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: 'var(--text3)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {safetyVisits
+                    .filter(v => !search || v.engineer?.includes(search) || v.location?.includes(search))
+                    .map((v: any) => (
+                      <tr key={v.id}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{fmtDate(v.date)}</td>
+                        <td style={{ padding: '9px 14px', fontWeight: 500 }}>{v.engineer}</td>
+                        <td style={{ padding: '9px 14px' }}>{v.location || '—'}</td>
+                        <td style={{ padding: '9px 14px' }}><StatusBadge status={v.specs === 'مطابق' ? 'سارية' : 'مفتوح'} /></td>
+                        <td style={{ padding: '9px 14px' }}>
+                          {v.specs === 'غير مطابق'
+                            ? <StatusBadge status={v.resolved_report ? 'مغلق' : 'مفتوح'} />
+                            : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
+                        </td>
+                        <td style={{ padding: '9px 14px', color: 'var(--text3)' }}>{v.resolved_date ? fmtDate(v.resolved_date) : '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </Section>
+      )}
 
-      {/* ══ الامتثال البيئي ══ */}
-      <Section title="📋 الامتثال البيئي" icon={ClipboardCheck} color="#7c3aed"
-        action={
-          <button onClick={() => setShowComplianceModal(true)} className="btn btn-primary btn-sm gap-1.5">
-            <Plus size={14} /> إضافة متطلب
-          </button>
-        }>
-        {compliance.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 36, color: '#9ca3af' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>📋</div>
-            <div style={{ fontWeight: 600 }}>لا توجد متطلبات امتثال مضافة</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>أضف التراخيص البيئية والاشتراطات النظامية</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa' }}>
-                  {['المتطلب','التصنيف','الجهة','تاريخ الاستحقاق','المسؤول','الحالة',''].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {compliance.map((c: any, i: number) => {
-                  const overdue = c.due_date && new Date(c.due_date) < new Date() && c.status !== 'ممتثل'
+      {/* ══════════════════════════════════ */}
+      {/* تاب: مخزون مواد السلامة           */}
+      {/* ══════════════════════════════════ */}
+      {tab === 'materials' && (
+        <>
+          {safetyMaterials.length === 0 ? (
+            <div className="card" style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+              <p>لا توجد مواد سلامة في المخزون</p>
+              <p style={{ fontSize: 12, marginTop: 4 }}>تأكد من تصنيف المواد بـ category = safety في صفحة المخزون</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+              {safetyMaterials
+                .filter(m => !search || m.name?.includes(search))
+                .map((m: any) => {
+                  const isLow = m.qty <= m.reorder
                   return (
-                    <tr key={c.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                      <td style={{ padding: '9px 12px', fontWeight: 600 }}>{c.requirement}</td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <span style={{ background: '#f3e8ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}>{c.category}</span>
-                      </td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{c.authority || '—'}</td>
-                      <td style={{ padding: '9px 12px', color: overdue ? '#b91c1c' : '#6b7280', fontWeight: overdue ? 700 : 400 }}>
-                        {fmtDate(c.due_date)} {overdue && '⚠️'}
-                      </td>
-                      <td style={{ padding: '9px 12px', color: '#6b7280' }}>{c.responsible || '—'}</td>
-                      <td style={{ padding: '9px 12px' }}><StatusBadge status={c.status} /></td>
-                      <td style={{ padding: '9px 12px' }}>
-                        <button onClick={() => { setEditCompliance(c); setComplianceForm({ requirement:c.requirement,category:c.category,authority:c.authority||'',description:c.description||'',due_date:c.due_date||'',status:c.status,evidence:c.evidence||'',responsible:c.responsible||'',notes:c.notes||'' }); setShowComplianceModal(true) }}
-                          style={{ background: 'none', border: '1px solid #e9ecef', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 11, color: '#6b7280' }}>تعديل</button>
-                      </td>
-                    </tr>
+                    <div key={m.id} className="card" style={{ padding: 14, borderTop: `3px solid ${isLow ? '#fecaca' : '#bbf7d0'}` }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>{m.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>
+                          الكمية: <strong style={{ color: isLow ? '#b91c1c' : 'var(--text)' }}>{m.qty}</strong> {m.unit}
+                        </div>
+                        {isLow
+                          ? <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>⚠️ منخفض</span>
+                          : <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>✅ كافي</span>}
+                      </div>
+                      <div style={{ marginTop: 6, height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min((m.qty / Math.max(m.reorder * 2, 1)) * 100, 100)}%`, background: isLow ? '#ef4444' : '#10b981', borderRadius: 2 }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 3 }}>حد الأمان: {m.reorder} {m.unit}</div>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+            </div>
+          )}
+        </>
+      )}
 
-      {/* ══ الحوادث البيئية ══ */}
-      <Section title="⚠️ الحوادث البيئية" icon={AlertTriangle} color="#dc2626"
-        action={
-          <button onClick={() => router.push('/qhse/safety')} className="btn btn-ghost btn-sm gap-1.5 border border-gray-200">
-            <Plus size={14} /> تسجيل حادثة
-          </button>
-        }>
-        {envIncidents.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 36, color: '#9ca3af' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
-            <div style={{ fontWeight: 600 }}>لا توجد حوادث بيئية مسجلة</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>سجّل الحوادث من صفحة السلامة واختر النوع "بيئي"</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa' }}>
-                  {['التاريخ','الموقع','الخطورة','الوصف','الإجراء','الحالة'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {envIncidents.map((inc: any, i: number) => (
-                  <tr key={inc.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={{ padding: '9px 12px', color: '#6b7280' }}>{fmtDate(inc.date)}</td>
-                    <td style={{ padding: '9px 12px' }}>{inc.location || '—'}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <span style={{ background: inc.severity === 'عالية' ? '#fee2e2' : inc.severity === 'متوسطة' ? '#fef3c7' : '#d1fae5', color: inc.severity === 'عالية' ? '#b91c1c' : inc.severity === 'متوسطة' ? '#92400e' : '#065f46', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}>{inc.severity}</span>
-                    </td>
-                    <td style={{ padding: '9px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280' }}>{inc.description || '—'}</td>
-                    <td style={{ padding: '9px 12px', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280' }}>{inc.action || '—'}</td>
-                    <td style={{ padding: '9px 12px' }}><StatusBadge status={inc.status === 'مفتوح' ? 'غير ممتثل' : 'ممتثل'} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+      {/* ════════════════════════════════════
+          المودالات — مستوردة من ملفاتها المنفصلة
+      ════════════════════════════════════ */}
 
-      {/* ══ زيارات البيئة ══ */}
-      <Section title="🌿 الزيارات البيئية الميدانية" icon={Leaf} color="#059669"
-        action={
-          <button onClick={() => router.push('/visits')} className="btn btn-ghost btn-sm gap-1.5 border border-gray-200">
-            <Plus size={14} /> إضافة زيارة
-          </button>
-        }>
-        {envVisits.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 36, color: '#9ca3af' }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>🌿</div>
-            <div style={{ fontWeight: 600 }}>لا توجد زيارات بيئية مسجلة</div>
-            <button onClick={() => router.push('/visits')} style={{ marginTop: 10, padding: '6px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, cursor: 'pointer', fontSize: 12, color: '#059669' }}>انتقل لصفحة الزيارات</button>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa' }}>
-                  {['التاريخ','المهندس','الموقع','النتيجة','NCR','تاريخ الإغلاق'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#6b7280', borderBottom: '1px solid #e9ecef' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {envVisits.map((v: any, i: number) => (
-                  <tr key={v.id} style={{ background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                    <td style={{ padding: '9px 12px', color: '#6b7280' }}>{fmtDate(v.date)}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 500 }}>{v.engineer}</td>
-                    <td style={{ padding: '9px 12px' }}>{v.location || '—'}</td>
-                    <td style={{ padding: '9px 12px' }}><StatusBadge status={v.specs === 'مطابق' ? 'ممتثل' : 'غير ممتثل'} /></td>
-                    <td style={{ padding: '9px 12px' }}>{v.specs === 'غير مطابق' ? <StatusBadge status={v.resolved_report ? 'ممتثل' : 'غير ممتثل'} /> : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}</td>
-                    <td style={{ padding: '9px 12px', color: '#6b7280' }}>{v.resolved_date ? fmtDate(v.resolved_date) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
+      {showIncidentModal && (
+        <IncidentModal
+          editIncident={editIncident}
+          onClose={() => { setShowIncidentModal(false); setEditIncident(null) }}
+          onSave={() => { setShowIncidentModal(false); setEditIncident(null); onModalSave() }} />
+      )}
 
-      {/* ════ Modals ════ */}
-
-      {/* Modal الشهادة */}
       {showCertModal && (
-        <Modal title={editCert ? 'تعديل الشهادة' : 'إضافة شهادة بيئية'} onClose={() => { setShowCertModal(false); setEditCert(null) }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">نوع المعيار</label>
-                <select value={certForm.type} onChange={e => { iCert('type', e.target.value); if (!certForm.name) iCert('name', e.target.value) }} className="input">
-                  {['ISO 14001', 'ISO 50001', 'EMAS', 'Green Star', 'أخرى'].map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">اسم الشهادة *</label>
-                <input value={certForm.name} onChange={e => iCert('name', e.target.value)} className="input" placeholder="مثال: شهادة ISO 14001:2015" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">رقم الشهادة</label>
-                <input value={certForm.cert_no} onChange={e => iCert('cert_no', e.target.value)} className="input" dir="ltr" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المانحة</label>
-                <input value={certForm.issuer} onChange={e => iCert('issuer', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الإصدار</label>
-                <input type="date" value={certForm.issue_date} onChange={e => iCert('issue_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الانتهاء *</label>
-                <input type="date" value={certForm.expiry_date} onChange={e => iCert('expiry_date', e.target.value)} className="input" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowCertModal(false); setEditCert(null) }} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveCert} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+        <EnvCertModal
+          editCert={editCert}
+          onClose={() => { setShowCertModal(false); setEditCert(null) }}
+          onSave={() => { setShowCertModal(false); setEditCert(null); onModalSave() }} />
       )}
 
-      {/* Modal النفايات */}
-      {showWasteModal && (
-        <Modal title={editWaste ? 'تعديل سجل النفايات' : 'تسجيل نفايات جديدة'} onClose={() => { setShowWasteModal(false); setEditWaste(null) }} wide>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التاريخ *</label>
-                <input type="date" value={wasteForm.waste_date} onChange={e => iWaste('waste_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">نوع النفايات *</label>
-                <select value={wasteForm.waste_type} onChange={e => iWaste('waste_type', e.target.value)} className="input">
-                  {WASTE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <div style={{ flex: 2 }}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">الكمية *</label>
-                  <input type="number" value={wasteForm.quantity} onChange={e => iWaste('quantity', e.target.value)} className="input" min={0} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">الوحدة</label>
-                  <select value={wasteForm.unit} onChange={e => iWaste('unit', e.target.value)} className="input">
-                    {['كجم', 'طن', 'لتر', 'م³', 'عبوة'].map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">طريقة التخلص</label>
-                <select value={wasteForm.disposal_method} onChange={e => iWaste('disposal_method', e.target.value)} className="input">
-                  {DISPOSAL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المتخلصة</label>
-                <input value={wasteForm.disposal_party} onChange={e => iWaste('disposal_party', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">رقم شهادة التخلص</label>
-                <input value={wasteForm.cert_number} onChange={e => iWaste('cert_number', e.target.value)} className="input" dir="ltr" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">المشروع</label>
-                <input value={wasteForm.project_name} onChange={e => iWaste('project_name', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التكلفة (ر.س)</label>
-                <input type="number" value={wasteForm.cost} onChange={e => iWaste('cost', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
-                <select value={wasteForm.status} onChange={e => iWaste('status', e.target.value)} className="input">
-                  <option value="معالج">معالج</option>
-                  <option value="معلق">معلق</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
-              <textarea value={wasteForm.notes} onChange={e => iWaste('notes', e.target.value)} className="input" rows={2} />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowWasteModal(false); setEditWaste(null) }} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveWaste} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+      {showTrainingModal && (
+        <TrainingModal
+          onClose={() => setShowTrainingModal(false)}
+          onSave={() => { setShowTrainingModal(false); onModalSave() }} />
       )}
 
-      {/* Modal استهلاك الطاقة */}
-      {showEnergyModal && (
-        <Modal title="تسجيل استهلاك طاقة وموارد" onClose={() => setShowEnergyModal(false)}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التاريخ *</label>
-                <input type="date" value={energyForm.record_date} onChange={e => { iEnergy('record_date', e.target.value); const d = new Date(e.target.value); iEnergy('month', d.getMonth()+1); iEnergy('year', d.getFullYear()) }} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">نوع المورد *</label>
-                <select value={energyForm.resource_type} onChange={e => { iEnergy('resource_type', e.target.value); iEnergy('unit', (RESOURCE_UNITS as any)[e.target.value] || '') }} className="input">
-                  {RESOURCE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الكمية *</label>
-                <input type="number" value={energyForm.quantity} onChange={e => iEnergy('quantity', e.target.value)} className="input" min={0} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الوحدة</label>
-                <input value={energyForm.unit} onChange={e => iEnergy('unit', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التكلفة (ر.س)</label>
-                <input type="number" value={energyForm.cost} onChange={e => iEnergy('cost', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">قراءة العداد</label>
-                <input type="number" value={energyForm.meter_reading} onChange={e => iEnergy('meter_reading', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">المصدر / المورد</label>
-                <input value={energyForm.source} onChange={e => iEnergy('source', e.target.value)} className="input" placeholder="شركة الكهرباء / محطة وقود..." />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الموقع / المشروع</label>
-                <input value={energyForm.location} onChange={e => iEnergy('location', e.target.value)} className="input" />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowEnergyModal(false)} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveEnergy} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal الامتثال */}
-      {showComplianceModal && (
-        <Modal title={editCompliance ? 'تعديل متطلب الامتثال' : 'إضافة متطلب امتثال بيئي'} onClose={() => { setShowComplianceModal(false); setEditCompliance(null) }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">المتطلب *</label>
-              <input value={complianceForm.requirement} onChange={e => iComp('requirement', e.target.value)} className="input" placeholder="مثال: ترخيص تشغيل بيئي من وزارة البيئة" />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">التصنيف</label>
-                <select value={complianceForm.category} onChange={e => iComp('category', e.target.value)} className="input">
-                  {COMPLIANCE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الجهة المنظمة</label>
-                <input value={complianceForm.authority} onChange={e => iComp('authority', e.target.value)} className="input" placeholder="وزارة البيئة / البلدية..." />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الاستحقاق / التجديد</label>
-                <input type="date" value={complianceForm.due_date} onChange={e => iComp('due_date', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">المسؤول</label>
-                <input value={complianceForm.responsible} onChange={e => iComp('responsible', e.target.value)} className="input" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">الحالة</label>
-                <select value={complianceForm.status} onChange={e => iComp('status', e.target.value)} className="input">
-                  <option value="ممتثل">ممتثل</option>
-                  <option value="قيد التجديد">قيد التجديد</option>
-                  <option value="غير ممتثل">غير ممتثل</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">رقم الوثيقة / الرابط</label>
-                <input value={complianceForm.evidence} onChange={e => iComp('evidence', e.target.value)} className="input" dir="ltr" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الوصف</label>
-              <textarea value={complianceForm.description} onChange={e => iComp('description', e.target.value)} className="input" rows={2} />
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button onClick={() => { setShowComplianceModal(false); setEditCompliance(null) }} className="btn btn-ghost btn-sm">إلغاء</button>
-              <button onClick={saveCompliance} className="btn btn-primary btn-sm gap-1.5"><Save size={14} /> حفظ</button>
-            </div>
-          </div>
-        </Modal>
+      {showRecordModal && (
+        <TrainingRecordModal
+          trainings={trainings}
+          employees={employees}
+          onClose={() => setShowRecordModal(false)}
+          onSave={() => { setShowRecordModal(false); onModalSave() }} />
       )}
     </div>
   )
