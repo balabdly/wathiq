@@ -101,9 +101,9 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const finalNationality = form.nationality === 'سعودي' ? 'سعودي' : (form.nationality_text.trim() || 'وافد')
       const fullName = [form.first_name, form.father_name, form.grandfather_name, form.family_name].filter(Boolean).join(' ')
 
-      // ✅ توليد رقم الموظف مع تحديد نوع البيانات بشكل صحيح
+      // ✅ توليد رقم الموظف مع التأكد من نوع البيانات الصحيح (UUID)
       const { data: empNum, error: empNumError } = await supabase.rpc('generate_employee_number', { 
-        p_tenant_id: tenant.id as any 
+        p_tenant_id: tenant.id
       })
       if (empNumError || !empNum) {
         throw new Error('فشل توليد رقم الموظف: ' + (empNumError?.message || 'رقم غير صحيح'))
@@ -225,7 +225,7 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
             ))}
           </div>
         </Field>
-        {!isSaudi && (
+        {form.nationality !== 'سعودي' && (
           <Field label="الجنسية (تحديد)">
             <input value={form.nationality_text} onChange={e => set('nationality_text', e.target.value)} className="input" placeholder="مثال: مصري، يمني..." />
           </Field>
@@ -336,7 +336,7 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
         <Field label="رقم IBAN" required>
           <input value={form.iban} onChange={e => set('iban', e.target.value)} className="input" dir="ltr" placeholder="SA..." />
         </Field>
-        {!isSaudi && <>
+        {form.nationality !== 'سعودي' && <>
           <Field label="رقم الإقامة">
             <input value={form.iqama_number} onChange={e => set('iqama_number', e.target.value)} className="input" dir="ltr" />
           </Field>
