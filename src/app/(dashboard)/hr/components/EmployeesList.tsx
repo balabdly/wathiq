@@ -60,7 +60,7 @@ export default function EmployeesList({
       .from('hr_employees')
       .select('*', { count: 'exact' })
       .eq('tenant_id', tenantId)
-      .or(`employee_number.eq.${q},first_name.ilike.%${q}%,family_name.ilike.%${q}%,father_name.ilike.%${q}%`)
+      .or(`employee_number.eq.${q},first_name.ilike.%${q}%,family_name.ilike.%${q}%,father_name.ilike.%${q}%,name.ilike.%${q}%`)
       .order('employee_number', { ascending: true })
       .range(0, PAGE_SIZE - 1)
     setEmployees(data || [])
@@ -70,15 +70,21 @@ export default function EmployeesList({
 
   // ── حذف ──
   async function handleDelete(emp: HREmployee) {
-    if (!confirm(`حذف الموظف "${emp.first_name} ${emp.family_name}"؟`)) return
+    if (!confirm(`حذف الموظف "${getEmpName(emp)}"؟`)) return
     await supabase.from('hr_employees').update({ is_active: false }).eq('id', emp.id)
     toast.success('تم حذف الموظف')
     loadAll(page)
   }
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
-  const empName = (e: HREmployee) =>
-    [e.first_name, e.father_name, e.family_name].filter(Boolean).join(' ') || '—'
+  
+  // ✅ دالة محسّنة للحصول على الاسم الكامل
+  const getEmpName = (e: HREmployee): string => {
+    // أولاً: استخدم حقل name إن كان موجوداً
+    if (e.name && e.name.trim()) return e.name
+    // بديل: ركب الاسم من الأجزاء
+    return [e.first_name, e.father_name, e.family_name].filter(Boolean).join(' ') || '—'
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -153,7 +159,7 @@ export default function EmployeesList({
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['#', 'الرقم الوظيفي', 'الاسم', 'القسم / المسمى', 'الجنسية', 'تاريخ التعيين', 'الراتب الأساسي', 'صافي الراتب', 'GOSI', 'الحالة', 'إجراء'].map(h => (
+                    {['#', 'الرقم الوظيفي', 'الاسم', 'القسم / المسمى', 'الجنسية', 'تاريخ التعيين', 'الراتب الأساسي', 'صافي الراتب', 'GOSI', 'الحالة', 'الإجراءات'].map(h => (
                       <th key={h} style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -181,11 +187,11 @@ export default function EmployeesList({
                         </td>
                         <td style={{ padding: '10px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a56db', fontWeight: 700, fontSize: '0.82rem', flexShrink: 0 }}>
+                            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1a56db', fontWeight: 700, fontSize: '0.9rem' }}>
                               {(emp.first_name || '?')[0]}
                             </div>
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{empName(emp)}</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{getEmpName(emp)}</div>
                               {isExpiring && (
                                 <div style={{ fontSize: '0.65rem', color: iqamaDays! <= 30 ? '#c81e1e' : '#e6820a', fontWeight: 600 }}>
                                   ⚠️ إقامة تنتهي خلال {iqamaDays} يوم
@@ -266,7 +272,7 @@ export default function EmployeesList({
                     const p = i + 1
                     return (
                       <button key={p} onClick={() => loadAll(p)}
-                        style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: page === p ? '#1a56db' : 'white', color: page === p ? 'white' : 'var(--text)', cursor: 'pointer', fontWeight: page === p ? 700 : 400, fontSize: '0.82rem' }}>
+                        style={{ padding: '5px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: page === p ? '#1a56db' : 'white', color: page === p ? 'white' : 'var(--text3)', cursor: 'pointer', fontWeight: page === p ? 700 : 400 }}>
                         {p}
                       </button>
                     )
