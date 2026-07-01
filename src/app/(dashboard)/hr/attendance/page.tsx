@@ -12,6 +12,8 @@ type Attendance = {
   employee_id: number
   date: string
   status: string
+  check_in?: string
+  check_out?: string
   hours_worked?: number
   overtime_hours?: number
   notes?: string
@@ -25,16 +27,24 @@ const TEMPLATE_COLUMNS = [
   'اسم الموظف',
   'التاريخ',
   'الحالة',
+  'وقت الحضور',
+  'وقت الانصراف',
   'ساعات العمل',
   'ساعات إضافية',
   'ملاحظات',
 ]
+
+// أعمدة اختيارية — لا يُمنع الاستيراد عند غيابها
+const OPTIONAL_COLUMNS = ['وقت الحضور', 'وقت الانصراف', 'ساعات العمل', 'ساعات إضافية', 'ملاحظات']
+const REQUIRED_COLUMNS = TEMPLATE_COLUMNS.filter(c => !OPTIONAL_COLUMNS.includes(c))
 
 type ImportRow = {
   rowIndex: number
   اسم_الموظف: string
   التاريخ: string
   الحالة: string
+  وقت_الحضور: string
+  وقت_الانصراف: string
   ساعات_العمل: string
   ساعات_إضافية: string
   ملاحظات: string
@@ -47,7 +57,7 @@ type ImportRow = {
 function downloadTemplate() {
   const ws = XLSX.utils.aoa_to_sheet([
     TEMPLATE_COLUMNS,
-    ['أحمد محمد', new Date().toISOString().split('T')[0], 'حضور', '8', '0', ''],
+    ['أحمد محمد', new Date().toISOString().split('T')[0], 'حضور', '08:00', '17:00', '8', '0', ''],
   ])
   ws['!cols'] = TEMPLATE_COLUMNS.map(() => ({ wch: 20 }))
   const wb = XLSX.utils.book_new()
@@ -63,12 +73,14 @@ function parseAndValidateRow(
 ): ImportRow {
   const errors: string[] = []
 
-  const اسم_الموظف = String(raw['اسم الموظف'] ?? '').trim()
-  const التاريخ    = String(raw['التاريخ']    ?? '').trim()
-  const الحالة     = String(raw['الحالة']     ?? '').trim()
-  const ساعات_العمل   = String(raw['ساعات العمل']   ?? '').trim()
-  const ساعات_إضافية  = String(raw['ساعات إضافية']  ?? '').trim()
-  const ملاحظات    = String(raw['ملاحظات']    ?? '').trim()
+  const اسم_الموظف    = String(raw['اسم الموظف']    ?? '').trim()
+  const التاريخ       = String(raw['التاريخ']        ?? '').trim()
+  const الحالة        = String(raw['الحالة']          ?? '').trim()
+  const وقت_الحضور   = String(raw['وقت الحضور']     ?? '').trim()
+  const وقت_الانصراف = String(raw['وقت الانصراف']   ?? '').trim()
+  const ساعات_العمل   = String(raw['ساعات العمل']    ?? '').trim()
+  const ساعات_إضافية  = String(raw['ساعات إضافية']   ?? '').trim()
+  const ملاحظات       = String(raw['ملاحظات']         ?? '').trim()
 
   // التحقق من الموظف
   let employee_id: number | undefined
@@ -94,6 +106,30 @@ function parseAndValidateRow(
     errors.push(`الحالة "${الحالة}" غير مقبولة. القيم المسموح بها: ${VALID_STATUSES.join('، ')}`)
   }
 
+  // التحقق من وقت الحضور (اختياري لكن يجب أن يكون صيغة HH:MM)
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
+  if (وقت_الحضور !== '' && !timeRegex.test(وقت_الحضور)) {
+    errors.push('وقت الحضور غير صحيح (المطلوب: HH:MM مثال: 08:00)')
+  }
+
+  // التحقق من وقت الانصراف (اختياري)
+  if (وقت_الانصراف !== '' && !timeRegex.test(وقت_الانصراف)) {
+    errors.push('وقت الانصراف غير صحيح (المطلوب: HH:MM مثال: 17:00)')
+  }
+
+  // التحقق من منطق الحضور/الانصراف
+  if (وقت_الحضور !== '' && وقت_الانصراف !== '' &&
+      timeRegex.test(وقت_الحضور) && timeRegex.test(وقت_الانصراف)) {
+    if (وقت_الانصراف <= وقت_الحضور) {
+      errors.push('وقت الانصراف يجب أن يكون بعد وقت الحضور')
+    }
+  }
+
+  // وقت الانصراف بدون وقت حضور غير منطقي
+  if (وقت_الانصراف !== '' && وقت_الحضور === '') {
+    errors.push('لا يمكن تسجيل وقت الانصراف بدون وقت الحضور')
+  }
+
   // التحقق من ساعات العمل (اختياري عند غياب/إجازة/مأمورية/عطلة)
   if (ساعات_العمل !== '') {
     const v = Number(ساعات_العمل)
@@ -111,6 +147,8 @@ function parseAndValidateRow(
     اسم_الموظف,
     التاريخ,
     الحالة,
+    وقت_الحضور,
+    وقت_الانصراف,
     ساعات_العمل,
     ساعات_إضافية,
     ملاحظات,
@@ -169,9 +207,9 @@ function ImportModal({
           return
         }
 
-        // التحقق من وجود الأعمدة المطلوبة
+        // التحقق من وجود الأعمدة الإلزامية
         const headers = Object.keys(json[0])
-        const missing = TEMPLATE_COLUMNS.filter(c => !headers.includes(c))
+        const missing = REQUIRED_COLUMNS.filter(c => !headers.includes(c))
         if (missing.length > 0) {
           toast.error(`الأعمدة التالية مفقودة: ${missing.join('، ')}`)
           setRows([])
@@ -197,6 +235,8 @@ function ImportModal({
         employee_id: r.employee_id!,
         date: r.التاريخ,
         status: r.الحالة,
+        check_in: r.وقت_الحضور || null,
+        check_out: r.وقت_الانصراف || null,
         hours_worked: r.ساعات_العمل !== '' ? Number(r.ساعات_العمل) : null,
         overtime_hours: r.ساعات_إضافية !== '' ? Number(r.ساعات_إضافية) : null,
         notes: r.ملاحظات || null,
@@ -260,10 +300,13 @@ function ImportModal({
 
           {/* ملاحظة أسماء الأعمدة */}
           <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.8rem', color: '#1d4ed8' }}>
-            <strong>الأعمدة المطلوبة: </strong>{TEMPLATE_COLUMNS.join(' | ')}
+            <strong>الأعمدة الإلزامية: </strong>{REQUIRED_COLUMNS.join(' | ')}
+            <br />
+            <strong style={{ color: '#64748b' }}>الأعمدة الاختيارية: </strong>
+            <span style={{ color: '#64748b' }}>{OPTIONAL_COLUMNS.join(' | ')}</span>
             <br />
             <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-              تأكد أن أسماء الأعمدة مطابقة تمامًا. اسم الموظف يجب أن يطابق الاسم المُسجّل في النظام.
+              أسماء الأعمدة يجب أن تكون مطابقة تمامًا. صيغة الوقت: HH:MM (مثال: 08:00). اسم الموظف يجب أن يطابق الاسم المُسجّل في النظام.
             </span>
           </div>
 
@@ -293,6 +336,8 @@ function ImportModal({
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>اسم الموظف</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>التاريخ</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>الحالة</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>وقت الحضور</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>وقت الانصراف</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ساعات العمل</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ساعات إضافية</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text2)', whiteSpace: 'nowrap' }}>ملاحظات</th>
@@ -312,6 +357,8 @@ function ImportModal({
                       <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.اسم_الموظف || '—'}</td>
                       <td style={{ padding: '7px 10px' }}>{r.التاريخ || '—'}</td>
                       <td style={{ padding: '7px 10px' }}>{r.الحالة || '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.وقت_الحضور || '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.وقت_الانصراف || '—'}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.ساعات_العمل || '—'}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'center' }}>{r.ساعات_إضافية || '—'}</td>
                       <td style={{ padding: '7px 10px', color: 'var(--text3)' }}>{r.ملاحظات || '—'}</td>
@@ -372,16 +419,39 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
     employee_id: record?.employee_id || '',
     date: record?.date || new Date().toISOString().split('T')[0],
     status: record?.status || 'حضور',
+    check_in: record?.check_in || '',
+    check_out: record?.check_out || '',
     hours_worked: record?.hours_worked || 8,
     overtime_hours: record?.overtime_hours || 0,
     notes: record?.notes || '',
   })
+  const [timeError, setTimeError] = useState('')
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  const isPresent = form.status === 'حضور'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // التحقق من منطق وقت الانصراف/الحضور
+    if (form.check_in && form.check_out) {
+      if (form.check_out <= form.check_in) {
+        setTimeError('وقت الانصراف يجب أن يكون بعد وقت الحضور')
+        return
+      }
+    }
+    if (form.check_out && !form.check_in) {
+      setTimeError('لا يمكن تسجيل وقت الانصراف بدون وقت الحضور')
+      return
+    }
+    setTimeError('')
     setSaving(true)
-    await onSave({ ...(record ? { id: record.id } : {}), ...form, employee_id: Number(form.employee_id) })
+    await onSave({
+      ...(record ? { id: record.id } : {}),
+      ...form,
+      employee_id: Number(form.employee_id),
+      check_in: form.check_in || null,
+      check_out: form.check_out || null,
+    })
     setSaving(false)
   }
 
@@ -408,22 +478,50 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                <select value={form.status} onChange={e => { set('status', e.target.value); setTimeError('') }} className="select">
                   {['حضور','غياب','إجازة','مأمورية','عطلة'].map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
             </div>
-            {form.status === 'حضور' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات العمل</label>
-                  <input type="number" value={form.hours_worked} onChange={e => set('hours_worked', Number(e.target.value))} className="input" min="0" max="24" step="0.5" />
+            {isPresent && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الحضور</label>
+                    <input
+                      type="time"
+                      value={form.check_in}
+                      onChange={e => { set('check_in', e.target.value); setTimeError('') }}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الانصراف</label>
+                    <input
+                      type="time"
+                      value={form.check_out}
+                      onChange={e => { set('check_out', e.target.value); setTimeError('') }}
+                      className="input"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات إضافية</label>
-                  <input type="number" value={form.overtime_hours} onChange={e => set('overtime_hours', Number(e.target.value))} className="input" min="0" max="12" step="0.5" />
+                {timeError && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#c81e1e', fontSize: '0.82rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '8px 12px' }}>
+                    <AlertCircle style={{ width: '14px', height: '14px', flexShrink: 0 }} />
+                    {timeError}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات العمل</label>
+                    <input type="number" value={form.hours_worked} onChange={e => set('hours_worked', Number(e.target.value))} className="input" min="0" max="24" step="0.5" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات إضافية</label>
+                    <input type="number" value={form.overtime_hours} onChange={e => set('overtime_hours', Number(e.target.value))} className="input" min="0" max="12" step="0.5" />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
@@ -570,7 +668,7 @@ export default function AttendancePage() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>الموظف</th><th>الدور</th><th>التاريخ</th><th>الحالة</th><th>ساعات العمل</th><th>الإضافي</th><th>ملاحظات</th><th></th></tr>
+              <tr><th>الموظف</th><th>الدور</th><th>التاريخ</th><th>الحالة</th><th>وقت الحضور</th><th>وقت الانصراف</th><th>ساعات العمل</th><th>الإضافي</th><th>ملاحظات</th><th></th></tr>
             </thead>
             <tbody>
               {filtered.map(r => (
@@ -579,6 +677,8 @@ export default function AttendancePage() {
                   <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.employee?.job_title}</td>
                   <td style={{ fontSize: '0.875rem' }}>{formatDate(r.date)}</td>
                   <td><span className={`badge ${STATUS_COLOR[r.status] || 'badge-gray'}`}>{r.status}</span></td>
+                  <td style={{ textAlign: 'center', fontWeight: 600, color: '#0ea77b' }}>{r.check_in || '—'}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600, color: '#1a56db' }}>{r.check_out || '—'}</td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.hours_worked || '—'}</td>
                   <td style={{ textAlign: 'center', color: r.overtime_hours ? '#e6820a' : 'var(--text3)', fontWeight: 600 }}>{r.overtime_hours || '—'}</td>
                   <td style={{ fontSize: '0.8rem', color: 'var(--text3)' }}>{r.notes || '—'}</td>
