@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Leaf, Search, Plus } from 'lucide-react'
+import { Leaf, Search, Plus, X, Edit2 } from 'lucide-react'
 import EnvIncidentModal    from './EnvIncidentModal'
 import EnvWasteModal       from './EnvWasteModal'
 import EnvChemicalModal    from './EnvChemicalModal'
@@ -26,6 +26,228 @@ function Badge({ children, type = 'gray' }: { children: React.ReactNode; type?: 
   }
   const s = styles[type]
   return <span style={{ background: s.bg, color: s.color, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>{children}</span>
+}
+
+// ════════════════════════════════════════
+// مودال التفاصيل الموحّد
+// ════════════════════════════════════════
+const fmtD = (d: string) => d ? new Date(d).toLocaleDateString('ar-SA') : '—'
+const dL = (d: string) => d ? Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) : null
+
+function DetailRow({ label, value, color }: { label: string; value: any; color?: string }) {
+  if (!value && value !== 0) return null
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--bg2)' }}>
+      <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600 }}>{label}</div>
+      <div style={{ fontSize: 13, color: color || 'var(--text)', wordBreak: 'break-word' }}>{value}</div>
+    </div>
+  )
+}
+
+function EnvDetailModal({ type, item, onClose, onEdit }: {
+  type: string; item: any; onClose: () => void; onEdit: () => void
+}) {
+  const titles: Record<string, string> = {
+    incident:   '⚠️ تفاصيل الحادثة البيئية',
+    waste:      '♻️ تفاصيل سجل النفايات',
+    chemical:   '⚗️ تفاصيل المادة الكيميائية',
+    emission:   '☁️ تفاصيل سجل الانبعاث',
+    water:      '💧 تفاصيل استهلاك المياه',
+    cert:       '🏅 تفاصيل الشهادة / الترخيص',
+    training:   '📚 تفاصيل التدريب البيئي',
+    inspection: '🔍 تفاصيل الزيارة التفتيشية',
+  }
+
+  const renderContent = () => {
+    switch (type) {
+      case 'incident':
+        return (
+          <>
+            <DetailRow label="نوع الحادثة"       value={item.type} />
+            <DetailRow label="التاريخ"           value={fmtD(item.date)} />
+            <DetailRow label="الوقت"             value={item.time || '—'} />
+            <DetailRow label="الموقع"            value={item.location} />
+            <DetailRow label="درجة الخطورة"      value={item.severity}
+              color={item.severity === 'عالية' || item.severity === 'حرجة' ? '#b91c1c' : item.severity === 'متوسطة' ? '#92400e' : '#065f46'} />
+            <DetailRow label="التأثير البيئي"    value={item.environmental_impact} />
+            <DetailRow label="وصف الحادثة"       value={item.description} />
+            <DetailRow label="الإجراء الفوري"    value={item.immediate_action} />
+            <DetailRow label="السبب الجذري"      value={item.root_cause} />
+            <DetailRow label="المُبلِّغ"          value={item.reported_by} />
+            <DetailRow label="الغرامة"           value={item.penalty_amount > 0 ? `${Number(item.penalty_amount).toLocaleString()} ريال` : null} color="#b91c1c" />
+            <DetailRow label="الحالة"            value={item.status}
+              color={item.status === 'مغلق' ? '#065f46' : item.status === 'قيد المعالجة' ? '#1d4ed8' : '#b91c1c'} />
+          </>
+        )
+      case 'waste':
+        return (
+          <>
+            <DetailRow label="التاريخ"           value={fmtD(item.date)} />
+            <DetailRow label="نوع النفاية"       value={item.waste_type} />
+            <DetailRow label="التصنيف"           value={item.classification}
+              color={item.classification === 'خطرة' ? '#b91c1c' : item.classification === 'محدودة الخطورة' ? '#92400e' : '#065f46'} />
+            <DetailRow label="الكمية"            value={`${Number(item.quantity_ton).toFixed(2)} طن`} />
+            <DetailRow label="طريقة التخلص"     value={item.disposal_method} />
+            <DetailRow label="جهة الاستلام"     value={item.receiver} />
+            <DetailRow label="رقم الترخيص"      value={item.license_no} />
+            <DetailRow label="انتهاء الترخيص"   value={item.license_expiry ? (() => {
+              const d = dL(item.license_expiry)
+              return d !== null && d < 0 ? `❌ انتهى منذ ${Math.abs(d)} يوم` : d !== null && d <= 30 ? `⚠️ ${d} يوم` : fmtD(item.license_expiry)
+            })() : null} />
+            <DetailRow label="التكلفة"           value={item.cost > 0 ? `${Number(item.cost).toLocaleString()} ريال` : null} />
+            <DetailRow label="ملاحظات"           value={item.notes} />
+          </>
+        )
+      case 'chemical':
+        return (
+          <>
+            <DetailRow label="اسم المادة"        value={item.name} />
+            <DetailRow label="الصيغة الكيميائية" value={item.chemical_formula} />
+            <DetailRow label="تصنيف GHS"         value={item.ghs_class} />
+            <DetailRow label="بيان الخطورة"      value={item.ghs_hazard} />
+            <DetailRow label="الكمية المخزنة"    value={`${item.quantity} ${item.unit}`} />
+            <DetailRow label="موقع التخزين"      value={item.storage_location} />
+            <DetailRow label="درجة حرارة التخزين" value={item.storage_temp} />
+            <DetailRow label="المورد / الطوارئ"  value={item.emergency_contact} />
+            <DetailRow label="انتهاء المادة"     value={item.expiry_date ? (() => {
+              const d = dL(item.expiry_date)
+              return d !== null && d < 0 ? `❌ انتهت منذ ${Math.abs(d)} يوم` : `${fmtD(item.expiry_date)} (${d} يوم)`
+            })() : null} color={item.expiry_date && dL(item.expiry_date) !== null && (dL(item.expiry_date) as number) < 0 ? '#b91c1c' : undefined} />
+            <DetailRow label="حالة MSDS"         value={item.msds_status}
+              color={item.msds_status === 'محدّثة' ? '#065f46' : item.msds_status === 'تحتاج تحديث' ? '#92400e' : '#b91c1c'} />
+            <DetailRow label="آخر تحديث MSDS"    value={fmtD(item.msds_date)} />
+            <DetailRow label="الحالة الأمنية"    value={item.status}
+              color={item.status === 'آمن' ? '#065f46' : item.status === 'يتطلب مراجعة' ? '#92400e' : '#b91c1c'} />
+          </>
+        )
+      case 'emission':
+        return (
+          <>
+            <DetailRow label="مصدر الانبعاث"    value={item.source} />
+            <DetailRow label="النطاق (Scope)"    value={item.scope}
+              color={item.scope === 'S1' ? '#b91c1c' : item.scope === 'S2' ? '#92400e' : '#374151'} />
+            <DetailRow label="الشهر / السنة"    value={`${item.month || ''} ${item.year}`} />
+            <DetailRow label="الوحدة"           value={item.unit} />
+            <DetailRow label="الكمية الفعلية"   value={`${Number(item.quantity).toFixed(2)} ${item.unit}`} />
+            <DetailRow label="الهدف"            value={item.target ? `${Number(item.target).toFixed(2)} ${item.unit}` : null} />
+            <DetailRow label="الفجوة عن الهدف"  value={item.target ? (() => {
+              const gap = Number(item.quantity) - Number(item.target)
+              return gap > 0 ? `+${gap.toFixed(2)} ↑ (أعلى من الهدف)` : `${gap.toFixed(2)} ↓ (ضمن الهدف)`
+            })() : null}
+              color={item.target && Number(item.quantity) > Number(item.target) ? '#b91c1c' : '#065f46'} />
+            <DetailRow label="ملاحظات"          value={item.notes} />
+          </>
+        )
+      case 'water':
+        return (
+          <>
+            <DetailRow label="مصدر الاستهلاك"   value={item.source} />
+            <DetailRow label="الشهر / السنة"    value={`${item.month || ''} ${item.year}`} />
+            <DetailRow label="الاستهلاك الكلي"  value={`${Number(item.consumption_m3).toFixed(1)} م³`} />
+            <DetailRow label="الهدف"            value={item.target_m3 ? `${Number(item.target_m3).toFixed(1)} م³` : null} />
+            <DetailRow label="المُعاد تدويرها"  value={item.recycled_m3 > 0 ? `${Number(item.recycled_m3).toFixed(1)} م³` : null} color="#065f46" />
+            <DetailRow label="المُعالَجة"        value={item.treated_m3 > 0 ? `${Number(item.treated_m3).toFixed(1)} م³` : null} color="#1d4ed8" />
+            <DetailRow label="نسبة الإعادة"     value={item.consumption_m3 > 0 && item.recycled_m3 > 0 ? `${(Number(item.recycled_m3) / Number(item.consumption_m3) * 100).toFixed(0)}%` : null} />
+            <DetailRow label="التكلفة"          value={item.cost > 0 ? `${Number(item.cost).toLocaleString()} ريال` : null} />
+            <DetailRow label="ملاحظات"          value={item.notes} />
+          </>
+        )
+      case 'cert':
+        const certDays = dL(item.expiry_date)
+        return (
+          <>
+            <DetailRow label="عنوان الشهادة"     value={item.title} />
+            <DetailRow label="نوع الوثيقة"       value={item.cert_type} />
+            <DetailRow label="المعيار المرجعي"   value={item.standard_ref} />
+            <DetailRow label="رقم الشهادة"       value={item.cert_no} />
+            <DetailRow label="الجهة المصدِرة"    value={item.issuer} />
+            <DetailRow label="تاريخ الإصدار"     value={fmtD(item.issue_date)} />
+            <DetailRow label="تاريخ الانتهاء"    value={fmtD(item.expiry_date)} />
+            <DetailRow label="الحالة"            value={
+              certDays !== null && certDays < 0 ? `❌ منتهية منذ ${Math.abs(certDays)} يوم`
+              : certDays !== null && certDays <= 60 ? `⚠️ تنتهي خلال ${certDays} يوم`
+              : `✅ سارية — ${certDays} يوم متبقي`}
+              color={certDays !== null && certDays < 0 ? '#b91c1c' : certDays !== null && certDays <= 60 ? '#92400e' : '#065f46'} />
+            <DetailRow label="التنبيه المسبق"    value={`${item.notify_days} يوم`} />
+            <DetailRow label="ملاحظات"           value={item.notes} />
+          </>
+        )
+      case 'training':
+        const tDays = dL(item.expiry_date)
+        return (
+          <>
+            <DetailRow label="الموظف"            value={item.employee_name} />
+            <DetailRow label="الدورة"            value={item.course_name} />
+            <DetailRow label="المعيار المرجعي"   value={item.iso_ref} color="#1d4ed8" />
+            <DetailRow label="تاريخ التدريب"     value={fmtD(item.training_date)} />
+            <DetailRow label="انتهاء الصلاحية"   value={item.expiry_date ? (
+              tDays !== null && tDays < 0 ? `❌ انتهى منذ ${Math.abs(tDays)} يوم` :
+              `${fmtD(item.expiry_date)} (${tDays} يوم متبقي)`
+            ) : '—'} color={tDays !== null && tDays < 0 ? '#b91c1c' : undefined} />
+            <DetailRow label="النتيجة"           value={item.result}
+              color={item.result === 'ناجح' ? '#065f46' : '#b91c1c'} />
+            <DetailRow label="الجهة المقدِّمة"   value={item.provider} />
+            <DetailRow label="رقم الشهادة"       value={item.cert_number} />
+            <DetailRow label="ملاحظات"           value={item.notes} />
+          </>
+        )
+      case 'inspection':
+        return (
+          <>
+            <DetailRow label="التاريخ"           value={fmtD(item.date)} />
+            <DetailRow label="الموقع"            value={item.location} />
+            <DetailRow label="المفتش"            value={item.inspector_name} />
+            <DetailRow label="البنود المفحوصة"   value={`${item.checklist_items} بند`} />
+            <DetailRow label="المخالفات"         value={item.violations > 0 ? `❌ ${item.violations} مخالفة` : '✅ لا مخالفات'}
+              color={item.violations > 0 ? '#b91c1c' : '#065f46'} />
+            <DetailRow label="النتيجة الكلية"    value={item.overall_result}
+              color={item.overall_result === 'مطابق' ? '#065f46' : '#b91c1c'} />
+            {item.findings && item.findings.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: 'var(--text3)' }}>تفاصيل بنود الفحص</div>
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                  {item.findings.map((f: any, i: number) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '24px 1fr auto', gap: 8, padding: '7px 10px', alignItems: 'center',
+                      borderBottom: i < item.findings.length - 1 ? '1px solid var(--bg2)' : 'none',
+                      background: f.result === 'مطابق' ? '#f0fdf4' : f.result === 'غير مطابق' ? '#fef2f2' : 'white' }}>
+                      <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, textAlign: 'center' }}>{f.no}</div>
+                      <div style={{ fontSize: 12 }}>{f.item}</div>
+                      <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
+                        background: f.result === 'مطابق' ? '#ecfdf5' : f.result === 'غير مطابق' ? '#fef2f2' : '#f3f4f6',
+                        color:      f.result === 'مطابق' ? '#065f46' : f.result === 'غير مطابق' ? '#b91c1c' : '#6b7280' }}>
+                        {f.result}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <DetailRow label="ملاحظات"           value={item.notes} />
+          </>
+        )
+      default: return null
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: 560, maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>{titles[type] || 'تفاصيل'}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X size={18} /></button>
+        </div>
+        <div className="modal-body" style={{ overflowY: 'auto' }}>
+          {renderContent()}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إغلاق</button>
+          <button onClick={onEdit} className="btn btn-primary" style={{ background: '#1a56db', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Edit2 size={14} /> تعديل
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function KpiCard({ icon, value, label, bg, color, border }: any) {
@@ -56,12 +278,15 @@ export default function EnvironmentPage() {
   const [employees,   setEmployees]   = useState<any[]>([])
 
   // مودالات
-  const [modal,    setModal]    = useState<string | null>(null)
-  const [editItem, setEditItem] = useState<any>(null)
+  const [modal,      setModal]      = useState<string | null>(null)
+  const [editItem,   setEditItem]   = useState<any>(null)
+  const [detailItem, setDetailItem] = useState<any>(null)
+  const [detailType, setDetailType] = useState<string>('')
 
-  const openEdit = (m: string, item: any) => { setEditItem(item); setModal(m) }
-  const openAdd  = (m: string) => { setEditItem(null); setModal(m) }
+  const openEdit   = (m: string, item: any) => { setEditItem(item); setModal(m) }
+  const openAdd    = (m: string) => { setEditItem(null); setModal(m) }
   const closeModal = () => { setModal(null); setEditItem(null) }
+  const openDetail = (type: string, item: any) => { setDetailType(type); setDetailItem(item) }
 
   const loadAll = useCallback(async () => {
     if (!tid) return
@@ -212,7 +437,7 @@ export default function EnvironmentPage() {
                       <td style={{ padding: '9px 12px', color: 'var(--text3)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inc.environmental_impact || '—'}</td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: inc.penalty_amount > 0 ? '#b91c1c' : 'var(--text3)' }}>{inc.penalty_amount > 0 ? `${inc.penalty_amount.toLocaleString()} ﷼` : '—'}</td>
                       <td style={{ padding: '9px 12px' }}><Badge type={inc.status === 'مغلق' ? 'green' : inc.status === 'قيد المعالجة' ? 'info' : 'red'}>{inc.status}</Badge></td>
-                      <td style={{ padding: '8px' }}><button onClick={() => openEdit('incidents', inc)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                      <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('incident', inc)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('incidents', inc)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,7 +487,7 @@ export default function EnvironmentPage() {
                           <td style={{ padding: '9px 12px' }}>
                             {licDays === null ? '—' : licDays < 0 ? <Badge type="red">❌ منتهي</Badge> : licDays <= 60 ? <Badge type="warn">⚠️ {licDays} يوم</Badge> : <Badge type="green">✓ ساري</Badge>}
                           </td>
-                          <td style={{ padding: '8px' }}><button onClick={() => openEdit('waste', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                          <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('waste', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('waste', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                         </tr>
                       )
                     })}
@@ -302,7 +527,7 @@ export default function EnvironmentPage() {
                         </td>
                         <td style={{ padding: '9px 12px' }}><Badge type={c.msds_status === 'محدّثة' ? 'green' : c.msds_status === 'تحتاج تحديث' ? 'warn' : 'red'}>{c.msds_status}</Badge></td>
                         <td style={{ padding: '9px 12px' }}><Badge type={c.status === 'آمن' ? 'green' : c.status === 'يتطلب مراجعة' ? 'warn' : 'red'}>{c.status}</Badge></td>
-                        <td style={{ padding: '8px' }}><button onClick={() => openEdit('chemicals', c)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                        <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('chemical', c)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('chemicals', c)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                       </tr>
                     )
                   })}
@@ -353,7 +578,7 @@ export default function EnvironmentPage() {
                           <td style={{ padding: '9px 12px' }}>
                             {gap === null ? '—' : Number(gap) > 0 ? <Badge type="red">+{gap} ↑</Badge> : <Badge type="green">{gap} ↓</Badge>}
                           </td>
-                          <td style={{ padding: '8px' }}><button onClick={() => openEdit('emissions', e)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                          <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('emission', e)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('emissions', e)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                         </tr>
                       )
                     })}
@@ -403,7 +628,7 @@ export default function EnvironmentPage() {
                           <td style={{ padding: '9px 12px', color: '#92400e' }}>{Number(w.treated_m3).toFixed(0)}</td>
                           <td style={{ padding: '9px 12px', color: 'var(--text3)' }}>{w.target_m3 ? Number(w.target_m3).toFixed(0) : '—'}</td>
                           <td style={{ padding: '9px 12px' }}><Badge type={aboveTarget ? 'warn' : 'green'}>{aboveTarget ? '↑ أعلى من الهدف' : 'ضمن الهدف'}</Badge></td>
-                          <td style={{ padding: '8px' }}><button onClick={() => openEdit('water', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                          <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('water', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('water', w)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                         </tr>
                       )
                     })}
@@ -439,7 +664,10 @@ export default function EnvironmentPage() {
                       {isExp ? `انتهت منذ ${Math.abs(d as number)} يوم` : d !== null ? `تنتهي ${fmtDate(c.expiry_date)}` : ''}
                     </div>
                   </div>
-                  <button onClick={() => openEdit('certs', c)} style={{ marginTop: 10, width: '100%', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                    <button onClick={() => openDetail('cert', c)} style={{ flex: 1, background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button>
+                    <button onClick={() => openEdit('certs', c)} style={{ flex: 1, background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button>
+                  </div>
                 </div>
               )
             })}
@@ -474,7 +702,7 @@ export default function EnvironmentPage() {
                           {d === null ? '—' : d < 0 ? `منتهي منذ ${Math.abs(d)} يوم` : `${d} يوم`}
                         </td>
                         <td style={{ padding: '9px 12px' }}><Badge type={t.result === 'ناجح' ? 'green' : t.result === 'راسب' ? 'red' : 'gray'}>{t.result}</Badge></td>
-                        <td style={{ padding: '8px' }}><button onClick={() => openEdit('training', t)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                        <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('training', t)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('training', t)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                       </tr>
                     )
                   })}
@@ -509,7 +737,7 @@ export default function EnvironmentPage() {
                         {ins.violations > 0 ? <Badge type="red">❌ {ins.violations}</Badge> : <Badge type="green">0</Badge>}
                       </td>
                       <td style={{ padding: '9px 12px' }}><Badge type={ins.overall_result === 'مطابق' ? 'green' : 'warn'}>{ins.overall_result === 'مطابق' ? '✅ مطابق' : '⚠️ يتطلب تصحيح'}</Badge></td>
-                      <td style={{ padding: '8px' }}><button onClick={() => openEdit('inspections', ins)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></td>
+                      <td style={{ padding: '8px' }}><div style={{ display: 'flex', gap: 4 }}><button onClick={() => openDetail('inspection', ins)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>👁️ تفاصيل</button><button onClick={() => openEdit('inspections', ins)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>تعديل</button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -528,6 +756,26 @@ export default function EnvironmentPage() {
       {modal === 'certs'       && <EnvCertModal2       editItem={editItem} onClose={closeModal} onSave={onSave} />}
       {modal === 'training'    && <EnvTrainingModal    employees={employees} editItem={editItem} onClose={closeModal} onSave={onSave} />}
       {modal === 'inspections' && <EnvInspectionModal  editItem={editItem} onClose={closeModal} onSave={onSave} />}
+
+      {/* ══ مودال التفاصيل الموحّد ══ */}
+      {detailItem && (
+        <EnvDetailModal
+          type={detailType}
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+          onEdit={() => { openEdit(
+            detailType === 'incident' ? 'incidents'
+            : detailType === 'waste' ? 'waste'
+            : detailType === 'chemical' ? 'chemicals'
+            : detailType === 'emission' ? 'emissions'
+            : detailType === 'water' ? 'water'
+            : detailType === 'cert' ? 'certs'
+            : detailType === 'training' ? 'training'
+            : 'inspections',
+            detailItem
+          ); setDetailItem(null) }}
+        />
+      )}
     </div>
   )
 }
