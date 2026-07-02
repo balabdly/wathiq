@@ -13,8 +13,8 @@ export default function NcrModal({ visit, onClose, onResolve }: {
   const [photos,    setPhotos]    = useState<{name:string;data:string}[]>(
     (visit as any).resolved_files?.map((f:any) => ({ name: f.name, data: f.data||f.url||'' })) || []
   )
-  const [notes,     setNotes]     = useState('')
   const [report,    setReport]    = useState('')
+  const [notes,     setNotes]     = useState('')
   const [resolving, setResolving] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -29,69 +29,68 @@ export default function NcrModal({ visit, onClose, onResolve }: {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '620px' }}>
+      <div className="modal-box" style={{ maxWidth: 620 }}>
         <div className="modal-header">
           <div>
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-amber-500" />
+            <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: '#1a1a2e' }}>
+              <ClipboardList style={{ width: 18, height: 18, color: '#f59e0b' }} />
               الإجراء التصحيحي
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>
               {visit.type} · {formatDate(visit.date)} · {visit.engineer}
             </p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text3)' }}>
+            <X style={{ width: 18, height: 18 }} />
           </button>
         </div>
-        <div className="modal-body">
+
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* تفاصيل المخالفة */}
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4 text-red-500" />
-              <span className="font-semibold text-red-700 text-sm">تفاصيل المخالفة</span>
+          <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <AlertTriangle style={{ width: 14, height: 14, color: '#c81e1e' }} />
+              <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#c81e1e' }}>تفاصيل المخالفة</span>
             </div>
-            <p className="text-sm text-red-600">{visit.corrective || visit.notes || 'لا توجد ملاحظات'}</p>
-            {visit.location && <p className="text-xs text-red-400 mt-1">📍 {visit.location}</p>}
+            <p style={{ fontSize: '0.85rem', color: '#c81e1e' }}>{visit.corrective || visit.notes || 'لا توجد ملاحظات'}</p>
+            {visit.location && <p style={{ fontSize: '0.72rem', color: '#ef4444', marginTop: 4 }}>📍 {visit.location}</p>}
           </div>
 
           {visit.resolved_report ? (
-            <div className="space-y-3">
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  <span className="font-semibold text-emerald-700 text-sm">تم إغلاق NCR</span>
-                </div>
-                <p className="text-sm text-emerald-600 whitespace-pre-line">{visit.resolved_report}</p>
-                {visit.resolved_date && (
-                  <p className="text-xs text-emerald-400 mt-2">
-                    بواسطة {visit.resolved_by} — {formatDate(visit.resolved_date)}
-                  </p>
-                )}
+            <div style={{ background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 10, padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <CheckCircle2 style={{ width: 14, height: 14, color: '#0ea77b' }} />
+                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0ea77b' }}>تم إغلاق NCR</span>
               </div>
+              <p style={{ fontSize: '0.85rem', color: '#065f46', whiteSpace: 'pre-line' }}>{visit.resolved_report}</p>
+              {visit.resolved_date && (
+                <p style={{ fontSize: '0.72rem', color: '#6ee7b7', marginTop: 8 }}>
+                  بواسطة {visit.resolved_by} — {formatDate(visit.resolved_date)}
+                </p>
+              )}
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  تقرير الإجراء التصحيحي <span className="text-red-500">*</span>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 6 }}>
+                  تقرير الإجراء التصحيحي <span style={{ color: '#c81e1e' }}>*</span>
                 </label>
                 <textarea value={report} onChange={e => setReport(e.target.value)}
-                  className="input min-h-[90px] resize-none"
+                  className="input" style={{ minHeight: 90, resize: 'none' }}
                   placeholder="اكتب تفاصيل الإجراء التصحيحي المتخذ..." required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات إضافية</label>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 6 }}>ملاحظات إضافية</label>
                 <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                  className="input min-h-[60px] resize-none" placeholder="أي ملاحظات إضافية..." />
+                  className="input" style={{ minHeight: 60, resize: 'none' }} placeholder="أي ملاحظات إضافية..." />
               </div>
               <PhotoUploader photos={photos} onChange={setPhotos} label="صور الإجراء التصحيحي" />
               <div className="modal-footer">
                 <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-                <button type="submit" disabled={resolving} className="btn btn-primary" style={{background:'#0ea77b'}}>
+                <button type="submit" disabled={resolving} className="btn btn-primary" style={{ background: '#0ea77b', display: 'flex', alignItems: 'center', gap: 6 }}>
                   {resolving
-                    ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <CheckCircle2 className="w-4 h-4" />}
+                    ? <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+                    : <CheckCircle2 style={{ width: 14, height: 14 }} />}
                   إغلاق NCR
                 </button>
               </div>

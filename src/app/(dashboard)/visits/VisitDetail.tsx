@@ -12,9 +12,10 @@ const SEVERITY_STYLE: Record<string, { bg: string; color: string; icon: string }
 
 const LIFECYCLE_STEPS = ['رصد', 'تصحيح', 'اعتماد']
 
-export default function VisitDetail({ visit, onClose }: {
+export default function VisitDetail({ visit, onClose, onEdit }: {
   visit: Visit
   onClose: () => void
+  onEdit?: () => void
 }) {
   const v        = visit as any
   const isNCR    = visit.specs === 'غير مطابق'
@@ -26,10 +27,10 @@ export default function VisitDetail({ visit, onClose }: {
       <div className="modal-box max-w-2xl">
         <div className="modal-header">
           <div>
-            <h3 className="font-bold text-gray-800">تفاصيل الزيارة</h3>
-            <p className="text-xs text-gray-400 mt-0.5">{visit.type} · {formatDate(visit.date)}</p>
+            <h3 style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '1rem' }}>تفاصيل الزيارة</h3>
+            <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>{visit.type} · {formatDate(visit.date)}</p>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: 'var(--text3)' }}><X style={{ width: 18, height: 18 }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
@@ -172,6 +173,16 @@ export default function VisitDetail({ visit, onClose }: {
             <div style={{ background: '#fffbeb', borderRadius: '8px', padding: '10px 14px', border: '1px solid #fde68a', fontSize: '0.78rem', color: '#e6820a', fontWeight: 600 }}>
               ⚠️ هذه الزيارة تنتظر الإجراء التصحيحي
             </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إغلاق</button>
+          {onEdit && (
+            <button onClick={onEdit} className="btn btn-primary" style={{ background: '#1a56db', display: 'flex', alignItems: 'center', gap: 6 }}>
+              ✏️ تعديل
+            </button>
           )}
         </div>
       </div>

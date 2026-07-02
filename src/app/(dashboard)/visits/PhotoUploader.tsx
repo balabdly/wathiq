@@ -27,62 +27,76 @@ export default function PhotoUploader({ photos, onChange, label }: {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-        <Camera className="w-4 h-4" />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
+        <Camera style={{ width: 14, height: 14 }} />
         {label || 'الصور'}
-        {photos.length > 0 && <span className="badge badge-blue text-xs">{photos.length}</span>}
+        {photos.length > 0 && (
+          <span style={{ background: '#eff6ff', color: '#1a56db', padding: '1px 6px', borderRadius: 8, fontSize: '0.7rem', fontWeight: 700 }}>
+            {photos.length}
+          </span>
+        )}
       </label>
-      <div className="flex gap-2 mb-3">
-        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
           onChange={e => handleFiles(e.target.files)} />
         <button type="button" onClick={() => fileRef.current?.click()}
-          className="flex-1 btn btn-ghost btn-sm border border-gray-200 gap-2 hover:border-primary-300 hover:text-primary-600">
-          <Upload className="w-4 h-4" /> رفع من الجهاز
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+          <Upload style={{ width: 13, height: 13 }} /> رفع من الجهاز
         </button>
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
           onChange={e => handleFiles(e.target.files)} />
         <button type="button" onClick={() => cameraRef.current?.click()}
-          className="flex-1 btn btn-ghost btn-sm border border-primary-200 text-primary-600 gap-2 hover:bg-primary-50">
-          <Camera className="w-4 h-4" /> التقاط صورة
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#1a56db', fontFamily: 'inherit' }}>
+          <Camera style={{ width: 13, height: 13 }} /> التقاط صورة
         </button>
       </div>
+
       {photos.length > 0 ? (
-        <div className="grid grid-cols-3 gap-2">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           {photos.map((photo, idx) => (
-            <div key={idx} className="relative group rounded-xl overflow-hidden border border-gray-100 aspect-square bg-gray-50">
-              <img src={photo.data} alt={photo.name} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+            <div key={idx} style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', aspectRatio: '1', background: '#f8fafc' }}
+              onMouseEnter={e => { const ov = (e.currentTarget as any)._ov; if (ov) ov.style.opacity = '1' }}
+              onMouseLeave={e => { const ov = (e.currentTarget as any)._ov; if (ov) ov.style.opacity = '0' }}>
+              <img src={photo.data} alt={photo.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {/* overlay */}
+              <div ref={el => { if (el) (el.parentElement as any)._ov = el }}
+                style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: 0, transition: 'all 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.4)'; e.currentTarget.style.opacity = '1' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0)'; e.currentTarget.style.opacity = '0' }}>
                 <button type="button" onClick={() => setPreview(photo)}
-                  className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg">
-                  <ZoomIn className="w-4 h-4 text-gray-700" />
+                  style={{ width: 28, height: 28, background: 'white', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ZoomIn style={{ width: 13, height: 13, color: '#374151' }} />
                 </button>
-                {onChange && (
-                  <button type="button" onClick={() => onChange(photos.filter((_, i) => i !== idx))}
-                    className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                    <X className="w-4 h-4 text-white" />
-                  </button>
-                )}
+                <button type="button" onClick={() => onChange(photos.filter((_, i) => i !== idx))}
+                  style={{ width: 28, height: 28, background: '#c81e1e', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X style={{ width: 13, height: 13, color: 'white' }} />
+                </button>
               </div>
-              <div className="absolute bottom-0 right-0 left-0 bg-gradient-to-t from-black/60 p-1.5">
-                <div className="text-xs text-white truncate">{photo.name}</div>
+              {/* اسم الصورة */}
+              <div style={{ position: 'absolute', bottom: 0, right: 0, left: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)', padding: '8px 6px 4px' }}>
+                <div style={{ fontSize: '0.65rem', color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{photo.name}</div>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center text-gray-400 text-sm">
-          <ImageIcon className="w-8 h-8 mx-auto mb-1 text-gray-200" />
+        <div style={{ border: '2px dashed var(--border)', borderRadius: 10, padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '0.82rem' }}>
+          <ImageIcon style={{ width: 28, height: 28, margin: '0 auto 6px', color: '#d1d5db' }} />
           لا توجد صور
         </div>
       )}
+
+      {/* مودال المعاينة */}
       {preview && (
-        <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={() => setPreview(null)}>
-          <div className="relative max-w-3xl max-h-full">
-            <img src={preview.data} alt={preview.name} className="max-w-full max-h-[85vh] rounded-xl object-contain" />
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img src={preview.data} alt={preview.name}
+              style={{ maxWidth: '100%', maxHeight: '85vh', borderRadius: 10, objectFit: 'contain' }} />
             <button onClick={() => setPreview(null)}
-              className="absolute top-3 left-3 w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-lg">
-              <X className="w-5 h-5 text-gray-700" />
+              style={{ position: 'absolute', top: 10, left: 10, width: 32, height: 32, background: 'white', borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X style={{ width: 16, height: 16, color: '#374151' }} />
             </button>
           </div>
         </div>
