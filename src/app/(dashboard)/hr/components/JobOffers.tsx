@@ -478,7 +478,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
                         </button>
                         <button onClick={async () => {
                           if (!confirm('حذف هذا العرض؟')) return
-                          await supabase.from('hr_job_offers').delete().eq('id', o.id)
+                          await supabase.from('hr_job_offers').delete().eq('id', o.id).eq('tenant_id', tenant.id)
                           await loadData(); toast.success('تم الحذف')
                         }} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                           <Trash2 style={{ width: '13px', height: '13px' }} />

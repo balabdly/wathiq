@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { hashPassword } from '@/lib/password'
 import { Save, User, Briefcase, DollarSign, Building2, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { HREmployee, Department, JobTitle } from '../hr_types'
@@ -115,10 +116,11 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const { data: existingEmp } = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('name', fullName).eq('is_active', true).maybeSingle()
       let newEmp = existingEmp
       if (!existingEmp) {
+        const defaultPasswordHash = await hashPassword('1234')
         const { data: createdEmp } = await supabase.from('employees').insert({
           tenant_id: tenant.id, name: fullName,
           role: form.job_title || 'موظف',
-          username: `emp_${Date.now()}`, password: '1234',
+          username: `emp_${Date.now()}`, password: defaultPasswordHash,
           permissions: [], is_active: true,
         }).select('id').single()
         newEmp = createdEmp
@@ -168,7 +170,7 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       if (error) throw error
 
       if (newEmp?.id && newHR?.id) {
-        await supabase.from('employees').update({ hr_employee_id: newHR.id }).eq('id', newEmp.id)
+        await supabase.from('employees').update({ hr_employee_id: newHR.id }).eq('id', newEmp.id).eq('tenant_id', tenant.id)
       }
 
       setSaved(true)

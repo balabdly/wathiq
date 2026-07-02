@@ -69,12 +69,12 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
     }
 
     if (editId) {
-      await supabase.from('hr_terminations').update(payload).eq('id', editId)
+      await supabase.from('hr_terminations').update(payload).eq('id', editId).eq('tenant_id', tenantId)
     } else {
       await supabase.from('hr_terminations').insert(payload)
       // تعطيل الموظف تلقائياً
-      await supabase.from('hr_employees').update({ is_active: false }).eq('id', selectedHR.id)
-      await supabase.from('employees').update({ is_active: false }).eq('id', selectedHR.employee_id)
+      await supabase.from('hr_employees').update({ is_active: false }).eq('id', selectedHR.id).eq('tenant_id', tenantId)
+      await supabase.from('employees').update({ is_active: false }).eq('id', selectedHR.employee_id).eq('tenant_id', tenantId)
     }
 
     await loadData()
@@ -85,7 +85,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا السجل؟')) return
-    await supabase.from('hr_terminations').delete().eq('id', id)
+    await supabase.from('hr_terminations').delete().eq('id', id).eq('tenant_id', tenantId)
     setTerminations(t => t.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }
@@ -377,4 +377,3 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
     </div>
   )
 }
-

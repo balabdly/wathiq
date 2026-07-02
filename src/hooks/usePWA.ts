@@ -12,20 +12,25 @@ export function usePWA() {
     }
   }, [])
 
-  // حفظ بيانات المستخدم في cookie
+  // مزامنة جلسة المستخدم إلى cookie موقعة (HttpOnly) عبر API
   useEffect(() => {
-    if (currentUser) {
-      const userData = {
-        id:          currentUser.id,
-        name:        currentUser.name,
-        role:        currentUser.role,
-        permissions: currentUser.permissions || [],
+    async function syncAuthCookie() {
+      if (currentUser) {
+        await fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: currentUser.id,
+            role: currentUser.role,
+            permissions: currentUser.permissions || [],
+          }),
+        })
+      } else {
+        await fetch('/api/auth/logout', { method: 'POST' })
       }
-      document.cookie = `wathiq_user=${encodeURIComponent(JSON.stringify(userData))}; path=/; max-age=86400; SameSite=Strict`
-    } else {
-      document.cookie = 'wathiq_user=; path=/; max-age=0'
     }
-  }, [currentUser?.id, currentUser?.permissions])
+    syncAuthCookie().catch(() => {})
+  }, [currentUser?.id, currentUser?.permissions, currentUser?.role])
 
   // ── جلب permissions من DB فوراً عند كل تحميل صفحة ──
   useEffect(() => {

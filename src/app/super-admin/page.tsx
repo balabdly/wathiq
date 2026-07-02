@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { hashPassword } from '@/lib/password'
 import {
   Building2, Plus, Pencil, X, Save, Shield, CheckCircle2,
   AlertTriangle, Users, Calendar, Power, ChevronDown, Lock
@@ -331,6 +332,7 @@ export default function SuperAdminPage() {
         if (branchError) throw branchError
 
         // إنشاء مستخدم أدمن للشركة
+        const adminPasswordHash = await hashPassword(data.admin_password)
         const { error: empError } = await supabase.from('employees').insert({
           tenant_id:   tenant.id,
           branch_id:   branch.id,
@@ -344,7 +346,7 @@ export default function SuperAdminPage() {
             'finance', 'reports', 'qhse',
           ],
           is_active: true,
-          password:  data.admin_password,
+          password:  adminPasswordHash,
         })
         if (empError) throw empError
 

@@ -331,7 +331,8 @@ export default function EmployeeProfilePage() {
     }
     setEmp(empData)
 
-    const hrEmpId = empData.id  // ← hr_employees.id هو المرجع الآن
+    const hrEmpId = empData.id
+    const employeeUserId = empData.employee_id
 
     // جلب كل البيانات معاً
     const [leavesRes, attRes, discRes, payRes, docRes] = await Promise.all([
@@ -348,7 +349,7 @@ export default function EmployeeProfilePage() {
         .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
         .order('year', { ascending: false }).order('month', { ascending: false }).limit(6),
       supabase.from('hr_documents')
-        .select('*').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
+        .select('*').eq('tenant_id', tenant.id).eq('employee_id', employeeUserId)
         .order('expiry_date'),
     ])
 
@@ -363,7 +364,7 @@ export default function EmployeeProfilePage() {
       .from('hr_emergency_contacts')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('employee_id', hrEmpId)
+      .eq('employee_id', employeeUserId)
       .order('priority', { ascending: true })
     setEmergencyContacts(emergencyData || [])
 
@@ -943,7 +944,7 @@ export default function EmployeeProfilePage() {
                   setEmergencyError('')
                   const payload = {
                     tenant_id: tenant?.id,
-                    employee_id: Number(id),
+                    employee_id: emp?.employee_id,
                     full_name: f.full_name.trim(),
                     relationship: f.relationship,
                     phone_primary: f.phone_primary.trim(),
@@ -953,7 +954,7 @@ export default function EmployeeProfilePage() {
                   }
                   let err
                   if (editEmergency) {
-                    ;({ error: err } = await supabase.from('hr_emergency_contacts').update(payload).eq('id', editEmergency.id))
+                    ;({ error: err } = await supabase.from('hr_emergency_contacts').update(payload).eq('id', editEmergency.id).eq('tenant_id', tenant?.id || ''))
                   } else {
                     ;({ error: err } = await supabase.from('hr_emergency_contacts').insert(payload))
                   }
@@ -989,7 +990,7 @@ export default function EmployeeProfilePage() {
                 className="btn"
                 style={{ background: '#dc2626', color: '#fff' }}
                 onClick={async () => {
-                  await supabase.from('hr_emergency_contacts').delete().eq('id', emergencyDeleteId)
+                  await supabase.from('hr_emergency_contacts').delete().eq('id', emergencyDeleteId).eq('tenant_id', tenant?.id || '')
                   setEmergencyDeleteId(null)
                   toast.success('تم الحذف')
                   loadAll()

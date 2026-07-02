@@ -284,7 +284,7 @@ function ViolationTypesModal({ tenantId, types, onClose, onRefresh }: {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذه المخالفة؟')) return
-    await supabase.from('hr_violation_types').delete().eq('id', id)
+    await supabase.from('hr_violation_types').delete().eq('id', id).eq('tenant_id', tenantId)
     onRefresh()
   }
 
@@ -540,7 +540,7 @@ export default function DisciplinaryPage() {
   async function handleSave(data: any) {
     if (!tenant) return
     const payload = { ...data, tenant_id: tenant.id, issued_by: currentUser?.id || null }
-    if (data.id) await supabase.from('hr_disciplinary').update(payload).eq('id', data.id)
+    if (data.id) await supabase.from('hr_disciplinary').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
     else await supabase.from('hr_disciplinary').insert(payload)
     await load()
     setShowModal(false); setEditRecord(null)
@@ -549,7 +549,7 @@ export default function DisciplinaryPage() {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا الإنذار؟')) return
-    await supabase.from('hr_disciplinary').delete().eq('id', id)
+    await supabase.from('hr_disciplinary').delete().eq('id', id).eq('tenant_id', tenant?.id || '')
     setRecords(r => r.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }

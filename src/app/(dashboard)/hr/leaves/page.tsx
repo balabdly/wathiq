@@ -428,7 +428,7 @@ export default function LeavesPage() {
   async function handleSave(data: any) {
     if (!tenant) return
     const payload = { ...data, tenant_id: tenant.id }
-    if (data.id) await supabase.from('hr_leaves').update(payload).eq('id', data.id)
+    if (data.id) await supabase.from('hr_leaves').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
     else await supabase.from('hr_leaves').insert(payload)
     setShowModal(false); setEditLeave(null)
     toast.success('تم الحفظ ✅')
@@ -441,19 +441,27 @@ export default function LeavesPage() {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا الطلب؟')) return
-    await supabase.from('hr_leaves').delete().eq('id', id)
+    await supabase.from('hr_leaves').delete().eq('id', id).eq('tenant_id', tenant?.id || '')
     setLeaves(l => l.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }
 
   async function handleApprove(id: number) {
-    await supabase.from('hr_leaves').update({ status: 'موافق' }).eq('id', id)
-    setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'موافق' } : x))
+    await supabase
+      .from('hr_leaves')
+      .update({ status: 'موافق', approved_by: currentUser?.id || null })
+      .eq('id', id)
+      .eq('tenant_id', tenant?.id || '')
+    setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'موافق', approved_by: currentUser?.id || null } : x))
     toast.success('✅ تم قبول الإجازة')
   }
 
   async function handleReject(id: number) {
-    await supabase.from('hr_leaves').update({ status: 'مرفوض' }).eq('id', id)
+    await supabase
+      .from('hr_leaves')
+      .update({ status: 'مرفوض', approved_by: currentUser?.id || null })
+      .eq('id', id)
+      .eq('tenant_id', tenant?.id || '')
     setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'مرفوض' } : x))
     toast.error('❌ تم رفض الإجازة')
   }
@@ -671,7 +679,7 @@ export default function LeavesPage() {
                                 )}
                                 {isAdmin && l.status !== 'بانتظار الموافقة' && (
                                   <button type="button"
-                                    onClick={() => { supabase.from('hr_leaves').update({ status: 'بانتظار الموافقة' }).eq('id', l.id).then(() => { setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, status: 'بانتظار الموافقة' } : x)); toast.success('أُعيد الطلب للمراجعة') }) }}
+                                    onClick={() => { supabase.from('hr_leaves').update({ status: 'بانتظار الموافقة', approved_by: null }).eq('id', l.id).eq('tenant_id', tenant?.id || '').then(() => { setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, status: 'بانتظار الموافقة' } : x)); toast.success('أُعيد الطلب للمراجعة') }) }}
                                     style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#fffbeb', color: '#e6820a', fontSize: '0.72rem', fontWeight: 600 }}>
                                     ↩ إعادة
                                   </button>

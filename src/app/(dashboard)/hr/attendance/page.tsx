@@ -657,7 +657,7 @@ export default function AttendancePage() {
   async function handleSave(data: any) {
     if (!tenant) return
     const payload = { ...data, tenant_id: tenant.id, branch_id: activeBranch?.id }
-    if (data.id) await supabase.from('hr_attendance').update(payload).eq('id', data.id)
+    if (data.id) await supabase.from('hr_attendance').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
     else await supabase.from('hr_attendance').insert(payload)
     await load()
     setShowModal(false); setEditRecord(null)
@@ -666,13 +666,13 @@ export default function AttendancePage() {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا السجل؟')) return
-    await supabase.from('hr_attendance').delete().eq('id', id)
+    await supabase.from('hr_attendance').delete().eq('id', id).eq('tenant_id', tenant?.id || '')
     setRecords(r => r.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }
 
   async function handleCheckout(id: number, checkOut: string) {
-    await supabase.from('hr_attendance').update({ check_out: checkOut }).eq('id', id)
+    await supabase.from('hr_attendance').update({ check_out: checkOut }).eq('id', id).eq('tenant_id', tenant?.id || '')
     await load()
     setShowCheckout(false)
     setCheckoutRecord(null)
@@ -831,4 +831,3 @@ export default function AttendancePage() {
     </div>
   )
 }
-

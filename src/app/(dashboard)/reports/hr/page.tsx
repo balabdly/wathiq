@@ -239,8 +239,8 @@ export default function ReportsHRPage() {
       const { data } = await q.order('date', { ascending: false }).limit(500)
 
       const rows    = data || []
-      const present = rows.filter((r: any) => r.status === 'حاضر').length
-      const absent  = rows.filter((r: any) => r.status === 'غائب').length
+      const present = rows.filter((r: any) => r.status === 'حاضر' || r.status === 'حضور').length
+      const absent  = rows.filter((r: any) => r.status === 'غائب' || r.status === 'غياب').length
       setSummary({ 'إجمالي السجلات': rows.length, 'حاضر': present, 'غائب': absent })
       setResults(rows)
     }
@@ -264,7 +264,7 @@ export default function ReportsHRPage() {
       // وثائق
       const { data: docData } = await supabase
         .from('hr_documents')
-        .select('*, employee:hr_employees!hr_documents_employee_id_fkey(name, employee_number)')
+        .select('*, employee:employees(name)')
         .eq('tenant_id', tenant.id)
         .not('expiry_date', 'is', null)
         .lte('expiry_date', limitStr)
@@ -659,7 +659,7 @@ export default function ReportsHRPage() {
                   </thead>
                   <tbody>
                     {results.map((r, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2, #f8fafc)', background: r.status === 'غائب' ? '#fff5f5' : 'transparent' }}>
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2, #f8fafc)', background: (r.status === 'غائب' || r.status === 'غياب') ? '#fff5f5' : 'transparent' }}>
                         <td style={{ padding: '10px 14px', color: 'var(--text3)', fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.date}</td>
                         <td style={{ padding: '10px 14px', fontWeight: 600 }}>{r.employee?.name || '—'}</td>
                         <td style={{ padding: '10px 14px', fontFamily: 'monospace' }}>{r.check_in || '—'}</td>
@@ -667,7 +667,7 @@ export default function ReportsHRPage() {
                         <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: 600 }}>{r.hours_worked ? `${r.hours_worked} س` : '—'}</td>
                         <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: '#7c3aed' }}>{r.overtime_hours > 0 ? `${r.overtime_hours} س` : '—'}</td>
                         <td style={{ padding: '10px 14px' }}>
-                          <span className={`badge ${r.status === 'حاضر' ? 'badge-green' : r.status === 'غائب' ? 'badge-red' : 'badge-amber'}`} style={{ fontSize: '0.68rem' }}>{r.status}</span>
+                          <span className={`badge ${(r.status === 'حاضر' || r.status === 'حضور') ? 'badge-green' : (r.status === 'غائب' || r.status === 'غياب') ? 'badge-red' : 'badge-amber'}`} style={{ fontSize: '0.68rem' }}>{r.status}</span>
                         </td>
                       </tr>
                     ))}

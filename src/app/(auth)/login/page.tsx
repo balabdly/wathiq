@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { hashPassword, isPasswordHash, verifyPassword } from '@/lib/password'
 import { useStore } from '@/hooks/useStore'
 import toast from 'react-hot-toast'
 
@@ -27,8 +28,25 @@ export default function LoginPage() {
         toast.error('اسم المستخدم غير موجود'); return
       }
 
-      const emp = data.find((e: any) => e.password === password)
+      const activeUsers = (data || []).filter((e: any) => e.is_active)
+      let emp: any = null
+      for (const user of activeUsers) {
+        if (await verifyPassword(password, user.password)) {
+          emp = user
+          break
+        }
+      }
       if (!emp) { toast.error('كلمة المرور غير صحيحة'); return }
+
+      // ترقية كلمات المرور القديمة المخزنة كنص صريح
+      if (!isPasswordHash(emp.password)) {
+        const passwordHash = await hashPassword(password)
+        await supabase
+          .from('employees')
+          .update({ password: passwordHash })
+          .eq('id', emp.id)
+          .eq('tenant_id', emp.tenant_id)
+      }
 
       const { data: tenant } = await supabase
         .from('tenants')
@@ -45,7 +63,21 @@ export default function LoginPage() {
       // ── تحميل permissions مباشرة من DB بدون تعديل ──
       const perms: string[] = emp.permissions || []
 
-      const updatedEmp = { ...emp, permissions: perms }
+      const { password: _password, ...empWithoutPassword } = emp
+      const updatedEmp = { ...empWithoutPassword, permissions: perms }
+
+      const sessionRes = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: updatedEmp.id,
+          role: updatedEmp.role,
+          permissions: perms,
+        }),
+      })
+      if (!sessionRes.ok) {
+        toast.error('تعذر إنشاء جلسة آمنة'); return
+      }
 
       setCurrentUser(updatedEmp)
       setTenant(tenant)

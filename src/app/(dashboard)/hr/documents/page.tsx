@@ -279,7 +279,7 @@ export default function DocumentsPage() {
     const payload = { ...data, tenant_id: tenant.id }
     let error = null
     if (data.id) {
-      const res = await supabase.from('hr_documents').update(payload).eq('id', data.id)
+      const res = await supabase.from('hr_documents').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
       error = res.error
     } else {
       const res = await supabase.from('hr_documents').insert(payload)
@@ -293,7 +293,7 @@ export default function DocumentsPage() {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذه الوثيقة؟')) return
-    await supabase.from('hr_documents').delete().eq('id', id)
+    await supabase.from('hr_documents').delete().eq('id', id).eq('tenant_id', tenant?.id || '')
     setDocs(d => d.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }

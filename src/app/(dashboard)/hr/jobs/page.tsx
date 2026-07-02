@@ -90,7 +90,7 @@ function JobModal({ job, tenantId, departments, onClose, onSave }: {
     }
     let error
     if (job) {
-      const res = await supabase.from('hr_jobs').update(payload).eq('id', job.id)
+      const res = await supabase.from('hr_jobs').update(payload).eq('id', job.id).eq('tenant_id', tenantId)
       error = res.error
     } else {
       const res = await supabase.from('hr_jobs').insert(payload)
@@ -490,8 +490,8 @@ export default function JobsPage() {
 
   async function deleteJob(id: number) {
     if (!confirm('حذف هذه الوظيفة وجميع طلباتها؟')) return
-    await supabase.from('hr_applicants').delete().eq('job_id', id)
-    await supabase.from('hr_jobs').delete().eq('id', id)
+    await supabase.from('hr_applicants').delete().eq('job_id', id).eq('tenant_id', tenant?.id || '')
+    await supabase.from('hr_jobs').delete().eq('id', id).eq('tenant_id', tenant?.id || '')
     setJobs(jobs => jobs.filter(j => j.id !== id))
     toast.success('تم الحذف')
   }

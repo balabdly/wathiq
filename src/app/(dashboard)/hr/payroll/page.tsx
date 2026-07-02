@@ -591,7 +591,7 @@ export default function PayrollPage() {
         gross_salary: row.gross, net_salary: row.net,
         notes: row.notes || null, status: 'مسودة', working_days: 26,
       }
-      if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
+      if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId).eq('tenant_id', tenant.id)
       else await supabase.from('hr_payroll').insert(payload)
     }
     await load(); setMode('view'); setSaving(false)
@@ -612,7 +612,7 @@ export default function PayrollPage() {
   }
 
   async function handleEditSave(data: any) {
-    await supabase.from('hr_payroll').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id)
+    await supabase.from('hr_payroll').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id).eq('tenant_id', tenant?.id || '')
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
   }
 
@@ -620,7 +620,7 @@ export default function PayrollPage() {
   async function handleApprove(month: number, year: number) {
     if (!confirm(`اعتماد مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nبعد الاعتماد لا يمكن تعديله.`)) return
     const recs = payrolls.filter(p => p.month === month && p.year === year)
-    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id)))
+    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id).eq('tenant_id', tenant?.id || '')))
     await load()
     toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]}`)
   }
@@ -632,7 +632,7 @@ export default function PayrollPage() {
     if (!confirm(`تسجيل دفع مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nإجمالي الصافي: ${recs.reduce((s,p)=>s+Number(p.net_salary),0).toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي تلقائياً وينتقل للأرشيف.`)) return
 
     // تحديث الحالة لمدفوع
-    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('id', p.id)))
+    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('id', p.id).eq('tenant_id', tenant.id)))
 
     // القيد المحاسبي: مدين رواتب الموظفين / دائن بنك الرواتب
     const totalNet = recs.reduce((s, p) => s + Number(p.net_salary), 0)

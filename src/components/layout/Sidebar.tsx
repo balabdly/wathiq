@@ -462,7 +462,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <button onClick={() => { reset(); router.push('/login') }} style={{
+        <button onClick={() => { fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); reset(); router.push('/login') }} style={{
           width: '100%', background: 'transparent', color: C.textSecondary,
           border: '1px solid ' + C.border, borderRadius: '8px', padding: '8px 12px',
           cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { verifyAuthCookieToken } from '@/lib/auth-cookie'
 
 // ── خريطة الصفحات والصلاحيات المطلوبة ──
 const PAGE_PERMISSIONS: Record<string, string[]> = {
@@ -15,7 +16,10 @@ const PAGE_PERMISSIONS: Record<string, string[]> = {
   '/settings/permissions': ['مدير عام'],
 }
 
-export function middleware(request: NextRequest) {
+const AUTH_COOKIE_NAME = 'wathiq_user'
+const PUBLIC_ROUTES = ['/login', '/super-admin', '/careers', '/offline', '/unauthorized']
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // تجاهل الـ API routes والملفات الثابتة
@@ -34,23 +38,29 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // قراءة بيانات المستخدم من الـ cookie
-  const userCookie = request.cookies.get('wathiq_user')
+  if (PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(route + '/'))) {
+    return NextResponse.next()
+  }
 
-  // لو مافيه cookie — نسمح بالمرور (الـ login page تتحكم)
+  const userCookie = request.cookies.get(AUTH_COOKIE_NAME)
   if (!userCookie) {
-    return NextResponse.next()
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // فك تشفير بيانات المستخدم
-  let user: { role: string; permissions: string[] } | null = null
-  try {
-    user = JSON.parse(decodeURIComponent(userCookie.value))
-  } catch {
-    return NextResponse.next()
-  }
+  const secret = process.env.AUTH_COOKIE_SECRET
+  if (!secret) return NextResponse.next()
 
-  if (!user) return NextResponse.next()
+  const user = await verifyAuthCookieToken(userCookie.value, secret)
+  if (!user) {
+    const response = NextResponse.redirect(new URL('/login', request.url))
+    response.cookies.set({
+      name: AUTH_COOKIE_NAME,
+      value: '',
+      path: '/',
+      maxAge: 0,
+    })
+    return response
+  }
 
   // مدير عام يمر دائماً
   if (user.role === 'مدير عام') return NextResponse.next()

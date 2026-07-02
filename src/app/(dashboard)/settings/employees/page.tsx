@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { hashPassword } from '@/lib/password'
 import { Users, Pencil, X, Save, Search, Shield, UserCheck, UserX, RefreshCw, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
@@ -306,7 +307,7 @@ export default function EmployeesSettingsPage() {
     if (!selectedEmp || !tenant) return
     setSaving(true)
     const payload: any = { role: editForm.role, username: editForm.username || null, permissions: userPerms }
-    if (editForm.password) payload.password = editForm.password
+    if (editForm.password.trim()) payload.password = await hashPassword(editForm.password.trim())
     const { error } = await supabase.from('employees').update(payload).eq('id', selectedEmp.id).eq('tenant_id', tenant.id)
     setSaving(false)
     if (error) { toast.error('خطأ: ' + error.message); return }
@@ -326,7 +327,7 @@ export default function EmployeesSettingsPage() {
       is_active:       true,
       hr_employee_id:  data.hrEmpId,
     }
-    if (data.password) payload.password = data.password
+    if (data.password?.trim()) payload.password = await hashPassword(data.password.trim())
     const { error } = await supabase.from('employees').insert(payload)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await load()
@@ -342,8 +343,8 @@ export default function EmployeesSettingsPage() {
       permissions: data.permissions, // نحفظ permissions من المودال
       is_active: data.is_active,
     }
-    if (data.password) payload.password = data.password
-    const { error } = await supabase.from('employees').update(payload).eq('id', data.id)
+    if (data.password?.trim()) payload.password = await hashPassword(data.password.trim())
+    const { error } = await supabase.from('employees').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await load()
     setShowEdit(false); setEditEmp(null)
@@ -351,9 +352,10 @@ export default function EmployeesSettingsPage() {
   }
 
   async function handleToggleActive(emp: Emp) {
+    if (!tenant) return
     const newStatus = !emp.is_active
     if (!confirm((newStatus ? 'تفعيل ' : 'تعطيل ') + emp.name + '؟')) return
-    await supabase.from('employees').update({ is_active: newStatus }).eq('id', emp.id)
+    await supabase.from('employees').update({ is_active: newStatus }).eq('id', emp.id).eq('tenant_id', tenant.id)
     await load()
     toast.success(newStatus ? '✅ تم تفعيل ' + emp.name : '⛔ تم تعطيل ' + emp.name)
   }

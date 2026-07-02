@@ -71,7 +71,7 @@ export default function EmployeesList({
   // ── حذف ──
   async function handleDelete(emp: HREmployee) {
     if (!confirm(`حذف الموظف "${getEmpName(emp)}"؟`)) return
-    await supabase.from('hr_employees').update({ is_active: false }).eq('id', emp.id)
+    await supabase.from('hr_employees').update({ is_active: false }).eq('id', emp.id).eq('tenant_id', tenantId)
     toast.success('تم حذف الموظف')
     loadAll(page)
   }

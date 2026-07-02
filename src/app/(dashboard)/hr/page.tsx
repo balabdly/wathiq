@@ -90,7 +90,7 @@ export default function HRPage() {
           notes: data.notes || null,
         }
         Object.keys(hrPayload).forEach(k => { if (hrPayload[k] === undefined) delete hrPayload[k] })
-        const { error } = await supabase.from('hr_employees').update(hrPayload).eq('id', updateId)
+        const { error } = await supabase.from('hr_employees').update(hrPayload).eq('id', updateId).eq('tenant_id', tenant.id)
         if (error) throw error
         toast.success('تم التعديل ✅')
       }
