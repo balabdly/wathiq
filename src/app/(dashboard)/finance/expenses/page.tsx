@@ -256,7 +256,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
 
       let savedId: number | null = null
       if (expense?.id) {
-        const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id)
+        const { error } = await supabase.from('finance_expenses').update(payload).eq('id', expense.id).eq('tenant_id', tenantId)
         if (error) throw error
         savedId = expense.id
       } else {
@@ -283,7 +283,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               await supabase.from('finance_employee_custody').update({
                 settled_amount: newSettled,
                 status: newSettled >= Number(cus.amount) ? 'مُسوَّاة' : 'جزئية',
-              }).eq('id', custodyId)
+              }).eq('id', custodyId).eq('tenant_id', tenantId)
             }
           } else if (form.cash_account_id.startsWith('cash:')) {
             const cashId = Number(form.cash_account_id.replace('cash:', ''))
@@ -523,7 +523,10 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
     if (trxData) {
       const selectedCash = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
       const cashCode = selectedCash?.account_id ? await getCashAccountCode(selectedCash.id) : '1111'
-      const otherCode = form.account_id ? null : (isReceipt ? '1120' : '2110')
+      const selectedAccountCode = form.account_id
+        ? accounts.find(a => a.id === Number(form.account_id))?.code || null
+        : null
+      const otherCode = selectedAccountCode || (isReceipt ? '1120' : '2110')
       if (otherCode && cashCode) {
         await createJournalEntry({
           tenantId,
@@ -915,14 +918,16 @@ export default function FinanceExpensesPage() {
 
   async function handleDeleteExpense(id: number) {
     if (!confirm('حذف هذا المصروف؟')) return
-    await supabase.from('finance_expenses').delete().eq('id', id)
+    if (!tenant) return
+    await supabase.from('finance_expenses').delete().eq('id', id).eq('tenant_id', tenant.id)
     setExpenses(p => p.filter(e => e.id !== id))
     toast.success('تم الحذف')
   }
 
   async function handleDeleteVoucher(id: number) {
     if (!confirm('حذف هذا السند؟')) return
-    await supabase.from('finance_treasury').delete().eq('id', id)
+    if (!tenant) return
+    await supabase.from('finance_treasury').delete().eq('id', id).eq('tenant_id', tenant.id)
     setVouchers(p => p.filter(v => v.id !== id))
     toast.success('تم الحذف')
   }

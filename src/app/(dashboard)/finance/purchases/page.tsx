@@ -191,7 +191,7 @@ function VendorModal({ vendor, tenantId, onClose, onSave }: { vendor: Vendor | n
     if (!vatValid) { toast.error('الرقم الضريبي يجب أن يكون 15 رقماً'); return }
     setSaving(true)
     const payload = { tenant_id: tenantId, name: form.name.trim(), vendor_type: form.vendor_type, vat_number: form.vat_number || null, cr_number: form.cr_number || null, phone: form.phone || null, email: form.email || null, contact_person: form.contact_person || null, city: form.city || null, country: form.country, iban: form.iban || null, notes: form.notes || null, is_active: form.is_active }
-    if (vendor) await supabase.from('finance_vendors').update(payload).eq('id', vendor.id)
+    if (vendor) await supabase.from('finance_vendors').update(payload).eq('id', vendor.id).eq('tenant_id', tenantId)
     else await supabase.from('finance_vendors').insert(payload)
     toast.success(vendor ? 'تم التعديل' : 'تمت إضافة المورد')
     onSave(); setSaving(false)
@@ -274,7 +274,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
     }
     let poId = po?.id
     if (po) {
-      await supabase.from('finance_purchase_orders').update(payload).eq('id', po.id)
+      await supabase.from('finance_purchase_orders').update(payload).eq('id', po.id).eq('tenant_id', tenantId)
       await supabase.from('finance_purchase_order_items').delete().eq('po_id', po.id)
     } else {
       const { data, error } = await supabase.from('finance_purchase_orders').insert(payload).select('id').single()
@@ -431,7 +431,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           ]
         })
       }
-      await supabase.from('finance_vendor_invoices').update(payload).eq('id', invoice.id)
+      await supabase.from('finance_vendor_invoices').update(payload).eq('id', invoice.id).eq('tenant_id', tenantId)
       await supabase.from('finance_vendor_invoice_items').delete().eq('invoice_id', invoice.id)
     } else {
       const { data, error } = await supabase.from('finance_vendor_invoices').insert(payload).select('id').single()
@@ -616,10 +616,19 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
   }
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
+    if (Number(form.amount) > Number(invoice.total_amount)) { toast.error('المبلغ يتجاوز قيمة الفاتورة'); return }
     if ((form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && !form.cash_account_id) { toast.error('يجب تحديد الحساب البنكي'); return }
     if (form.payment_method === 'نقداً' && !form.cash_account_id) { toast.error('يجب تحديد الصندوق'); return }
     setSaving(true)
-    await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
+    const { data: paidInvoice, error: payError } = await supabase.from('finance_vendor_invoices')
+      .update({ status: 'مدفوعة' })
+      .eq('id', invoice.id)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'معتمدة')
+      .select('id')
+      .maybeSingle()
+    if (payError) { toast.error('خطأ: ' + payError.message); setSaving(false); return }
+    if (!paidInvoice) { toast.error('الفاتورة ليست في حالة قابلة للدفع'); setSaving(false); return }
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
     await createJournalEntry({ tenantId, date: form.payment_date, description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`, referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
       lines: [
@@ -833,13 +842,15 @@ export default function FinancePurchasesPage() {
   async function deletePO(id: number, status: string) {
     if (status !== 'مسودة') { toast.error('لا يمكن حذف طلب مرسل'); return }
     if (!confirm('حذف هذا الطلب؟')) return
-    await supabase.from('finance_purchase_orders').delete().eq('id', id)
+    if (!tenant) return
+    await supabase.from('finance_purchase_orders').delete().eq('id', id).eq('tenant_id', tenant.id)
     setPurchaseOrders(p => p.filter(x => x.id !== id)); toast.success('تم الحذف')
   }
   async function deleteInv(id: number, status: string) {
     if (status !== 'مسودة') { toast.error('لا يمكن حذف فاتورة معتمدة — استخدم المرتجع'); return }
     if (!confirm('حذف هذه الفاتورة؟')) return
-    await supabase.from('finance_vendor_invoices').delete().eq('id', id)
+    if (!tenant) return
+    await supabase.from('finance_vendor_invoices').delete().eq('id', id).eq('tenant_id', tenant.id)
     setVendorInvoices(p => p.filter(x => x.id !== id)); toast.success('تم الحذف')
   }
 
@@ -950,7 +961,7 @@ export default function FinancePurchasesPage() {
                               <button onClick={async e => {
                                 e.stopPropagation()
                                 const debitCode = inv.delivery_to === 'مستودع' ? '1130' : inv.delivery_to === 'أصل ثابت' ? '1220' : '5120'
-                                await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
+                                await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id).eq('tenant_id', tenant!.id).eq('status', 'مسودة')
                                 await createJournalEntry({ tenantId: tenant!.id, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
                                   lines: [
                                     { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },

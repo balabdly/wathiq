@@ -170,14 +170,14 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
       notes:          form.notes || null,
     }
     if (account) {
-      const { error } = await supabase.from('finance_accounts').update(payload).eq('id', account.id)
+      const { error } = await supabase.from('finance_accounts').update(payload).eq('id', account.id).eq('tenant_id', tenantId)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     } else {
       const { error } = await supabase.from('finance_accounts').insert(payload)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
       // تحديث الأب تلقائياً → is_parent = true
       if (payload.parent_id) {
-        await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', payload.parent_id)
+        await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', payload.parent_id).eq('tenant_id', tenantId)
       }
     }
     toast.success(account ? 'تم التعديل ✅' : `✅ تمت إضافة الحساب (${finalCode})`)
@@ -626,19 +626,19 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     if ((count || 0) > 0) {
       // يوجد قيود — عطّل بدل الحذف
       if (!confirm(`الحساب "${account.name}" عليه ${count} قيد محاسبي ولا يمكن حذفه.\nهل تريد تعطيله بدلاً من الحذف؟`)) return
-      await supabase.from('finance_accounts').update({ is_active: false }).eq('id', account.id)
+      await supabase.from('finance_accounts').update({ is_active: false }).eq('id', account.id).eq('tenant_id', tenantId)
       await loadAll(); toast.success('تم تعطيل الحساب ✅')
       return
     }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
     const parentId = account.parent_id
-    await supabase.from('finance_accounts').delete().eq('id', account.id)
+    await supabase.from('finance_accounts').delete().eq('id', account.id).eq('tenant_id', tenantId)
     // إذا الأب لم يعد له أبناء → is_parent = false
     if (parentId) {
       const { count } = await supabase.from('finance_accounts')
         .select('*', { count: 'exact', head: true }).eq('parent_id', parentId)
       if ((count || 0) === 0) {
-        await supabase.from('finance_accounts').update({ is_parent: false }).eq('id', parentId)
+        await supabase.from('finance_accounts').update({ is_parent: false }).eq('id', parentId).eq('tenant_id', tenantId)
       }
     }
     await loadAll(); toast.success('تم الحذف')
@@ -824,7 +824,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
                           )}
                           {!account.is_active && (
                             <button onClick={async () => {
-                              await supabase.from('finance_accounts').update({ is_active: true }).eq('id', account.id)
+                              await supabase.from('finance_accounts').update({ is_active: true }).eq('id', account.id).eq('tenant_id', tenantId)
                               await loadAll(); toast.success('تم تنشيط الحساب ✅')
                             }} style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
                               تنشيط
@@ -1190,7 +1190,7 @@ function CostCentersTab({ tenantId }: { tenantId: string }) {
       is_active: form.is_active, notes: form.notes || null,
     }
     if (editId) {
-      await supabase.from('finance_cost_centers').update(payload).eq('id', editId)
+      await supabase.from('finance_cost_centers').update(payload).eq('id', editId).eq('tenant_id', tenantId)
       toast.success('تم التعديل ✅')
     } else {
       await supabase.from('finance_cost_centers').insert(payload)

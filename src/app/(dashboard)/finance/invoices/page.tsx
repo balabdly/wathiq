@@ -365,7 +365,7 @@ function CatalogModal({ tenantId, onClose }: { tenantId: string; onClose: () => 
     setSaving(true)
     const payload = { tenant_id: tenantId, name: form.name.trim(), item_type: form.item_type, unit: form.unit, unit_price: Number(form.unit_price), is_active: form.is_active }
     if (editItem) {
-      await supabase.from('finance_catalog_items').update(payload).eq('id', editItem.id)
+      await supabase.from('finance_catalog_items').update(payload).eq('id', editItem.id).eq('tenant_id', tenantId)
       toast.success('تم التعديل ✅')
     } else {
       await supabase.from('finance_catalog_items').insert(payload)
@@ -377,7 +377,7 @@ function CatalogModal({ tenantId, onClose }: { tenantId: string; onClose: () => 
   }
 
   async function toggleActive(item: CatalogItem) {
-    await supabase.from('finance_catalog_items').update({ is_active: !item.is_active }).eq('id', item.id)
+    await supabase.from('finance_catalog_items').update({ is_active: !item.is_active }).eq('id', item.id).eq('tenant_id', tenantId)
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_active: !i.is_active } : i))
   }
 
@@ -536,7 +536,7 @@ function ClientModal({ client, tenantId, onClose, onSave }: {
     setSaving(true)
     const payload = { ...form, tenant_id: tenantId }
     if (client) {
-      await supabase.from('finance_clients').update(payload).eq('id', client.id)
+      await supabase.from('finance_clients').update(payload).eq('id', client.id).eq('tenant_id', tenantId)
     } else {
       const { error } = await supabase.from('finance_clients').insert(payload)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
@@ -702,7 +702,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
     let invoiceId = invoice?.id
     if (invoice) {
-      await supabase.from('finance_invoices').update(payload).eq('id', invoice.id)
+      await supabase.from('finance_invoices').update(payload).eq('id', invoice.id).eq('tenant_id', tenantId)
       await supabase.from('finance_invoice_items').delete().eq('invoice_id', invoice.id)
     } else {
       const { data, error } = await supabase.from('finance_invoices').insert(payload).select('id').single()
@@ -1192,7 +1192,15 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
       ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}`
       : form.payment_method
 
-    await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
+    const { data: paidInvoice, error: payError } = await supabase.from('finance_invoices')
+      .update({ status: 'مدفوعة' })
+      .eq('id', invoice.id)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'مرسلة')
+      .select('id')
+      .maybeSingle()
+    if (payError) { toast.error('خطأ: ' + payError.message); setSaving(false); return }
+    if (!paidInvoice) { toast.error('الفاتورة ليست في حالة قابلة للتحصيل'); setSaving(false); return }
 
     await createJournalEntry({
         tenantId,
@@ -1512,7 +1520,8 @@ export default function InvoicesPage() {
       return
     }
     if (!confirm('حذف هذه الفاتورة نهائياً؟')) return
-    await supabase.from('finance_invoices').delete().eq('id', inv.id)
+    if (!tenant) return
+    await supabase.from('finance_invoices').delete().eq('id', inv.id).eq('tenant_id', tenant.id)
     setInvoices(p => p.filter(i => i.id !== inv.id))
     toast.success('تم الحذف')
   }

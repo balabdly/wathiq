@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { createJournalEntry as postJournalEntry } from '@/lib/journal'
 import { Plus, X, Save, Pencil, Trash2, Wallet, Users, ArrowLeftRight, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -43,36 +44,24 @@ type Employee   = { id: number; name: string }
 // دوال مساعدة للقيود المحاسبية
 // ════════════════════════════════════════
 async function getCashAccountCode(tenantId: string, accountId: number): Promise<string | null> {
-  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).eq('tenant_id', tenantId).single()
   return data?.code || null
-}
-
-async function getAccountId(tenantId: string, code: string): Promise<number | null> {
-  const { data } = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', code).single()
-  return data?.id || null
 }
 
 async function createJournalEntry(tenantId: string, params: {
   date: string; description: string
-  referenceType: string; referenceId?: number
+  referenceType: string; referenceId: number
   lines: { accountCode: string; debit: number; credit: number; description?: string }[]
 }) {
-  const lineIds = await Promise.all(params.lines.map(async l => ({ ...l, account_id: await getAccountId(tenantId, l.accountCode) })))
-  if (lineIds.some(l => !l.account_id)) { console.warn('حسابات غير موجودة — تخطي القيد'); return null }
-  const totalDebit  = lineIds.reduce((s, l) => s + l.debit, 0)
-  const totalCredit = lineIds.reduce((s, l) => s + l.credit, 0)
-  const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-  const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
-  const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-    tenant_id: tenantId, entry_number: entryNumber, entry_date: params.date,
-    description: params.description, reference_type: params.referenceType,
-    reference_id: params.referenceId, total_debit: totalDebit, total_credit: totalCredit, status: 'معتمد',
-  }).select('id').single()
-  if (error || !entry) return null
-  await supabase.from('finance_journal_lines').insert(
-    lineIds.map(l => ({ entry_id: entry.id, account_id: l.account_id, debit: l.debit, credit: l.credit, description: l.description || null }))
-  )
-  return entry.id
+  return postJournalEntry({
+    tenantId,
+    date: params.date,
+    description: params.description,
+    referenceType: params.referenceType,
+    referenceId: params.referenceId,
+    source: 'آلي',
+    lines: params.lines,
+  })
 }
 
 // ════════════════════════════════════════
@@ -112,11 +101,12 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
 
       if (account) {
         // ── تعديل حساب موجود ──
-        await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id)
+        await supabase.from('finance_cash_accounts').update(payload).eq('id', account.id).eq('tenant_id', tenantId)
         if (account.account_id) {
           await supabase.from('finance_accounts')
             .update({ name: form.name.trim(), notes: form.iban || form.account_no || null })
             .eq('id', account.account_id)
+            .eq('tenant_id', tenantId)
         }
         toast.success('✅ تم التعديل')
 
@@ -349,7 +339,7 @@ function CustodyModal({ employees, projects, cashAccounts, tenantId, onClose, on
             }).select('id,code').single()
             empAcc = newAcc
             // تحديث is_parent للأب
-            await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id)
+            await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id).eq('tenant_id', tenantId)
           }
           if (empAcc) {
             const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
@@ -525,7 +515,7 @@ ${form.notes}` : `طريقة السداد: ${form.repay_method} | عدد الأ�
               parent_id: parentAcc.id, level: 3, is_parent: false, is_active: true,
             }).select('id,code').single()
             empAcc = newAcc
-            await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id)
+            await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id).eq('tenant_id', tenantId)
           }
           if (empAcc) {
             const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
@@ -659,7 +649,7 @@ function SettleCustodyModal({ custody, cashAccounts, tenantId, onClose, onSave }
       settled_date:   form.settled_date,
       status:         settledAmt >= remaining ? 'مُسوَّاة' : 'جزئية',
       notes:          form.notes || null,
-    }).eq('id', custody.id)
+    }).eq('id', custody.id).eq('tenant_id', tenantId)
 
     if (returnAmt > 0 && form.cash_account_id) {
       await supabase.from('finance_treasury').insert({
@@ -953,11 +943,11 @@ export default function FinanceTreasuryPage() {
                       if (ca.is_active) {
                         if (!confirm(`تعطيل حساب "${ca.name}"؟
 لن يمكن استخدامه في العمليات الجديدة ويمكن تنشيطه لاحقاً.`)) return
-                        await supabase.from('finance_cash_accounts').update({ is_active: false }).eq('id', ca.id)
+                        await supabase.from('finance_cash_accounts').update({ is_active: false }).eq('id', ca.id).eq('tenant_id', tenant!.id)
                         toast.success('تم تعطيل الحساب')
                       } else {
                         if (!confirm(`تنشيط حساب "${ca.name}"؟`)) return
-                        await supabase.from('finance_cash_accounts').update({ is_active: true }).eq('id', ca.id)
+                        await supabase.from('finance_cash_accounts').update({ is_active: true }).eq('id', ca.id).eq('tenant_id', tenant!.id)
                         toast.success('تم تنشيط الحساب ✅')
                       }
                       loadAll()
