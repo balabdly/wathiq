@@ -335,7 +335,7 @@ export default function Sidebar() {
 
         {/* لوحة التحكم الرئيسية — دائماً في الأعلى */}
         {hasDashboard && (
-          <SubLink href="/dashboard" label="لوحة التحكم" icon={IC.dashboard} active={pathname === '/dashboard'} />
+          <NavDirectLink href="/dashboard" label="لوحة التحكم" icon={IC.dashboard} active={pathname === '/dashboard'} />
         )}
 
         {(hasProjects || hasVisits || hasTasks) && (
