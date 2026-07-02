@@ -5,13 +5,10 @@ import ProjectModal  from '@/components/projects/ProjectModal'
 import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi, visitsApi } from '@/lib/db'
-import { useRouter } from 'next/navigation'
-import dynamic from 'next/dynamic'
 import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-
 
 
 import {
