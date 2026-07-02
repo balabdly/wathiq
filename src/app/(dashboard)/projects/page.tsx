@@ -5,10 +5,12 @@ import ProjectModal  from '@/components/projects/ProjectModal'
 import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi, visitsApi } from '@/lib/db'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
 
-const VisitModal = dynamic(() => import('@/app/(dashboard)/visits/VisitModal'), { ssr: false })
+
+
 import {
   Plus, Search, Eye, Pencil, Trash2, FolderOpen,
   LayoutGrid, List, Columns, ChevronLeft, ChevronRight,
@@ -140,21 +142,24 @@ function NoteModal({ project, onClose, onSave }: {
 }
 
 // ══════════════════════════════════════
-// زر الإضافة السريعة (+) — ملاحظة / زيارة / مهمة
+// زر الإضافة السريعة (+) — ملاحظة / زيارة QHSE / مهمة
 // ══════════════════════════════════════
-function QuickAddButton({ project, onNote, onVisit, onTask }: {
+function QuickAddButton({ project, onNote, onTask, onQhse }: {
   project: Project
   onNote:  () => void
-  onVisit: () => void
   onTask:  () => void
+  onQhse:  (path: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [qhseOpen, setQhseOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const noteCount = (project.history || []).filter(h => h.includes('📝')).length
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false); setQhseOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -162,7 +167,7 @@ function QuickAddButton({ project, onNote, onVisit, onTask }: {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(o => !o)}
+      <button onClick={() => { setOpen(o => !o); setQhseOpen(false) }}
         style={{
           padding: '5px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
           border: `1px solid ${noteCount > 0 ? '#fcd34d' : '#e5e7eb'}`,
@@ -179,27 +184,67 @@ function QuickAddButton({ project, onNote, onVisit, onTask }: {
         <div style={{
           position: 'absolute', top: '100%', right: 0, marginTop: '4px',
           background: 'white', border: '1px solid #e5e7eb', borderRadius: '10px',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '150px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '160px',
           overflow: 'hidden',
         }}>
-          {[
-            { icon: <MessageSquarePlus style={{ width: '14px', height: '14px' }} />, label: 'ملاحظة', color: '#e6820a', action: onNote },
-            { icon: <MapPin style={{ width: '14px', height: '14px' }} />,            label: 'زيارة',   color: '#0ea77b', action: onVisit },
-            { icon: <ClipboardList style={{ width: '14px', height: '14px' }} />,     label: 'مهمة',    color: '#1a56db', action: onTask },
-          ].map(item => (
-            <button key={item.label} onClick={() => { setOpen(false); item.action() }}
-              style={{
-                width: '100%', padding: '9px 14px', border: 'none', background: 'white',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)',
-                textAlign: 'right', transition: 'background 0.15s',
-              }}
+          {/* ملاحظة */}
+          <button onClick={() => { setOpen(false); onNote() }}
+            style={{ width: '100%', padding: '9px 14px', border: 'none', background: 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600,
+              color: 'var(--text)', textAlign: 'right' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+            <span style={{ color: '#e6820a' }}><MessageSquarePlus style={{ width: '14px', height: '14px' }} /></span>
+            ملاحظة
+          </button>
+
+          {/* زيارة QHSE — قائمة فرعية */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setQhseOpen(o => !o)}
+              style={{ width: '100%', padding: '9px 14px', border: 'none', background: qhseOpen ? '#f9fafb' : 'white',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)' }}
               onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
-              <span style={{ color: item.color }}>{item.icon}</span>
-              {item.label}
+              onMouseLeave={e => (e.currentTarget.style.background = qhseOpen ? '#f9fafb' : 'white')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: '#1a56db' }}><MapPin style={{ width: '14px', height: '14px' }} /></span>
+                زيارة
+              </div>
+              <ChevronDown style={{ width: '10px', height: '10px', transform: qhseOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
             </button>
-          ))}
+
+            {qhseOpen && (
+              <div style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
+                {[
+                  { label: '🛡️ زيارة سلامة', path: '/qhse/safety',      color: '#e6820a' },
+                  { label: '🔍 زيارة جودة',   path: '/qhse/quality',     color: '#1a56db' },
+                  { label: '🌿 زيارة بيئية',  path: '/qhse/environment', color: '#059669' },
+                ].map(item => (
+                  <button key={item.path}
+                    onClick={() => { setOpen(false); setQhseOpen(false); onQhse(item.path) }}
+                    style={{ width: '100%', padding: '8px 14px 8px 24px', border: 'none', background: 'transparent',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                      fontSize: '0.78rem', fontWeight: 600, color: item.color, textAlign: 'right' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f1f5f9')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* مهمة */}
+          <button onClick={() => { setOpen(false); onTask() }}
+            style={{ width: '100%', padding: '9px 14px', border: 'none', background: 'white', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600,
+              color: 'var(--text)', textAlign: 'right' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
+            <span style={{ color: '#7c3aed' }}><ClipboardList style={{ width: '14px', height: '14px' }} /></span>
+            مهمة
+          </button>
         </div>
       )}
     </div>
@@ -531,11 +576,11 @@ function ManageTypesModal({ tenantId, onClose }: {
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onVisit, onTask }: {
+function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
   p: Project; canEdit: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
-  onVisit: () => void; onTask: () => void
+  onQhse: (path: string) => void; onTask: () => void
 }) {
   const days   = daysUntil(p.end_date)
   const isLate = days !== null && days < 0 && p.progress < 100
@@ -608,7 +653,7 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
           style={{ flex: 1, padding: '5px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
           <Eye style={{ width: '12px', height: '12px' }} /> تفاصيل
         </button>
-        <QuickAddButton project={p} onNote={onNote} onVisit={onVisit} onTask={onTask} />
+        <QuickAddButton project={p} onNote={onNote} onQhse={onQhse} onTask={onTask} />
         {canEdit && (
           <>
             <button onClick={onEdit}
@@ -646,6 +691,7 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function ProjectsPage() {
+  const router = useRouter()
   const { tenant, activeBranch, projects, setProjects, currentUser } = useStore()
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
@@ -669,7 +715,6 @@ export default function ProjectsPage() {
     }
   }
   const [noteProject,  setNoteProject]  = useState<Project | null>(null)
-  const [visitProject, setVisitProject] = useState<Project | null>(null)
   const [taskProject,  setTaskProject]  = useState<Project | null>(null)
 
   useEffect(() => {
@@ -1031,7 +1076,7 @@ export default function ProjectsPage() {
                         onDelete={() => handleDelete(p)}
                         onMove={dir => handleMove(p, dir)}
                         onNote={() => setNoteProject(p)}
-                        onVisit={() => setVisitProject(p)}
+                        onQhse={(path) => router.push(path)}
                         onTask={() => setTaskProject(p)} />
                     ))
                   )}
@@ -1097,7 +1142,7 @@ export default function ProjectsPage() {
                     style={{ flex: 1, padding: '6px', borderRadius: '7px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <Eye style={{ width: '13px', height: '13px' }} /> تفاصيل
                   </button>
-                  <QuickAddButton project={p} onNote={() => setNoteProject(p)} onVisit={() => setVisitProject(p)} onTask={() => setTaskProject(p)} />
+                  <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(path) => router.push(path)} onTask={() => setTaskProject(p)} />
                   {canEdit && (
                     <>
                       <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -1162,7 +1207,7 @@ export default function ProjectsPage() {
                           style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           تفاصيل
                         </button>
-                        <QuickAddButton project={p} onNote={() => setNoteProject(p)} onVisit={() => setVisitProject(p)} onTask={() => setTaskProject(p)} />
+                        <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(path) => router.push(path)} onTask={() => setTaskProject(p)} />
                         {canEdit && (
                           <>
                             <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -1195,25 +1240,6 @@ export default function ProjectsPage() {
         <NoteModal project={noteProject}
           onClose={() => setNoteProject(null)}
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
-      )}
-
-      {visitProject && tenant && activeBranch && (
-        <VisitModal
-          visit={null}
-          projects={projects}
-          onClose={() => setVisitProject(null)}
-          onSave={async (data) => {
-            const payload = {
-              ...data,
-              tenant_id:  tenant.id,
-              branch_id:  activeBranch.id,
-              project_id: visitProject.id,
-            }
-            await visitsApi.upsert(payload as any)
-            toast.success('تمت إضافة الزيارة ✅')
-            setVisitProject(null)
-          }}
-        />
       )}
 
       {taskProject && tenant && (
