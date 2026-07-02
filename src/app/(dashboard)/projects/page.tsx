@@ -6,6 +6,9 @@ import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi, visitsApi } from '@/lib/db'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
+const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
 
@@ -148,7 +151,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
   project: Project
   onNote:  () => void
   onTask:  () => void
-  onQhse:  (path: string) => void
+  onQhse:  (type: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [qhseOpen, setQhseOpen] = useState(false)
@@ -217,12 +220,12 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
             {qhseOpen && (
               <div style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
                 {[
-                  { label: '🛡️ زيارة سلامة', path: '/qhse/safety',      color: '#e6820a' },
-                  { label: '🔍 زيارة جودة',   path: '/qhse/quality',     color: '#1a56db' },
-                  { label: '🌿 زيارة بيئية',  path: '/qhse/environment', color: '#059669' },
+                  { label: '🛡️ زيارة سلامة', type: 'safety_inspection',   color: '#e6820a' },
+                  { label: '🔍 زيارة جودة',   type: 'quality_inspection',  color: '#1a56db' },
+                  { label: '🌿 زيارة بيئية',  type: 'env_inspection',      color: '#059669' },
                 ].map(item => (
-                  <button key={item.path}
-                    onClick={() => { setOpen(false); setQhseOpen(false); onQhse(item.path) }}
+                  <button key={item.type}
+                    onClick={() => { setOpen(false); setQhseOpen(false); onQhse(item.type) }}
                     style={{ width: '100%', padding: '8px 14px 8px 24px', border: 'none', background: 'transparent',
                       cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
                       fontSize: '0.78rem', fontWeight: 600, color: item.color, textAlign: 'right' }}
@@ -580,7 +583,7 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
   p: Project; canEdit: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
-  onQhse: (path: string) => void; onTask: () => void
+  onQhse: (type: string) => void; onTask: () => void
 }) {
   const days   = daysUntil(p.end_date)
   const isLate = days !== null && days < 0 && p.progress < 100
@@ -691,11 +694,12 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function ProjectsPage() {
-  const router = useRouter()
   const { tenant, activeBranch, projects, setProjects, currentUser } = useStore()
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
+  // مودال QHSE السريع
+  const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
   const [clientFilter, setClient] = useState('')
   const { displayPrefs, updateDisplayPref } = useStore()
@@ -1076,7 +1080,7 @@ export default function ProjectsPage() {
                         onDelete={() => handleDelete(p)}
                         onMove={dir => handleMove(p, dir)}
                         onNote={() => setNoteProject(p)}
-                        onQhse={(path) => router.push(path)}
+                        onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })}
                         onTask={() => setTaskProject(p)} />
                     ))
                   )}
@@ -1142,7 +1146,7 @@ export default function ProjectsPage() {
                     style={{ flex: 1, padding: '6px', borderRadius: '7px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <Eye style={{ width: '13px', height: '13px' }} /> تفاصيل
                   </button>
-                  <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(path) => router.push(path)} onTask={() => setTaskProject(p)} />
+                  <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })} onTask={() => setTaskProject(p)} />
                   {canEdit && (
                     <>
                       <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -1207,7 +1211,7 @@ export default function ProjectsPage() {
                           style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                           تفاصيل
                         </button>
-                        <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(path) => router.push(path)} onTask={() => setTaskProject(p)} />
+                        <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })} onTask={() => setTaskProject(p)} />
                         {canEdit && (
                           <>
                             <button onClick={() => { setEditProject(p); setShowModal(true) }}
@@ -1240,6 +1244,16 @@ export default function ProjectsPage() {
         <NoteModal project={noteProject}
           onClose={() => setNoteProject(null)}
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
+      )}
+
+      {/* ══ مودال QHSE السريع ══ */}
+      {qhseModal && (
+        <QuickQhseModal
+          type={qhseModal.type}
+          projectId={qhseModal.projectId}
+          onClose={() => setQhseModal(null)}
+          onSave={() => setQhseModal(null)}
+        />
       )}
 
       {taskProject && tenant && (

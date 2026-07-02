@@ -13,9 +13,10 @@ const lbl: React.CSSProperties = {
   fontWeight: 600, color: 'var(--text)', marginBottom: '6px'
 }
 
-export default function QualityObservationModal({ projects, employees, onClose, onSave }: {
+export default function QualityObservationModal({ projects, employees, onClose, onSave, defaultProjectId }: {
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
+  defaultProjectId?: number
 }) {
   const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
@@ -48,7 +49,7 @@ export default function QualityObservationModal({ projects, employees, onClose, 
   const [form, setForm] = useState({
     date:             today,
     location:         '',
-    project_id:       '',
+    project_id:       defaultProjectId ? String(defaultProjectId) : '',
     location_name:    '',
     engineer:         currentUser?.name || '',
     description:      '',

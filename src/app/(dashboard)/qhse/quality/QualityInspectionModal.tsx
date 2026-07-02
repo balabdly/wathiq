@@ -37,9 +37,10 @@ const RESULT_BTNS: { val: CheckResult; label: string; color: string; bg: string 
   { val: 'لا ينطبق', label: 'لا ينطبق', color: '#6b7280', bg: '#f3f4f6' },
 ]
 
-export default function QualityInspectionModal({ projects, employees, onClose, onSave }: {
+export default function QualityInspectionModal({ projects, employees, onClose, onSave, defaultProjectId }: {
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
+  defaultProjectId?: number
 }) {
   const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
@@ -82,7 +83,7 @@ export default function QualityInspectionModal({ projects, employees, onClose, o
     date:                 today,
     visit_time:           '',
     location:             '',
-    project_id:           '',
+    project_id:           defaultProjectId ? String(defaultProjectId) : '',
     location_name:        '',
     engineer:             currentUser?.name || '',
     supervisor_name:      '',
