@@ -134,6 +134,7 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
   onToggle: () => void; children: React.ReactNode
 }) {
   const contentRef = React.useRef<HTMLDivElement>(null)
+  const hasChildren = React.Children.count(children) > 0
   const [height, setHeight] = React.useState(isOpen ? 'auto' : '0px')
 
   React.useEffect(() => {
@@ -179,19 +180,21 @@ function NavSection({ label, icon, isActive, isOpen, onToggle, children }: {
         </div>
       </button>
 
-      <div ref={contentRef} style={{
-        overflow: 'hidden',
-        height: height,
-        transition: 'height 0.25s ease',
-      }}>
-        <div style={{
-          background: C.groupOpenBg,
-          borderBottom: '1px solid ' + C.border,
-          paddingBottom: '4px',
+      {hasChildren && (
+        <div ref={contentRef} style={{
+          overflow: 'hidden',
+          height: height,
+          transition: 'height 0.25s ease',
         }}>
-          {children}
+          <div style={{
+            background: C.groupOpenBg,
+            borderBottom: '1px solid ' + C.border,
+            paddingBottom: '4px',
+          }}>
+            {children}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -339,7 +342,15 @@ export default function Sidebar() {
 
         {/* لوحة التحكم الرئيسية — دائماً في الأعلى */}
         {hasDashboard && (
-          <StandaloneLink href="/dashboard" label="لوحة التحكم" icon={IC.dashboard} active={pathname === '/dashboard'} />
+          <NavSection
+            label="لوحة التحكم"
+            icon={IC.dashboard}
+            isActive={pathname === '/dashboard'}
+            isOpen={false}
+            onToggle={() => router.push('/dashboard')}
+          >
+            {null}
+          </NavSection>
         )}
 
         {(hasProjects || hasVisits || hasTasks) && (
