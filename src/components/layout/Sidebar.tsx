@@ -236,7 +236,6 @@ export default function Sidebar() {
   const hasTasks     = hasProjects
   const hasLessons   = hasProjects
   const hasRisks     = hasProjects
-  const hasVisits    = perms.some((p: string) => p.startsWith('visits')) && tenantModules.visits    !== false
   const hasInventory = perms.includes('inventory')                       && tenantModules.inventory !== false
   const hasQHSE      = perms.includes('qhse')                           && tenantModules.qhse      !== false
   const hasPurchases = perms.includes('purchases')                       && tenantModules.purchases !== false
@@ -247,17 +246,7 @@ export default function Sidebar() {
   const hasAssets    = perms.includes('assets')                         && tenantModules.assets    !== false
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
 
-  // فلترة أنواع الزيارات حسب الصلاحيات
-  const visitTypes = perms.includes('visits')
-    ? ['جودة','سلامة','كهربائية','ميدانية']
-    : [
-        perms.includes('visits_quality')     ? 'جودة'      : null,
-        perms.includes('visits_safety')      ? 'سلامة'     : null,
-        perms.includes('visits_electrical')  ? 'كهربائية'  : null,
-        perms.includes('visits_field')       ? 'ميدانية'   : null,
-      ].filter(Boolean)
-
-  const inProjects = ['/projects','/visits','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
+  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inSettings = pathname.startsWith('/settings')
@@ -338,14 +327,13 @@ export default function Sidebar() {
           <SubLink href="/dashboard" label="لوحة التحكم" icon={IC.dashboard} active={pathname === '/dashboard'} />
         )}
 
-        {(hasProjects || hasVisits || hasTasks) && (
+        {(hasProjects || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
-            {hasProjects   && <SubLink href="/projects"   label="المشاريع"        icon={IC.projects}   active={pathname.startsWith('/projects')} />}
-            {hasVisits     && <SubLink href="/visits"              label="الزيارات الفنية" icon={IC.visits}   active={pathname.startsWith('/visits')} />}
-            {hasTasks      && <SubLink href="/projects/tasks"    label="المهام"          icon={IC.tasks}   active={pathname.startsWith('/projects/tasks')} />}
-            {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons} active={pathname.startsWith('/projects/lessons')} />}
-            {hasRisks      && <SubLink href="/projects/risks"    label="سجل المخاطر"    icon={IC.risks}   active={pathname.startsWith('/projects/risks')} />}
+            {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname.startsWith('/projects')} />}
+            {hasTasks      && <SubLink href="/projects/tasks"    label="المهام"            icon={IC.tasks}      active={pathname.startsWith('/projects/tasks')} />}
+            {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
+            {hasRisks      && <SubLink href="/projects/risks"    label="سجل المخاطر"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}
           </NavSection>
         )}
 
