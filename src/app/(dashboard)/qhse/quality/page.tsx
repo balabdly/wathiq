@@ -59,15 +59,23 @@ const lbl: React.CSSProperties = {
 // ════════════════════════════════════════
 // مودال: تدقيق جديد
 // ════════════════════════════════════════
-function AuditModal({ projects, tenantId, onClose, onSave }: {
-  projects: Project[]; tenantId: string; onClose: () => void; onSave: () => void
+function AuditModal({ projects, tenantId, editItem, onClose, onSave }: {
+  projects: Project[]; tenantId: string; editItem?: any; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const today = new Date().toISOString().split('T')[0]
-  const [findings, setFindings] = useState<{ item: string; result: 'مطابق' | 'غير مطابق' }[]>([{ item: '', result: 'مطابق' }])
+  const [findings, setFindings] = useState<{ item: string; result: 'مطابق' | 'غير مطابق' }[]>(
+    editItem?.findings?.length ? editItem.findings : [{ item: '', result: 'مطابق' }]
+  )
   const [form, setForm] = useState({
-    audit_type: 'داخلي', standard: '', audit_date: today,
-    auditor_name: '', scope: '', department: '', project_id: '', notes: '',
+    audit_type:   editItem?.audit_type   || 'داخلي',
+    standard:     editItem?.standard     || '',
+    audit_date:   editItem?.audit_date   || today,
+    auditor_name: editItem?.auditor_name || '',
+    scope:        editItem?.scope        || '',
+    department:   editItem?.department   || '',
+    project_id:   editItem?.project_id   || '',
+    notes:        editItem?.notes        || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
@@ -80,12 +88,10 @@ function AuditModal({ projects, tenantId, onClose, onSave }: {
   async function handleSave() {
     if (!form.auditor_name.trim()) { toast.error('اسم المدقق مطلوب'); return }
     setSaving(true)
-    const { count } = await supabase.from('qhse_audits').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
     const validFindings = findings.filter(f => f.item.trim())
     const hasNC = validFindings.some(f => f.result === 'غير مطابق')
     const payload: Record<string, any> = {
       tenant_id: tenantId,
-      audit_no: `AUD-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
       audit_type: form.audit_type, standard: form.standard || null,
       audit_date: form.audit_date, auditor_name: form.auditor_name.trim(),
       scope: form.scope || null, department: form.department || null,
@@ -93,9 +99,17 @@ function AuditModal({ projects, tenantId, onClose, onSave }: {
       notes: form.notes || null,
     }
     if (form.project_id) payload.project_id = Number(form.project_id)
-    const { error } = await supabase.from('qhse_audits').insert(payload)
+
+    let error: any
+    if (editItem) {
+      ;({ error } = await supabase.from('qhse_audits').update(payload).eq('id', editItem.id))
+    } else {
+      const { count } = await supabase.from('qhse_audits').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      payload.audit_no = `AUD-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`
+      ;({ error } = await supabase.from('qhse_audits').insert(payload))
+    }
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success('✅ تم تسجيل التدقيق')
+    toast.success(editItem ? '✅ تم تحديث التدقيق' : '✅ تم تسجيل التدقيق')
     onSave()
   }
 
@@ -105,7 +119,7 @@ function AuditModal({ projects, tenantId, onClose, onSave }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ClipboardCheck style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-            تدقيق جودة جديد
+            {editItem ? 'تعديل تدقيق' : 'تدقيق جودة جديد'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
@@ -172,39 +186,53 @@ function AuditModal({ projects, tenantId, onClose, onSave }: {
 // ════════════════════════════════════════
 // مودال: إجراء تحسين مستمر (CAPA)
 // ════════════════════════════════════════
-function CapaModal({ employees, tenantId, onClose, onSave }: {
-  employees: Employee[]; tenantId: string; onClose: () => void; onSave: () => void
+function CapaModal({ employees, tenantId, editItem, onClose, onSave }: {
+  employees: Employee[]; tenantId: string; editItem?: any; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    title: '', source: 'مبادرة داخلية',
-    problem_description: '', root_cause_analysis: '',
-    corrective_action: '', preventive_action: '',
-    responsible_id: '', responsible_name: '',
-    target_date: '', notes: '',
+    title:               editItem?.title               || '',
+    source:              editItem?.source              || 'مبادرة داخلية',
+    problem_description: editItem?.problem_description || '',
+    root_cause_analysis: editItem?.root_cause_analysis || '',
+    corrective_action:   editItem?.corrective_action   || '',
+    preventive_action:   editItem?.preventive_action   || '',
+    responsible_id:      editItem?.responsible_id      || '',
+    responsible_name:    editItem?.responsible_name    || '',
+    target_date:         editItem?.target_date         || '',
+    status:              editItem?.status              || 'مفتوح',
+    notes:               editItem?.notes               || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     if (!form.title.trim()) { toast.error('عنوان الإجراء مطلوب'); return }
     setSaving(true)
-    const { count } = await supabase.from('qhse_capa').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
     const payload: Record<string, any> = {
       tenant_id: tenantId,
-      capa_no: `CAPA-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
       title: form.title.trim(), source: form.source,
       problem_description: form.problem_description || null,
       root_cause_analysis: form.root_cause_analysis || null,
-      corrective_action: form.corrective_action || null,
-      preventive_action: form.preventive_action || null,
-      responsible_name: form.responsible_name || null,
-      target_date: form.target_date || null,
-      status: 'مفتوح', notes: form.notes || null,
+      corrective_action:   form.corrective_action   || null,
+      preventive_action:   form.preventive_action   || null,
+      responsible_name:    form.responsible_name    || null,
+      target_date:         form.target_date         || null,
+      status:              form.status,
+      notes:               form.notes               || null,
     }
     if (form.responsible_id) payload.responsible_id = Number(form.responsible_id)
-    const { error } = await supabase.from('qhse_capa').insert(payload)
+
+    let error: any
+    if (editItem) {
+      ;({ error } = await supabase.from('qhse_capa').update(payload).eq('id', editItem.id))
+    } else {
+      const { count } = await supabase.from('qhse_capa').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      payload.capa_no = `CAPA-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`
+      payload.status  = 'مفتوح'
+      ;({ error } = await supabase.from('qhse_capa').insert(payload))
+    }
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success('✅ تم تسجيل إجراء التحسين')
+    toast.success(editItem ? '✅ تم تحديث إجراء التحسين' : '✅ تم تسجيل إجراء التحسين')
     onSave()
   }
 
@@ -214,7 +242,7 @@ function CapaModal({ employees, tenantId, onClose, onSave }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <RefreshCw style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
-            إجراء تحسين مستمر (CAPA)
+            {editItem ? 'تعديل إجراء التحسين' : 'إجراء تحسين مستمر (CAPA)'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
@@ -235,7 +263,7 @@ function CapaModal({ employees, tenantId, onClose, onSave }: {
             <div><label style={lbl}>الإجراء الوقائي</label>
               <textarea value={form.preventive_action} onChange={e => set('preventive_action', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div><label style={lbl}>المسؤول</label>
               <select value={form.responsible_id} onChange={e => { set('responsible_id', e.target.value); const emp = employees.find(x => x.id === Number(e.target.value)); if (emp) set('responsible_name', emp.name) }} className="select">
                 <option value="">— اختر —</option>
@@ -243,6 +271,13 @@ function CapaModal({ employees, tenantId, onClose, onSave }: {
               </select>
             </div>
             <div><label style={lbl}>التاريخ المستهدف</label><input type="date" value={form.target_date} onChange={e => set('target_date', e.target.value)} className="input" /></div>
+            {editItem && (
+              <div><label style={lbl}>الحالة</label>
+                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                  {['مفتوح','قيد التنفيذ','مغلق'].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         </div>
         <div className="modal-footer">
@@ -259,34 +294,49 @@ function CapaModal({ employees, tenantId, onClose, onSave }: {
 // ════════════════════════════════════════
 // مودال: تسجيل تدريب جودة
 // ════════════════════════════════════════
-function TrainingModal({ employees, tenantId, onClose, onSave }: {
-  employees: Employee[]; tenantId: string; onClose: () => void; onSave: () => void
+function TrainingModal({ employees, tenantId, editItem, onClose, onSave }: {
+  employees: Employee[]; tenantId: string; editItem?: any; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
-  const [selected, setSelected] = useState<number[]>([])
+  const [selected, setSelected] = useState<number[]>(
+    editItem?.attendees?.map((a: any) => a.id) || []
+  )
   const [form, setForm] = useState({
-    title: '', trainer: '', training_date: new Date().toISOString().split('T')[0],
-    duration_hours: '', location: '', content: '',
+    title:          editItem?.title          || '',
+    trainer:        editItem?.trainer        || '',
+    training_date:  editItem?.training_date  || new Date().toISOString().split('T')[0],
+    duration_hours: editItem?.duration_hours || '',
+    location:       editItem?.location       || '',
+    content:        editItem?.content        || '',
+    status:         editItem?.status         || 'مجدول',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   async function handleSave() {
     if (!form.title.trim()) { toast.error('عنوان التدريب مطلوب'); return }
     setSaving(true)
-    const { count } = await supabase.from('qhse_trainings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const { error } = await supabase.from('qhse_trainings').insert({
+    const payload: Record<string, any> = {
       tenant_id: tenantId,
-      training_no: `TRN-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`,
       title: form.title.trim(), training_type: 'جودة',
       trainer: form.trainer || null,
       training_date: form.training_date,
       duration_hours: Number(form.duration_hours) || null,
-      location: form.location || null, content: form.content || null,
+      location: form.location || null,
+      content:  form.content  || null,
+      status:   form.status,
       attendees: selected.map(id => ({ id, name: employees.find(e => e.id === id)?.name || '', attended: true })),
-      status: 'مجدول',
-    })
+    }
+    let error: any
+    if (editItem) {
+      ;({ error } = await supabase.from('qhse_trainings').update(payload).eq('id', editItem.id))
+    } else {
+      const { count } = await supabase.from('qhse_trainings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+      payload.training_no = `TRN-${new Date().getFullYear()}-${String((count||0)+1).padStart(4,'0')}`
+      payload.status = 'مجدول'
+      ;({ error } = await supabase.from('qhse_trainings').insert(payload))
+    }
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success('✅ تم تسجيل التدريب')
+    toast.success(editItem ? '✅ تم تحديث التدريب' : '✅ تم تسجيل التدريب')
     onSave()
   }
 
@@ -296,7 +346,7 @@ function TrainingModal({ employees, tenantId, onClose, onSave }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Award style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
-            تسجيل تدريب جودة
+            {editItem ? 'تعديل تدريب جودة' : 'تسجيل تدريب جودة'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
@@ -325,6 +375,13 @@ function TrainingModal({ employees, tenantId, onClose, onSave }: {
           </div>
           <div><label style={lbl}>محتوى التدريب</label>
             <textarea value={form.content} onChange={e => set('content', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+          {editItem && (
+            <div><label style={lbl}>حالة التدريب</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['مجدول','منعقد','ملغي'].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -338,16 +395,22 @@ function TrainingModal({ employees, tenantId, onClose, onSave }: {
 }
 
 // ════════════════════════════════════════
-// مودال: إضافة شهادة جودة
+// مودال: إضافة / تعديل شهادة جودة
 // ════════════════════════════════════════
-function CertModal({ employees, tenantId, onClose, onSave }: {
-  employees: Employee[]; tenantId: string; onClose: () => void; onSave: () => void
+function CertModal({ employees, tenantId, editItem, onClose, onSave }: {
+  employees: Employee[]; tenantId: string; editItem?: any; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    title: '', cert_type: 'شهادة تأهيل', cert_number: '',
-    holder_id: '', holder_name: '',
-    issuer: '', issue_date: '', expiry_date: '', notes: '',
+    title:       editItem?.title       || '',
+    cert_type:   editItem?.cert_type   || 'شهادة تأهيل',
+    cert_number: editItem?.cert_number || '',
+    holder_id:   editItem?.holder_id   || '',
+    holder_name: editItem?.holder_name || '',
+    issuer:      editItem?.issuer      || '',
+    issue_date:  editItem?.issue_date  || '',
+    expiry_date: editItem?.expiry_date || '',
+    notes:       editItem?.notes       || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   const today = new Date()
@@ -367,9 +430,14 @@ function CertModal({ employees, tenantId, onClose, onSave }: {
       status: daysLeft !== null && daysLeft < 0 ? 'منتهية' : 'سارية',
     }
     if (form.holder_id) payload.holder_id = Number(form.holder_id)
-    const { error } = await supabase.from('qhse_certificates').insert(payload)
+    let error: any
+    if (editItem) {
+      ;({ error } = await supabase.from('qhse_certificates').update(payload).eq('id', editItem.id))
+    } else {
+      ;({ error } = await supabase.from('qhse_certificates').insert(payload))
+    }
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-    toast.success('✅ تم إضافة الشهادة')
+    toast.success(editItem ? '✅ تم تحديث الشهادة' : '✅ تم إضافة الشهادة')
     onSave()
   }
 
@@ -379,7 +447,7 @@ function CertModal({ employees, tenantId, onClose, onSave }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Award style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
-            إضافة شهادة / اعتماد جودة
+            {editItem ? 'تعديل شهادة / اعتماد جودة' : 'إضافة شهادة / اعتماد جودة'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
         </div>
@@ -755,8 +823,9 @@ export default function QualityPage() {
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [showModal, setShowModal] = useState<string | null>(null)
-  const [visitSubTab, setVisitSubTab] = useState<'inspection' | 'observation' | 'ncr'>('inspection')
+  const [visitSubTab,  setVisitSubTab]  = useState<'inspection' | 'observation' | 'ncr'>('inspection')
   const [supplierSubTab, setSupplierSubTab] = useState<'list' | 'evals'>('list')
+  const [auditSubTab,  setAuditSubTab]  = useState<'internal' | 'external'>('internal')
 
   const [detailVisit,    setDetailVisit]    = useState<any | null>(null)
   const [detailAudit,    setDetailAudit]    = useState<Audit | null>(null)
@@ -1109,53 +1178,84 @@ export default function QualityPage() {
       )}
 
       {tab === 'audits' && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {audits.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
-              <FileSearch style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
-              <p>لا توجد تدقيقات مسجلة</p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم التدقيق','التاريخ','النوع','المعيار','المدقق','النتيجة',''].map(h => (
-                      <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {audits.filter(a => !search || a.auditor_name.includes(search) || (a.scope || '').includes(search)).map(a => (
-                    <tr key={a.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#1a56db', fontWeight: 700 }}>{a.audit_no}</td>
-                      <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(a.audit_date)}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 600, background: '#eff6ff', color: '#1a56db' }}>{a.audit_type}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{a.standard || '—'}</td>
-                      <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{a.auditor_name}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
-                          background: a.overall_result === 'مطابق' ? '#ecfdf5' : '#fef2f2',
-                          color: a.overall_result === 'مطابق' ? '#0ea77b' : '#c81e1e' }}>
-                          {a.overall_result === 'مطابق' ? '✅ مطابق' : '❌ غير مطابق'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px' }}>
-                        <button onClick={() => setDetailAudit(a)}
-                          style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
-                          👁️ تفاصيل
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* sub-tabs داخلي / خارجي */}
+          <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
+            {[
+              { id: 'internal', label: '🏢 تدقيق داخلي',  count: audits.filter(a => a.audit_type === 'داخلي').length },
+              { id: 'external', label: '🌐 تدقيق خارجي',  count: audits.filter(a => a.audit_type === 'خارجي').length },
+            ].map(st => (
+              <button key={st.id} onClick={() => setAuditSubTab(st.id as any)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 6, border: 'none',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
+                  background: auditSubTab === st.id ? 'white' : 'transparent',
+                  color:      auditSubTab === st.id ? '#1a56db' : 'var(--text3)',
+                  boxShadow:  auditSubTab === st.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
+                {st.label}
+                <span style={{ background: auditSubTab === st.id ? '#eff6ff' : '#e5e7eb', color: auditSubTab === st.id ? '#1a56db' : '#6b7280', padding: '1px 6px', borderRadius: 10, fontSize: '0.7rem' }}>
+                  {st.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {(() => {
+              const filtered = audits
+                .filter(a => a.audit_type === (auditSubTab === 'internal' ? 'داخلي' : 'خارجي'))
+                .filter(a => !search || a.auditor_name.includes(search) || (a.scope || '').includes(search))
+              return filtered.length === 0 ? (
+                <div style={{ padding: '60px', textAlign: 'center', color: '#9ca3af' }}>
+                  <FileSearch style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
+                  <p>لا توجد تدقيقات {auditSubTab === 'internal' ? 'داخلية' : 'خارجية'} مسجلة</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                        {['رقم التدقيق','التاريخ',auditSubTab === 'external' ? 'جهة التدقيق' : 'المدقق','المعيار','النطاق','النتيجة',''].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(a => (
+                        <tr key={a.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem', color: '#1a56db', fontWeight: 700 }}>{a.audit_no}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(a.audit_date)}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600 }}>{a.auditor_name}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{a.standard || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(a as any).scope || '—'}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 700,
+                              background: a.overall_result === 'مطابق' ? '#ecfdf5' : '#fef2f2',
+                              color:      a.overall_result === 'مطابق' ? '#0ea77b' : '#c81e1e' }}>
+                              {a.overall_result === 'مطابق' ? '✅ مطابق' : '❌ غير مطابق'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button onClick={() => setDetailAudit(a)}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                                👁️ تفاصيل
+                              </button>
+                              <button onClick={() => { setEditItem(a); setShowModal('audit') }}
+                                style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                                ✏️ تعديل
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
         </div>
       )}
 
@@ -1185,6 +1285,12 @@ export default function QualityPage() {
                 <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>👤 {c.holder_name}</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '3px' }}>📅 تنتهي: {c.expiry_date}</div>
                 {c.cert_number && <div style={{ fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'monospace', marginTop: '3px' }}>{c.cert_number}</div>}
+                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <button onClick={() => { setEditItem(c); setShowModal('cert') }}
+                    style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: 11, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                    ✏️ تعديل
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -1231,6 +1337,10 @@ export default function QualityPage() {
                         <button onClick={() => setDetailCapa(c)}
                           style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
                           👁️ تفاصيل
+                        </button>
+                        <button onClick={() => { setEditItem(c); setShowModal('capa') }}
+                          style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                          ✏️ تعديل
                         </button>
                       </td>
                     </tr>
@@ -1281,6 +1391,10 @@ export default function QualityPage() {
                         <button onClick={() => setDetailTraining(t)}
                           style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
                           👁️ تفاصيل
+                        </button>
+                        <button onClick={() => { setEditItem(t); setShowModal('training') }}
+                          style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)', fontFamily: 'inherit' }}>
+                          ✏️ تعديل
                         </button>
                       </td>
                     </tr>
@@ -1833,7 +1947,11 @@ export default function QualityPage() {
               )}
               {detailAudit.notes && <div style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>{detailAudit.notes}</div>}
             </div>
-            <div className="modal-footer"><button onClick={() => setDetailAudit(null)} className="btn btn-ghost">إغلاق</button></div>
+            <div className="modal-footer">
+              <button onClick={() => setDetailAudit(null)} className="btn btn-ghost">إغلاق</button>
+              <button onClick={() => { setEditItem(detailAudit); setDetailAudit(null); setShowModal('audit') }}
+                className="btn btn-primary" style={{ background: '#1a56db' }}>✏️ تعديل</button>
+            </div>
           </div>
         </div>
       )}
@@ -1854,7 +1972,11 @@ export default function QualityPage() {
               {detailCapa.responsible_name && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>المسؤول: {detailCapa.responsible_name}</div>}
               {detailCapa.target_date && <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>التاريخ المستهدف: {fmt(detailCapa.target_date)}</div>}
             </div>
-            <div className="modal-footer"><button onClick={() => setDetailCapa(null)} className="btn btn-ghost">إغلاق</button></div>
+            <div className="modal-footer">
+              <button onClick={() => setDetailCapa(null)} className="btn btn-ghost">إغلاق</button>
+              <button onClick={() => { setEditItem(detailCapa); setDetailCapa(null); setShowModal('capa') }}
+                className="btn btn-primary" style={{ background: '#7c3aed' }}>✏️ تعديل</button>
+            </div>
           </div>
         </div>
       )}
@@ -1895,7 +2017,11 @@ export default function QualityPage() {
                 </div>
               )}
             </div>
-            <div className="modal-footer"><button onClick={() => setDetailTraining(null)} className="btn btn-ghost">إغلاق</button></div>
+            <div className="modal-footer">
+              <button onClick={() => setDetailTraining(null)} className="btn btn-ghost">إغلاق</button>
+              <button onClick={() => { setEditItem(detailTraining); setDetailTraining(null); setShowModal('training') }}
+                className="btn btn-primary" style={{ background: '#7c3aed' }}>✏️ تعديل</button>
+            </div>
           </div>
         </div>
       )}
@@ -1910,24 +2036,27 @@ export default function QualityPage() {
       )}
       {showModal === 'audit' && (
         <AuditModal projects={projects} tenantId={tenant!.id}
-          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
       )}
       {showModal === 'cert' && (
         <CertModal employees={employees} tenantId={tenant!.id}
-          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
       )}
       {showModal === 'capa' && (
         <CapaModal employees={employees} tenantId={tenant!.id}
-          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
       )}
       {showModal === 'training' && (
         <TrainingModal employees={employees} tenantId={tenant!.id}
-          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
-      )}
-
-      {showModal === 'training' && (
-        <TrainingModal employees={employees} tenantId={tenant!.id}
-          onClose={() => setShowModal(null)} onSave={() => { setShowModal(null); loadAll() }} />
+          editItem={editItem}
+          onClose={() => { setShowModal(null); setEditItem(null) }}
+          onSave={() => { setShowModal(null); setEditItem(null); loadAll() }} />
       )}
 
       {showModal === 'feedback' && (
