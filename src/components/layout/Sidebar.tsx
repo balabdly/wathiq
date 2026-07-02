@@ -119,10 +119,10 @@ function NavDirectLink({ href, label, icon, active }: {
         onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = C.hoverBg }}
         onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
       >
-        <span style={{ flex: 1, textAlign: 'right', fontSize: '0.95rem', fontWeight: 700, color: C.textPrimary }}>
+        <span style={{ flex: 1, textAlign: 'right', fontSize: '1rem', lineHeight: 1.35, fontWeight: 700, color: C.textPrimary }}>
           {label}
         </span>
-        <Icon d={icon} size={18} color={C.textMuted} />
+        <Icon d={icon} size={18} color={C.textPrimary} />
       </div>
     </Link>
   )
