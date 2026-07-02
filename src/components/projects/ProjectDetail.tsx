@@ -601,75 +601,155 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
       {/* Tab: الزيارات */}
       {activeTab === 'visits' && (
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {loadingVis ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
               <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
             </div>
           ) : visitsData.length === 0 ? (
-            <div className="card" style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
+            <div className="card" style={{ padding: '50px', textAlign: 'center', color: '#9ca3af' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🔍</div>
               <div style={{ fontWeight: 600, marginBottom: '6px' }}>لا توجد زيارات مسجلة لهذا المشروع</div>
-              <div style={{ fontSize: '0.8rem' }}>أضف الزيارات من صفحة الزيارات الميدانية</div>
-            </div>
-          ) : (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              {/* إحصاءات سريعة */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: 'var(--border)', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.8rem', marginBottom: 16 }}>أضف الزيارات من صفحة السلامة أو الجودة في QHSE</div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                 {[
-                  { label: 'إجمالي الزيارات', value: visitsData.length,                                                              color: '#1a56db', bg: '#eff6ff' },
-                  { label: 'مطابق',            value: visitsData.filter(v => v.specs === 'مطابق').length,                             color: '#0ea77b', bg: '#ecfdf5' },
-                  { label: 'غير مطابق',        value: visitsData.filter(v => v.specs === 'غير مطابق').length,                        color: '#c81e1e', bg: '#fef2f2' },
-                ].map(s => (
-                  <div key={s.label} style={{ padding: '12px 16px', background: s.bg, textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{s.label}</div>
-                  </div>
+                  { label: '🛡️ صفحة السلامة', path: '/qhse/safety',  color: '#e6820a', bg: '#fffbeb' },
+                  { label: '🔍 صفحة الجودة',   path: '/qhse/quality', color: '#1a56db', bg: '#eff6ff' },
+                  { label: '🌿 صفحة البيئة',   path: '/qhse/environment', color: '#059669', bg: '#ecfdf5' },
+                ].map(link => (
+                  <a key={link.path} href={link.path}
+                    style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${link.color}30`,
+                      background: link.bg, color: link.color, fontSize: '0.78rem', fontWeight: 600,
+                      textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {link.label}
+                  </a>
                 ))}
               </div>
-
-              {/* جدول الزيارات */}
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                      {['التاريخ', 'النوع', 'المهندس', 'النتيجة', 'الحالة', 'ملاحظات'].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visitsData.map((v: any) => (
-                      <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{v.date}</td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600, background: '#eff6ff', color: '#1a56db' }}>
-                            {v.type === 'جودة' ? '🔍' : v.type === 'سلامة' ? '🦺' : v.type === 'كهربائية' ? '⚡' : '🏗️'} {v.type}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>{v.engineer || '—'}</td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{
-                            padding: '3px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 600,
-                            background: v.specs === 'مطابق' ? '#ecfdf5' : '#fef2f2',
-                            color:      v.specs === 'مطابق' ? '#0ea77b' : '#c81e1e',
-                          }}>
-                            {v.specs === 'مطابق' ? '✅' : '⚠️'} {v.specs}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{v.status || '—'}</td>
-                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {v.notes || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
-          )}
+          ) : (() => {
+            // إحصائيات
+            const total    = visitsData.length
+            const matched  = visitsData.filter(v => v.specs === 'مطابق').length
+            const ncr      = visitsData.filter(v => v.specs === 'غير مطابق').length
+            const open     = visitsData.filter(v => v.status === 'مفتوح').length
+            const safety   = visitsData.filter(v => v.type === 'سلامة').length
+            const quality  = visitsData.filter(v => v.type === 'جودة').length
+            const env      = visitsData.filter(v => v.type === 'بيئة').length
+
+            const TYPE_CFG: Record<string, { icon: string; color: string; bg: string; border: string }> = {
+              'سلامة': { icon: '🛡️', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d' },
+              'جودة':  { icon: '🔍', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe' },
+              'بيئة':  { icon: '🌿', color: '#059669', bg: '#ecfdf5', border: '#6ee7b7' },
+            }
+            const LC_COLOR: Record<string, string> = {
+              'رصد': '#e6820a', 'إسناد': '#7c3aed', 'تصحيح': '#1a56db', 'اعتماد': '#0ea77b'
+            }
+
+            return (
+              <>
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
+                  {[
+                    { label: 'الإجمالي',   value: total,   color: '#374151', bg: '#f9fafb', border: '#e5e7eb' },
+                    { label: 'مطابق',      value: matched, color: '#065f46', bg: '#f0fdf4', border: '#bbf7d0' },
+                    { label: 'غير مطابق', value: ncr,     color: ncr > 0 ? '#b91c1c' : '#374151', bg: ncr > 0 ? '#fef2f2' : '#f9fafb', border: ncr > 0 ? '#fecaca' : '#e5e7eb' },
+                    { label: 'مفتوحة',    value: open,    color: open > 0 ? '#b91c1c' : '#065f46', bg: open > 0 ? '#fef2f2' : '#f0fdf4', border: open > 0 ? '#fecaca' : '#bbf7d0' },
+                    { label: 'سلامة',     value: safety,  color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
+                    { label: 'جودة',      value: quality, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe' },
+                    { label: 'بيئة',      value: env,     color: '#065f46', bg: '#ecfdf5', border: '#6ee7b7' },
+                  ].map((k, i) => (
+                    <div key={i} style={{ padding: '10px 8px', borderRadius: 8, background: k.bg, border: `1px solid ${k.border}`, textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+                      <div style={{ fontSize: '0.62rem', color: '#374151', marginTop: 1, fontWeight: 600 }}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* روابط QHSE */}
+                <div style={{ display: 'flex', gap: 8, padding: '10px 14px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--border)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text3)', fontWeight: 600 }}>إضافة زيارة جديدة:</span>
+                  {[
+                    { label: '🛡️ زيارة سلامة', path: '/qhse/safety',      color: '#e6820a', bg: '#fffbeb' },
+                    { label: '🔍 زيارة جودة',   path: '/qhse/quality',     color: '#1a56db', bg: '#eff6ff' },
+                    { label: '🌿 زيارة بيئية',  path: '/qhse/environment', color: '#059669', bg: '#ecfdf5' },
+                  ].map(link => (
+                    <a key={link.path} href={link.path}
+                      style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${link.color}30`,
+                        background: link.bg, color: link.color, fontSize: '0.75rem', fontWeight: 600,
+                        textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {link.label} ↗
+                    </a>
+                  ))}
+                </div>
+
+                {/* الجدول */}
+                <div className="card" style={{ overflow: 'hidden' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                          {['النوع', 'التاريخ', 'المهندس', 'الموقع', 'النتيجة', 'دورة الحياة', 'الحالة'].map(h => (
+                            <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visitsData.map((v: any) => {
+                          const cfg = TYPE_CFG[v.type]
+                          const lcColor = LC_COLOR[v.lifecycle || '']
+                          return (
+                            <tr key={v.id} style={{ borderBottom: '1px solid var(--bg2)' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                              <td style={{ padding: '10px 12px' }}>
+                                {cfg ? (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', borderRadius: 10,
+                                    fontSize: '0.72rem', fontWeight: 700, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+                                    {cfg.icon} {v.type}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>{v.type}</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>
+                                {new Date(v.date).toLocaleDateString('ar-SA')}
+                              </td>
+                              <td style={{ padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600 }}>{v.engineer || '—'}</td>
+                              <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {v.location || '—'}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ padding: '3px 9px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700,
+                                  background: v.specs === 'مطابق' ? '#ecfdf5' : '#fef2f2',
+                                  color:      v.specs === 'مطابق' ? '#065f46' : '#b91c1c' }}>
+                                  {v.specs === 'مطابق' ? '✅ مطابق' : '❌ غير مطابق'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                {v.lifecycle ? (
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: lcColor || 'var(--text3)',
+                                    background: lcColor ? lcColor + '15' : 'var(--bg2)', padding: '2px 8px', borderRadius: 8 }}>
+                                    {v.lifecycle}
+                                  </span>
+                                ) : <span style={{ color: 'var(--text3)', fontSize: '0.75rem' }}>—</span>}
+                              </td>
+                              <td style={{ padding: '10px 12px' }}>
+                                <span style={{ padding: '3px 9px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600,
+                                  background: v.status === 'مغلق' ? '#ecfdf5' : '#fef3c7',
+                                  color:      v.status === 'مغلق' ? '#065f46' : '#92400e' }}>
+                                  {v.status === 'مغلق' ? '✅ مغلق' : '🔴 مفتوح'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
