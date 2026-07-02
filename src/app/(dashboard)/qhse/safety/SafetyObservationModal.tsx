@@ -48,6 +48,7 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
     date:             today,
     location:         '',
     project_id:       '',
+    location_name:    '',
     engineer:         currentUser?.name || '',
     description:      '',
     severity:         'متوسط',
@@ -77,7 +78,7 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
         entry_type:       'ملاحظة',
         date:             form.date,
         engineer:         form.engineer || currentUser?.name || '',
-        location:         form.location,
+        location:         form.project_id ? form.location : (form.location_name || form.location),
         specs:            'غير مطابق',
         status:           'مفتوح',
         lifecycle:        'رصد',
@@ -152,11 +153,17 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div><label style={lbl}>المشروع</label>
+            <div>
+              <label style={lbl}>المشروع <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '0.72rem' }}>(اختياري)</span></label>
               <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                <option value="">— اختر المشروع —</option>
+                <option value="">— لا يوجد مشروع محدد —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
+              {!form.project_id && (
+                <input value={form.location_name || ''} onChange={e => set('location_name', e.target.value)}
+                  className="input" style={{ marginTop: 6 }}
+                  placeholder="مكتب / مستودع / ساحة / موقع آخر..." />
+              )}
             </div>
             <div><label style={lbl}>المراقب / المهندس</label>
               <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select">

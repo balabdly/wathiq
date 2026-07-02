@@ -85,6 +85,7 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
     visit_time:           '',
     location:             '',
     project_id:           '',
+    location_name:        '',
     engineer:             currentUser?.name || '',
     supervisor_name:      '',
     work_order_source:    '',
@@ -131,7 +132,7 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
         date:                 form.date,
         visit_time:           form.visit_time || null,
         engineer:             form.engineer,
-        location:             form.location,
+        location:             form.project_id ? form.location : (form.location_name || form.location),
         supervisor_name:      form.supervisor_name || null,
         work_order_source:    form.work_order_source || null,
         work_order_receiver:  form.work_order_receiver || null,
@@ -204,11 +205,17 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-              <div><label style={lbl}>رقم / اسم المشروع</label>
+              <div>
+                <label style={lbl}>المشروع <span style={{ fontWeight: 400, color: 'var(--text3)', fontSize: '0.72rem' }}>(اختياري)</span></label>
                 <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-                  <option value="">— اختر المشروع —</option>
+                  <option value="">— لا يوجد مشروع محدد —</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                {!form.project_id && (
+                  <input value={form.location_name || ''} onChange={e => set('location_name', e.target.value)}
+                    className="input" style={{ marginTop: 6 }}
+                    placeholder="مكتب / مستودع / ساحة / موقع آخر..." />
+                )}
               </div>
               <div><label style={lbl}>مهندس السلامة *</label>
                 <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select">
