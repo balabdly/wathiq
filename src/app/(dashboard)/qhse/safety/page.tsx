@@ -1591,6 +1591,92 @@ export default function SafetyPage() {
             </div>
             <div className="modal-footer">
               <button onClick={() => setDetailVisit(null)} className="btn btn-ghost">إغلاق</button>
+              <button onClick={() => {
+                const win = window.open('', '_blank')
+                if (!win) return
+                const v = detailVisit
+                const corrs = corrections[v.id] || []
+                win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
+                  <meta charset="utf-8"/><title>تفاصيل الزيارة — ${v.engineer} — ${v.date}</title>
+                  <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a1a; padding: 24px; direction: rtl; }
+                    h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+                    .sub { font-size: 12px; color: #6b7280; margin-bottom: 16px; }
+                    .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 14px; }
+                    .card { background: #f8fafc; border-radius: 6px; padding: 8px 10px; }
+                    .card .lbl { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
+                    .card .val { font-weight: 600; font-size: 12px; }
+                    .section { margin-bottom: 14px; }
+                    .section h3 { font-size: 13px; font-weight: 700; margin-bottom: 6px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px; }
+                    .checklist-row { display: grid; grid-template-columns: 24px 1fr 70px; gap: 6px; padding: 5px 8px; border-bottom: 1px solid #f1f5f9; align-items: center; font-size: 11px; }
+                    .green-bg { background: #f0fdf4; }
+                    .red-bg   { background: #fef2f2; }
+                    .badge { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+                    .badge-green { background: #ecfdf5; color: #065f46; }
+                    .badge-red   { background: #fef2f2; color: #b91c1c; }
+                    .badge-warn  { background: #fef3c7; color: #92400e; }
+                    .badge-blue  { background: #eff6ff; color: #1d4ed8; }
+                    .badge-purple { background: #f5f3ff; color: #6d28d9; }
+                    .correction { border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 8px; overflow: hidden; }
+                    .corr-header { padding: 6px 10px; font-weight: 700; font-size: 11px; }
+                    .corr-body { padding: 8px 10px; font-size: 12px; }
+                    .image-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-top: 8px; }
+                    .image-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; }
+                    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af; display: flex; justify-content: space-between; }
+                    @media print { body { padding: 12px; } button { display: none; } }
+                  </style>
+                </head><body>
+                  <h1>${(v as any).entry_type === 'ملاحظة' ? '⚠️ ملاحظة سلامة' : '📋 زيارة تفتيشية — سلامة'}</h1>
+                  <div class="sub">${v.date} — ${v.location || ''}</div>
+                  <div class="grid">
+                    <div class="card"><div class="lbl">المهندس</div><div class="val">${v.engineer}</div></div>
+                    <div class="card"><div class="lbl">الموقع</div><div class="val">${v.location || '—'}</div></div>
+                    <div class="card"><div class="lbl">التاريخ</div><div class="val">${v.date}</div></div>
+                    ${(v as any).supervisor_name ? `<div class="card"><div class="lbl">مشرف الموقع</div><div class="val">${(v as any).supervisor_name}</div></div>` : ''}
+                    <div class="card"><div class="lbl">النتيجة</div><div class="val">${v.specs === 'مطابق' ? '✅ مطابق' : '❌ غير مطابق'}</div></div>
+                    ${(v as any).severity ? `<div class="card"><div class="lbl">الخطورة</div><div class="val">${(v as any).severity}</div></div>` : ''}
+                    ${(v as any).lifecycle ? `<div class="card"><div class="lbl">الحالة</div><div class="val">${(v as any).lifecycle}</div></div>` : ''}
+                    ${(v as any).responsible_name ? `<div class="card"><div class="lbl">المسؤول عن التصحيح</div><div class="val">${(v as any).responsible_name}</div></div>` : ''}
+                  </div>
+                  ${v.corrective ? `<div class="section"><h3>⚠️ البنود غير المطابقة / الملاحظة</h3><p style="background:#fef2f2;padding:10px;border-radius:6px;color:#b91c1c;font-size:12px">${v.corrective}</p></div>` : ''}
+                  ${(v as any).checklist?.length > 0 ? `
+                    <div class="section"><h3>قائمة الفحص (${(v as any).checklist.filter((c:any)=>c.result==='نعم').length} مطابق / ${(v as any).checklist.filter((c:any)=>c.result==='لا').length} غير مطابق)</h3>
+                    ${(v as any).checklist.map((c:any)=>`
+                      <div class="checklist-row ${c.result==='نعم'?'green-bg':c.result==='لا'?'red-bg':''}">
+                        <span style="text-align:center;color:#9ca3af;font-weight:700">${c.no}</span>
+                        <span>${c.item}</span>
+                        <span class="badge ${c.result==='نعم'?'badge-green':c.result==='لا'?'badge-red':''}">${c.result==='نعم'?'✅ مطابق':c.result==='لا'?'❌ غير مطابق':'—'}</span>
+                      </div>`).join('')}
+                    </div>` : ''}
+                  ${(v as any).general_notes ? `<div class="section"><h3>ملاحظات عامة</h3><p style="background:#f8fafc;padding:10px;border-radius:6px;font-size:12px">${(v as any).general_notes}</p></div>` : ''}
+                  ${corrs.length > 0 ? `
+                    <div class="section"><h3>📜 سجل محاولات التصحيح (${corrs.length})</h3>
+                    ${corrs.map((c:any)=>`
+                      <div class="correction">
+                        <div class="corr-header" style="background:${c.review_status==='معتمد'?'#ecfdf5':c.review_status==='مرفوض'?'#fef2f2':'#fffbeb'};color:${c.review_status==='معتمد'?'#065f46':c.review_status==='مرفوض'?'#b91c1c':'#92400e'}">
+                          محاولة ${c.attempt_no} — ${c.corrected_by_name} — ${c.review_status==='معتمد'?'✅ معتمد':c.review_status==='مرفوض'?'❌ مرفوض':'⏳ بانتظار المراجعة'}
+                        </div>
+                        <div class="corr-body">
+                          <p>${c.correction_notes || ''}</p>
+                          ${c.rejection_reason ? `<p style="color:#b91c1c;margin-top:4px">سبب الرفض: ${c.rejection_reason}</p>` : ''}
+                          ${c.approval_notes   ? `<p style="color:#065f46;margin-top:4px">ملاحظات الاعتماد: ${c.approval_notes}</p>` : ''}
+                        </div>
+                      </div>`).join('')}
+                    </div>` : ''}
+                  ${v.attachments?.length > 0 ? `
+                    <div class="section"><h3>📷 الصور والمرفقات (${v.attachments.length})</h3>
+                    <div class="image-grid">${v.attachments.map((a:any)=>`<img src="${a.data}" alt=""/>`).join('')}</div></div>` : ''}
+                  <div class="footer">
+                    <span>وثيق — نظام إدارة مقاولي الكهرباء</span>
+                    <span>طُبع في: ${new Date().toLocaleString('ar-SA')}</span>
+                  </div>
+                  <script>setTimeout(()=>window.print(),300)</script>
+                </body></html>`)
+                win.document.close()
+              }} className="btn btn-primary" style={{ background: '#1a56db', display: 'flex', alignItems: 'center', gap: 6 }}>
+                🖨️ طباعة
+              </button>
             </div>
           </div>
         </div>

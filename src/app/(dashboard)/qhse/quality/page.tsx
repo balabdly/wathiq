@@ -1905,6 +1905,51 @@ export default function QualityPage() {
             </div>
             <div className="modal-footer">
               <button onClick={() => setDetailVisit(null)} className="btn btn-ghost">إغلاق</button>
+              <button onClick={() => {
+                const win = window.open('', '_blank')
+                if (!win) return
+                const v = detailVisit
+                const corrs = corrections[v.id] || []
+                win.document.write(`<!DOCTYPE html><html dir="rtl"><head>
+                  <meta charset="utf-8"/><title>تفاصيل زيارة جودة — ${v.engineer} — ${v.date}</title>
+                  <style>
+                    *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a1a;padding:24px;direction:rtl}
+                    h1{font-size:18px;font-weight:700;margin-bottom:4px}.sub{font-size:12px;color:#6b7280;margin-bottom:16px}
+                    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+                    .card{background:#f8fafc;border-radius:6px;padding:8px 10px}.card .lbl{font-size:10px;color:#9ca3af;margin-bottom:2px}.card .val{font-weight:600;font-size:12px}
+                    .section{margin-bottom:14px}.section h3{font-size:13px;font-weight:700;margin-bottom:6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
+                    .cl-row{display:grid;grid-template-columns:24px 1fr 70px;gap:6px;padding:5px 8px;border-bottom:1px solid #f1f5f9;align-items:center;font-size:11px}
+                    .gbg{background:#f0fdf4}.rbg{background:#fef2f2}
+                    .corr{border:1px solid #e5e7eb;border-radius:6px;margin-bottom:8px;overflow:hidden}
+                    .ch{padding:6px 10px;font-weight:700;font-size:11px}.cb{padding:8px 10px;font-size:12px}
+                    .imgs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}.imgs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px}
+                    .foot{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;display:flex;justify-content:space-between}
+                    @media print{body{padding:12px}button{display:none}}
+                  </style></head><body>
+                  <h1>${(v as any).entry_type === 'مطابقة' ? `🚫 عدم مطابقة ${(v as any).ncr_no||''}` : (v as any).entry_type === 'ملاحظة' ? '⚠️ ملاحظة جودة' : '📋 زيارة تفتيشية — جودة'}</h1>
+                  <div class="sub">${v.date} — ${v.location||''}</div>
+                  <div class="grid">
+                    <div class="card"><div class="lbl">المهندس</div><div class="val">${v.engineer}</div></div>
+                    <div class="card"><div class="lbl">الموقع</div><div class="val">${v.location||'—'}</div></div>
+                    <div class="card"><div class="lbl">التاريخ</div><div class="val">${v.date}</div></div>
+                    ${(v as any).ncr_no?`<div class="card"><div class="lbl">رقم NCR</div><div class="val">${(v as any).ncr_no}</div></div>`:''}
+                    <div class="card"><div class="lbl">النتيجة</div><div class="val">${v.specs==='مطابق'?'✅ مطابق':'❌ غير مطابق'}</div></div>
+                    ${(v as any).severity?`<div class="card"><div class="lbl">الخطورة</div><div class="val">${(v as any).severity}</div></div>`:''}
+                    ${(v as any).lifecycle?`<div class="card"><div class="lbl">الحالة</div><div class="val">${(v as any).lifecycle}</div></div>`:''}
+                    ${(v as any).responsible_name?`<div class="card"><div class="lbl">المسؤول</div><div class="val">${(v as any).responsible_name}</div></div>`:''}
+                  </div>
+                  ${v.corrective?`<div class="section"><h3>⚠️ وصف المخالفة</h3><p style="background:#fef2f2;padding:10px;border-radius:6px;color:#b91c1c;font-size:12px">${v.corrective}</p></div>`:''}
+                  ${(v as any).checklist?.length>0?`<div class="section"><h3>قائمة الفحص</h3>${(v as any).checklist.map((c:any)=>`<div class="cl-row ${c.result==='نعم'?'gbg':c.result==='لا'?'rbg':''}"><span style="text-align:center;color:#9ca3af;font-weight:700">${c.no}</span><span>${c.item}</span><span style="font-size:10px;font-weight:700;color:${c.result==='نعم'?'#065f46':c.result==='لا'?'#b91c1c':'#6b7280'}">${c.result==='نعم'?'✅':c.result==='لا'?'❌':'—'}</span></div>`).join('')}</div>`:''}
+                  ${(v as any).general_notes?`<div class="section"><h3>ملاحظات عامة</h3><p style="background:#f8fafc;padding:10px;border-radius:6px;font-size:12px">${(v as any).general_notes}</p></div>`:''}
+                  ${corrs.length>0?`<div class="section"><h3>📜 سجل التصحيح (${corrs.length})</h3>${corrs.map((c:any)=>`<div class="corr"><div class="ch" style="background:${c.review_status==='معتمد'?'#ecfdf5':c.review_status==='مرفوض'?'#fef2f2':'#fffbeb'};color:${c.review_status==='معتمد'?'#065f46':c.review_status==='مرفوض'?'#b91c1c':'#92400e'}">محاولة ${c.attempt_no} — ${c.corrected_by_name} — ${c.review_status}</div><div class="cb">${c.correction_notes||''}${c.rejection_reason?`<p style="color:#b91c1c;margin-top:4px">سبب الرفض: ${c.rejection_reason}</p>`:''}${c.approval_notes?`<p style="color:#065f46;margin-top:4px">ملاحظات: ${c.approval_notes}</p>`:''}</div></div>`).join('')}</div>`:''}
+                  ${v.attachments?.length>0?`<div class="section"><h3>📷 الصور</h3><div class="imgs">${v.attachments.map((a:any)=>`<img src="${a.data}" alt=""/>`).join('')}</div></div>`:''}
+                  <div class="foot"><span>وثيق — نظام إدارة مقاولي الكهرباء</span><span>طُبع في: ${new Date().toLocaleString('ar-SA')}</span></div>
+                  <script>setTimeout(()=>window.print(),300)</script>
+                </body></html>`)
+                win.document.close()
+              }} className="btn btn-primary" style={{ background: '#1a56db', display: 'flex', alignItems: 'center', gap: 6 }}>
+                🖨️ طباعة
+              </button>
             </div>
           </div>
         </div>
