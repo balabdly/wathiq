@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink, Package, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode } from '@/lib/journal'
 
 // ════════════════════════════════════════
@@ -1441,6 +1442,7 @@ export default function InvoicesPage() {
   const [projects, setProjects]       = useState<Project[]>([])
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([])
   const [search, setSearch]           = useState('')
+  const debouncedSearch = useDebouncedValue(search, 350)
 
   const [showInvoiceModal,  setShowInvoiceModal]  = useState(false)
   const [showCreditModal,   setShowCreditModal]   = useState(false)
@@ -1457,7 +1459,10 @@ export default function InvoicesPage() {
   const [viewItems,     setViewItems]     = useState<InvoiceItem[]>([])
 
   useEffect(() => { if (tenant) loadAll() }, [tenant])
-  useEffect(() => { if (tenant) loadInvoices(1, filterStatus, search) }, [filterStatus])
+  useEffect(() => {
+    if (!tenant || activeTab !== 'invoices') return
+    loadInvoices(1, filterStatus, debouncedSearch)
+  }, [tenant?.id, activeTab, filterStatus, debouncedSearch])
 
   // ══ تحميل الفواتير بـ pagination ══
   async function loadInvoices(page = invPagination.page, status = filterStatus, q = search) {
@@ -1622,7 +1627,7 @@ export default function InvoicesPage() {
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
           <input value={search}
-            onChange={e => { setSearch(e.target.value); if (activeTab === 'invoices') loadInvoices(1, filterStatus, e.target.value) }}
+            onChange={e => setSearch(e.target.value)}
             placeholder="بحث برقم الفاتورة أو العميل..." className="input" style={{ paddingRight: '32px', width: '280px' }} />
         </div>
         {activeTab === 'invoices' && (

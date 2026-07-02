@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { createJournalEntry } from '@/lib/journal'
 
 type Vendor = {
@@ -761,6 +762,7 @@ export default function FinancePurchasesPage() {
   const [warehouses, setWarehouses]= useState<Warehouse[]>([])
   const [loading,    setLoading]   = useState(true)
   const [search,     setSearch]    = useState('')
+  const debouncedSearch = useDebouncedValue(search, 350)
   const [showPOModal,     setShowPOModal]     = useState(false)
   const [showInvModal,    setShowInvModal]    = useState(false)
   const [showReturnModal, setShowReturnModal] = useState(false)
@@ -780,6 +782,16 @@ export default function FinancePurchasesPage() {
   const [viewVInvItems, setViewVInvItems] = useState<POItem[]>([])
 
   useEffect(() => { loadAll() }, [tenant?.id])
+  useEffect(() => {
+    if (!tenant) return
+    if (activeTab === 'orders') {
+      loadPurchaseOrders(1, debouncedSearch)
+      return
+    }
+    if (activeTab === 'invoices') {
+      loadVendorInvoices(1, debouncedSearch)
+    }
+  }, [tenant?.id, activeTab, debouncedSearch])
 
   async function handleViewPO(po: PurchaseOrder) {
     const { data } = await supabase.from('finance_purchase_order_items').select('*').eq('po_id', po.id).order('id')
@@ -898,7 +910,7 @@ export default function FinancePurchasesPage() {
       </div>
       <div style={{ position: 'relative', maxWidth: '360px' }}>
         <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-        <input value={search} onChange={e => { setSearch(e.target.value); if (activeTab === 'orders') loadPurchaseOrders(1, e.target.value); if (activeTab === 'invoices') loadVendorInvoices(1, e.target.value) }} placeholder="بحث..." className="input" style={{ paddingRight: '32px' }} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث..." className="input" style={{ paddingRight: '32px' }} />
       </div>
 
       {activeTab === 'orders' && (

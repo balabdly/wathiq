@@ -1263,6 +1263,45 @@ create table if not exists finance_asset_disposals (
   created_at      timestamptz default now()
 );
 
+-- ══════════════════════════════════════════════════════
+-- Performance indexes for finance pages
+-- ══════════════════════════════════════════════════════
+create index if not exists idx_finance_accounts_tenant_active_code
+  on finance_accounts (tenant_id, is_active, code);
+
+create index if not exists idx_finance_cash_accounts_tenant_active
+  on finance_cash_accounts (tenant_id, is_active);
+
+create index if not exists idx_finance_cost_centers_tenant_active
+  on finance_cost_centers (tenant_id, is_active);
+
+create index if not exists idx_finance_invoices_tenant_status_date
+  on finance_invoices (tenant_id, status, invoice_date desc);
+
+create index if not exists idx_finance_credit_notes_tenant_date
+  on finance_credit_notes (tenant_id, note_date desc);
+
+create index if not exists idx_finance_quotations_tenant_date
+  on finance_quotations (tenant_id, quote_date desc);
+
+create index if not exists idx_finance_purchase_orders_tenant_date
+  on finance_purchase_orders (tenant_id, po_date desc);
+
+create index if not exists idx_finance_vendor_invoices_tenant_status_date
+  on finance_vendor_invoices (tenant_id, status, invoice_date desc);
+
+create index if not exists idx_finance_purchase_returns_tenant_date
+  on finance_purchase_returns (tenant_id, return_date desc);
+
+create index if not exists idx_finance_expenses_tenant_type_date
+  on finance_expenses (tenant_id, expense_type, expense_date desc);
+
+create index if not exists idx_finance_treasury_tenant_type_date
+  on finance_treasury (tenant_id, type, transaction_date desc);
+
+create index if not exists idx_finance_journal_entries_tenant_date
+  on finance_journal_entries (tenant_id, entry_date desc);
+
 -- إهلاك الأصول
 create table if not exists finance_asset_depreciation (
   id                bigint primary key generated always as identity,

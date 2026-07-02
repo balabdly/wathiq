@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt, ArrowUpRight, ArrowDownRight, BarChart2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { createJournalEntry, getCashAccountCode, journalExpense } from '@/lib/journal'
 
 // ════════════════════════════════════════
@@ -856,6 +857,7 @@ export default function FinanceExpensesPage() {
   const [expenses,    setExpenses]    = useState<Expense[]>([])
   const [loading,     setLoading]     = useState(false)
   const [search,      setSearch]      = useState('')
+  const debouncedSearch = useDebouncedValue(search, 350)
   const [showExpModal, setShowExpModal] = useState(false)
   const [editExpense, setEditExpense] = useState<Expense | null>(null)
 
@@ -866,6 +868,10 @@ export default function FinanceExpensesPage() {
   const [voucherType,  setVoucherType]  = useState<'قبض' | 'صرف'>('قبض')
 
   useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
+  useEffect(() => {
+    if (!tenant || mainTab !== 'expenses') return
+    loadExpenses(1, expenseTab, debouncedSearch)
+  }, [tenant?.id, mainTab, expenseTab, debouncedSearch])
   useEffect(() => {
     if (tenant && (mainTab === 'receipts' || mainTab === 'payments')) loadVouchers()
   }, [mainTab, tenant?.id])
@@ -1012,7 +1018,7 @@ export default function FinanceExpensesPage() {
           {/* تابات فرعية */}
           <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '5px', borderRadius: '12px', width: 'fit-content' }}>
             {EXP_TABS.map(t => (
-              <button key={t.id} onClick={() => { setExpenseTab(t.id as any); setSearch(''); loadExpenses(1, t.id as any, '') }}
+              <button key={t.id} onClick={() => { setExpenseTab(t.id as any); setSearch('') }}
                 style={{ padding: '7px 14px', borderRadius: '9px', fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.15s',
                   background: expenseTab === t.id ? t.color : 'transparent',
                   color: expenseTab === t.id ? 'white' : 'var(--text3)' }}>
@@ -1024,7 +1030,7 @@ export default function FinanceExpensesPage() {
           {/* بحث */}
           <div style={{ position: 'relative', width: '280px' }}>
             <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
-            <input value={search} onChange={e => { setSearch(e.target.value); loadExpenses(1, expenseTab, e.target.value) }}
+            <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="بحث في المصروفات..." className="input" style={{ paddingRight: '32px' }} />
           </div>
 
