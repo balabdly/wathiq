@@ -204,17 +204,21 @@ function StandaloneLink({ href, label, icon, active }: {
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px',
         padding: '12px 16px',
-        background: active ? C.activeLight : 'transparent',
-        color: active ? C.textPrimary : C.textSecondary,
-        // ── التعديل: العنوان دائماً Bold ──
+        background: active ? C.groupOpenBg : 'transparent',
+        color: C.textPrimary,
         fontSize: '0.95rem', fontWeight: 700,
         cursor: 'pointer', transition: 'background 0.1s',
       }}
         onMouseEnter={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = C.hoverBg } }}
         onMouseLeave={e => { if (!active) { const el = e.currentTarget as HTMLElement; el.style.background = 'transparent' } }}
       >
-        <span style={{ flex: 1 }}>{label}</span>
-        <Icon d={icon} size={18} />
+        <span style={{ flex: 1, textAlign: 'right' }}>{label}</span>
+        <div style={{ color: C.textMuted, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.35 }}>
+            <path d={IC.chevron} />
+          </svg>
+          <Icon d={icon} size={18} />
+        </div>
       </div>
     </Link>
   )
