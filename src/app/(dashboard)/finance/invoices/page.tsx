@@ -1365,17 +1365,32 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
 // ════════════════════════════════════════
 // مودال: عرض عرض السعر
 // ════════════════════════════════════════
-function QuotationModal({ clients, projects, company, tenantId, onClose, onSave }: {
-  clients: Client[]; projects: Project[]; company: Company
+function QuotationModal({ quote, clients, projects, company, tenantId, onClose, onSave }: {
+  quote?: any; clients: Client[]; projects: Project[]; company: Company
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [items, setItems]   = useState<InvoiceItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
   const today = new Date().toISOString().split('T')[0]
-  const [form, setForm] = useState({ quote_number: '', quote_date: today, valid_until: '', client_id: '', project_id: '', vat_rate: 15, notes: '', terms: '', status: 'مسودة' })
+  const [form, setForm] = useState({
+    quote_number: quote?.quote_number || '',
+    quote_date:   quote?.quote_date   || today,
+    valid_until:  quote?.valid_until  || '',
+    client_id:    quote?.client_id ? String(quote.client_id) : '',
+    project_id:   quote?.project_id ? String(quote.project_id) : '',
+    vat_rate:     quote?.vat_rate ?? 15,
+    notes:        quote?.notes || '',
+    terms:        quote?.terms || '',
+    status:       quote?.status || 'مسودة',
+  })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  useEffect(() => { generateNumber() }, [])
+  useEffect(() => {
+    if (quote) {
+      supabase.from('finance_quotation_items').select('*').eq('quotation_id', quote.id).order('id')
+        .then(({ data }) => { if (data && data.length > 0) setItems(data) })
+    } else generateNumber()
+  }, [])
 
   async function generateNumber() {
     const { count } = await supabase.from('finance_quotations').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
@@ -1392,9 +1407,9 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً على الأقل'); return }
     setSaving(true)
 
-    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    // ══ الرقم النهائي — ذرّي عند الحفظ (العرض الموجود يحتفظ برقمه) ══
     let finalQuoteNumber = form.quote_number
-    if (/^QT-\d{4}-\d{4}$/.test(finalQuoteNumber)) {
+    if (!quote && /^QT-\d{4}-\d{4}$/.test(finalQuoteNumber)) {
       finalQuoteNumber = (await nextDocNumber(tenantId, 'QT', 'QT')) || finalQuoteNumber
     }
 
@@ -1409,15 +1424,22 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
       notes: form.notes || null, terms: form.terms || null,
     }
 
-    const { data, error } = await supabase.from('finance_quotations').insert(payload).select('id').single()
-    if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-
+    let quoteId = quote?.id
+    if (quote) {
+      const { error } = await supabase.from('finance_quotations').update(payload).eq('id', quote.id)
+      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
+      await supabase.from('finance_quotation_items').delete().eq('quotation_id', quote.id)
+    } else {
+      const { data, error } = await supabase.from('finance_quotations').insert(payload).select('id').single()
+      if (error || !data) { toast.error('خطأ: ' + (error?.message || '')); setSaving(false); return }
+      quoteId = data.id
+    }
     const validItems = items.filter(i => i.description.trim())
-    if (validItems.length > 0) {
-      await supabase.from('finance_quotation_items').insert(validItems.map(i => ({ quotation_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
+    if (validItems.length > 0 && quoteId) {
+      await supabase.from('finance_quotation_items').insert(validItems.map(i => ({ quotation_id: quoteId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    toast.success('✅ تم إنشاء عرض السعر')
+    toast.success(quote ? '✅ تم تعديل عرض السعر' : '✅ تم إنشاء عرض السعر')
     onSave(); setSaving(false)
   }
 
@@ -1505,6 +1527,56 @@ export default function InvoicesPage() {
   const [showInvoiceModal,  setShowInvoiceModal]  = useState(false)
   const [showCreditModal,   setShowCreditModal]   = useState(false)
   const [showQuoteModal,    setShowQuoteModal]     = useState(false)
+  const [editQuote,         setEditQuote]          = useState<any | null>(null)
+  const [viewDoc,           setViewDoc]            = useState<{ kind: 'cn' | 'qt'; doc: any; items: any[]; loading: boolean } | null>(null)
+
+  // ══ استعراض إشعار / عرض سعر مع بنوده ══
+  async function openViewDoc(kind: 'cn' | 'qt', doc: any) {
+    setViewDoc({ kind, doc, items: [], loading: true })
+    const table = kind === 'cn' ? 'finance_credit_note_items' : 'finance_quotation_items'
+    const fk    = kind === 'cn' ? 'note_id' : 'quotation_id'
+    const { data } = await supabase.from(table).select('*').eq(fk, doc.id).order('id')
+    setViewDoc({ kind, doc, items: data || [], loading: false })
+  }
+
+  // ══ إلغاء إشعار دائن بقيد عكسي (المعالجة القياسية للمستند المرحّل) ══
+  async function cancelCreditNote(cn: any) {
+    if (cn.status === 'ملغي') { toast.error('الإشعار ملغي مسبقاً'); return }
+    if (!confirm(`إلغاء الإشعار ${cn.note_number}؟\nسيُنشأ قيد عكسي يلغي أثره المحاسبي ويعيد رصيد ذمة العميل.`)) return
+
+    // جلب قيد الإشعار الأصلي وسطوره
+    const { data: entry } = await supabase.from('finance_journal_entries')
+      .select('id, total_debit')
+      .eq('tenant_id', tenant!.id).eq('reference_type', 'إشعار دائن').eq('reference_id', cn.id)
+      .maybeSingle()
+
+    if (entry) {
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('account_id, debit, credit, description').eq('entry_id', entry.id)
+      const jeNo = await nextDocNumber(tenant!.id, 'JE', 'JE')
+      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
+      const { data: revEntry, error } = await supabase.from('finance_journal_entries').insert({
+        tenant_id: tenant!.id, entry_number: jeNo,
+        entry_date: new Date().toISOString().split('T')[0],
+        description: `قيد عكسي — إلغاء إشعار دائن ${cn.note_number} — ${cn.client_name}`,
+        reference_type: 'إلغاء إشعار دائن', reference_id: cn.id,
+        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit),
+        status: 'معتمد', entry_source: 'آلي',
+      }).select('id').single()
+      if (error || !revEntry) { toast.error('فشل إنشاء القيد العكسي'); return }
+      await supabase.from('finance_journal_lines').insert(
+        (lines || []).map((l: any) => ({
+          entry_id: revEntry.id, account_id: l.account_id,
+          debit: Number(l.credit), credit: Number(l.debit),   // عكس الاتجاهين
+          description: `عكس: ${l.description || ''}`,
+        }))
+      )
+    }
+
+    await supabase.from('finance_credit_notes').update({ status: 'ملغي' }).eq('id', cn.id)
+    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    loadAll()
+  }
   const [showClientModal,   setShowClientModal]   = useState(false)
   const [showCatalogModal,  setShowCatalogModal]  = useState(false)
   const [showPaymentModal,  setShowPaymentModal]  = useState(false)
@@ -1634,7 +1706,7 @@ export default function InvoicesPage() {
             </button>
           )}
           {activeTab === 'quotations' && (
-            <button onClick={() => setShowQuoteModal(true)} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            <button onClick={() => { setEditQuote(null); setShowQuoteModal(true) }} className="btn btn-primary" style={{ background: '#7c3aed' }}>
               <Plus style={{ width: '16px', height: '16px' }} /> عرض سعر
             </button>
           )}
@@ -1804,7 +1876,7 @@ export default function InvoicesPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم الإشعار', 'العميل', 'النوع', 'التاريخ', 'الإجمالي', 'السبب', 'الحالة'].map(h => (
+                    {['رقم الإشعار', 'العميل', 'النوع', 'التاريخ', 'الإجمالي', 'السبب', 'الحالة', ''].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                     ))}
                   </tr>
@@ -1820,7 +1892,21 @@ export default function InvoicesPage() {
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{cn.note_date}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 700, color: '#c81e1e' }}>{Number(cn.total_amount).toLocaleString()} ر.س</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{cn.reason || '—'}</td>
-                      <td style={{ padding: '10px 14px' }}><span className="badge badge-gray">{cn.status}</span></td>
+                      <td style={{ padding: '10px 14px' }}><span className={'badge ' + (cn.status === 'ملغي' ? 'badge-red' : 'badge-gray')}>{cn.status}</span></td>
+                      <td style={{ padding: '10px 8px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button onClick={() => openViewDoc('cn', cn)} title="استعراض"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                            <Eye style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          {cn.status !== 'ملغي' && (
+                            <button onClick={() => cancelCreditNote(cn)} title="إلغاء بقيد عكسي"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                              إلغاء
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1840,7 +1926,7 @@ export default function InvoicesPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                    {['رقم العرض', 'العميل', 'التاريخ', 'صالح حتى', 'الإجمالي', 'الحالة'].map(h => (
+                    {['رقم العرض', 'العميل', 'التاريخ', 'صالح حتى', 'الإجمالي', 'الحالة', ''].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                     ))}
                   </tr>
@@ -1856,6 +1942,17 @@ export default function InvoicesPage() {
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{q.valid_until || '—'}</td>
                       <td style={{ padding: '10px 14px', fontWeight: 700, color: '#7c3aed' }}>{Number(q.total_amount).toLocaleString()} ر.س</td>
                       <td style={{ padding: '10px 14px' }}><span className={'badge ' + (QUOTE_STATUS_COLOR[q.status] || 'badge-gray')}>{q.status}</span></td>
+                      <td style={{ padding: '10px 8px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button onClick={() => openViewDoc('qt', q)} title="استعراض"
+                            style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                            <Eye style={{ width: '13px', height: '13px' }} />
+                          </button>
+                          <button onClick={() => { setEditQuote(q); setShowQuoteModal(true) }} className="btn btn-ghost btn-xs">
+                            <Pencil style={{ width: '13px', height: '13px' }} /> تعديل
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1932,10 +2029,72 @@ export default function InvoicesPage() {
           onSave={() => { setShowCreditModal(false); setCreditInvoice(null); loadAll() }} />
       )}
       {showQuoteModal && (
-        <QuotationModal clients={clients} projects={projects} company={company}
+        <QuotationModal quote={editQuote} clients={clients} projects={projects} company={company}
           tenantId={tenant!.id}
-          onClose={() => setShowQuoteModal(false)}
-          onSave={() => { setShowQuoteModal(false); loadAll() }} />
+          onClose={() => { setShowQuoteModal(false); setEditQuote(null) }}
+          onSave={() => { setShowQuoteModal(false); setEditQuote(null); loadAll() }} />
+      )}
+
+      {/* ══ مودال استعراض إشعار / عرض سعر ══ */}
+      {viewDoc && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setViewDoc(null)}>
+          <div className="modal-box" style={{ maxWidth: '640px', maxHeight: '85vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                  {viewDoc.kind === 'cn' ? '🔻 إشعار دائن' : '📄 عرض سعر'} — {viewDoc.kind === 'cn' ? viewDoc.doc.note_number : viewDoc.doc.quote_number}
+                </h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  {viewDoc.doc.client_name} · {viewDoc.kind === 'cn' ? viewDoc.doc.note_date : viewDoc.doc.quote_date} · {viewDoc.doc.status}
+                </p>
+              </div>
+              <button onClick={() => setViewDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
+              {viewDoc.kind === 'cn' && (viewDoc.doc.reason || viewDoc.doc.original_invoice_id) && (
+                <div style={{ padding: '10px 16px', background: '#fef2f2', fontSize: '0.78rem', color: '#b91c1c', borderBottom: '1px solid #fecaca' }}>
+                  {viewDoc.doc.reason && <>السبب: {viewDoc.doc.reason}</>}
+                </div>
+              )}
+              {viewDoc.kind === 'qt' && viewDoc.doc.valid_until && (
+                <div style={{ padding: '10px 16px', background: '#f5f3ff', fontSize: '0.78rem', color: '#5b21b6', borderBottom: '1px solid #e9d5ff' }}>
+                  صالح حتى: {viewDoc.doc.valid_until}
+                </div>
+              )}
+              {viewDoc.loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['البند', 'الكمية', 'الوحدة', 'سعر الوحدة', 'الإجمالي'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewDoc.items.map((it: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                        <td style={{ padding: '8px 14px' }}>{it.description}</td>
+                        <td style={{ padding: '8px 14px' }}>{Number(it.quantity).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', color: 'var(--text3)' }}>{it.unit}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }}>{Number(it.unit_price).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 600, direction: 'ltr', textAlign: 'left' }}>{Number(it.total).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ padding: '14px 16px', borderTop: '2px solid var(--border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي قبل الضريبة</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDoc.doc.subtotal).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الضريبة ({Number(viewDoc.doc.vat_rate)}%)</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDoc.doc.vat_amount).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.95rem', color: viewDoc.kind === 'cn' ? '#c81e1e' : '#7c3aed' }}><span>الإجمالي</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDoc.doc.total_amount).toLocaleString()} ر.س</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       {showClientModal && (
         <ClientModal client={editClient} tenantId={tenant!.id}

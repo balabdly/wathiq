@@ -109,6 +109,22 @@ export async function confirmCashSpendById(tenantId: string, cashAccountId: numb
 }
 
 // ════════════════════════════════════
+// الفترات المحاسبية
+// ════════════════════════════════════
+/** هل الفترة الشهرية لتاريخ معين مفتوحة للترحيل؟ (الفترة مفتوحة ما لم يوجد صف يقفلها) */
+export async function isPeriodOpen(tenantId: string, date: string): Promise<boolean> {
+  const d = new Date(date)
+  const { data } = await supabase.from('finance_fiscal_periods')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('year', d.getFullYear())
+    .eq('month', d.getMonth() + 1)
+    .eq('status', 'مقفلة')
+    .maybeSingle()
+  return !data
+}
+
+// ════════════════════════════════════
 // الدالة الرئيسية
 // ════════════════════════════════════
 export async function createJournalEntry(
@@ -158,6 +174,14 @@ export async function createJournalEntry(
   // تحقق التوازن (تسامح 0.01 للكسور)
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
     console.error('[journal] قيد غير متوازن:', { totalDebit, totalCredit })
+    return null
+  }
+
+  // ══ 1.5 فحص الفترة المحاسبية — رسالة واضحة قبل الوصول لحارس قاعدة البيانات ══
+  if (!(await isPeriodOpen(tenantId, date))) {
+    const d = new Date(date)
+    const { default: toast } = await import('react-hot-toast')
+    toast.error(`🔒 الفترة المحاسبية ${d.getMonth() + 1}/${d.getFullYear()} مقفلة — لا يمكن الترحيل فيها. افتحها من المحاسبة ← الفترات المحاسبية`, { duration: 7000 })
     return null
   }
 

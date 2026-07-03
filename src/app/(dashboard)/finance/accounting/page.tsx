@@ -36,6 +36,7 @@ type JournalLine = {
 }
 type AccountLedgerLine = {
   id: number
+  entry_id: number
   entry_number: string
   entry_date: string
   description: string
@@ -334,6 +335,18 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
 }) {
   const [lines, setLines]     = useState<AccountLedgerLine[]>([])
   const [loading, setLoading] = useState(true)
+  // ══ عرض القيد كاملاً في نافذة منفصلة (بدل التنقل لصفحة المصدر) ══
+  const [viewEntry, setViewEntry] = useState<{ header: any; lines: any[]; loading: boolean } | null>(null)
+
+  async function openEntry(entryId: number, header: AccountLedgerLine) {
+    setViewEntry({ header, lines: [], loading: true })
+    const { data } = await supabase
+      .from('finance_journal_lines')
+      .select('debit, credit, description, account:finance_accounts(code, name)')
+      .eq('entry_id', entryId)
+      .order('debit', { ascending: false })
+    setViewEntry({ header, lines: data || [], loading: false })
+  }
 
   useEffect(() => { loadLines() }, [account.id])
 
@@ -360,6 +373,7 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
         balance += debit - credit
         return {
           id:              l.id,
+          entry_id:        entry.id,
           entry_number:    entry.entry_number,
           entry_date:      entry.entry_date,
           description:     l.description || entry.description,
@@ -469,17 +483,12 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
                       <div style={{ fontSize: '0.8rem', color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {line.description}
                       </div>
-                      {line.reference_type && line.reference_id && (
-                        <Link href={
-                          line.reference_type === 'فاتورة' ? `/finance/invoices/${line.reference_id}` :
-                          line.reference_type === 'قبض' || line.reference_type === 'صرف' ? `/finance/treasury` :
-                          line.reference_type === 'مصروف' ? `/finance/expenses` :
-                          line.reference_type === 'عهدة' ? `/finance/treasury` : '#'
-                        }
-                          style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px', display: 'inline-flex', alignItems: 'center', gap: '2px', textDecoration: 'none' }}
-                          title="الانتقال للمصدر">
+                      {line.reference_type && (
+                        <button type="button" onClick={() => openEntry(line.entry_id, line)}
+                          style={{ fontSize: '0.68rem', color: '#1a56db', marginTop: '1px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          title="عرض القيد كاملاً">
                           {line.reference_type} <ExternalLink style={{ width: '10px', height: '10px' }} />
-                        </Link>
+                        </button>
                       )}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
@@ -537,6 +546,59 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
           to   { transform: translateX(0);     opacity: 1; }
         }
       `}</style>
+
+      {/* ══ مودال عرض القيد كاملاً ══ */}
+      {viewEntry && (
+        <div onClick={e => e.target === e.currentTarget && setViewEntry(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: 'white', borderRadius: '16px', width: 'min(640px, 94vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 50px rgba(0,0,0,0.25)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>📒 قيد {viewEntry.header.entry_number}</h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  {viewEntry.header.entry_date} · {viewEntry.header.reference_type || '—'} · {viewEntry.header.entry_source === 'يدوي' ? '✏️ يدوي' : '⚙️ آلي'}
+                </p>
+              </div>
+              <button onClick={() => setViewEntry(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto' }}>
+              {viewEntry.loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['الحساب', 'البيان', 'مدين', 'دائن'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewEntry.lines.map((l: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                        <td style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontFamily: 'monospace', color: '#1a56db', fontWeight: 600, marginLeft: '6px' }}>{l.account?.code}</span>
+                          {l.account?.name}
+                        </td>
+                        <td style={{ padding: '8px 14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text3)' }}>{l.description || '—'}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#1a56db', fontWeight: 600, direction: 'ltr', textAlign: 'left' }}>{Number(l.debit) > 0 ? Number(l.debit).toLocaleString() : '—'}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#c81e1e', fontWeight: 600, direction: 'ltr', textAlign: 'left' }}>{Number(l.credit) > 0 ? Number(l.credit).toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td colSpan={2} style={{ padding: '8px 14px' }}>الإجمالي</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#1a56db', direction: 'ltr', textAlign: 'left' }}>{viewEntry.lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'monospace', color: '#c81e1e', direction: 'ltr', textAlign: 'left' }}>{viewEntry.lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0).toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -1019,24 +1081,24 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
                     <td style={{ padding: '6px 8px' }}>
                       <input type="number" min="0" value={line.debit || ''} onChange={e => updateLine(idx, 'debit', e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.debit)) {
+                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.debit) && !Number(line.credit)) {
                             const diff = Math.round((totalCredit - totalDebit) * 100) / 100
                             if (diff > 0) updateLine(idx, 'debit', String(diff))
                           }
                         }}
                         style={{ width: '100px', padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.debit) > 0 ? '#eff6ff' : 'white' }}
-                        placeholder={!Number(line.debit) && Math.round((totalCredit - totalDebit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalCredit - totalDebit) * 100) / 100).toLocaleString()}` : '0'} />
+                        placeholder={!Number(line.debit) && !Number(line.credit) && Math.round((totalCredit - totalDebit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalCredit - totalDebit) * 100) / 100).toLocaleString()}` : '0'} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <input type="number" min="0" value={line.credit || ''} onChange={e => updateLine(idx, 'credit', e.target.value)}
                         onKeyDown={e => {
-                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.credit)) {
+                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.credit) && !Number(line.debit)) {
                             const diff = Math.round((totalDebit - totalCredit) * 100) / 100
                             if (diff > 0) updateLine(idx, 'credit', String(diff))
                           }
                         }}
                         style={{ width: '100px', padding: '5px 8px', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.credit) > 0 ? '#fef2f2' : 'white' }}
-                        placeholder={!Number(line.credit) && Math.round((totalDebit - totalCredit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalDebit - totalCredit) * 100) / 100).toLocaleString()}` : '0'} />
+                        placeholder={!Number(line.credit) && !Number(line.debit) && Math.round((totalDebit - totalCredit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalDebit - totalCredit) * 100) / 100).toLocaleString()}` : '0'} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <button type="button" onClick={() => removeLine(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
@@ -1386,16 +1448,279 @@ function StandardsGuide() {
 }
 
 // ════════════════════════════════════════
+// تاب الفترات المحاسبية — إقفال وفتح الفترات الشهرية
+// ════════════════════════════════════════
+const MONTH_NAMES = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+
+function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
+  const currentYear  = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1
+  const [year, setYear]         = useState(currentYear)
+  const [closed, setClosed]     = useState<Record<number, { closed_at?: string; closed_by?: string }>>({})
+  const [counts, setCounts]     = useState<Record<number, number>>({})
+  const [loading, setLoading]   = useState(true)
+  const [working, setWorking]   = useState<number | null>(null)
+  const [yearCloseEntry, setYearCloseEntry] = useState<string | null>(null)   // رقم قيد الإقفال السنوي إن وجد
+  const [closingYear, setClosingYear]       = useState(false)
+
+  useEffect(() => { load() }, [year])
+
+  async function load() {
+    setLoading(true)
+    const [{ data: periods }, { data: entries }, { data: yearClose }] = await Promise.all([
+      supabase.from('finance_fiscal_periods')
+        .select('month, status, closed_at, closed_by')
+        .eq('tenant_id', tenantId).eq('year', year).eq('status', 'مقفلة'),
+      supabase.from('finance_journal_entries')
+        .select('entry_date')
+        .eq('tenant_id', tenantId)
+        .gte('entry_date', `${year}-01-01`).lte('entry_date', `${year}-12-31`),
+      supabase.from('finance_journal_entries')
+        .select('entry_number')
+        .eq('tenant_id', tenantId).eq('reference_type', 'إقفال سنوي')
+        .gte('entry_date', `${year}-01-01`).lte('entry_date', `${year}-12-31`)
+        .maybeSingle(),
+    ])
+    setYearCloseEntry(yearClose?.entry_number || null)
+    const cl: Record<number, any> = {}
+    ;(periods || []).forEach((p: any) => { cl[p.month] = { closed_at: p.closed_at, closed_by: p.closed_by } })
+    setClosed(cl)
+    const cn: Record<number, number> = {}
+    ;(entries || []).forEach((e: any) => {
+      const m = new Date(e.entry_date).getMonth() + 1
+      cn[m] = (cn[m] || 0) + 1
+    })
+    setCounts(cn)
+    setLoading(false)
+  }
+
+  async function toggleMonth(month: number) {
+    const isClosed = !!closed[month]
+    if (isClosed && yearCloseEntry) {
+      toast.error(`⛔ السنة ${year} مقفلة بقيد إقفال سنوي (${yearCloseEntry}) — فتح فتراتها يتطلب أولاً عكس قيد الإقفال من صفحة القيود`, { duration: 7000 })
+      return
+    }
+    if (isClosed) {
+      if (!confirm(`فتح فترة ${MONTH_NAMES[month - 1]} ${year}؟\nسيصبح الترحيل والتعديل فيها ممكناً مرة أخرى.`)) return
+      setWorking(month)
+      await supabase.from('finance_fiscal_periods').delete()
+        .eq('tenant_id', tenantId).eq('year', year).eq('month', month)
+      toast.success(`🔓 فُتحت فترة ${MONTH_NAMES[month - 1]} ${year}`)
+    } else {
+      if (!confirm(`إقفال فترة ${MONTH_NAMES[month - 1]} ${year}؟\nبعد الإقفال لن يمكن ترحيل أو تعديل أو حذف أي قيد بتاريخ يقع فيها — حتى تُفتح مرة أخرى.`)) return
+      setWorking(month)
+      const { error } = await supabase.from('finance_fiscal_periods').insert({
+        tenant_id: tenantId, year, month, status: 'مقفلة',
+      })
+      if (error) { toast.error('خطأ: ' + error.message); setWorking(null); return }
+      toast.success(`🔒 أُقفلت فترة ${MONTH_NAMES[month - 1]} ${year}`)
+    }
+    setWorking(null)
+    load()
+  }
+
+  // ══ الإقفال السنوي: تصفير الإيرادات والمصروفات وترحيل صافي الربح للأرباح المحتجزة (3200) ══
+  async function closeFiscalYear() {
+    if (yearCloseEntry) { toast.error(`السنة مقفلة مسبقاً بالقيد ${yearCloseEntry}`); return }
+    if (!confirm(
+      `🏁 إقفال السنة المالية ${year}؟\n\n` +
+      `سيتم:\n` +
+      `1) تصفير كل حسابات الإيرادات والمصروفات بقيد إقفال بتاريخ 31/12/${year}\n` +
+      `2) ترحيل صافي الربح/الخسارة إلى الأرباح المحتجزة (3200)\n` +
+      `3) إقفال كل فترات السنة الشهرية نهائياً\n\n` +
+      `تأكد من مراجعة قيود السنة وإصدار قوائمها قبل المتابعة.`
+    )) return
+
+    setClosingYear(true)
+    try {
+      // 1) قيود السنة المعتمدة
+      const { data: entries } = await supabase.from('finance_journal_entries')
+        .select('id')
+        .eq('tenant_id', tenantId).eq('status', 'معتمد')
+        .gte('entry_date', `${year}-01-01`).lte('entry_date', `${year}-12-31`)
+      const ids = (entries || []).map((e: any) => e.id)
+
+      // 2) أرصدة حسابات الإيرادات والمصروفات ضمن السنة
+      const byCode: Record<string, { code: string; name: string; net: number }> = {}
+      if (ids.length) {
+        const { data: jls } = await supabase.from('finance_journal_lines')
+          .select('debit, credit, account:finance_accounts(code, name, account_type)')
+          .in('entry_id', ids)
+        ;(jls || []).forEach((l: any) => {
+          const acc = l.account
+          if (!acc || (acc.account_type !== 'إيرادات' && acc.account_type !== 'مصروفات')) return
+          if (!byCode[acc.code]) byCode[acc.code] = { code: acc.code, name: acc.name, net: 0 }
+          byCode[acc.code].net += Number(l.debit || 0) - Number(l.credit || 0)
+        })
+      }
+
+      // 3) بناء سطور الإقفال: عكس صافي كل حساب لتصفيره
+      const closingLines = Object.values(byCode)
+        .filter(a => Math.abs(a.net) > 0.009)
+        .map(a => ({
+          accountCode: a.code,
+          debit:  a.net < 0 ? Math.round(-a.net * 100) / 100 : 0,
+          credit: a.net > 0 ? Math.round( a.net * 100) / 100 : 0,
+          description: `إقفال ${a.name} — سنة ${year}`,
+        }))
+
+      let entryNo: string | null = null
+      let netProfit = 0
+
+      if (closingLines.length > 0) {
+        const sumD = closingLines.reduce((s, l) => s + l.debit, 0)
+        const sumC = closingLines.reduce((s, l) => s + l.credit, 0)
+        netProfit = Math.round((sumD - sumC) * 100) / 100   // موجب = ربح
+        if (Math.abs(netProfit) > 0.009) {
+          closingLines.push({
+            accountCode: '3200',
+            debit:  netProfit < 0 ? -netProfit : 0,
+            credit: netProfit > 0 ?  netProfit : 0,
+            description: netProfit > 0 ? `صافي ربح سنة ${year}` : `صافي خسارة سنة ${year}`,
+          })
+        }
+
+        // 4) فتح ديسمبر مؤقتاً إن كان مقفلاً حتى يمر قيد الإقفال
+        if (closed[12]) {
+          await supabase.from('finance_fiscal_periods').delete()
+            .eq('tenant_id', tenantId).eq('year', year).eq('month', 12)
+        }
+
+        const result = await createJournalEntry({
+          tenantId,
+          date: `${year}-12-31`,
+          description: `قيد الإقفال السنوي — السنة المالية ${year}`,
+          referenceType: 'إقفال سنوي',
+          source: 'آلي',
+          lines: closingLines,
+        })
+        if (!result) { toast.error('تعذر ترحيل قيد الإقفال'); setClosingYear(false); load(); return }
+        entryNo = result.entryNumber
+      }
+
+      // 5) إقفال كل فترات السنة
+      await supabase.from('finance_fiscal_periods').upsert(
+        Array.from({ length: 12 }, (_, i) => ({ tenant_id: tenantId, year, month: i + 1, status: 'مقفلة' })),
+        { onConflict: 'tenant_id,year,month' }
+      )
+
+      toast.success(
+        entryNo
+          ? `🏁 أُقفلت السنة ${year} — القيد ${entryNo}${Math.abs(netProfit) > 0.009 ? ` · صافي ${netProfit > 0 ? 'الربح' : 'الخسارة'}: ${Math.abs(netProfit).toLocaleString()} ر.س → الأرباح المحتجزة` : ''}`
+          : `🏁 أُقفلت فترات السنة ${year} — لا توجد إيرادات أو مصروفات تتطلب قيد إقفال`,
+        { duration: 9000 }
+      )
+    } catch (err: any) {
+      toast.error('خطأ في الإقفال السنوي: ' + err.message)
+    }
+    setClosingYear(false)
+    load()
+  }
+
+  const closedCount = Object.keys(closed).length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* ══ بطاقة الإقفال السنوي ══ */}
+      <div className="card" style={{ padding: '16px 20px', borderRight: '4px solid ' + (yearCloseEntry ? '#c81e1e' : '#7c3aed'), display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>
+            {yearCloseEntry ? `🏁 السنة المالية ${year} مقفلة نهائياً` : `الإقفال السنوي — ${year}`}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '3px' }}>
+            {yearCloseEntry
+              ? `قيد الإقفال: ${yearCloseEntry} — صُفّرت حسابات الإيرادات والمصروفات ورُحّل الصافي للأرباح المحتجزة`
+              : 'يصفّر الإيرادات والمصروفات ويرحّل صافي الربح للأرباح المحتجزة (3200) ثم يقفل كل الفترات'}
+          </div>
+        </div>
+        {!yearCloseEntry && (
+          <button onClick={closeFiscalYear} disabled={closingYear}
+            style={{ padding: '8px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', background: '#7c3aed', color: 'white' }}>
+            {closingYear ? 'جاري الإقفال...' : `🏁 إقفال السنة المالية ${year}`}
+          </button>
+        )}
+      </div>
+
+      {/* شريط السنة */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={() => setYear(y => y - 1)} className="btn btn-ghost" style={{ padding: '6px 12px' }}>‹</button>
+          <div style={{ fontWeight: 800, fontSize: '1.05rem', minWidth: '70px', textAlign: 'center' }}>{year}</div>
+          <button onClick={() => setYear(y => y + 1)} className="btn btn-ghost" style={{ padding: '6px 12px' }}>›</button>
+        </div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>
+          🔒 {closedCount} فترة مقفلة · 🔓 {12 - closedCount} مفتوحة
+        </div>
+      </div>
+
+      <div style={{ padding: '10px 14px', background: '#fef9ec', borderRadius: '10px', border: '1px solid #fde68a', fontSize: '0.78rem', color: '#92400e' }}>
+        ℹ️ إقفال الفترة يمنع نهائياً ترحيل أو تعديل أو حذف أي قيد بتاريخ يقع فيها — الحماية على مستوى قاعدة البيانات نفسها وتشمل كل الوحدات (فواتير، مصروفات، خزينة...). أقفل الشهر بعد مراجعة قيوده وإصدار تقاريره.
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}>
+          <div style={{ width: '28px', height: '28px', border: '3px solid var(--border)', borderTopColor: '#c81e1e', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+          {MONTH_NAMES.map((name, i) => {
+            const month     = i + 1
+            const isClosed  = !!closed[month]
+            const isCurrent = year === currentYear && month === currentMonth
+            const isFuture  = year > currentYear || (year === currentYear && month > currentMonth)
+            return (
+              <div key={month} className="card" style={{
+                padding: '16px',
+                borderTop: '3px solid ' + (isClosed ? '#c81e1e' : isCurrent ? '#0ea77b' : 'var(--border)'),
+                opacity: isFuture && !isClosed ? 0.6 : 1,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {isClosed ? '🔒' : '🔓'} {name}
+                      {isCurrent && <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '10px', background: '#ecfdf5', color: '#0ea77b', fontWeight: 700 }}>الحالي</span>}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>
+                      {counts[month] ? `${counts[month]} قيد` : 'لا قيود'}
+                    </div>
+                    {isClosed && closed[month].closed_at && (
+                      <div style={{ fontSize: '0.66rem', color: '#c81e1e', marginTop: '3px' }}>
+                        أُقفلت {new Date(closed[month].closed_at!).toLocaleDateString('en-GB')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => toggleMonth(month)} disabled={working === month}
+                  style={{
+                    marginTop: '12px', width: '100%', padding: '7px', borderRadius: '8px', cursor: 'pointer',
+                    fontSize: '0.78rem', fontWeight: 700, transition: 'all 0.15s',
+                    border: '1px solid ' + (isClosed ? '#bbf7d0' : '#fecaca'),
+                    background: isClosed ? '#ecfdf5' : '#fef2f2',
+                    color: isClosed ? '#0ea77b' : '#c81e1e',
+                  }}>
+                  {working === month ? '...' : isClosed ? '🔓 فتح الفترة' : '🔒 إقفال الفترة'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════
 // الصفحة الرئيسية
 // ════════════════════════════════════════
 export default function FinanceAccountingPage() {
   const { tenant } = useStore()
-  const [activeTab, setActiveTab] = useState<'chart' | 'journal' | 'costcenters' | 'standards'>('chart')
+  const [activeTab, setActiveTab] = useState<'chart' | 'journal' | 'costcenters' | 'periods' | 'standards'>('chart')
 
   const TABS = [
     { id: 'chart',       label: '📊 شجرة الحسابات',  color: '#1a56db' },
     { id: 'journal',     label: '📒 القيود اليومية',  color: '#0ea77b' },
     { id: 'costcenters', label: '🎯 مراكز التكلفة',   color: '#e6820a' },
+    { id: 'periods',     label: '🔒 الفترات المحاسبية', color: '#c81e1e' },
     { id: 'standards',   label: '📋 دليل المعايير',   color: '#7c3aed' },
   ]
 
@@ -1428,6 +1753,7 @@ export default function FinanceAccountingPage() {
           {activeTab === 'chart'       && <ChartOfAccounts tenantId={tenant.id} />}
           {activeTab === 'journal'     && <JournalEntriesTab tenantId={tenant.id} />}
           {activeTab === 'costcenters' && <CostCentersTab tenantId={tenant.id} />}
+          {activeTab === 'periods'     && <FiscalPeriodsTab tenantId={tenant.id} />}
           {activeTab === 'standards'   && <StandardsGuide />}
         </>
       )}
