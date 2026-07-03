@@ -1018,11 +1018,25 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <input type="number" min="0" value={line.debit || ''} onChange={e => updateLine(idx, 'debit', e.target.value)}
-                        style={{ width: '100px', padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.debit) > 0 ? '#eff6ff' : 'white' }} placeholder="0" />
+                        onKeyDown={e => {
+                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.debit)) {
+                            const diff = Math.round((totalCredit - totalDebit) * 100) / 100
+                            if (diff > 0) updateLine(idx, 'debit', String(diff))
+                          }
+                        }}
+                        style={{ width: '100px', padding: '5px 8px', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.debit) > 0 ? '#eff6ff' : 'white' }}
+                        placeholder={!Number(line.debit) && Math.round((totalCredit - totalDebit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalCredit - totalDebit) * 100) / 100).toLocaleString()}` : '0'} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <input type="number" min="0" value={line.credit || ''} onChange={e => updateLine(idx, 'credit', e.target.value)}
-                        style={{ width: '100px', padding: '5px 8px', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.credit) > 0 ? '#fef2f2' : 'white' }} placeholder="0" />
+                        onKeyDown={e => {
+                          if (e.key === 'Tab' && !e.shiftKey && !Number(line.credit)) {
+                            const diff = Math.round((totalDebit - totalCredit) * 100) / 100
+                            if (diff > 0) updateLine(idx, 'credit', String(diff))
+                          }
+                        }}
+                        style={{ width: '100px', padding: '5px 8px', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '0.8rem', direction: 'ltr', background: Number(line.credit) > 0 ? '#fef2f2' : 'white' }}
+                        placeholder={!Number(line.credit) && Math.round((totalDebit - totalCredit) * 100) / 100 > 0 ? `Tab ⇥ ${(Math.round((totalDebit - totalCredit) * 100) / 100).toLocaleString()}` : '0'} />
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <button type="button" onClick={() => removeLine(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>

@@ -6,6 +6,8 @@ import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, Ro
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry } from '@/lib/journal'
+import AttachmentUploader from '@/components/finance/AttachmentUploader'
+import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
 
 type Vendor = {
   id: number; tenant_id: string; name: string; name_en?: string
@@ -362,6 +364,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
   const [saving, setSaving] = useState(false)
   const invStatusRef = useRef('معتمدة')
   const [items, setItems] = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
+  const [attachments, setAttachments] = useState<FinanceAttachment[]>([])
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     invoice_number: invoice?.invoice_number || '', invoice_date: invoice?.invoice_date || today,
@@ -372,7 +375,10 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
   useEffect(() => {
-    if (invoice) loadItems()
+    if (invoice) {
+      loadItems()
+      loadAttachments(tenantId, 'فاتورة مورد', invoice.id).then(setAttachments)
+    }
     else {
       generateNumber()
       if (convertFromPO) {
@@ -442,6 +448,8 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     if (validItems.length > 0) {
       await supabase.from('finance_vendor_invoice_items').insert(validItems.map(i => ({ invoice_id: invId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
+    // ══ حفظ المرفقات ══
+    if (invId) await saveAttachments(tenantId, 'فاتورة مورد', invId, attachments)
     if (payload.status === 'معتمدة' && invId) {
       const debitAccountCode = payload.delivery_to === 'مستودع' ? '1130' : payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') : '5120'
       await createJournalEntry({ tenantId, date: payload.invoice_date, description: `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: invId, source: 'آلي',
@@ -503,6 +511,8 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
             </div>
             <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
           </div>
+          {/* المرفقات */}
+          <AttachmentUploader value={attachments} onChange={setAttachments} label="مرفقات الفاتورة (PDF / صور)" />
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>

@@ -157,6 +157,9 @@ export default function ReportsFinancePage() {
   const [compareResults, setCompareResults] = useState<any[]>([])
   const [compareSummary, setCompareSummary] = useState<any>(null)
 
+  // ── تفاصيل الحساب (Drill-down) ──
+  const [drill, setDrill] = useState<{ acc: any; rows: any[]; loading: boolean } | null>(null)
+
   // حساب تواريخ فترة المقارنة تلقائياً
   function getCompareDates(isBalanceSheet = false): { from: string; to: string; label: string } {
     if (isBalanceSheet) {
@@ -215,6 +218,40 @@ export default function ReportsFinancePage() {
       supabase.from('finance_clients').select('id, name').eq('tenant_id', tenant.id).order('name'),
     ]).then(([a, c]) => { setAccounts(a.data || []); setClients(c.data || []); setLoaded(true) })
   }, [tenant?.id])
+
+  // ── تفاصيل حساب: سطور القيود المكوّنة للرقم ضمن نفس الفترة ──
+  async function openDrill(acc: any) {
+    if (!tenant) return
+    setDrill({ acc, rows: [], loading: true })
+
+    const { data: entries } = await supabase.from('finance_journal_entries')
+      .select('id, entry_number, entry_date, description, reference_type')
+      .eq('tenant_id', tenant.id)
+      .gte('entry_date', fDateFrom).lte('entry_date', fDateTo)
+
+    const entryMap: Record<number, any> = {}
+    ;(entries || []).forEach((e: any) => { entryMap[e.id] = e })
+    const ids = (entries || []).map((e: any) => e.id)
+
+    let rows: any[] = []
+    if (ids.length) {
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('entry_id, debit, credit, description')
+        .eq('account_id', acc.id).in('entry_id', ids)
+      rows = (lines || []).map((l: any) => {
+        const e = entryMap[l.entry_id]
+        return {
+          date:        e?.entry_date,
+          entry_no:    e?.entry_number,
+          ref_type:    e?.reference_type,
+          description: l.description || e?.description,
+          debit:       Number(l.debit  || 0),
+          credit:      Number(l.credit || 0),
+        }
+      }).sort((a, b) => (a.date < b.date ? -1 : 1))
+    }
+    setDrill({ acc, rows, loading: false })
+  }
 
   async function runReport() {
     if (!tenant || !selected) return
@@ -1064,9 +1101,12 @@ export default function ReportsFinancePage() {
                             const cVal    = cMap[r.id] || 0
                             const change  = fmtChange(r.balance, cVal, isExp)
                             return (
-                              <div key={i} style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', alignItems: 'center' }}>
+                              <div key={i} onClick={() => openDrill(r)} title="اضغط لعرض تفاصيل الرقم"
+                                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', borderBottom: '1px solid #f9fafb', fontSize: '0.82rem', alignItems: 'center', cursor: 'pointer' }}>
                                 <span style={{ color: '#374151' }}>{r.code} — {r.name}</span>
-                                <span style={{ fontFamily: 'monospace', fontWeight: 600, textAlign: 'center' }}>{fmt(r.balance)}</span>
+                                <span style={{ fontFamily: 'monospace', fontWeight: 600, textAlign: 'center', color: '#1a56db', textDecoration: 'underline dotted' }}>{fmt(r.balance)}</span>
                                 {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', textAlign: 'center', color: '#9ca3af' }}>{cVal ? fmt(cVal) : '—'}</span>}
                                 {showCompare && compareResults.length && (
                                   <span style={{ fontFamily: 'monospace', textAlign: 'center', color: change.color, fontWeight: 600, fontSize: '0.78rem' }}>
@@ -1628,6 +1668,61 @@ export default function ReportsFinancePage() {
               <div style={{ fontWeight: 600 }}>اضغط "عرض التقرير" لتحميل البيانات</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══ مودال تفاصيل الحساب (Drill-down) ══ */}
+      {drill && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setDrill(null)}>
+          <div className="modal-box" style={{ maxWidth: '720px', maxHeight: '85vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                  📒 {drill.acc.code} — {drill.acc.name}
+                </h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  الحركات من {fDateFrom} إلى {fDateTo}
+                </p>
+              </div>
+              <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
+              {drill.loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
+              ) : drill.rows.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>لا توجد حركات ضمن الفترة</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['التاريخ', 'رقم القيد', 'البيان', 'المرجع', 'مدين', 'دائن'].map(h => (
+                        <th key={h} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drill.rows.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                        <td style={{ padding: '7px 12px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{r.date}</td>
+                        <td style={{ padding: '7px 12px', fontFamily: 'monospace', color: '#0ea77b', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.entry_no}</td>
+                        <td style={{ padding: '7px 12px', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</td>
+                        <td style={{ padding: '7px 12px', color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{r.ref_type || '—'}</td>
+                        <td style={{ padding: '7px 12px', fontFamily: 'monospace', color: '#1a56db', direction: 'ltr', textAlign: 'left' }}>{r.debit ? r.debit.toLocaleString() : '—'}</td>
+                        <td style={{ padding: '7px 12px', fontFamily: 'monospace', color: '#c81e1e', direction: 'ltr', textAlign: 'left' }}>{r.credit ? r.credit.toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                      <td colSpan={4} style={{ padding: '8px 12px' }}>الإجمالي</td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: '#1a56db', direction: 'ltr', textAlign: 'left' }}>{drill.rows.reduce((s, r) => s + r.debit, 0).toLocaleString()}</td>
+                      <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: '#c81e1e', direction: 'ltr', textAlign: 'left' }}>{drill.rows.reduce((s, r) => s + r.credit, 0).toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
