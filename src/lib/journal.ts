@@ -40,6 +40,75 @@ export type JournalResult = {
 } | null
 
 // ════════════════════════════════════
+// ترقيم المستندات — ذرّي عبر قاعدة البيانات
+// ════════════════════════════════════
+/**
+ * توليد رقم مستند تسلسلي آمن (JE / INV / VINV / CN / QT / PO / CUS / LN / TRF ...)
+ * يعتمد على دالة SQL next_doc_number() — UPSERT ذرّي على finance_doc_sequences
+ * يضمن: لا تكرار مع التزامن، لا فجوات بسبب الحذف، تسلسل متوافق مع ZATCA
+ */
+export async function nextDocNumber(tenantId: string, docType: string, prefix: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('next_doc_number', {
+    p_tenant_id: tenantId,
+    p_doc_type:  docType,
+    p_prefix:    prefix,
+  })
+  if (error || !data) {
+    console.error('[docNumber] فشل توليد الرقم:', error?.message)
+    return null
+  }
+  return data as string
+}
+
+// ════════════════════════════════════
+// ضابط الرصيد النقدي قبل الصرف
+// ════════════════════════════════════
+/** رصيد حساب نقدي من دفتر الأستاذ (القيود المعتمدة) — مصدر الحقيقة الوحيد */
+export async function getCashLedgerBalance(tenantId: string, cashAccountId: number): Promise<number | null> {
+  const { data, error } = await supabase.rpc('get_cash_account_balances', { p_tenant_id: tenantId })
+  if (error || !data) return null
+  const row = (data as any[]).find(b => Number(b.cash_account_id) === Number(cashAccountId))
+  return row ? Number(row.ledger_balance) : 0
+}
+
+/**
+ * ضابط الصرف من حساب نقدي — الممارسة المحاسبية القياسية:
+ * - صندوق نقدي: منع نهائي إذا الرصيد لا يكفي (لا يوجد كاش سالب فيزيائياً)
+ * - حساب بنكي: تحذير مع سماح (سحب على المكشوف / Overdraft — يُعاد تصنيفه كالتزام في القوائم)
+ * ترجع true للسماح بإتمام العملية
+ */
+export async function confirmCashSpend(
+  tenantId: string,
+  account: { id: number; name: string; account_type: string },
+  amount: number
+): Promise<boolean> {
+  const balance = await getCashLedgerBalance(tenantId, account.id)
+  if (balance === null) return true   // تعذر الفحص — لا نعطل العملية
+  if (amount <= balance + 0.001) return true
+
+  const isBox = account.account_type === 'صندوق' || account.account_type === 'نقدية'
+  if (isBox) {
+    const { default: toast } = await import('react-hot-toast')
+    toast.error(`⛔ رصيد الصندوق "${account.name}" الحالي ${balance.toLocaleString()} ر.س لا يكفي لصرف ${amount.toLocaleString()} ر.س — الصندوق لا يقبل رصيداً سالباً`, { duration: 6000 })
+    return false
+  }
+  return confirm(
+    `⚠️ رصيد "${account.name}" الحالي: ${balance.toLocaleString()} ر.س\n` +
+    `صرف ${amount.toLocaleString()} ر.س سيجعل الرصيد سالباً (سحب على المكشوف).\n\n` +
+    `هل تريد المتابعة؟`
+  )
+}
+
+/** نفس ضابط الصرف لكن بمعرّف الحساب فقط — يجلب بياناته بنفسه (للمودالات التي لا تملك قائمة الحسابات) */
+export async function confirmCashSpendById(tenantId: string, cashAccountId: number, amount: number): Promise<boolean> {
+  const { data } = await supabase.from('finance_cash_accounts')
+    .select('id, name, account_type')
+    .eq('id', cashAccountId).single()
+  if (!data) return true
+  return confirmCashSpend(tenantId, data as { id: number; name: string; account_type: string }, amount)
+}
+
+// ════════════════════════════════════
 // الدالة الرئيسية
 // ════════════════════════════════════
 export async function createJournalEntry(
@@ -92,14 +161,13 @@ export async function createJournalEntry(
     return null
   }
 
-  // ══ 2. توليد رقم القيد ══
-  const year = new Date(date).getFullYear()
-  const { count } = await supabase
-    .from('finance_journal_entries')
-    .select('*', { count: 'exact', head: true })
-    .eq('tenant_id', tenantId)
-
-  const entryNumber = `JE-${year}-${String((count || 0) + 1).padStart(4, '0')}`
+  // ══ 2. توليد رقم القيد — ذرّي عبر sequence في قاعدة البيانات ══
+  // لا race conditions ولا تكرار: UPSERT ذرّي على finance_doc_sequences
+  const entryNumber = await nextDocNumber(tenantId, 'JE', 'JE')
+  if (!entryNumber) {
+    console.error('[journal] فشل توليد رقم القيد')
+    return null
+  }
 
   // ══ 3. إدراج رأس القيد ══
   const { data: entry, error: entryError } = await supabase

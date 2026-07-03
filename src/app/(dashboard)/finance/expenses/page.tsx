@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Receipt, ArrowUpRight, ArrowDownRight, BarChart2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, getCashAccountCode, journalExpense } from '@/lib/journal'
+import { createJournalEntry, getCashAccountCode, journalExpense, nextDocNumber, confirmCashSpend, confirmCashSpendById } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
@@ -228,10 +228,15 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
     if (!form.amount || netAmount <= 0) { toast.error('المبلغ مطلوب'); return }
     if (!form.account_id) { toast.error('الحساب المحاسبي إلزامي'); return }
+    // ══ ضابط الرصيد عند الدفع من حساب نقدي (منع للصندوق، تحذير Overdraft للبنك) ══
+    if (!expense?.id && form.cash_account_id && form.cash_account_id.startsWith('cash:')) {
+      const cid = Number(form.cash_account_id.replace('cash:', ''))
+      if (cid && !(await confirmCashSpendById(tenantId, cid, totalAmount))) return
+    }
     setSaving(true)
     try {
-      const { count } = await supabase.from('finance_expenses').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-      const expenseNumber = expense?.expense_number || `EXP-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+      // ══ الرقم النهائي — ذرّي عبر sequence (لا تكرار ولا race conditions) ══
+      const expenseNumber = expense?.expense_number || (await nextDocNumber(tenantId, 'EXP', 'EXP'))!
 
       // الفئة: فقط لمصروفات المشاريع
       const payload: Record<string, any> = {
@@ -499,15 +504,26 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) { toast.error('المبلغ مطلوب'); return }
     if (!form.description.trim()) { toast.error('البيان مطلوب'); return }
+    // ══ ضابط الرصيد قبل سند الصرف ══
+    if (!isReceipt) {
+      const spendAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+      if (spendAcc && !(await confirmCashSpend(tenantId, spendAcc, Number(form.amount)))) return
+    }
     setSaving(true)
+    // ══ الرقم النهائي — ذرّي عند الحفظ (الرقم المعروض معاينة، والمخصص يدوياً يُحترم) ══
+    const docType = isReceipt ? 'RCV' : 'PAY'
+    let finalRefNo = form.reference_no
+    if (new RegExp(`^${docType}-\\d{4}-\\d{4}$`).test(finalRefNo)) {
+      finalRefNo = (await nextDocNumber(tenantId, docType, docType)) || finalRefNo
+    }
     const payload: Record<string, any> = {
       tenant_id: tenantId,
-      transaction_no: form.reference_no,
+      transaction_no: finalRefNo,
       transaction_date: form.transaction_date,
       type, amount: Number(form.amount),
       description: form.description.trim(),
       payment_method: form.payment_method,
-      reference_no: form.reference_no,
+      reference_no: finalRefNo,
       party_name: form.party_name || null,
       status: form.status,
       notes: form.notes || null,

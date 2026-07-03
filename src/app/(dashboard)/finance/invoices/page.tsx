@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink, Package, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode } from '@/lib/journal'
+import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode, nextDocNumber } from '@/lib/journal'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
 
@@ -690,9 +690,17 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
     setSaving(true)
 
     const finalStatus = asDraft ? 'مسودة' : 'مرسلة'
+
+    // ══ الرقم النهائي — ذرّي عند الحفظ (الرقم المعروض معاينة فقط) ══
+    // إذا أدخل المستخدم رقماً مخصصاً خارج النمط التلقائي يُحترم كما هو
+    let finalInvoiceNumber = form.invoice_number.trim()
+    if (!invoice && /^INV-\d{4}-\d{4}$/.test(finalInvoiceNumber)) {
+      finalInvoiceNumber = (await nextDocNumber(tenantId, 'INV', 'INV')) || finalInvoiceNumber
+    }
+
     const payload = {
       tenant_id: tenantId,
-      invoice_number: form.invoice_number.trim(),
+      invoice_number: finalInvoiceNumber,
       invoice_date: form.invoice_date, due_date: form.due_date || null,
       client_id: Number(form.client_id),
       client_name: selectedClient!.name,
@@ -940,16 +948,37 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
     if (!form.reason.trim())               { toast.error('سبب الإشعار مطلوب'); return }
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
 
-    // تحقق أن مبلغ الإشعار لا يتجاوز مبلغ الفاتورة الأصلية
-    if (selectedInvoice && total > Number(selectedInvoice.total_amount)) {
-      toast.error(`مبلغ الإشعار (${total.toLocaleString()} ر.س) يتجاوز مبلغ الفاتورة (${Number(selectedInvoice.total_amount).toLocaleString()} ر.س)`)
-      return
+    // ══ ضابط ERP: مجموع كل الإشعارات على الفاتورة (السابقة + الحالي) لا يتجاوز قيمتها ══
+    // يمنع تكرار حالة الذمم السالبة
+    if (selectedInvoice) {
+      const { data: prevNotes } = await supabase.from('finance_credit_notes')
+        .select('total_amount')
+        .eq('tenant_id', tenantId)
+        .eq('original_invoice_id', Number(form.original_invoice_id))
+      const prevTotal = (prevNotes || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+      const invTotal  = Number(selectedInvoice.total_amount)
+      const available = invTotal - prevTotal
+      if (total > available + 0.01) {
+        toast.error(
+          prevTotal > 0
+            ? `⛔ الفاتورة قيمتها ${invTotal.toLocaleString()} ر.س وعليها إشعارات سابقة بـ ${prevTotal.toLocaleString()} ر.س — المتاح للإشعار: ${Math.max(0, available).toLocaleString()} ر.س فقط`
+            : `⛔ مبلغ الإشعار (${total.toLocaleString()} ر.س) يتجاوز قيمة الفاتورة (${invTotal.toLocaleString()} ر.س)`,
+          { duration: 6000 }
+        )
+        return
+      }
     }
 
     setSaving(true)
 
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalNoteNumber = form.note_number.trim()
+    if (/^CN-\d{4}-\d{4}$/.test(finalNoteNumber)) {
+      finalNoteNumber = (await nextDocNumber(tenantId, 'CN', 'CN')) || finalNoteNumber
+    }
+
     const payload = {
-      tenant_id: tenantId, note_number: form.note_number.trim(),
+      tenant_id: tenantId, note_number: finalNoteNumber,
       note_date: form.note_date, note_type: form.note_type,
       original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null,
       client_id: Number(form.client_id), client_name: selectedClient!.name,
@@ -970,7 +999,7 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
     await createJournalEntry({
         tenantId,
       date: form.note_date,
-      description: `${form.note_type} ${form.note_number} — ${selectedClient!.name}`,
+      description: `${form.note_type} ${finalNoteNumber} — ${selectedClient!.name}`,
       referenceType: form.note_type, referenceId: data.id, source: 'آلي',
       lines: [
         { accountCode: '4110', debit: subtotal,    credit: 0,       description: `${form.note_type} ${form.note_number}` },
@@ -1162,6 +1191,9 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
 }) {
   const [saving, setSaving]             = useState(false)
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>([])
+  // ══ صافي المستحق = قيمة الفاتورة − الإشعارات الدائنة المرتبطة بها ══
+  const [netDue, setNetDue]             = useState<number>(Number(invoice.total_amount))
+  const [cnTotal, setCnTotal]           = useState<number>(0)
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     payment_date:    today,
@@ -1177,6 +1209,15 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
       .select('*, fa:finance_accounts(code)')
       .eq('tenant_id', tenantId).eq('is_active', true).order('name')
       .then(({ data }) => setCashAccounts((data || []).map((a: any) => ({ ...a, account_code: a.fa?.code }))))
+    // خصم الإشعارات الدائنة المرتبطة من المستحق
+    supabase.from('finance_credit_notes')
+      .select('total_amount')
+      .eq('tenant_id', tenantId).eq('original_invoice_id', invoice.id)
+      .then(({ data }) => {
+        const cn = (data || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+        setCnTotal(cn)
+        setNetDue(Math.max(0, Number(invoice.total_amount) - cn))
+      })
   }, [])
 
   const bankAccounts    = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
@@ -1197,6 +1238,11 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
     if (form.payment_method === 'نقداً' && !form.cash_account_id) {
       toast.error('يجب تحديد الصندوق'); return
     }
+    // ══ ضابط ERP: لا تحصيل لفاتورة مغطاة بالكامل بإشعار دائن ══
+    if (netDue <= 0) {
+      toast.error('⛔ هذه الفاتورة مغطاة بالكامل بإشعار دائن — لا يوجد مبلغ مستحق للتحصيل', { duration: 6000 })
+      return
+    }
     setSaving(true)
 
     const accountLabel = selectedAccount
@@ -1211,8 +1257,8 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
       description:   `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${accountLabel})`,
       referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
       lines: [
-        { accountCode: getDebitAccountCode(), debit: Number(invoice.total_amount), credit: 0,                            description: `${form.payment_method} — ${accountLabel}` },
-        { accountCode: '1120',                debit: 0,                            credit: Number(invoice.total_amount), description: `إقفال ذمة ${invoice.client_name}` },
+        { accountCode: getDebitAccountCode(), debit: netDue, credit: 0,      description: `${form.payment_method} — ${accountLabel}` },
+        { accountCode: '1120',                debit: 0,      credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
       ]
     })
 
@@ -1232,7 +1278,12 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: {
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '12px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
             <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>المبلغ المستحق</div>
-            <div style={{ fontWeight: 800, fontSize: '1.4rem', color: '#0ea77b' }}>{Number(invoice.total_amount).toLocaleString()} ر.س</div>
+            <div style={{ fontWeight: 800, fontSize: '1.4rem', color: '#0ea77b' }}>{netDue.toLocaleString()} ر.س</div>
+            {cnTotal > 0 && (
+              <div style={{ fontSize: '0.72rem', color: '#e6820a', marginTop: '2px' }}>
+                (الفاتورة {Number(invoice.total_amount).toLocaleString()} − إشعار دائن {cnTotal.toLocaleString()})
+              </div>
+            )}
             <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{invoice.client_name}</div>
           </div>
           <div>
@@ -1341,8 +1392,14 @@ function QuotationModal({ clients, projects, company, tenantId, onClose, onSave 
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً على الأقل'); return }
     setSaving(true)
 
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalQuoteNumber = form.quote_number
+    if (/^QT-\d{4}-\d{4}$/.test(finalQuoteNumber)) {
+      finalQuoteNumber = (await nextDocNumber(tenantId, 'QT', 'QT')) || finalQuoteNumber
+    }
+
     const payload = {
-      tenant_id: tenantId, quote_number: form.quote_number, quote_date: form.quote_date,
+      tenant_id: tenantId, quote_number: finalQuoteNumber, quote_date: form.quote_date,
       valid_until: form.valid_until || null,
       client_id: Number(form.client_id), client_name: selectedClient!.name,
       client_vat: selectedClient!.vat_number || null,

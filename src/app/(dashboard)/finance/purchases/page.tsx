@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry } from '@/lib/journal'
+import { createJournalEntry, nextDocNumber, confirmCashSpend } from '@/lib/journal'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
 
@@ -266,8 +266,13 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
     if (!form.po_number.trim()) { toast.error('رقم الطلب مطلوب'); return }
     if (!form.vendor_id) { toast.error('يجب اختيار مورد'); return }
     setSaving(true)
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalPoNumber = form.po_number.trim()
+    if (!po && /^PO-\d{4}-\d{4}$/.test(finalPoNumber)) {
+      finalPoNumber = (await nextDocNumber(tenantId, 'PO', 'PO')) || finalPoNumber
+    }
     const payload = {
-      tenant_id: tenantId, po_number: form.po_number.trim(), po_date: form.po_date, expected_date: form.expected_date || null,
+      tenant_id: tenantId, po_number: finalPoNumber, po_date: form.po_date, expected_date: form.expected_date || null,
       vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, vendor_vat: selectedVendor!.vat_number || null,
       project_id: form.project_id ? Number(form.project_id) : null, delivery_to: form.delivery_to,
       warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
@@ -417,8 +422,13 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
     setSaving(true)
     const wasApproved = invoice?.status === 'معتمدة'
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalVinvNumber = form.invoice_number.trim()
+    if (!invoice && /^VINV-\d{4}-\d{4}$/.test(finalVinvNumber)) {
+      finalVinvNumber = (await nextDocNumber(tenantId, 'VINV', 'VINV')) || finalVinvNumber
+    }
     const payload = {
-      tenant_id: tenantId, invoice_number: form.invoice_number.trim(), invoice_date: form.invoice_date, due_date: form.due_date || null,
+      tenant_id: tenantId, invoice_number: finalVinvNumber, invoice_date: form.invoice_date, due_date: form.due_date || null,
       vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, vendor_vat: selectedVendor!.vat_number || null,
       po_id: form.po_id ? Number(form.po_id) : null, project_id: form.project_id ? Number(form.project_id) : null,
       delivery_to: form.delivery_to, warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
@@ -557,7 +567,12 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
     if (!form.vendor_id) { toast.error('اختر المورد'); return }
     if (!form.reason.trim()) { toast.error('سبب الإرجاع مطلوب'); return }
     setSaving(true)
-    const payload = { tenant_id: tenantId, return_number: form.return_number.trim(), return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: form.status, notes: form.notes || null }
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalPrNumber = form.return_number.trim()
+    if (/^PR-\d{4}-\d{4}$/.test(finalPrNumber)) {
+      finalPrNumber = (await nextDocNumber(tenantId, 'PR', 'PR')) || finalPrNumber
+    }
+    const payload = { tenant_id: tenantId, return_number: finalPrNumber, return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: form.status, notes: form.notes || null }
     const { data, error } = await supabase.from('finance_purchase_returns').insert(payload).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     const validItems = items.filter(i => i.description.trim())
@@ -628,6 +643,8 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
     if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
     if ((form.payment_method === 'تحويل بنكي' || form.payment_method === 'شيك') && !form.cash_account_id) { toast.error('يجب تحديد الحساب البنكي'); return }
     if (form.payment_method === 'نقداً' && !form.cash_account_id) { toast.error('يجب تحديد الصندوق'); return }
+    // ══ ضابط الرصيد: منع للصندوق، تحذير Overdraft للبنك ══
+    if (selectedAccount && !(await confirmCashSpend(tenantId, selectedAccount, Number(form.amount)))) return
     setSaving(true)
     await supabase.from('finance_vendor_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
