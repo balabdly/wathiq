@@ -28,7 +28,7 @@ export type CreateJournalParams = {
   date:          string
   description:   string
   referenceType: string
-  referenceId:   number
+  referenceId?:  number
   lines:         JournalLine[]
   source?:       'آلي' | 'يدوي'
 }
@@ -202,7 +202,7 @@ export async function createJournalEntry(
       entry_date:     date,
       description,
       reference_type: referenceType,
-      reference_id:   referenceId,
+      reference_id:   referenceId ?? null,
       total_debit:    totalDebit,
       total_credit:   totalCredit,
       status:         'معتمد',
