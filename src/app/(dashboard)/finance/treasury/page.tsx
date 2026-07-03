@@ -764,20 +764,25 @@ export default function FinanceTreasuryPage() {
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [trRes, cusRes, caRes, projRes, empRes] = await Promise.all([
-      supabase.from('finance_treasury').select('type, amount, cash_account_id').eq('tenant_id', tenant.id),
+    const [balRes, cusRes, caRes, projRes, empRes] = await Promise.all([
+      supabase.rpc('get_cash_account_balances', { p_tenant_id: tenant.id }),
       supabase.from('finance_employee_custody').select('*, project:projects(name)').eq('tenant_id', tenant.id).order('custody_date', { ascending: false }),
       supabase.from('finance_cash_accounts').select('*').eq('tenant_id', tenant.id).order('is_active', { ascending: false }).order('name'),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id, employee_id, employee:employees!hr_employees_employee_id_fkey(name)').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
     setCustodies(cusRes.data || [])
-    const trData = trRes.data || []
-    const caData = (caRes.data || []).map((ca: CashAccount) => {
-      const cashIn  = trData.filter((t: any) => t.type === 'قبض' && t.cash_account_id === ca.id).reduce((s: number, t: any) => s + Number(t.amount), 0)
-      const cashOut = trData.filter((t: any) => t.type === 'صرف' && t.cash_account_id === ca.id).reduce((s: number, t: any) => s + Number(t.amount), 0)
-      return { ...ca, balance: Number(ca.opening_balance) + cashIn - cashOut }
-    })
+    // ══ الرصيد من دفتر الأستاذ (القيود المعتمدة) — مصدر الحقيقة الوحيد ══
+    // أي صرف/قبض من أي صفحة (مشتريات، مصروفات، تحصيل، تحويلات...) ينشئ قيداً
+    // فينعكس تلقائياً على الرصيد هنا — بدون الاعتماد على سجلات finance_treasury
+    // (قيود الأرصدة الافتتاحية مسجلة في دفتر الأستاذ فلا يُضاف opening_balance)
+    const balMap = new Map<number, number>(
+      ((balRes.data || []) as any[]).map(b => [Number(b.cash_account_id), Number(b.ledger_balance)])
+    )
+    const caData = (caRes.data || []).map((ca: CashAccount) => ({
+      ...ca,
+      balance: balMap.get(ca.id) ?? 0,
+    }))
     setCashAccounts(caData)
     setProjects(projRes.data || [])
     setEmployees((empRes.data || []).map((e: any) => ({
