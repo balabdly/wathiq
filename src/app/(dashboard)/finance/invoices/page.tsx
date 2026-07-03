@@ -7,6 +7,8 @@ import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, Rotate
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode } from '@/lib/journal'
+import AttachmentUploader from '@/components/finance/AttachmentUploader'
+import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
 
 // ════════════════════════════════════════
 // Types
@@ -639,6 +641,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 }) {
   const [saving, setSaving] = useState(false)
   const [items, setItems]   = useState<InvoiceItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
+  const [attachments, setAttachments] = useState<FinanceAttachment[]>([])
   const today = new Date().toISOString().split('T')[0]
 
   const [form, setForm] = useState({
@@ -654,8 +657,10 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
-    if (invoice) loadItems()
-    else generateNumber()
+    if (invoice) {
+      loadItems()
+      loadAttachments(tenantId, 'فاتورة مبيعات', invoice.id).then(setAttachments)
+    } else generateNumber()
   }, [])
 
   async function loadItems() {
@@ -716,6 +721,9 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
         validItems.map(i => ({ invoice_id: invoiceId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) }))
       )
     }
+
+    // ══ حفظ المرفقات ══
+    if (invoiceId) await saveAttachments(tenantId, 'فاتورة مبيعات', invoiceId, attachments)
 
     // ══ قيد محاسبي تلقائي عند الإرسال (ليس المسودة) ══
     if (finalStatus === 'مرسلة' && invoiceId) {
@@ -814,6 +822,9 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
           {/* الإجماليات */}
           <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
+
+          {/* المرفقات */}
+          <AttachmentUploader value={attachments} onChange={setAttachments} label="مرفقات الفاتورة (PDF / صور)" />
 
           {/* الملاحظات */}
           <div>
