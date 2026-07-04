@@ -1651,41 +1651,58 @@ export default function InvoicesPage() {
     setViewDoc({ kind, doc, items: data || [], loading: false })
   }
 
+  // ══ تحميل بيانات الصفحة عند توفر tenant لأول مرة (كانت مفقودة) ══
+  useEffect(() => {
+    if (tenant?.id) loadAll()
+  }, [tenant?.id])
+
   async function loadInvoices(page: number, status: string, q: string) {
     if (!tenant) return
-    const from = (page - 1) * 50
-    const to   = from + 49
-    let query = supabase.from('finance_invoices')
-      .select('*', { count: 'exact' })
-      .eq('tenant_id', tenant.id)
-      .order('invoice_date', { ascending: false })
-      .order('id', { ascending: false })
-    if (status && status !== 'الكل') query = query.eq('status', status)
-    if (q) query = query.or(`invoice_number.ilike.%${q}%,client_name.ilike.%${q}%`)
-    const { data, count } = await query.range(from, to)
-    setInvoices(data || [])
-    invPagination.setPage(page)
-    invPagination.setTotal(count || 0)
+    try {
+      const from = (page - 1) * 50
+      const to   = from + 49
+      let query = supabase.from('finance_invoices')
+        .select('*', { count: 'exact' })
+        .eq('tenant_id', tenant.id)
+        .order('invoice_date', { ascending: false })
+        .order('id', { ascending: false })
+      if (status && status !== 'الكل') query = query.eq('status', status)
+      if (q) query = query.or(`invoice_number.ilike.%${q}%,client_name.ilike.%${q}%`)
+      const { data, count, error } = await query.range(from, to)
+      if (error) { console.error('[loadInvoices]', error.message); setInvoices([]); return }
+      setInvoices(data || [])
+      invPagination.setPage(page)
+      invPagination.setTotal(count || 0)
+    } catch (err) {
+      console.error('[loadInvoices] استثناء:', err)
+      setInvoices([])
+    }
   }
 
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [cnRes, qtRes, clRes, compRes, projRes, catRes] = await Promise.all([
-      supabase.from('finance_credit_notes').select('*').eq('tenant_id', tenant.id).order('note_date', { ascending: false }).limit(200),
-      supabase.from('finance_quotations').select('*, client:finance_clients(name), project:projects(name)').eq('tenant_id', tenant.id).order('quote_date', { ascending: false }).limit(200),
-      supabase.from('finance_clients').select('*').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('tenants').select('*').eq('id', tenant.id).single(),
-      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('finance_catalog_items').select('*').eq('tenant_id', tenant.id).order('item_type').order('name'),
-    ])
-    setCreditNotes(cnRes.data || [])
-    setQuotations(qtRes.data || [])
-    setClients(clRes.data || [])
-    if (compRes.data) setCompany(compRes.data)
-    setProjects(projRes.data || [])
-    setCatalogItems(catRes.data || [])
-    await loadInvoices(1, filterStatus, search)
+    try {
+      const [cnRes, qtRes, clRes, compRes, projRes, catRes] = await Promise.all([
+        supabase.from('finance_credit_notes').select('*').eq('tenant_id', tenant.id).order('note_date', { ascending: false }).limit(200),
+        supabase.from('finance_quotations').select('*, client:finance_clients(name), project:projects(name)').eq('tenant_id', tenant.id).order('quote_date', { ascending: false }).limit(200),
+        supabase.from('finance_clients').select('*').eq('tenant_id', tenant.id).order('name'),
+        supabase.from('tenants').select('*').eq('id', tenant.id).single(),
+        supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
+        supabase.from('finance_catalog_items').select('*').eq('tenant_id', tenant.id).order('item_type').order('name'),
+      ])
+      setCreditNotes(cnRes.data || [])
+      setQuotations(qtRes.data || [])
+      setClients(clRes.data || [])
+      if (compRes.data) setCompany(compRes.data)
+      setProjects(projRes.data || [])
+      setCatalogItems(catRes.data || [])
+      await loadInvoices(1, filterStatus, search)
+    } catch (err) {
+      console.error('[invoices] فشل تحميل البيانات:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleViewInvoice(inv: Invoice) {
