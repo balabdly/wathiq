@@ -1632,6 +1632,9 @@ export default function InvoicesPage() {
   const [showInvoiceModal,  setShowInvoiceModal]  = useState(false)
   const [showCreditModal,   setShowCreditModal]   = useState(false)
   const [showQuoteModal,    setShowQuoteModal]     = useState(false)
+  const [showViewModal,     setShowViewModal]     = useState(false)
+  const [viewInvoice,       setViewInvoice]       = useState<Invoice | null>(null)
+  const [viewItems,         setViewItems]         = useState<InvoiceItem[]>([])
   const [editQuote,         setEditQuote]          = useState<any | null>(null)
   const [viewDoc,           setViewDoc]            = useState<{ kind: 'cn' | 'qt'; doc: any; items: any[]; loading: boolean } | null>(null)
 
