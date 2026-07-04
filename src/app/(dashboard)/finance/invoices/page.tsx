@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
@@ -68,7 +68,7 @@ type CashAccount = {
 
 const INV_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'مرسلة': 'badge-blue', 'مدفوعة': 'badge-green',
-  'ملغاة': 'badge-red', 'متأخرة': 'badge-red', 'إشعار جزئي': 'badge-amber'
+  'ملغاة': 'badge-red', 'متأخرة': 'badge-red', 'إشعار جزئي': 'badge-amber', 'مسدد بإشعار': 'badge-red'
 }
 const QUOTE_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'مرسلة': 'badge-blue', 'مقبولة': 'badge-green',
@@ -251,7 +251,92 @@ function TotalsBox({ subtotal, vatRate, vatAmount, total }: {
 // ════════════════════════════════════════
 // طباعة الفاتورة
 // ════════════════════════════════════════
-function printInvoice(invoice: Invoice, items: InvoiceItem[], company: Company) {
+// ══ طباعة إشعار دائن / عرض سعر — بنفس هوية الفاتورة ══
+function printDoc(kind: 'cn' | 'qt', doc: any, items: any[], company: Company, client?: Client | null) {
+  const isCN   = kind === 'cn'
+  const title  = isCN ? 'إشعار دائن' : 'عرض سعر'
+  const color  = isCN ? '#c81e1e' : '#7c3aed'
+  const number = isCN ? doc.note_number : doc.quote_number
+  const date   = isCN ? doc.note_date   : doc.quote_date
+  // QR للإشعار الدائن (ZATCA المرحلة الأولى تشمل الإشعارات الضريبية)
+  const qr = isCN ? generateZATCAQR(company, { invoice_date: date, total_amount: doc.total_amount, vat_amount: doc.vat_amount } as any) : ''
+  const clientAddr = client ? [client.street, client.district, client.city].filter(Boolean).join('، ') : ''
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar">
+<head><meta charset="UTF-8"><title>${title} — ${number}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#f1f5f9;padding:20px;color:#1e293b}
+.page{background:white;max-width:800px;margin:0 auto;padding:32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.08)}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:3px solid ${color}}
+.company-name{font-size:20px;font-weight:800;color:${color};margin-bottom:4px}
+.company-info{font-size:11px;color:#64748b;line-height:1.6}
+.inv-badge{background:${color};color:white;padding:10px 20px;border-radius:10px;text-align:center}
+.inv-badge .num{font-size:18px;font-weight:800}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}
+.info-item{background:#f8fafc;border-radius:6px;padding:8px 12px}
+.info-label{font-size:10px;color:#94a3b8;margin-bottom:2px}
+.info-value{font-size:13px;font-weight:600}
+table{width:100%;border-collapse:collapse;margin-bottom:16px}
+thead tr{background:${color};color:white}
+th{padding:10px 12px;text-align:right;font-size:12px;font-weight:700}
+tbody tr{border-bottom:1px solid #f1f5f9}
+tbody tr:nth-child(even){background:#f8fafc}
+td{padding:10px 12px;font-size:13px}
+.totals{display:flex;justify-content:flex-end;margin-bottom:20px}
+.totals-box{width:280px;background:#f8fafc;border-radius:10px;padding:14px}
+.total-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}
+.total-final{border-top:2px solid ${color};margin-top:8px;padding-top:10px;display:flex;justify-content:space-between;font-weight:800;font-size:16px;color:${color}}
+.note-box{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:14px}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+</style></head><body>
+<div class="page">
+<div class="header">
+  <div>
+    <div class="company-name">${company.name || ''}</div>
+    ${company.name_en ? `<div style="font-size:13px;color:#64748b;margin-bottom:4px">${company.name_en}</div>` : ''}
+    <div class="company-info">
+      ${company.vat_number ? `الرقم الضريبي: ${company.vat_number}<br>` : ''}
+      ${company.cr_number  ? `السجل التجاري: ${company.cr_number}<br>` : ''}
+      ${[company.street, company.district, company.city].filter(Boolean).join('، ')}
+    </div>
+  </div>
+  <div class="inv-badge">
+    <div style="font-size:11px;opacity:0.85">${title}</div>
+    <div class="num">${number}</div>
+    <div style="font-size:11px;margin-top:4px;opacity:0.85">${date}</div>
+  </div>
+</div>
+<div class="info-grid">
+  <div class="info-item"><div class="info-label">العميل</div><div class="info-value">${doc.client_name}</div>${doc.client_vat ? `<div style="font-size:11px;color:#64748b">الرقم الضريبي: ${doc.client_vat}</div>` : ''}${clientAddr ? `<div style="font-size:11px;color:#64748b">العنوان: ${clientAddr}</div>` : ''}${client?.phone ? `<div style="font-size:11px;color:#64748b">هاتف: ${client.phone}</div>` : ''}</div>
+  ${isCN && doc.original_invoice_number ? `<div class="info-item"><div class="info-label">الفاتورة المرجعية</div><div class="info-value">${doc.original_invoice_number}</div></div>` : ''}
+  ${!isCN && doc.valid_until ? `<div class="info-item"><div class="info-label">العرض صالح حتى</div><div class="info-value">${doc.valid_until}</div></div>` : ''}
+  ${isCN && doc.note_type ? `<div class="info-item"><div class="info-label">نوع الإشعار</div><div class="info-value">${doc.note_type}</div></div>` : ''}
+</div>
+${isCN && doc.reason ? `<div class="note-box">سبب الإشعار: ${doc.reason}</div>` : ''}
+<table>
+<thead><tr><th>الوصف</th><th>الكمية</th><th>الوحدة</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+<tbody>
+${items.map((i: any) => `<tr><td>${i.description}</td><td>${i.quantity}</td><td>${i.unit}</td><td>${Number(i.unit_price).toLocaleString()}</td><td>${Number(i.total).toLocaleString()}</td></tr>`).join('')}
+</tbody>
+</table>
+<div class="totals">
+<div class="totals-box">
+  <div class="total-row"><span>المجموع قبل الضريبة</span><span>${Number(doc.subtotal).toLocaleString()} ر.س</span></div>
+  <div class="total-row"><span>ضريبة القيمة المضافة (${doc.vat_rate}%)</span><span>${Number(doc.vat_amount).toLocaleString()} ر.س</span></div>
+  <div class="total-final"><span>الإجمالي</span><span>${Number(doc.total_amount).toLocaleString()} ر.س</span></div>
+</div>
+</div>
+${!isCN && doc.terms ? `<div class="note-box" style="background:#f5f3ff;border-color:#e9d5ff;color:#5b21b6">الشروط والأحكام: ${doc.terms}</div>` : ''}
+${qr ? `<div style="text-align:center;margin-top:16px"><img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qr)}" /><div style="font-size:10px;color:#94a3b8;margin-top:4px">QR Code — ZATCA Phase 1</div></div>` : ''}
+</div></body></html>`
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.write(html)
+  w.document.close()
+  w.onload = () => w.print()
+}
+
+function printInvoice(invoice: Invoice, items: InvoiceItem[], company: Company, client?: Client | null) {
   const isCredit = false
   const title = 'فاتورة ضريبية'
   const qr = generateZATCAQR(company, invoice)
@@ -301,7 +386,7 @@ td{padding:10px 12px;font-size:13px}
   </div>
 </div>
 <div class="info-grid">
-  <div class="info-item"><div class="info-label">العميل</div><div class="info-value">${invoice.client_name}</div>${invoice.client_vat ? `<div style="font-size:11px;color:#64748b">الرقم الضريبي: ${invoice.client_vat}</div>` : ''}</div>
+  <div class="info-item"><div class="info-label">العميل</div><div class="info-value">${invoice.client_name}</div>${invoice.client_vat ? `<div style="font-size:11px;color:#64748b">الرقم الضريبي: ${invoice.client_vat}</div>` : ''}${client && [client.street, client.district, client.city].filter(Boolean).length ? `<div style="font-size:11px;color:#64748b">العنوان: ${[client.street, client.district, client.city].filter(Boolean).join('، ')}</div>` : ''}${client?.phone ? `<div style="font-size:11px;color:#64748b">هاتف: ${client.phone}</div>` : ''}</div>
   <div class="info-item"><div class="info-label">تاريخ الفاتورة</div><div class="info-value">${invoice.invoice_date}</div></div>
   ${invoice.due_date ? `<div class="info-item"><div class="info-label">تاريخ الاستحقاق</div><div class="info-value">${invoice.due_date}</div></div>` : ''}
   ${invoice.extract_ref ? `<div class="info-item"><div class="info-label">رقم المستخلص</div><div class="info-value">${invoice.extract_ref}</div></div>` : ''}
@@ -701,6 +786,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
     const payload = {
       tenant_id: tenantId,
       invoice_number: finalInvoiceNumber,
+      ...(invoice ? {} : { created_by: useStore.getState().currentUser?.name || null }),
       invoice_date: form.invoice_date, due_date: form.due_date || null,
       client_id: Number(form.client_id),
       client_name: selectedClient!.name,
@@ -979,6 +1065,7 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
 
     const payload = {
       tenant_id: tenantId, note_number: finalNoteNumber,
+      created_by: useStore.getState().currentUser?.name || null,
       note_date: form.note_date, note_type: form.note_type,
       original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null,
       client_id: Number(form.client_id), client_name: selectedClient!.name,
@@ -1100,8 +1187,8 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
 // ════════════════════════════════════════
 // مودال: عرض الفاتورة
 // ════════════════════════════════════════
-function InvoiceViewModal({ invoice, items, company, onClose, onPrint }: {
-  invoice: Invoice; items: InvoiceItem[]; company: Company
+function InvoiceViewModal({ invoice, items, company, client, onClose, onPrint }: {
+  invoice: Invoice; items: InvoiceItem[]; company: Company; client?: Client | null
   onClose: () => void; onPrint: () => void
 }) {
   const qr = generateZATCAQR(company, invoice)
@@ -1140,6 +1227,10 @@ function InvoiceViewModal({ invoice, items, company, onClose, onPrint }: {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px', fontSize: '0.85rem' }}>
               <div><span style={{ color: 'var(--text3)' }}>العميل:</span> <strong>{invoice.client_name}</strong></div>
               {invoice.client_vat && <div><span style={{ color: 'var(--text3)' }}>الرقم الضريبي:</span> {invoice.client_vat}</div>}
+              {client && [client.street, client.district, client.city].filter(Boolean).length > 0 && (
+                <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'var(--text3)' }}>العنوان:</span> <strong>{[client.street, client.district, client.city].filter(Boolean).join('، ')}</strong></div>
+              )}
+              {client?.phone && <div><span style={{ color: 'var(--text3)' }}>هاتف العميل:</span> {client.phone}</div>}
               <div><span style={{ color: 'var(--text3)' }}>تاريخ الإصدار:</span> <strong>{invoice.invoice_date}</strong></div>
               {invoice.due_date && <div><span style={{ color: 'var(--text3)' }}>تاريخ الاستحقاق:</span> <strong>{invoice.due_date}</strong></div>}
               {invoice.extract_ref && <div><span style={{ color: 'var(--text3)' }}>المستخلص:</span> <strong>{invoice.extract_ref}</strong></div>}
@@ -1415,6 +1506,7 @@ function QuotationModal({ quote, clients, projects, company, tenantId, onClose, 
 
     const payload = {
       tenant_id: tenantId, quote_number: finalQuoteNumber, quote_date: form.quote_date,
+      ...(quote ? {} : { created_by: useStore.getState().currentUser?.name || null }),
       valid_until: form.valid_until || null,
       client_id: Number(form.client_id), client_name: selectedClient!.name,
       client_vat: selectedClient!.vat_number || null,
@@ -1517,6 +1609,16 @@ export default function InvoicesPage() {
   // ══ Pagination للفواتير ══
   const invPagination = usePagination(50)
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([])
+  // ══ إشعارات دائنة (غير ملغاة) مجمعة حسب الفاتورة — لحساب الحالة العرضية والشارات ══
+  const cnByInvoice = useMemo(() => {
+    const m: Record<number, number> = {}
+    creditNotes.forEach((cn: any) => {
+      if (cn.status !== 'ملغي' && cn.original_invoice_id) {
+        m[cn.original_invoice_id] = (m[cn.original_invoice_id] || 0) + Number(cn.total_amount)
+      }
+    })
+    return m
+  }, [creditNotes])
   const [quotations, setQuotations]   = useState<Quotation[]>([])
   const [clients, setClients]         = useState<Client[]>([])
   const [company, setCompany]         = useState<Company>({} as Company)
@@ -1537,81 +1639,6 @@ export default function InvoicesPage() {
     const fk    = kind === 'cn' ? 'note_id' : 'quotation_id'
     const { data } = await supabase.from(table).select('*').eq(fk, doc.id).order('id')
     setViewDoc({ kind, doc, items: data || [], loading: false })
-  }
-
-  // ══ إلغاء إشعار دائن بقيد عكسي (المعالجة القياسية للمستند المرحّل) ══
-  async function cancelCreditNote(cn: any) {
-    if (cn.status === 'ملغي') { toast.error('الإشعار ملغي مسبقاً'); return }
-    if (!confirm(`إلغاء الإشعار ${cn.note_number}؟\nسيُنشأ قيد عكسي يلغي أثره المحاسبي ويعيد رصيد ذمة العميل.`)) return
-
-    // جلب قيد الإشعار الأصلي وسطوره
-    const { data: entry } = await supabase.from('finance_journal_entries')
-      .select('id, total_debit')
-      .eq('tenant_id', tenant!.id).eq('reference_type', 'إشعار دائن').eq('reference_id', cn.id)
-      .maybeSingle()
-
-    if (entry) {
-      const { data: lines } = await supabase.from('finance_journal_lines')
-        .select('account_id, debit, credit, description').eq('entry_id', entry.id)
-      const jeNo = await nextDocNumber(tenant!.id, 'JE', 'JE')
-      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
-      const { data: revEntry, error } = await supabase.from('finance_journal_entries').insert({
-        tenant_id: tenant!.id, entry_number: jeNo,
-        entry_date: new Date().toISOString().split('T')[0],
-        description: `قيد عكسي — إلغاء إشعار دائن ${cn.note_number} — ${cn.client_name}`,
-        reference_type: 'إلغاء إشعار دائن', reference_id: cn.id,
-        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit),
-        status: 'معتمد', entry_source: 'آلي',
-      }).select('id').single()
-      if (error || !revEntry) { toast.error('فشل إنشاء القيد العكسي'); return }
-      await supabase.from('finance_journal_lines').insert(
-        (lines || []).map((l: any) => ({
-          entry_id: revEntry.id, account_id: l.account_id,
-          debit: Number(l.credit), credit: Number(l.debit),   // عكس الاتجاهين
-          description: `عكس: ${l.description || ''}`,
-        }))
-      )
-    }
-
-    await supabase.from('finance_credit_notes').update({ status: 'ملغي' }).eq('id', cn.id)
-    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
-    loadAll()
-  }
-  const [showClientModal,   setShowClientModal]   = useState(false)
-  const [showCatalogModal,  setShowCatalogModal]  = useState(false)
-  const [showPaymentModal,  setShowPaymentModal]  = useState(false)
-  const [showViewModal,     setShowViewModal]     = useState(false)
-  const [editInvoice,   setEditInvoice]   = useState<Invoice | null>(null)
-  const [editClient,    setEditClient]    = useState<Client | null>(null)
-  const [creditInvoice, setCreditInvoice] = useState<Invoice | null>(null)
-  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
-  const [viewInvoice,   setViewInvoice]   = useState<Invoice | null>(null)
-  const [viewItems,     setViewItems]     = useState<InvoiceItem[]>([])
-
-  useEffect(() => { if (tenant) loadAll() }, [tenant])
-  useEffect(() => { if (tenant) loadInvoices(1, filterStatus, search) }, [filterStatus])
-
-  // ══ تحميل الفواتير بـ pagination ══
-  async function loadInvoices(page = invPagination.page, status = filterStatus, q = search) {
-    if (!tenant) return
-    setLoading(true)
-    const from = (page - 1) * 50
-    const to   = from + 49
-
-    let query = supabase
-      .from('finance_invoices')
-      .select('*, client:finance_clients(name), project:projects(name)', { count: 'exact' })
-      .eq('tenant_id', tenant.id)
-      .order('invoice_date', { ascending: false })
-      .range(from, to)
-
-    if (status !== 'الكل') query = query.eq('status', status)
-    if (q) query = query.or(`invoice_number.ilike.%${q}%,client_name.ilike.%${q}%`)
-
-    const { data, count } = await query
-    setInvoices(data || [])
-    invPagination.setTotal(count || 0)
-    setLoading(false)
   }
 
   async function loadAll() {
@@ -1643,7 +1670,8 @@ export default function InvoicesPage() {
 
   async function handlePrintInvoice(inv: Invoice) {
     const { data: items } = await supabase.from('finance_invoice_items').select('*').eq('invoice_id', inv.id).order('id')
-    setTimeout(() => printInvoice(inv, items || [], company), 0)
+    const client = clients.find(c => c.id === inv.client_id) || null
+    setTimeout(() => printInvoice(inv, items || [], company, client), 0)
   }
 
   async function deleteInvoice(inv: Invoice) {
@@ -1798,15 +1826,21 @@ export default function InvoicesPage() {
                 </thead>
                 <tbody>
                   {filteredInvoices.map(inv => {
-                    const isOverdue = inv.status !== 'مدفوعة' && inv.status !== 'ملغاة' && inv.due_date && inv.due_date < today
-                    const displayStatus = isOverdue ? 'متأخرة' : inv.status
+                    // ══ الحالة العرضية تُحسب من البيانات: فاتورة − إشعاراتها ══
+                    const cnTotal       = cnByInvoice[inv.id] || 0
+                    const fullyCredited = cnTotal > 0 && cnTotal >= Number(inv.total_amount) - 0.01 && inv.status !== 'مدفوعة'
+                    const isOverdue = !fullyCredited && inv.status !== 'مدفوعة' && inv.status !== 'ملغاة' && inv.due_date && inv.due_date < today
+                    const displayStatus = fullyCredited ? 'مسدد بإشعار' : isOverdue ? 'متأخرة' : inv.status
                     return (
                       <tr key={inv.id}
                         style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
                         onClick={() => handleViewInvoice(inv)}
                         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#1a56db' }}>{inv.invoice_number}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#1a56db' }}>{inv.invoice_number}</div>
+                          {(inv as any).created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {(inv as any).created_by}</div>}
+                        </td>
                         <td style={{ padding: '10px 14px' }}>{inv.client_name}</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{inv.invoice_date}</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: isOverdue ? '#c81e1e' : 'var(--text3)' }}>{inv.due_date || '—'}</td>
@@ -1814,7 +1848,15 @@ export default function InvoicesPage() {
                         <td style={{ padding: '10px 14px', color: '#e6820a' }}>{Number(inv.vat_amount).toLocaleString()}</td>
                         <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1a56db' }}>{Number(inv.total_amount).toLocaleString()} ر.س</td>
                         <td style={{ padding: '10px 14px' }}>
-                          <span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            <span className={'badge ' + (INV_STATUS_COLOR[displayStatus] || 'badge-gray')}>{displayStatus}</span>
+                            {cnTotal > 0 && !fullyCredited && (
+                              <span title={`إشعار دائن مرتبط بـ ${cnTotal.toLocaleString()} ر.س — المتبقي للتحصيل: ${(Number(inv.total_amount) - cnTotal).toLocaleString()} ر.س`}
+                                style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '20px', background: '#fef2f2', color: '#c81e1e', fontWeight: 700, border: '1px solid #fecaca', whiteSpace: 'nowrap' }}>
+                                ↩️ إشعار {cnTotal.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: '3px' }}>
@@ -1833,13 +1875,13 @@ export default function InvoicesPage() {
                                 <Pencil style={{ width: '12px', height: '12px' }} />
                               </button>
                             )}
-                            {(inv.status === 'مرسلة' || inv.status === 'متأخرة') && (
+                            {(inv.status === 'مرسلة' || inv.status === 'متأخرة') && !fullyCredited && (
                               <button onClick={() => { setPaymentInvoice(inv); setShowPaymentModal(true) }}
                                 style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 💵 تحصيل
                               </button>
                             )}
-                            {(inv.status === 'مرسلة' || inv.status === 'مدفوعة') && (
+                            {(inv.status === 'مرسلة' || inv.status === 'مدفوعة') && !fullyCredited && (
                               <button onClick={() => { setCreditInvoice(inv); setShowCreditModal(true) }}
                                 title="إشعار دائن"
                                 style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px' }}>
@@ -1886,7 +1928,10 @@ export default function InvoicesPage() {
                     <tr key={cn.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#c81e1e' }}>{cn.note_number}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#c81e1e' }}>{cn.note_number}</div>
+                        {(cn as any).created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {(cn as any).created_by}</div>}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>{cn.client_name}</td>
                       <td style={{ padding: '10px 14px' }}><span className="badge badge-red">{cn.note_type}</span></td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{cn.note_date}</td>
@@ -1899,12 +1944,7 @@ export default function InvoicesPage() {
                             style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
                             <Eye style={{ width: '13px', height: '13px' }} />
                           </button>
-                          {cn.status !== 'ملغي' && (
-                            <button onClick={() => cancelCreditNote(cn)} title="إلغاء بقيد عكسي"
-                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
-                              إلغاء
-                            </button>
-                          )}
+
                         </div>
                       </td>
                     </tr>
@@ -1936,7 +1976,10 @@ export default function InvoicesPage() {
                     <tr key={q.id} style={{ borderBottom: '1px solid var(--bg2)' }}
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#7c3aed' }}>{q.quote_number}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#7c3aed' }}>{q.quote_number}</div>
+                        {(q as any).created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {(q as any).created_by}</div>}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>{q.client_name}</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{q.quote_date}</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{q.valid_until || '—'}</td>
@@ -2048,11 +2091,41 @@ export default function InvoicesPage() {
                   {viewDoc.doc.client_name} · {viewDoc.kind === 'cn' ? viewDoc.doc.note_date : viewDoc.doc.quote_date} · {viewDoc.doc.status}
                 </p>
               </div>
-              <button onClick={() => setViewDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
-                <X style={{ width: '18px', height: '18px' }} />
-              </button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button onClick={() => printDoc(viewDoc.kind, viewDoc.doc, viewDoc.items, company, clients.find(c => c.id === viewDoc.doc.client_id) || null)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 14px', borderRadius: '8px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem' }}>
+                  <Printer style={{ width: '14px', height: '14px' }} /> طباعة
+                </button>
+                {(() => {
+                  const cl = clients.find(c => c.id === viewDoc.doc.client_id)
+                  const num = viewDoc.kind === 'cn' ? viewDoc.doc.note_number : viewDoc.doc.quote_number
+                  const subj = encodeURIComponent(`${viewDoc.kind === 'cn' ? 'إشعار دائن' : 'عرض سعر'} ${num} — ${company.name || ''}`)
+                  const body = encodeURIComponent(`السلام عليكم،\n\nمرفق ${viewDoc.kind === 'cn' ? 'الإشعار الدائن' : 'عرض السعر'} رقم ${num} بإجمالي ${Number(viewDoc.doc.total_amount).toLocaleString()} ر.س.\n\nمع التحية،\n${company.name || ''}`)
+                  return (
+                    <a href={`mailto:${cl?.email || ''}?subject=${subj}&body=${body}`}
+                      title={cl?.email ? `إرسال إلى ${cl.email}` : 'بريد العميل غير مسجل — سيُفتح بريد فارغ'}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'none' }}>
+                      ✉️ إرسال بالبريد
+                    </a>
+                  )
+                })()}
+                <button onClick={() => setViewDoc(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                  <X style={{ width: '18px', height: '18px' }} />
+                </button>
+              </div>
             </div>
             <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
+              {(() => {
+                const cl = clients.find(c => c.id === viewDoc.doc.client_id)
+                const addr = cl ? [cl.street, cl.district, cl.city].filter(Boolean).join('، ') : ''
+                return (addr || cl?.phone || cl?.email) ? (
+                  <div style={{ padding: '10px 16px', background: '#f8fafc', fontSize: '0.75rem', color: 'var(--text3)', borderBottom: '1px solid var(--border)', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                    {addr && <span>📍 {addr}</span>}
+                    {cl?.phone && <span>📞 {cl.phone}</span>}
+                    {cl?.email && <span>✉️ {cl.email}</span>}
+                  </div>
+                ) : null
+              })()}
               {viewDoc.kind === 'cn' && (viewDoc.doc.reason || viewDoc.doc.original_invoice_id) && (
                 <div style={{ padding: '10px 16px', background: '#fef2f2', fontSize: '0.78rem', color: '#b91c1c', borderBottom: '1px solid #fecaca' }}>
                   {viewDoc.doc.reason && <>السبب: {viewDoc.doc.reason}</>}
@@ -2109,6 +2182,7 @@ export default function InvoicesPage() {
       {showViewModal && viewInvoice && (
         <InvoiceViewModal
           invoice={viewInvoice} items={viewItems} company={company}
+          client={clients.find(c => c.id === viewInvoice.client_id) || null}
           onClose={() => { setShowViewModal(false); setViewInvoice(null) }}
           onPrint={() => handlePrintInvoice(viewInvoice)}
         />
