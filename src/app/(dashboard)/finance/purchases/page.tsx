@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Users, RotateCcw, FileText, Eye } from 'lucide-react'
@@ -579,7 +580,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
       const invId = Number(form.original_invoice_id)
       const [{ data: origInv }, { data: prevRets }] = await Promise.all([
         supabase.from('finance_vendor_invoices').select('total_amount').eq('id', invId).single(),
-        supabase.from('finance_purchase_returns').select('total_amount').eq('tenant_id', tenantId).eq('original_invoice_id', invId),
+        supabase.from('finance_purchase_returns').select('total_amount').eq('tenant_id', tenantId).eq('original_invoice_id', invId).eq('status', 'معتمد'),
       ])
       origInvTotal = Number(origInv?.total_amount || 0)
       prevReturns  = (prevRets || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
@@ -593,7 +594,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
         setSaving(false); return
       }
     }
-    const payload = { tenant_id: tenantId, return_number: finalPrNumber, return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: form.status, notes: form.notes || null }
+    const payload = { tenant_id: tenantId, return_number: finalPrNumber, return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: 'مسودة', notes: form.notes || null }
     const { data, error } = await supabase.from('finance_purchase_returns').insert(payload).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     const validItems = items.filter(i => i.description.trim())
@@ -601,10 +602,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
       await supabase.from('finance_purchase_return_items').insert(validItems.map(i => ({ return_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    // ══ فاتورة مرتجعة بالكامل → حالتها "مرتجعة" ولا يمكن دفعها ══
-    if (form.original_invoice_id && origInvTotal > 0 && prevReturns + total >= origInvTotal - 0.01) {
-      await supabase.from('finance_vendor_invoices').update({ status: 'مرتجعة' }).eq('id', Number(form.original_invoice_id))
-    }
+    // (تحويل الفاتورة إلى "مرتجعة" يحدث عند اعتماد المرتجع — ليس عند حفظ المسودة)
     await createJournalEntry({ tenantId, date: form.return_date, description: `${form.return_type} ${form.return_number} — ${selectedVendor!.name}`, referenceType: form.return_type, referenceId: data.id, source: 'آلي',
       lines: [
         { accountCode: '2110', debit: total,    credit: 0,        description: `${form.return_type} ${form.return_number}` },
@@ -660,7 +658,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
     supabase.from('finance_cash_accounts').select('*, fa:finance_accounts(code)').eq('tenant_id', tenantId).eq('is_active', true).order('name')
       .then(({ data }) => setCashAccounts((data || []).map((a: any) => ({ ...a, account_code: a.fa?.code }))))
     supabase.from('finance_purchase_returns').select('total_amount')
-      .eq('tenant_id', tenantId).eq('original_invoice_id', invoice.id)
+      .eq('tenant_id', tenantId).eq('original_invoice_id', invoice.id).eq('status', 'معتمد')
       .then(({ data }) => {
         const rt = (data || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
         setRetTotal(rt)
@@ -736,117 +734,6 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : '💸'}
             تسجيل الدفعة
           </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ════════════════════════════════════════
-// مودال: استعراض المورد + كشف حسابه
-// ════════════════════════════════════════
-function VendorLedgerModal({ vendor, tenantId, onClose }: { vendor: Vendor; tenantId: string; onClose: () => void }) {
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows]       = useState<any[]>([])
-
-  useEffect(() => { load() }, [vendor.id])
-
-  async function load() {
-    setLoading(true)
-    const [{ data: invs }, { data: rets }] = await Promise.all([
-      supabase.from('finance_vendor_invoices').select('id, invoice_number, invoice_date, total_amount, status').eq('tenant_id', tenantId).eq('vendor_id', vendor.id),
-      supabase.from('finance_purchase_returns').select('return_number, return_date, total_amount, original_invoice_id').eq('tenant_id', tenantId).eq('vendor_id', vendor.id),
-    ])
-    const invIds = (invs || []).map((i: any) => i.id)
-    let pays: any[] = []
-    if (invIds.length) {
-      const { data } = await supabase.from('finance_journal_entries')
-        .select('entry_number, entry_date, total_debit, reference_id')
-        .eq('tenant_id', tenantId).eq('reference_type', 'دفع مورد').in('reference_id', invIds)
-      pays = data || []
-    }
-    const invMap: Record<number, string> = {}
-    ;(invs || []).forEach((i: any) => { invMap[i.id] = i.invoice_number })
-
-    const all = [
-      ...(invs || []).map((i: any) => ({ date: i.invoice_date, doc: i.invoice_number, kind: 'فاتورة', debit: 0, credit: Number(i.total_amount), note: i.status })),
-      ...(rets || []).map((r: any) => ({ date: r.return_date, doc: r.return_number, kind: 'مرتجع', debit: Number(r.total_amount), credit: 0, note: r.original_invoice_id ? `على ${invMap[r.original_invoice_id] || ''}` : '' })),
-      ...pays.map((p: any) => ({ date: p.entry_date, doc: p.entry_number, kind: 'دفعة', debit: Number(p.total_debit), credit: 0, note: p.reference_id ? `سداد ${invMap[p.reference_id] || ''}` : '' })),
-    ].sort((a, b) => (a.date < b.date ? -1 : 1))
-
-    let bal = 0
-    setRows(all.map(r => { bal += r.credit - r.debit; return { ...r, balance: bal } }))
-    setLoading(false)
-  }
-
-  const totalCredit = rows.reduce((s, r) => s + r.credit, 0)
-  const totalDebit  = rows.reduce((s, r) => s + r.debit, 0)
-  const due = totalCredit - totalDebit
-  const KIND_STYLE: Record<string, { bg: string; color: string }> = {
-    'فاتورة': { bg: '#fef2f2', color: '#c81e1e' },
-    'مرتجع':  { bg: '#fffbeb', color: '#e6820a' },
-    'دفعة':   { bg: '#ecfdf5', color: '#0ea77b' },
-  }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '760px', maxHeight: '88vh' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <h3 style={{ fontWeight: 700, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Eye style={{ width: '17px', height: '17px', color: '#1a56db' }} /> {vendor.name}
-            </h3>
-            <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
-              {vendor.vendor_type}{vendor.vat_number ? ` · ضريبي: ${vendor.vat_number}` : ''}{vendor.phone ? ` · ${vendor.phone}` : ''}{vendor.city ? ` · ${vendor.city}` : ''}
-            </p>
-            {vendor.iban && <p style={{ fontSize: '0.7rem', color: 'var(--text3)', fontFamily: 'monospace', marginTop: '1px' }} dir="ltr">{vendor.iban}</p>}
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}><X style={{ width: '18px', height: '18px' }} /></button>
-        </div>
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
-          {[
-            { label: 'إجمالي الفواتير', value: totalCredit, color: '#c81e1e', bg: '#fef2f2' },
-            { label: 'مرتجعات ومدفوعات', value: totalDebit, color: '#0ea77b', bg: '#ecfdf5' },
-            { label: 'الرصيد المستحق له', value: due, color: due > 0 ? '#c81e1e' : '#0ea77b', bg: '#f8fafc' },
-          ].map(k => (
-            <div key={k.label} style={{ padding: '10px', background: k.bg, borderRadius: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.05rem', fontWeight: 800, color: k.color }}>{k.value.toLocaleString()}</div>
-              <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: '2px' }}>{k.label} (ر.س)</div>
-            </div>
-          ))}
-        </div>
-        <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
-          {loading ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
-          ) : rows.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>لا توجد حركات مع هذا المورد</div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['التاريخ', 'المستند', 'النوع', 'البيان', 'له (فواتير)', 'عليه (مرتجع/دفع)', 'الرصيد'].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
-                    <td style={{ padding: '8px 12px', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{r.date}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 600, color: '#1a56db', whiteSpace: 'nowrap' }}>{r.doc}</td>
-                    <td style={{ padding: '8px 12px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: 700, background: KIND_STYLE[r.kind].bg, color: KIND_STYLE[r.kind].color }}>{r.kind}</span>
-                    </td>
-                    <td style={{ padding: '8px 12px', fontSize: '0.72rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{r.note || '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: '#c81e1e', direction: 'ltr', textAlign: 'left' }}>{r.credit ? r.credit.toLocaleString() : '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', color: '#0ea77b', direction: 'ltr', textAlign: 'left' }}>{r.debit ? r.debit.toLocaleString() : '—'}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 700, color: r.balance > 0 ? '#c81e1e' : '#0ea77b', direction: 'ltr', textAlign: 'left' }}>{r.balance.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       </div>
     </div>
@@ -931,12 +818,14 @@ function VInvViewModal({ inv, items, onClose, onPrint }: { inv: VendorInvoice; i
 
 export default function FinancePurchasesPage() {
   const { tenant } = useStore()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<'orders' | 'invoices' | 'returns' | 'vendors'>('orders')
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [vendorInvoices, setVendorInvoices] = useState<VendorInvoice[]>([])
   const poPagination  = usePagination(50)
   const invPagination = usePagination(50)
   const [returns,    setReturns]   = useState<PurchaseReturn[]>([])
+  const [viewReturn, setViewReturn] = useState<{ ret: any; items: any[]; loading: boolean } | null>(null)
   const [vendors,    setVendors]   = useState<Vendor[]>([])
   const [projects,   setProjects]  = useState<Project[]>([])
   const [warehouses, setWarehouses]= useState<Warehouse[]>([])
@@ -946,7 +835,6 @@ export default function FinancePurchasesPage() {
   const [showInvModal,    setShowInvModal]    = useState(false)
   const [showReturnModal, setShowReturnModal] = useState(false)
   const [showVendorModal, setShowVendorModal] = useState(false)
-  const [viewVendor, setViewVendor] = useState<Vendor | null>(null)
   const [showPayModal,    setShowPayModal]    = useState(false)
   const [showViewPO,      setShowViewPO]      = useState(false)
   const [showViewVInv,    setShowViewVInv]    = useState(false)
@@ -1039,6 +927,113 @@ export default function FinancePurchasesPage() {
   const totalInv = vendorInvoices.reduce((s, i) => s + Number(i.total_amount), 0)
   const totalPaid= vendorInvoices.filter(i => i.status === 'مدفوعة').reduce((s, i) => s + Number(i.total_amount), 0)
   const totalDue = vendorInvoices.filter(i => i.status !== 'مدفوعة' && i.status !== 'ملغاة').reduce((s, i) => s + Number(i.total_amount), 0)
+  // ══ استعراض مرتجع مع بنوده ══
+  async function openViewReturn(ret: any) {
+    setViewReturn({ ret, items: [], loading: true })
+    const { data } = await supabase.from('finance_purchase_return_items').select('*').eq('return_id', ret.id).order('id')
+    setViewReturn({ ret, items: data || [], loading: false })
+  }
+
+  // ══ اعتماد مرتجع: الضابط التراكمي + القيد المحاسبي + تحديث حالة الفاتورة ══
+  async function approveReturn(ret: any) {
+    if (!confirm(`اعتماد المرتجع ${ret.return_number}؟\nسيُسجَّل القيد المحاسبي (تخفيض مستحق المورد) وينعكس على صافي الفاتورة.`)) return
+
+    // الضابط التراكمي على المرتجعات المعتمدة فقط
+    let origInv: any = null
+    if (ret.original_invoice_id) {
+      const [{ data: inv }, { data: approved }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, total_amount, delivery_to, status').eq('id', ret.original_invoice_id).single(),
+        supabase.from('finance_purchase_returns').select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', ret.original_invoice_id).eq('status', 'معتمد'),
+      ])
+      origInv = inv
+      const prevApproved = (approved || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
+      const invTotal = Number(inv?.total_amount || 0)
+      if (invTotal > 0 && prevApproved + Number(ret.total_amount) > invTotal + 0.01) {
+        toast.error(`⛔ الفاتورة ${invTotal.toLocaleString()} ر.س وعليها مرتجعات معتمدة بـ ${prevApproved.toLocaleString()} ر.س — المتاح: ${Math.max(0, invTotal - prevApproved).toLocaleString()} ر.س فقط`, { duration: 7000 })
+        return
+      }
+    }
+
+    // القيد: عكس قيد الفاتورة — مدين ذمم الموردين / دائن حساب المشتريات والضريبة
+    const creditCode = origInv?.delivery_to === 'مستودع' ? '1130' : origInv?.delivery_to === 'أصل ثابت' ? '1220' : '5120'
+    const result = await createJournalEntry({
+      tenantId: tenant!.id,
+      date: ret.return_date,
+      description: `مرتجع مشتريات ${ret.return_number} — ${ret.vendor_name}`,
+      referenceType: 'مرتجع مشتريات', referenceId: ret.id, source: 'آلي',
+      lines: [
+        { accountCode: '2110',     debit: Number(ret.total_amount), credit: 0, description: `تخفيض مستحق ${ret.vendor_name}` },
+        { accountCode: creditCode, debit: 0, credit: Number(ret.subtotal),     description: `مرتجع ${ret.return_number}` },
+        ...(Number(ret.vat_amount) > 0 ? [{ accountCode: '2140', debit: 0, credit: Number(ret.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
+      ],
+    })
+    if (!result) { toast.error('تعذر ترحيل قيد المرتجع'); return }
+
+    await supabase.from('finance_purchase_returns').update({ status: 'معتمد' }).eq('id', ret.id)
+
+    // فاتورة مرتجعة بالكامل → "مرتجعة"
+    if (origInv) {
+      const { data: nowApproved } = await supabase.from('finance_purchase_returns')
+        .select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', origInv.id).eq('status', 'معتمد')
+      const sumApproved = (nowApproved || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
+      if (sumApproved >= Number(origInv.total_amount) - 0.01) {
+        await supabase.from('finance_vendor_invoices').update({ status: 'مرتجعة' }).eq('id', origInv.id)
+      }
+    }
+
+    toast.success(`✅ اعتُمد المرتجع ${ret.return_number} وسُجّل القيد ${result.entryNumber}`)
+    loadAll()
+  }
+
+  // ══ حذف مرتجع (مسودة فقط) ══
+  async function deleteReturn(ret: any) {
+    if (!confirm(`حذف المسودة ${ret.return_number}؟`)) return
+    await supabase.from('finance_purchase_return_items').delete().eq('return_id', ret.id)
+    await supabase.from('finance_purchase_returns').delete().eq('id', ret.id)
+    toast.success('تم حذف المسودة')
+    loadAll()
+  }
+
+  // ══ إلغاء مرتجع معتمد بقيد عكسي ══
+  async function cancelReturn(ret: any) {
+    if (!confirm(`إلغاء المرتجع المعتمد ${ret.return_number}؟\nسيُنشأ قيد عكسي يلغي أثره ويعيد مستحق المورد.`)) return
+    const { data: entry } = await supabase.from('finance_journal_entries')
+      .select('id, total_debit').eq('tenant_id', tenant!.id)
+      .eq('reference_type', 'مرتجع مشتريات').eq('reference_id', ret.id).maybeSingle()
+    if (entry) {
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('account_id, debit, credit, description').eq('entry_id', entry.id)
+      const jeNo = await nextDocNumber(tenant!.id, 'JE', 'JE')
+      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
+      const { data: rev } = await supabase.from('finance_journal_entries').insert({
+        tenant_id: tenant!.id, entry_number: jeNo, entry_date: new Date().toISOString().split('T')[0],
+        description: `قيد عكسي — إلغاء مرتجع ${ret.return_number} — ${ret.vendor_name}`,
+        reference_type: 'إلغاء مرتجع', reference_id: ret.id,
+        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit),
+        status: 'معتمد', entry_source: 'آلي',
+      }).select('id').single()
+      if (rev) {
+        await supabase.from('finance_journal_lines').insert(
+          (lines || []).map((l: any) => ({ entry_id: rev.id, account_id: l.account_id, debit: Number(l.credit), credit: Number(l.debit), description: `عكس: ${l.description || ''}` }))
+        )
+      }
+    }
+    await supabase.from('finance_purchase_returns').update({ status: 'ملغي' }).eq('id', ret.id)
+    // إن كانت الفاتورة "مرتجعة" وما عادت مغطاة بالكامل → إعادتها معتمدة
+    if (ret.original_invoice_id) {
+      const [{ data: inv }, { data: stillApproved }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, total_amount, status').eq('id', ret.original_invoice_id).single(),
+        supabase.from('finance_purchase_returns').select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', ret.original_invoice_id).eq('status', 'معتمد'),
+      ])
+      const sum = (stillApproved || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
+      if (inv?.status === 'مرتجعة' && sum < Number(inv.total_amount) - 0.01) {
+        await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
+      }
+    }
+    toast.success(`✅ أُلغي المرتجع ${ret.return_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    loadAll()
+  }
+
   const TABS = [
     { id: 'orders',   label: 'أوامر الشراء',   emoji: '📋', color: '#e6820a' },
     { id: 'invoices', label: 'فواتير الموردين', emoji: '🧾', color: '#c81e1e' },
@@ -1173,7 +1168,7 @@ export default function FinancePurchasesPage() {
             ? <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد مرتجعات</div>
             : <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                  <thead><tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>{['رقم المرتجع', 'المورد', 'التاريخ', 'النوع', 'الإجمالي', 'السبب', 'الحالة'].map(h => <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>{['رقم المرتجع', 'المورد', 'التاريخ', 'النوع', 'الإجمالي', 'السبب', 'الحالة', ''].map(h => <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>)}</tr></thead>
                   <tbody>
                     {returns.filter(r => !search || r.return_number.includes(search) || r.vendor_name.includes(search)).map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -1183,7 +1178,33 @@ export default function FinancePurchasesPage() {
                         <td style={{ padding: '10px 14px' }}><span className="badge badge-gray">{r.return_type}</span></td>
                         <td style={{ padding: '10px 14px', fontWeight: 700 }}>{Number(r.total_amount).toLocaleString()} ر.س</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{r.reason || '—'}</td>
-                        <td style={{ padding: '10px 14px' }}><span className="badge badge-gray">{r.status}</span></td>
+                        <td style={{ padding: '10px 14px' }}><span className={'badge ' + (r.status === 'معتمد' ? 'badge-green' : r.status === 'ملغي' ? 'badge-red' : 'badge-gray')}>{r.status}</span></td>
+                        <td style={{ padding: '10px 8px' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button onClick={() => openViewReturn(r)} title="استعراض"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                              <Eye style={{ width: '13px', height: '13px' }} />
+                            </button>
+                            {r.status === 'مسودة' && (
+                              <>
+                                <button onClick={() => approveReturn(r)} title="اعتماد وترحيل القيد"
+                                  style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                                  ✓ اعتماد
+                                </button>
+                                <button onClick={() => deleteReturn(r)} title="حذف المسودة"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}>
+                                  <Trash2 style={{ width: '13px', height: '13px' }} />
+                                </button>
+                              </>
+                            )}
+                            {r.status === 'معتمد' && (
+                              <button onClick={() => cancelReturn(r)} title="إلغاء بقيد عكسي"
+                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                                إلغاء
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1211,7 +1232,7 @@ export default function FinancePurchasesPage() {
                         <td style={{ padding: '12px 14px' }}><span className={'badge ' + (v.is_active ? 'badge-green' : 'badge-gray')}>{v.is_active ? 'نشط' : 'موقوف'}</span></td>
                         <td style={{ padding: '12px 14px' }}>
                           <div style={{ display: 'flex', gap: '4px' }}>
-                            <button onClick={() => setViewVendor(v)} title="استعراض وكشف حساب"
+                            <button onClick={() => router.push(`/finance/purchases/vendors/${v.id}`)} title="استعراض وكشف حساب"
                               style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
                               <Eye style={{ width: '13px', height: '13px' }} />
                             </button>
@@ -1230,7 +1251,58 @@ export default function FinancePurchasesPage() {
       {showInvModal && <VendorInvoiceModal invoice={editInv} convertFromPO={convertPO} vendors={vendors} projects={projects} warehouses={warehouses} purchaseOrders={purchaseOrders} tenantId={tenant!.id} onClose={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null) }} onSave={() => { setShowInvModal(false); setEditInv(null); setConvertPO(null); loadAll() }} />}
       {showReturnModal && <PurchaseReturnModal invoice={returnInvoice} vendors={vendors} tenantId={tenant!.id} onClose={() => { setShowReturnModal(false); setReturnInvoice(null) }} onSave={() => { setShowReturnModal(false); setReturnInvoice(null); loadAll() }} />}
       {showVendorModal && <VendorModal vendor={editVendor} tenantId={tenant!.id} onClose={() => { setShowVendorModal(false); setEditVendor(null) }} onSave={() => { setShowVendorModal(false); setEditVendor(null); loadAll() }} />}
-      {viewVendor && <VendorLedgerModal vendor={viewVendor} tenantId={tenant!.id} onClose={() => setViewVendor(null)} />}
+
+      {/* ══ مودال استعراض المرتجع ══ */}
+      {viewReturn && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setViewReturn(null)}>
+          <div className="modal-box" style={{ maxWidth: '620px', maxHeight: '85vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>↩️ مرتجع {viewReturn.ret.return_number}</h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  {viewReturn.ret.vendor_name} · {viewReturn.ret.return_date} · {viewReturn.ret.status}
+                  {viewReturn.ret.reason ? ` · السبب: ${viewReturn.ret.reason}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setViewReturn(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
+              {viewReturn.loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['البند', 'الكمية', 'الوحدة', 'سعر الوحدة', 'الإجمالي'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewReturn.items.map((it: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                        <td style={{ padding: '8px 14px' }}>{it.description}</td>
+                        <td style={{ padding: '8px 14px' }}>{Number(it.quantity).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', color: 'var(--text3)' }}>{it.unit}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }}>{Number(it.unit_price).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 600, direction: 'ltr', textAlign: 'left' }}>{Number(it.total).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ padding: '14px 16px', borderTop: '2px solid var(--border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي قبل الضريبة</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.subtotal).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الضريبة ({Number(viewReturn.ret.vat_rate)}%)</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.vat_amount).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.95rem', color: '#6b7280' }}><span>الإجمالي</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.total_amount).toLocaleString()} ر.س</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPayModal && payInvoice && <VendorPaymentModal invoice={payInvoice} tenantId={tenant!.id} onClose={() => { setShowPayModal(false); setPayInvoice(null) }} onSave={() => { setShowPayModal(false); setPayInvoice(null); loadAll() }} />}
       {showViewPO && viewPO && <POViewModal po={viewPO} items={viewPOItems} onClose={() => { setShowViewPO(false); setViewPO(null) }} onPrint={() => handlePrintPO(viewPO)} />}
       {showViewVInv && viewVInv && <VInvViewModal inv={viewVInv} items={viewVInvItems} onClose={() => { setShowViewVInv(false); setViewVInv(null) }} onPrint={() => handlePrintVInv(viewVInv)} />}
