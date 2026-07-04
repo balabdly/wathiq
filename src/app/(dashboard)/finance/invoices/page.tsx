@@ -1631,6 +1631,13 @@ export default function InvoicesPage() {
 
   const [showInvoiceModal,  setShowInvoiceModal]  = useState(false)
   const [showCreditModal,   setShowCreditModal]   = useState(false)
+  const [showPaymentModal,  setShowPaymentModal]  = useState(false)
+  const [showCatalogModal,  setShowCatalogModal]  = useState(false)
+  const [showClientModal,   setShowClientModal]   = useState(false)
+  const [editInvoice,       setEditInvoice]       = useState<Invoice | null>(null)
+  const [editClient,        setEditClient]        = useState<Client | null>(null)
+  const [paymentInvoice,    setPaymentInvoice]    = useState<Invoice | null>(null)
+  const [creditInvoice,     setCreditInvoice]     = useState<Invoice | null>(null)
   const [showQuoteModal,    setShowQuoteModal]     = useState(false)
   const [showViewModal,     setShowViewModal]     = useState(false)
   const [viewInvoice,       setViewInvoice]       = useState<Invoice | null>(null)
