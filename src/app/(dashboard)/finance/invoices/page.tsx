@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode, nextDocNumber } from '@/lib/journal'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
+import { usePagination } from '@/hooks/usePagination'
 
 // ════════════════════════════════════════
 // Types
@@ -1605,12 +1606,8 @@ export default function InvoicesPage() {
   const [invoices, setInvoices]       = useState<Invoice[]>([])
   const [filterStatus, setFilterStatus] = useState('الكل')
 
-  // ══ Pagination بسيط محلي (بدل hook خارجي) ══
-  const [invTotal, setInvTotal] = useState(0)
-  const invPagination = {
-    total: invTotal,
-    PaginationBar: () => null as any,   // placeholder
-  }
+  // ══ Pagination للفواتير — الـ hook الأصلي ══
+  const invPagination = usePagination(50)
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([])
   // ══ إشعارات دائنة (غير ملغاة) مجمعة حسب الفاتورة — لحساب الحالة العرضية والشارات ══
   const cnByInvoice = useMemo(() => {
@@ -1656,16 +1653,19 @@ export default function InvoicesPage() {
 
   async function loadInvoices(page: number, status: string, q: string) {
     if (!tenant) return
+    const from = (page - 1) * 50
+    const to   = from + 49
     let query = supabase.from('finance_invoices')
-      .select('*, client:finance_clients(name)', { count: 'exact' })
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('invoice_date', { ascending: false })
       .order('id', { ascending: false })
     if (status && status !== 'الكل') query = query.eq('status', status)
-    if (q) query = query.ilike('invoice_number', `%${q}%`)
-    const { data, count } = await query.range((page - 1) * 50, page * 50 - 1)
+    if (q) query = query.or(`invoice_number.ilike.%${q}%,client_name.ilike.%${q}%`)
+    const { data, count } = await query.range(from, to)
     setInvoices(data || [])
-    setInvTotal(count || 0)
+    invPagination.setPage(page)
+    invPagination.setTotal(count || 0)
   }
 
   async function loadAll() {
