@@ -5,7 +5,6 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Users, RotateCcw, ClipboardList, CheckCircle, AlertCircle, Eye, ExternalLink, Package, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, journalSalesInvoice, journalSalesCollection, journalCreditNote, getCashAccountCode, nextDocNumber } from '@/lib/journal'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -1606,8 +1605,12 @@ export default function InvoicesPage() {
   const [invoices, setInvoices]       = useState<Invoice[]>([])
   const [filterStatus, setFilterStatus] = useState('الكل')
 
-  // ══ Pagination للفواتير ══
-  const invPagination = usePagination(50)
+  // ══ Pagination بسيط محلي (بدل hook خارجي) ══
+  const [invTotal, setInvTotal] = useState(0)
+  const invPagination = {
+    total: invTotal,
+    PaginationBar: () => null as any,   // placeholder
+  }
   const [creditNotes, setCreditNotes] = useState<CreditNote[]>([])
   // ══ إشعارات دائنة (غير ملغاة) مجمعة حسب الفاتورة — لحساب الحالة العرضية والشارات ══
   const cnByInvoice = useMemo(() => {
@@ -1639,6 +1642,20 @@ export default function InvoicesPage() {
     const fk    = kind === 'cn' ? 'note_id' : 'quotation_id'
     const { data } = await supabase.from(table).select('*').eq(fk, doc.id).order('id')
     setViewDoc({ kind, doc, items: data || [], loading: false })
+  }
+
+  async function loadInvoices(page: number, status: string, q: string) {
+    if (!tenant) return
+    let query = supabase.from('finance_invoices')
+      .select('*, client:finance_clients(name)', { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .order('invoice_date', { ascending: false })
+      .order('id', { ascending: false })
+    if (status && status !== 'الكل') query = query.eq('status', status)
+    if (q) query = query.ilike('invoice_number', `%${q}%`)
+    const { data, count } = await query.range((page - 1) * 50, page * 50 - 1)
+    setInvoices(data || [])
+    setInvTotal(count || 0)
   }
 
   async function loadAll() {
@@ -1904,7 +1921,6 @@ export default function InvoicesPage() {
             </div>
           )}
           {/* شريط التصفح الصفحي */}
-          <invPagination.PaginationBar color="#1a56db" />
         </div>
       )}
 
