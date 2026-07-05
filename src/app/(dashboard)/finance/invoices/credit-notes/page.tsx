@@ -182,7 +182,7 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
       reason: form.reason || null, status: form.status, notes: form.notes || null,
     }
 
-    const { data, error } = await supabase.from('finance_credit_notes').insert(payload).select('id').single()
+    const { data, error } = await supabase.from('finance_credit_notes').insert({ ...payload, status: 'مسودة' }).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
 
     const validItems = items.filter(i => i.description.trim())
@@ -190,17 +190,8 @@ function CreditNoteModal({ invoice, clients, invoices, tenantId, onClose, onSave
       await supabase.from('finance_credit_note_items').insert(validItems.map(i => ({ note_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    await createJournalEntry({
-      tenantId, date: form.note_date, description: `${form.note_type} ${finalNoteNumber} — ${selectedClient!.name}`,
-      referenceType: form.note_type, referenceId: data.id, source: 'آلي',
-      lines: [
-        { accountCode: '4110', debit: subtotal, credit: 0, description: `${form.note_type} ${form.note_number}` },
-        ...(vatAmount > 0 ? [{ accountCode: '2130', debit: vatAmount, credit: 0, description: 'ضريبة مستردة' }] : []),
-        { accountCode: '1120', debit: 0, credit: total, description: `إشعار للعميل ${selectedClient!.name}` },
-      ]
-    })
-
-    toast.success('✅ تم إنشاء الإشعار والقيد المحاسبي')
+    // ══ لا ترحيل هنا — القيد فقط عند الاعتماد (نفس نمط مرتجعات المشتريات) ══
+    toast.success('✅ تم حفظ الإشعار كمسودة — اعتمده من الجدول لترحيل القيد')
     onSave(); setSaving(false)
   }
 
@@ -309,6 +300,59 @@ function CreditNotesPage() {
     setViewDoc({ doc: cn, items: data || [], loading: false })
   }
 
+  // ══ اعتماد إشعار دائن: يرحّل القيد ويحدّث الحالة (نفس نمط مرتجعات المشتريات) ══
+  async function approveCreditNote(cn: any) {
+    if (!confirm(`اعتماد الإشعار ${cn.note_number}؟\nسيُسجَّل القيد المحاسبي (تخفيض ذمة العميل) وينعكس على صافي الفاتورة.`)) return
+
+    const result = await createJournalEntry({
+      tenantId: tenantId!, date: cn.note_date, description: `${cn.note_type} ${cn.note_number} — ${cn.client_name}`,
+      referenceType: cn.note_type, referenceId: cn.id, source: 'آلي',
+      lines: [
+        { accountCode: '4110', debit: Number(cn.subtotal), credit: 0, description: `${cn.note_type} ${cn.note_number}` },
+        ...(Number(cn.vat_amount) > 0 ? [{ accountCode: '2130', debit: Number(cn.vat_amount), credit: 0, description: 'ضريبة مستردة' }] : []),
+        { accountCode: '1120', debit: 0, credit: Number(cn.total_amount), description: `إشعار للعميل ${cn.client_name}` },
+      ],
+    })
+    if (!result) { toast.error('تعذر ترحيل قيد الإشعار'); return }
+
+    await supabase.from('finance_credit_notes').update({ status: 'معتمد' }).eq('id', cn.id)
+    toast.success(`✅ اعتُمد الإشعار ${cn.note_number} وسُجّل القيد ${result.entryNumber}`)
+    loadCreditNotes()
+  }
+
+  // ══ حذف إشعار (مسودة فقط) ══
+  async function deleteCreditNote(cn: any) {
+    if (!confirm(`حذف المسودة ${cn.note_number}؟`)) return
+    await supabase.from('finance_credit_note_items').delete().eq('note_id', cn.id)
+    await supabase.from('finance_credit_notes').delete().eq('id', cn.id)
+    toast.success('تم حذف المسودة')
+    loadCreditNotes()
+  }
+
+  // ══ إلغاء إشعار معتمد بقيد عكسي — لا إلغاء صامت لمستند ضريبي صادر ══
+  async function cancelCreditNote(cn: any) {
+    if (!confirm(`إلغاء الإشعار المعتمد ${cn.note_number}؟\nسيُنشأ قيد عكسي يلغي أثره ويعيد ذمة العميل.`)) return
+    const { data: entry } = await supabase.from('finance_journal_entries')
+      .select('id, total_debit').eq('tenant_id', tenantId).eq('reference_type', cn.note_type).eq('reference_id', cn.id).maybeSingle()
+    if (entry) {
+      const { data: lines } = await supabase.from('finance_journal_lines').select('account_id, debit, credit, description').eq('entry_id', entry.id)
+      const jeNo = await nextDocNumber(tenantId!, 'JE', 'JE')
+      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
+      const { data: rev } = await supabase.from('finance_journal_entries').insert({
+        tenant_id: tenantId, entry_number: jeNo, entry_date: new Date().toISOString().split('T')[0],
+        description: `قيد عكسي — إلغاء إشعار ${cn.note_number} — ${cn.client_name}`,
+        reference_type: 'إلغاء إشعار دائن', reference_id: cn.id,
+        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit), status: 'معتمد', entry_source: 'آلي',
+      }).select('id').single()
+      if (rev) {
+        await supabase.from('finance_journal_lines').insert((lines || []).map((l: any) => ({ entry_id: rev.id, account_id: l.account_id, debit: Number(l.credit), credit: Number(l.debit), description: `عكس: ${l.description || ''}` })))
+      }
+    }
+    await supabase.from('finance_credit_notes').update({ status: 'ملغي' }).eq('id', cn.id)
+    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    loadCreditNotes()
+  }
+
   const filtered = creditNotes.filter(cn => !search || cn.note_number.includes(search) || cn.client_name.includes(search))
 
   return (
@@ -341,9 +385,20 @@ function CreditNotesPage() {
                     <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{cn.note_date}</td>
                     <td style={{ padding: '10px 14px', fontWeight: 700, color: '#c81e1e' }}>{Number(cn.total_amount).toLocaleString()} ر.س</td>
                     <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{cn.reason || '—'}</td>
-                    <td style={{ padding: '10px 14px' }}><span className={'badge ' + (cn.status === 'ملغي' ? 'badge-red' : 'badge-gray')}>{cn.status}</span></td>
+                    <td style={{ padding: '10px 14px' }}><span className={'badge ' + (cn.status === 'معتمد' ? 'badge-green' : cn.status === 'ملغي' ? 'badge-red' : 'badge-gray')}>{cn.status}</span></td>
                     <td style={{ padding: '10px 8px' }}>
-                      <button onClick={() => openViewDoc(cn)} title="استعراض" style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}><Eye style={{ width: '13px', height: '13px' }} /></button>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button onClick={() => openViewDoc(cn)} title="استعراض" style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}><Eye style={{ width: '13px', height: '13px' }} /></button>
+                        {cn.status === 'مسودة' && (
+                          <>
+                            <button onClick={() => approveCreditNote(cn)} title="اعتماد وترحيل القيد" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>✓ اعتماد</button>
+                            <button onClick={() => deleteCreditNote(cn)} title="حذف المسودة" style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}><Trash2 style={{ width: '13px', height: '13px' }} /></button>
+                          </>
+                        )}
+                        {cn.status === 'معتمد' && (
+                          <button onClick={() => cancelCreditNote(cn)} title="إلغاء بقيد عكسي" style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>إلغاء</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
