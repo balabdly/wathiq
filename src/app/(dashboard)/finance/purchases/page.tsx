@@ -43,6 +43,13 @@ type PurchaseReturn = {
   subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
   reason?: string; status: string; notes?: string
 }
+type DebitNote = {
+  id: number; note_number: string; note_date: string
+  original_invoice_id?: number; invoice_number?: string
+  vendor_id?: number; vendor_name: string; vendor_vat?: string
+  subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
+  reason?: string; status: string; notes?: string; created_by?: string
+}
 type Project   = { id: number; name: string }
 type Warehouse = { id: number; name: string; wh_type: string }
 type CashAccount = { id: number; name: string; account_type: string; bank_name?: string; account_no?: string; iban?: string; account_id?: number; account_code?: string }
@@ -274,6 +281,7 @@ function POModal({ po, vendors, projects, warehouses, tenantId, onClose, onSave 
     }
     const payload = {
       tenant_id: tenantId, po_number: finalPoNumber, po_date: form.po_date, expected_date: form.expected_date || null,
+      ...(po ? {} : { created_by: useStore.getState().currentUser?.name || null }),
       vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, vendor_vat: selectedVendor!.vat_number || null,
       project_id: form.project_id ? Number(form.project_id) : null, delivery_to: form.delivery_to,
       warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
@@ -430,6 +438,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     }
     const payload = {
       tenant_id: tenantId, invoice_number: finalVinvNumber, invoice_date: form.invoice_date, due_date: form.due_date || null,
+      ...(invoice ? {} : { created_by: useStore.getState().currentUser?.name || null }),
       vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, vendor_vat: selectedVendor!.vat_number || null,
       po_id: form.po_id ? Number(form.po_id) : null, project_id: form.project_id ? Number(form.project_id) : null,
       delivery_to: form.delivery_to, warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
@@ -594,7 +603,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
         setSaving(false); return
       }
     }
-    const payload = { tenant_id: tenantId, return_number: finalPrNumber, return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: 'مسودة', notes: form.notes || null }
+    const payload = { tenant_id: tenantId, return_number: finalPrNumber, return_date: form.return_date, return_type: form.return_type, original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null, vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate), reason: form.reason, status: 'مسودة', notes: form.notes || null, created_by: useStore.getState().currentUser?.name || null }
     const { data, error } = await supabase.from('finance_purchase_returns').insert(payload).select('id').single()
     if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     const validItems = items.filter(i => i.description.trim())
@@ -602,15 +611,9 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
       await supabase.from('finance_purchase_return_items').insert(validItems.map(i => ({ return_id: data.id, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
     }
 
-    // (تحويل الفاتورة إلى "مرتجعة" يحدث عند اعتماد المرتجع — ليس عند حفظ المسودة)
-    await createJournalEntry({ tenantId, date: form.return_date, description: `${form.return_type} ${form.return_number} — ${selectedVendor!.name}`, referenceType: form.return_type, referenceId: data.id, source: 'آلي',
-      lines: [
-        { accountCode: '2110', debit: total,    credit: 0,        description: `${form.return_type} ${form.return_number}` },
-        { accountCode: '1130', debit: 0,        credit: subtotal, description: `إرجاع بضاعة — ${form.reason}` },
-        ...(vatAmount > 0 ? [{ accountCode: '2140', debit: 0, credit: vatAmount, description: 'ضريبة مستردة' }] : []),
-      ]
-    })
-    toast.success('تم إنشاء المرتجع والقيد المحاسبي')
+    // ══ إصلاح: المسودة لا تُرحَّل — القيد يُنشأ فقط عند الاعتماد (زر "✓ اعتماد" بالجدول) ══
+    // هذا يمنع الترحيل المزدوج (قيد عند الإنشاء + قيد ثانٍ عند الاعتماد)
+    toast.success('✅ تم حفظ المرتجع كمسودة — اعتمده من الجدول لترحيل القيد')
     onSave(); setSaving(false)
   }
   return (
@@ -639,6 +642,153 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
           <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <RotateCcw style={{ width: '15px', height: '15px' }} />}
             إنشاء المرتجع
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DebitNoteModal({ note, vendors, vendorInvoices, tenantId, onClose, onSave }: {
+  note: DebitNote | null; vendors: Vendor[]; vendorInvoices: VendorInvoice[]; tenantId: string; onClose: () => void; onSave: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [items, setItems] = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
+  const today = new Date().toISOString().split('T')[0]
+  const [form, setForm] = useState({
+    note_number: note?.note_number || '', note_date: note?.note_date || today,
+    original_invoice_id: note?.original_invoice_id ? String(note.original_invoice_id) : '',
+    vendor_id: note?.vendor_id ? String(note.vendor_id) : '',
+    vat_rate: note?.vat_rate ?? 15, reason: note?.reason || '', notes: note?.notes || '',
+  })
+  const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    if (note) {
+      supabase.from('finance_debit_note_items').select('*').eq('note_id', note.id).order('id')
+        .then(({ data }) => { if (data && data.length > 0) setItems(data.map((i: any) => ({ ...i, id: undefined }))) })
+    } else {
+      generateNumber()
+    }
+  }, [])
+
+  async function generateNumber() {
+    set('note_number', (await nextDocNumber(tenantId, 'DN', 'DN')) || `DN-${new Date().getFullYear()}-0001`)
+  }
+
+  function handleInvoiceSelect(invId: string) {
+    set('original_invoice_id', invId)
+    const inv = vendorInvoices.find(i => i.id === Number(invId))
+    if (inv) { set('vendor_id', String(inv.vendor_id)); set('vat_rate', inv.vat_rate ?? 15) }
+  }
+
+  const selectedVendor  = vendors.find(v => v.id === Number(form.vendor_id))
+  const selectedInvoice = vendorInvoices.find(i => i.id === Number(form.original_invoice_id))
+  const subtotal  = items.reduce((s, i) => s + Number(i.total), 0)
+  const vatAmount = Math.round(subtotal * (Number(form.vat_rate) / 100) * 100) / 100
+  const total     = subtotal + vatAmount
+
+  async function handleSave() {
+    if (!form.note_number.trim()) { toast.error('رقم الإشعار مطلوب'); return }
+    if (!form.vendor_id) { toast.error('اختر المورد'); return }
+    if (!form.reason.trim()) { toast.error('سبب الإشعار مطلوب'); return }
+    if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
+    setSaving(true)
+
+    // ══ الرقم النهائي — ذرّي عند الحفظ ══
+    let finalNoteNumber = form.note_number.trim()
+    if (!note && /^DN-\d{4}-\d{4}$/.test(finalNoteNumber)) {
+      finalNoteNumber = (await nextDocNumber(tenantId, 'DN', 'DN')) || finalNoteNumber
+    }
+
+    // ══ ضابط ERP: مجموع الإشعارات المعتمدة (السابقة + الحالي) لا يتجاوز قيمة الفاتورة ══
+    if (form.original_invoice_id) {
+      const invId = Number(form.original_invoice_id)
+      const [{ data: origInv }, { data: prevNotes }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('total_amount').eq('id', invId).single(),
+        supabase.from('finance_debit_notes').select('total_amount').eq('tenant_id', tenantId).eq('original_invoice_id', invId).eq('status', 'معتمد'),
+      ])
+      const origTotal = Number(origInv?.total_amount || 0)
+      const prevTotal = (prevNotes || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+      const available = origTotal - prevTotal
+      if (origTotal > 0 && total > available + 0.01) {
+        toast.error(
+          prevTotal > 0
+            ? `⛔ الفاتورة قيمتها ${origTotal.toLocaleString()} ر.س وعليها إشعارات معتمدة بـ ${prevTotal.toLocaleString()} ر.س — المتاح: ${Math.max(0, available).toLocaleString()} ر.س فقط`
+            : `⛔ مبلغ الإشعار (${total.toLocaleString()} ر.س) يتجاوز قيمة الفاتورة (${origTotal.toLocaleString()} ر.س)`,
+          { duration: 6000 })
+        setSaving(false); return
+      }
+    }
+
+    const payload = {
+      tenant_id: tenantId, note_number: finalNoteNumber, note_date: form.note_date,
+      original_invoice_id: form.original_invoice_id ? Number(form.original_invoice_id) : null,
+      invoice_number: selectedInvoice?.invoice_number || null,
+      vendor_id: Number(form.vendor_id), vendor_name: selectedVendor!.name, vendor_vat: selectedVendor!.vat_number || null,
+      subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate),
+      reason: form.reason, notes: form.notes || null,
+      ...(note ? {} : { created_by: useStore.getState().currentUser?.name || null }),
+    }
+
+    let noteId = note?.id
+    if (note) {
+      await supabase.from('finance_debit_notes').update(payload).eq('id', note.id)
+      await supabase.from('finance_debit_note_items').delete().eq('note_id', note.id)
+    } else {
+      const { data, error } = await supabase.from('finance_debit_notes').insert({ ...payload, status: 'مسودة' }).select('id').single()
+      if (error || !data) { toast.error('خطأ: ' + (error?.message || '')); setSaving(false); return }
+      noteId = data.id
+    }
+
+    const validItems = items.filter(i => i.description.trim())
+    if (validItems.length > 0 && noteId) {
+      await supabase.from('finance_debit_note_items').insert(validItems.map(i => ({ note_id: noteId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
+    }
+
+    // ══ لا ترحيل هنا — القيد فقط عند الاعتماد (نفس درس المرتجع) ══
+    toast.success(note ? '✅ تم تعديل الإشعار' : '✅ تم حفظ الإشعار كمسودة — اعتمده من الجدول لترحيل القيد')
+    onSave(); setSaving(false)
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '680px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileText style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
+            {note ? 'تعديل إشعار مدين' : 'إشعار مدين جديد'}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ padding: '10px 14px', background: '#f5f3ff', borderRadius: '8px', fontSize: '0.78rem', color: '#5b21b6' }}>
+            📑 الإشعار المدين: مستند رسمي نصححه للمورد لتخفيض المستحق (خطأ سعر/كمية، خصم متفق عليه) — دون التلاعب بالفاتورة الأصلية. متوافق مع اشتراط عدم إلغاء المستندات الضريبية الصادرة.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div><label style={lbl}>رقم الإشعار</label><input value={form.note_number} onChange={e => set('note_number', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" dir="ltr" /></div>
+            <div><label style={lbl}>التاريخ</label><input type="date" value={form.note_date} onChange={e => set('note_date', e.target.value)} className="input" /></div>
+          </div>
+          <div>
+            <label style={lbl}>الفاتورة المرجعية (اختياري)</label>
+            <select value={form.original_invoice_id} onChange={e => handleInvoiceSelect(e.target.value)} className="select">
+              <option value="">— بدون ربط بفاتورة —</option>
+              {vendorInvoices.map(i => <option key={i.id} value={i.id}>{i.invoice_number} — {i.vendor_name} ({Number(i.total_amount).toLocaleString()} ر.س)</option>)}
+            </select>
+          </div>
+          <div><label style={lbl}>المورد *</label><select value={form.vendor_id} onChange={e => set('vendor_id', e.target.value)} className="select" disabled={!!form.original_invoice_id}><option value="">— اختر المورد —</option>{vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
+          <div><label style={lbl}>سبب الإشعار *</label><input value={form.reason} onChange={e => set('reason', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" placeholder="مثال: خطأ في سعر الوحدة بالفاتورة الأصلية..." /></div>
+          <ItemsTable items={items} onChange={setItems} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', alignItems: 'start' }}>
+            <div><label style={lbl}>ملاحظات</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
+            <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <FileText style={{ width: '15px', height: '15px' }} />}
+            {note ? 'حفظ التعديل' : 'حفظ كمسودة'}
           </button>
         </div>
       </div>
@@ -819,13 +969,17 @@ function VInvViewModal({ inv, items, onClose, onPrint }: { inv: VendorInvoice; i
 export default function FinancePurchasesPage() {
   const { tenant } = useStore()
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'orders' | 'invoices' | 'returns' | 'vendors'>('orders')
+  const [activeTab, setActiveTab] = useState<'orders' | 'invoices' | 'returns' | 'debitnotes' | 'vendors'>('orders')
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([])
   const [vendorInvoices, setVendorInvoices] = useState<VendorInvoice[]>([])
   const poPagination  = usePagination(50)
   const invPagination = usePagination(50)
   const [returns,    setReturns]   = useState<PurchaseReturn[]>([])
   const [viewReturn, setViewReturn] = useState<{ ret: any; items: any[]; loading: boolean } | null>(null)
+  const [debitNotes,     setDebitNotes]     = useState<DebitNote[]>([])
+  const [showDebitModal, setShowDebitModal] = useState(false)
+  const [editDebit,      setEditDebit]      = useState<DebitNote | null>(null)
+  const [viewDebit,       setViewDebit]      = useState<{ note: any; items: any[]; loading: boolean } | null>(null)
   const [vendors,    setVendors]   = useState<Vendor[]>([])
   const [projects,   setProjects]  = useState<Project[]>([])
   const [warehouses, setWarehouses]= useState<Warehouse[]>([])
@@ -876,13 +1030,15 @@ export default function FinancePurchasesPage() {
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [retRes, venRes, projRes, whRes] = await Promise.all([
+    const [retRes, venRes, projRes, whRes, dnRes] = await Promise.all([
       supabase.from('finance_purchase_returns').select('*').eq('tenant_id', tenant.id).order('return_date', { ascending: false }).limit(200),
       supabase.from('finance_vendors').select('*').eq('tenant_id', tenant.id).order('name'),
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('warehouses').select('id, name, wh_type').eq('tenant_id', tenant.id),
+      supabase.from('finance_debit_notes').select('*').eq('tenant_id', tenant.id).order('note_date', { ascending: false }).limit(200),
     ])
     setReturns(retRes.data || []); setVendors(venRes.data || []); setProjects(projRes.data || []); setWarehouses(whRes.data || [])
+    setDebitNotes(dnRes.data || [])
     await Promise.all([loadPurchaseOrders(1), loadVendorInvoices(1)])
     setLoading(false)
   }
@@ -985,6 +1141,109 @@ export default function FinancePurchasesPage() {
     loadAll()
   }
 
+  // ══════════════════ الإشعارات المدينة ══════════════════
+  async function openViewDebit(note: any) {
+    setViewDebit({ note, items: [], loading: true })
+    const { data } = await supabase.from('finance_debit_note_items').select('*').eq('note_id', note.id).order('id')
+    setViewDebit({ note, items: data || [], loading: false })
+  }
+
+  // ══ اعتماد إشعار مدين: الضابط التراكمي + قيد واحد فقط + تحديث حالة الفاتورة إن غطّاها بالكامل ══
+  async function approveDebitNote(note: any) {
+    if (!confirm(`اعتماد الإشعار المدين ${note.note_number}؟\nسيُسجَّل القيد المحاسبي (تخفيض مستحق المورد) وينعكس على صافي الفاتورة.`)) return
+
+    let origInv: any = null
+    if (note.original_invoice_id) {
+      const [{ data: inv }, { data: approved }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, total_amount, delivery_to, status').eq('id', note.original_invoice_id).single(),
+        supabase.from('finance_debit_notes').select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', note.original_invoice_id).eq('status', 'معتمد'),
+      ])
+      origInv = inv
+      const prevApproved = (approved || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+      const invTotal = Number(inv?.total_amount || 0)
+      if (invTotal > 0 && prevApproved + Number(note.total_amount) > invTotal + 0.01) {
+        toast.error(`⛔ الفاتورة ${invTotal.toLocaleString()} ر.س وعليها إشعارات معتمدة بـ ${prevApproved.toLocaleString()} ر.س — المتاح: ${Math.max(0, invTotal - prevApproved).toLocaleString()} ر.س فقط`, { duration: 7000 })
+        return
+      }
+    }
+
+    const creditCode = origInv?.delivery_to === 'مستودع' ? '1130' : origInv?.delivery_to === 'أصل ثابت' ? '1220' : '5120'
+    const result = await createJournalEntry({
+      tenantId: tenant!.id,
+      date: note.note_date,
+      description: `إشعار مدين ${note.note_number} — ${note.vendor_name}`,
+      referenceType: 'إشعار مدين', referenceId: note.id, source: 'آلي',
+      lines: [
+        { accountCode: '2110',     debit: Number(note.total_amount), credit: 0, description: `تخفيض مستحق ${note.vendor_name}` },
+        { accountCode: creditCode, debit: 0, credit: Number(note.subtotal),     description: `إشعار مدين ${note.note_number}` },
+        ...(Number(note.vat_amount) > 0 ? [{ accountCode: '2140', debit: 0, credit: Number(note.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
+      ],
+    })
+    if (!result) { toast.error('تعذر ترحيل قيد الإشعار'); return }
+
+    await supabase.from('finance_debit_notes').update({ status: 'معتمد' }).eq('id', note.id)
+
+    if (origInv) {
+      const { data: nowApproved } = await supabase.from('finance_debit_notes')
+        .select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', origInv.id).eq('status', 'معتمد')
+      const sumApproved = (nowApproved || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+      if (sumApproved >= Number(origInv.total_amount) - 0.01) {
+        await supabase.from('finance_vendor_invoices').update({ status: 'مرتجعة' }).eq('id', origInv.id)
+      }
+    }
+
+    toast.success(`✅ اعتُمد الإشعار ${note.note_number} وسُجّل القيد ${result.entryNumber}`)
+    loadAll()
+  }
+
+  // ══ حذف إشعار مدين (مسودة فقط) ══
+  async function deleteDebitNote(note: any) {
+    if (!confirm(`حذف المسودة ${note.note_number}؟`)) return
+    await supabase.from('finance_debit_note_items').delete().eq('note_id', note.id)
+    await supabase.from('finance_debit_notes').delete().eq('id', note.id)
+    toast.success('تم حذف المسودة')
+    loadAll()
+  }
+
+  // ══ إلغاء إشعار معتمد بقيد عكسي — الامتثال السعودي: لا إلغاء صامت، بل قيد يعكس الأثر ══
+  async function cancelDebitNote(note: any) {
+    if (!confirm(`إلغاء الإشعار المعتمد ${note.note_number}؟\nسيُنشأ قيد عكسي يلغي أثره ويعيد مستحق المورد.`)) return
+    const { data: entry } = await supabase.from('finance_journal_entries')
+      .select('id, total_debit').eq('tenant_id', tenant!.id)
+      .eq('reference_type', 'إشعار مدين').eq('reference_id', note.id).maybeSingle()
+    if (entry) {
+      const { data: lines } = await supabase.from('finance_journal_lines')
+        .select('account_id, debit, credit, description').eq('entry_id', entry.id)
+      const jeNo = await nextDocNumber(tenant!.id, 'JE', 'JE')
+      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
+      const { data: rev } = await supabase.from('finance_journal_entries').insert({
+        tenant_id: tenant!.id, entry_number: jeNo, entry_date: new Date().toISOString().split('T')[0],
+        description: `قيد عكسي — إلغاء إشعار مدين ${note.note_number} — ${note.vendor_name}`,
+        reference_type: 'إلغاء إشعار مدين', reference_id: note.id,
+        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit),
+        status: 'معتمد', entry_source: 'آلي',
+      }).select('id').single()
+      if (rev) {
+        await supabase.from('finance_journal_lines').insert(
+          (lines || []).map((l: any) => ({ entry_id: rev.id, account_id: l.account_id, debit: Number(l.credit), credit: Number(l.debit), description: `عكس: ${l.description || ''}` }))
+        )
+      }
+    }
+    await supabase.from('finance_debit_notes').update({ status: 'ملغي' }).eq('id', note.id)
+    if (note.original_invoice_id) {
+      const [{ data: inv }, { data: stillApproved }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, total_amount, status').eq('id', note.original_invoice_id).single(),
+        supabase.from('finance_debit_notes').select('total_amount').eq('tenant_id', tenant!.id).eq('original_invoice_id', note.original_invoice_id).eq('status', 'معتمد'),
+      ])
+      const sum = (stillApproved || []).reduce((s: number, n: any) => s + Number(n.total_amount), 0)
+      if (inv?.status === 'مرتجعة' && sum < Number(inv.total_amount) - 0.01) {
+        await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
+      }
+    }
+    toast.success(`✅ أُلغي الإشعار ${note.note_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    loadAll()
+  }
+
   // ══ حذف مرتجع (مسودة فقط) ══
   async function deleteReturn(ret: any) {
     if (!confirm(`حذف المسودة ${ret.return_number}؟`)) return
@@ -1038,6 +1297,7 @@ export default function FinancePurchasesPage() {
     { id: 'orders',   label: 'أوامر الشراء',   emoji: '📋', color: '#e6820a' },
     { id: 'invoices', label: 'فواتير الموردين', emoji: '🧾', color: '#c81e1e' },
     { id: 'returns',  label: 'المرتجعات',       emoji: '↩️', color: '#6b7280' },
+    { id: 'debitnotes', label: 'الإشعارات المدينة', emoji: '📑', color: '#7c3aed' },
     { id: 'vendors',  label: 'الموردون',         emoji: '🏭', color: '#1a56db' },
   ]
 
@@ -1052,6 +1312,7 @@ export default function FinancePurchasesPage() {
           {activeTab === 'orders'   && <button onClick={() => { setEditPO(null); setShowPOModal(true) }} className="btn btn-primary" style={{ background: '#e6820a' }}><Plus style={{ width: '16px', height: '16px' }} /> أمر شراء</button>}
           {activeTab === 'invoices' && <button onClick={() => { setEditInv(null); setConvertPO(null); setShowInvModal(true) }} className="btn btn-primary" style={{ background: '#c81e1e' }}><Plus style={{ width: '16px', height: '16px' }} /> فاتورة مورد</button>}
           {activeTab === 'returns'  && <button onClick={() => { setReturnInvoice(null); setShowReturnModal(true) }} className="btn btn-primary" style={{ background: '#6b7280' }}><Plus style={{ width: '16px', height: '16px' }} /> مرتجع</button>}
+          {activeTab === 'debitnotes' && <button onClick={() => { setEditDebit(null); setShowDebitModal(true) }} className="btn btn-primary" style={{ background: '#7c3aed' }}><Plus style={{ width: '16px', height: '16px' }} /> إشعار مدين</button>}
           {activeTab === 'vendors'  && <button onClick={() => { setEditVendor(null); setShowVendorModal(true) }} className="btn btn-primary" style={{ background: '#1a56db' }}><Plus style={{ width: '16px', height: '16px' }} /> مورد جديد</button>}
         </div>
       </div>
@@ -1086,7 +1347,10 @@ export default function FinancePurchasesPage() {
                 <tbody>
                   {purchaseOrders.map(po => (
                     <tr key={po.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }} onClick={() => handleViewPO(po)} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#e6820a' }}>{po.po_number}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#e6820a' }}>{po.po_number}</div>
+                        {po.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {po.created_by}</div>}
+                      </td>
                       <td style={{ padding: '10px 14px' }}>{po.vendor_name}</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{po.po_date}</td>
                       <td style={{ padding: '10px 14px', fontSize: '0.82rem' }}>{po.delivery_to}</td>
@@ -1121,7 +1385,10 @@ export default function FinancePurchasesPage() {
                     const isOverdue = inv.status !== 'مدفوعة' && inv.status !== 'ملغاة' && inv.due_date && inv.due_date < today
                     return (
                       <tr key={inv.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }} onClick={() => handleViewVInv(inv)} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#c81e1e' }}>{inv.invoice_number}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#c81e1e' }}>{inv.invoice_number}</div>
+                          {inv.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {inv.created_by}</div>}
+                        </td>
                         <td style={{ padding: '10px 14px' }}>{inv.vendor_name}</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{inv.invoice_date}</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: isOverdue ? '#c81e1e' : 'var(--text3)' }}>{inv.due_date || '—'}</td>
@@ -1172,7 +1439,10 @@ export default function FinancePurchasesPage() {
                   <tbody>
                     {returns.filter(r => !search || r.return_number.includes(search) || r.vendor_name.includes(search)).map(r => (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--bg2)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#6b7280' }}>{r.return_number}</td>
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#6b7280' }}>{r.return_number}</div>
+                          {r.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {r.created_by}</div>}
+                        </td>
                         <td style={{ padding: '10px 14px' }}>{r.vendor_name}</td>
                         <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{r.return_date}</td>
                         <td style={{ padding: '10px 14px' }}><span className="badge badge-gray">{r.return_type}</span></td>
@@ -1199,6 +1469,65 @@ export default function FinancePurchasesPage() {
                             )}
                             {r.status === 'معتمد' && (
                               <button onClick={() => cancelReturn(r)} title="إلغاء بقيد عكسي"
+                                style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
+                                إلغاء
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>}
+        </div>
+      )}
+
+      {/* ══ تاب: الإشعارات المدينة ══ */}
+      {activeTab === 'debitnotes' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {debitNotes.filter(n => !search || n.note_number.includes(search) || n.vendor_name.includes(search)).length === 0
+            ? <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد إشعارات مدينة</div>
+            : <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                  <thead><tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>{['رقم الإشعار', 'المورد', 'الفاتورة المرجعية', 'التاريخ', 'الإجمالي', 'السبب', 'الحالة', ''].map(h => <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {debitNotes.filter(n => !search || n.note_number.includes(search) || n.vendor_name.includes(search)).map(n => (
+                      <tr key={n.id} style={{ borderBottom: '1px solid var(--bg2)' }} onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#7c3aed' }}>{n.note_number}</div>
+                          {n.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {n.created_by}</div>}
+                        </td>
+                        <td style={{ padding: '10px 14px' }}>{n.vendor_name}</td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>{n.invoice_number || '—'}</td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{n.note_date}</td>
+                        <td style={{ padding: '10px 14px', fontWeight: 700, color: '#7c3aed' }}>{Number(n.total_amount).toLocaleString()} ر.س</td>
+                        <td style={{ padding: '10px 14px', fontSize: '0.78rem', color: 'var(--text3)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.reason || '—'}</td>
+                        <td style={{ padding: '10px 14px' }}><span className={'badge ' + (n.status === 'معتمد' ? 'badge-green' : n.status === 'ملغي' ? 'badge-red' : 'badge-gray')}>{n.status}</span></td>
+                        <td style={{ padding: '10px 8px' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button onClick={() => openViewDebit(n)} title="استعراض"
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer' }}>
+                              <Eye style={{ width: '13px', height: '13px' }} />
+                            </button>
+                            {n.status === 'مسودة' && (
+                              <>
+                                <button onClick={() => { setEditDebit(n); setShowDebitModal(true) }} title="تعديل المسودة"
+                                  style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
+                                  <Pencil style={{ width: '13px', height: '13px' }} />
+                                </button>
+                                <button onClick={() => approveDebitNote(n)} title="اعتماد وترحيل القيد"
+                                  style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>
+                                  ✓ اعتماد
+                                </button>
+                                <button onClick={() => deleteDebitNote(n)} title="حذف المسودة"
+                                  style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}>
+                                  <Trash2 style={{ width: '13px', height: '13px' }} />
+                                </button>
+                              </>
+                            )}
+                            {n.status === 'معتمد' && (
+                              <button onClick={() => cancelDebitNote(n)} title="إلغاء بقيد عكسي"
                                 style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600 }}>
                                 إلغاء
                               </button>
@@ -1297,6 +1626,64 @@ export default function FinancePurchasesPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي قبل الضريبة</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.subtotal).toLocaleString()} ر.س</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الضريبة ({Number(viewReturn.ret.vat_rate)}%)</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.vat_amount).toLocaleString()} ر.س</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.95rem', color: '#6b7280' }}><span>الإجمالي</span><span style={{ fontFamily: 'monospace' }}>{Number(viewReturn.ret.total_amount).toLocaleString()} ر.س</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDebitModal && (
+        <DebitNoteModal note={editDebit} vendors={vendors} vendorInvoices={vendorInvoices} tenantId={tenant!.id}
+          onClose={() => { setShowDebitModal(false); setEditDebit(null) }}
+          onSave={() => { setShowDebitModal(false); setEditDebit(null); loadAll() }} />
+      )}
+
+      {/* ══ مودال استعراض الإشعار المدين ══ */}
+      {viewDebit && (
+        <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setViewDebit(null)}>
+          <div className="modal-box" style={{ maxWidth: '620px', maxHeight: '85vh' }} onMouseDown={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>📑 إشعار مدين {viewDebit.note.note_number}</h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                  {viewDebit.note.vendor_name} · {viewDebit.note.note_date} · {viewDebit.note.status}
+                  {viewDebit.note.invoice_number ? ` · مرجع: ${viewDebit.note.invoice_number}` : ''}
+                  {viewDebit.note.reason ? ` · السبب: ${viewDebit.note.reason}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setViewDebit(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: '4px' }}>
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0, overflowY: 'auto' }}>
+              {viewDebit.loading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem' }}>جاري التحميل...</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
+                      {['البند', 'الكمية', 'الوحدة', 'سعر الوحدة', 'الإجمالي'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewDebit.items.map((it: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                        <td style={{ padding: '8px 14px' }}>{it.description}</td>
+                        <td style={{ padding: '8px 14px' }}>{Number(it.quantity).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', color: 'var(--text3)' }}>{it.unit}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', direction: 'ltr', textAlign: 'left' }}>{Number(it.unit_price).toLocaleString()}</td>
+                        <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontWeight: 600, direction: 'ltr', textAlign: 'left' }}>{Number(it.total).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ padding: '14px 16px', borderTop: '2px solid var(--border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الإجمالي قبل الضريبة</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDebit.note.subtotal).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text3)' }}>الضريبة ({Number(viewDebit.note.vat_rate)}%)</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDebit.note.vat_amount).toLocaleString()} ر.س</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '0.95rem', color: '#7c3aed' }}><span>الإجمالي</span><span style={{ fontFamily: 'monospace' }}>{Number(viewDebit.note.total_amount).toLocaleString()} ر.س</span></div>
               </div>
             </div>
           </div>
