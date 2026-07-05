@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, ExternalLink } from 'lucide-react'
+import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry } from '@/lib/journal'
 import type { Account, AccountLedgerLine } from '@/lib/accounting-types'
