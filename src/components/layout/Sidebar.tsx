@@ -380,7 +380,7 @@ export default function Sidebar() {
           <NavSection label="المالية والمحاسبة" icon={IC.finance}
             isActive={inFinance} isOpen={financeOpen} onToggle={() => setFinanceOpen(o => !o)}>
             <SubLink href="/finance"             label="لوحة التحكم المالية" icon={IC.dashboard}  active={pathname === '/finance'} />
-            <SubLink href="/finance/invoices"    label="فواتير المبيعات"     icon={IC.invoice}    active={pathname.startsWith('/finance/invoices')} />
+            <SubLink href="/finance/invoices"    label="المبيعات"            icon={IC.invoice}    active={pathname.startsWith('/finance/invoices')} />
             <SubLink href="/finance/purchases"   label="المشتريات"           icon={IC.purchases}  active={pathname.startsWith('/finance/purchases')} />
             <SubLink href="/finance/expenses"    label="المصروفات"           icon={IC.expense}    active={pathname.startsWith('/finance/expenses')} />
             <SubLink href="/finance/treasury"    label="الخزينة"             icon={IC.treasury}   active={pathname.startsWith('/finance/treasury')} />
