@@ -59,7 +59,7 @@ export default function TreasuryLayout({ children }: { children: React.ReactNode
   const activeTab = TABS.find(t => pathname?.startsWith(t.href))
 
   return (
-    <TreasuryContext.Provider value={{ tenantId: tenant?.id || null, cashAccounts, custodies, employees, projects, loading, reloadAll }}>
+    <TreasuryContext.Provider value={{ tenantId: tenant?.id || null, cashAccounts, employees, projects, loading, reloadAll }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div>
           <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>

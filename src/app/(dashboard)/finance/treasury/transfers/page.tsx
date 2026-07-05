@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { X, ArrowLeftRight } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextDocNumber } from '@/lib/journal'
+import { nextDocNumber, confirmCashSpend } from '@/lib/journal'
 import { useTreasury } from '../TreasuryContext'
+import type { CashAccount } from '@/lib/treasury-types'
 
 function TransferModal({ cashAccounts, tenantId, onClose, onSave }: {
   cashAccounts: CashAccount[]; tenantId: string; onClose: () => void; onSave: () => void
