@@ -1,35 +1,17 @@
 // src/app/(dashboard)/finance/purchases/layout.tsx
 'use client'
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback } from 'react'
+import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { ShoppingCart } from 'lucide-react'
 import type { Vendor, Project, Warehouse } from '@/lib/purchases-types'
+import { PurchasesContext } from './PurchasesContext'
 
-// ══════════════════════════════════════════
-// Context: بيانات مشتركة بين كل صفحات المشتريات
-// تُجلب مرة واحدة هنا بدل ما كل صفحة تعيد جلبها
-// ══════════════════════════════════════════
-type PurchasesContextValue = {
-  tenantId: string | null
-  vendors: Vendor[]
-  projects: Project[]
-  warehouses: Warehouse[]
-  loading: boolean
-  reloadShared: () => Promise<void>
-  reloadKpis: () => Promise<void>
-}
-
-const PurchasesContext = createContext<PurchasesContextValue | null>(null)
-
-/** يُستخدم داخل أي صفحة تبويب: const { vendors, projects, warehouses, tenantId, reloadShared } = usePurchases() */
-export function usePurchases(): PurchasesContextValue {
-  const ctx = useContext(PurchasesContext)
-  if (!ctx) throw new Error('usePurchases يجب أن يُستخدم داخل صفحات finance/purchases')
-  return ctx
-}
+// ملاحظة: usePurchases وتعريف Context انتقلا لملف PurchasesContext.tsx منفصل
+// لأن ملفات layout.tsx في Next.js App Router تسمح فقط بصادرة المكوّن الافتراضي
+// (تصدير named export مثل usePurchases من نفس layout.tsx يكسر البناء)
 
 const TABS = [
   { href: '/finance/purchases/orders',     label: 'أوامر الشراء',      emoji: '📋', color: '#e6820a' },
