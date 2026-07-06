@@ -52,6 +52,7 @@ type HREmployee = {
   id: number; employee_id?: number; hire_date?: string
   nationality?: string; iqama_number?: string
   name?: string; job_title?: string
+  direct_manager?: number; department?: string
 }
 
 type Leave = {
@@ -59,10 +60,15 @@ type Leave = {
   start_date: string; end_date: string; days: number
   status: string; reason?: string; sick_pay_info?: string
   employee?: { name: string }
+  // ── مسار الموافقة الهرمي (لقطة وقت التقديم) ──
+  direct_manager_id?: number; direct_manager_status?: string; direct_manager_note?: string; direct_manager_at?: string
+  dept_manager_id?: number;   dept_manager_status?: string;   dept_manager_note?: string;   dept_manager_at?: string
 }
 
 const STATUS_COLOR: Record<string, string> = {
   'بانتظار الموافقة': 'badge-amber',
+  'قيد موافقة المدير المباشر': 'badge-amber',
+  'قيد موافقة مدير الإدارة': 'badge-blue',
   'موافق': 'badge-green',
   'مرفوض': 'badge-red',
 }
@@ -326,6 +332,10 @@ export default function LeavesPage() {
   const [empLoading, setEmpLoading] = useState(false)
   const [empLoaded, setEmpLoaded] = useState(false)
 
+  // ── الأقسام (لتحديد مدير الإدارة) وأسماء المديرين (من حسابات الدخول) ──
+  const [departments, setDepartments] = useState<{ id: number; name: string; manager_id: number | null }[]>([])
+  const [managerNames, setManagerNames] = useState<Record<number, string>>({})
+
   // ── فلاتر الطلبات ──
   const [filterStatus, setFilterStatus] = useState('')
   const [filterType, setFilterType]     = useState('')
@@ -345,20 +355,39 @@ export default function LeavesPage() {
   const [historyEmp, setHistoryEmp]     = useState<HREmployee | null>(null)
 
   const isAdmin = currentUser?.role === 'مدير عام'
+  const isDirectManagerOf = (l: Leave) => !!currentUser && l.direct_manager_id === currentUser.id
+  const isDeptManagerOf   = (l: Leave) => !!currentUser && l.dept_manager_id === currentUser.id
 
   // ── جلب الموظفين مرة واحدة ──
   useEffect(() => {
     if (!tenant || empLoaded) return
     setEmpLoading(true)
     supabase.from('hr_employees')
-      .select('id, employee_id, hire_date, nationality, iqama_number, name, job_title')
+      .select('id, employee_id, hire_date, nationality, iqama_number, name, job_title, direct_manager, department')
       .eq('tenant_id', tenant.id).eq('is_active', true).order('id')
       .then(({ data }) => {
         setHREmployees((data || []) as any[])
         setEmpLoading(false)
         setEmpLoaded(true)
       })
+    // الأقسام: لتحديد "مدير الإدارة" حسب قسم الموظف
+    supabase.from('hr_departments').select('id, name, manager_id').eq('tenant_id', tenant.id)
+      .then(({ data }) => setDepartments((data || []) as any[]))
+    // أسماء كل حسابات الدخول (مديرون محتملون) — دفعة واحدة خفيفة للعرض فقط
+    supabase.from('employees').select('id, name').eq('tenant_id', tenant.id)
+      .then(({ data }) => {
+        const map: Record<number, string> = {}
+        ;(data || []).forEach((e: any) => { map[e.id] = e.name })
+        setManagerNames(map)
+      })
   }, [tenant?.id])
+
+  // ── تحديد مدير الإدارة لموظف معيّن حسب قسمه ──
+  function resolveDeptManagerId(deptName?: string): number | null {
+    if (!deptName) return null
+    const dept = departments.find(d => d.name === deptName)
+    return dept?.manager_id ?? null
+  }
 
   // ── جلب الإجازات مع الفلاتر — Lazy Loading ──
   async function fetchLeaves(reset = false) {
@@ -427,7 +456,29 @@ export default function LeavesPage() {
   // ── حفظ الإجازة ──
   async function handleSave(data: any) {
     if (!tenant) return
-    const payload = { ...data, tenant_id: tenant.id }
+    const payload: any = { ...data, tenant_id: tenant.id }
+
+    // ══ عند التقديم الجديد فقط: نحدّد مسار الموافقة الهرمي ولا نلمسه عند التعديل ══
+    if (!data.id) {
+      const emp = hrEmployees.find(e => e.id === Number(data.employee_id))
+      const directManagerId = emp?.direct_manager ?? null
+      const deptManagerId   = resolveDeptManagerId(emp?.department)
+
+      payload.direct_manager_id = directManagerId
+      payload.dept_manager_id   = deptManagerId
+
+      if (directManagerId) {
+        payload.status = 'قيد موافقة المدير المباشر'
+      } else if (deptManagerId) {
+        // ما فيه مدير مباشر مُسجَّل — يبدأ المسار مباشرة عند مدير الإدارة
+        payload.direct_manager_status = 'موافق'
+        payload.status = 'قيد موافقة مدير الإدارة'
+      } else {
+        // ما فيه مدير مباشر ولا مدير إدارة معروف — يبقى بالمسار القديم (اعتماد الأدمن يدوياً)
+        payload.status = 'بانتظار الموافقة'
+      }
+    }
+
     if (data.id) await supabase.from('hr_leaves').update(payload).eq('id', data.id)
     else await supabase.from('hr_leaves').insert(payload)
     setShowModal(false); setEditLeave(null)
@@ -446,6 +497,42 @@ export default function LeavesPage() {
     toast.success('تم الحذف')
   }
 
+  // ══ اعتماد/رفض المدير المباشر ══
+  async function handleApproveDirect(l: Leave) {
+    // إذا مدير الإدارة هو نفس الشخص، نعتمد المرحلتين مباشرة بدون سؤاله مرتين
+    const sameManager = l.dept_manager_id && l.dept_manager_id === l.direct_manager_id
+    const newStatus = sameManager ? 'موافق' : (l.dept_manager_id ? 'قيد موافقة مدير الإدارة' : 'موافق')
+    const patch: any = { direct_manager_status: 'موافق', direct_manager_at: new Date().toISOString(), status: newStatus }
+    if (sameManager || !l.dept_manager_id) patch.dept_manager_status = 'موافق'
+    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
+    toast.success(newStatus === 'موافق' ? '✅ تمت الموافقة النهائية على الإجازة' : '✅ تمت موافقتك — الطلب الآن لدى مدير الإدارة')
+  }
+
+  async function handleRejectDirect(l: Leave, note?: string) {
+    const patch = { direct_manager_status: 'مرفوض', direct_manager_at: new Date().toISOString(), direct_manager_note: note || null, status: 'مرفوض' }
+    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
+    toast.error('❌ تم رفض الإجازة')
+  }
+
+  // ══ اعتماد/رفض مدير الإدارة (المرحلة النهائية) ══
+  async function handleApproveDept(l: Leave) {
+    const patch = { dept_manager_status: 'موافق', dept_manager_at: new Date().toISOString(), status: 'موافق' }
+    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
+    toast.success('✅ تمت الموافقة النهائية على الإجازة')
+  }
+
+  async function handleRejectDept(l: Leave, note?: string) {
+    const patch = { dept_manager_status: 'مرفوض', dept_manager_at: new Date().toISOString(), dept_manager_note: note || null, status: 'مرفوض' }
+    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
+    toast.error('❌ تم رفض الإجازة')
+  }
+
+  // ══ اعتماد/رفض عام (النمط القديم — للحالات بلا مسار هرمي معروف، ويبقى متاحاً للأدمن كتجاوز) ══
+
   async function handleApprove(id: number) {
     await supabase.from('hr_leaves').update({ status: 'موافق' }).eq('id', id)
     setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'موافق' } : x))
@@ -458,7 +545,7 @@ export default function LeavesPage() {
     toast.error('❌ تم رفض الإجازة')
   }
 
-  const pending = leaves.filter(l => l.status === 'بانتظار الموافقة').length
+  const pending = leaves.filter(l => ['بانتظار الموافقة', 'قيد موافقة المدير المباشر', 'قيد موافقة مدير الإدارة'].includes(l.status)).length
   const years = Array.from({ length: 6 }, (_, i) => String(currentYear - i))
 
   // ── موظفون للسجل التاريخي ──
@@ -629,7 +716,7 @@ export default function LeavesPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                     <thead>
                       <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                        {['الموظف','نوع الإجازة','من','إلى','الأيام','الحالة','الأجر','السبب',''].map(h => (
+                        {['الموظف','نوع الإجازة','من','إلى','الأيام','الحالة','مسار الموافقة','الأجر','السبب',''].map(h => (
                           <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                         ))}
                       </tr>
@@ -647,6 +734,24 @@ export default function LeavesPage() {
                             <td style={{ padding: '12px 14px', fontSize: '0.875rem' }}>{formatDate(l.end_date)}</td>
                             <td style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700 }}>{l.days}</td>
                             <td style={{ padding: '12px 14px' }}><span className={`badge ${STATUS_COLOR[l.status] || 'badge-gray'}`}>{l.status}</span></td>
+                            <td style={{ padding: '10px 14px', fontSize: '0.72rem' }}>
+                              {!l.direct_manager_id && !l.dept_manager_id ? (
+                                <span style={{ color: 'var(--text3)' }}>— بلا مسار محدد —</span>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  {l.direct_manager_id && (
+                                    <div style={{ color: l.direct_manager_status === 'موافق' ? '#0ea77b' : l.direct_manager_status === 'مرفوض' ? '#c81e1e' : '#e6820a' }}>
+                                      {l.direct_manager_status === 'موافق' ? '✓' : l.direct_manager_status === 'مرفوض' ? '✗' : '⏳'} المباشر: {managerNames[l.direct_manager_id] || `#${l.direct_manager_id}`}
+                                    </div>
+                                  )}
+                                  {l.dept_manager_id && (
+                                    <div style={{ color: l.dept_manager_status === 'موافق' ? '#0ea77b' : l.dept_manager_status === 'مرفوض' ? '#c81e1e' : '#e6820a' }}>
+                                      {l.dept_manager_status === 'موافق' ? '✓' : l.dept_manager_status === 'مرفوض' ? '✗' : '⏳'} مدير الإدارة: {managerNames[l.dept_manager_id] || `#${l.dept_manager_id}`}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
                             <td style={{ padding: '12px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>
                               {l.leave_type === 'مرضية' && l.sick_pay_info
                                 ? <span style={{ color: '#1a56db' }}>🏥 {l.sick_pay_info.split('+')[0]?.trim()}</span>
@@ -657,6 +762,33 @@ export default function LeavesPage() {
                             <td style={{ padding: '12px 14px', fontSize: '0.8rem', color: 'var(--text3)', maxWidth: '120px' }}>{l.reason || '—'}</td>
                             <td style={{ padding: '12px 14px' }}>
                               <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                                {/* ══ مرحلة المدير المباشر ══ */}
+                                {l.status === 'قيد موافقة المدير المباشر' && (isDirectManagerOf(l) || isAdmin) && (
+                                  <>
+                                    <button type="button" onClick={() => handleApproveDirect(l)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      <CheckCircle2 style={{ width: '14px', height: '14px' }} /> موافقة
+                                    </button>
+                                    <button type="button" onClick={() => handleRejectDirect(l)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#fef2f2', color: '#c81e1e', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      <XCircle style={{ width: '14px', height: '14px' }} /> رفض
+                                    </button>
+                                  </>
+                                )}
+                                {/* ══ مرحلة مدير الإدارة ══ */}
+                                {l.status === 'قيد موافقة مدير الإدارة' && (isDeptManagerOf(l) || isAdmin) && (
+                                  <>
+                                    <button type="button" onClick={() => handleApproveDept(l)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#ecfdf5', color: '#0ea77b', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      <CheckCircle2 style={{ width: '14px', height: '14px' }} /> موافقة نهائية
+                                    </button>
+                                    <button type="button" onClick={() => handleRejectDept(l)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#fef2f2', color: '#c81e1e', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                      <XCircle style={{ width: '14px', height: '14px' }} /> رفض
+                                    </button>
+                                  </>
+                                )}
+                                {/* ══ النمط القديم: لا مسار هرمي معروف — اعتماد الأدمن مباشرة ══ */}
                                 {isAdmin && l.status === 'بانتظار الموافقة' && (
                                   <>
                                     <button type="button" onClick={() => handleApprove(l.id)}
