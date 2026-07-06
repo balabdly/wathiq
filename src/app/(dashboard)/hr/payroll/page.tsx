@@ -4,7 +4,6 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download, ShieldCheck, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextDocNumber } from '@/lib/journal'
 
 type HREmployee = {
   id: number; employee_id: number; name?: string; basic_salary: number; housing_allow: number
@@ -655,66 +654,6 @@ export default function PayrollPage() {
     toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]} بواسطة ${currentUser?.name || 'رئيس الموارد البشرية'}`)
   }
 
-  // ترحيل المسير للمالية — رئيس الموارد البشرية فقط، بعد الاعتماد
-  async function handlePay(month: number, year: number) {
-    if (!tenant) return
-    if (!isHRHead) { toast.error('⛔ ترحيل الرواتب للمالية صلاحية حصرية لرئيس الموارد البشرية'); return }
-    const recs = payrolls.filter(p => p.month === month && p.year === year)
-    const totalNet   = recs.reduce((s, p) => s + Number(p.net_salary), 0)
-    const totalBasic = recs.reduce((s, p) => s + Number(p.basic_salary), 0)
-    const totalAllowances = recs.reduce((s, p) => s + Number(p.housing_allow) + Number(p.transport_allow) + Number(p.other_allow) + Number(p.overtime_pay) + Number(p.bonuses), 0)
-    const totalGosiEmployee = recs.reduce((s, p) => s + Number(p.gosi_deduction), 0)
-    const totalGosiEmployer = recs.reduce((s, p) => s + Number(p.gosi_employer_amount || 0), 0)
-    const totalOtherDeduct  = recs.reduce((s, p) => s + Number(p.absence_deduct) + Number(p.other_deduct), 0)
-
-    if (!confirm(`ترحيل مسير ${ARABIC_MONTHS[month-1]} ${year} للمالية؟\nإجمالي الصافي: ${totalNet.toLocaleString()} ر.س\nحصة الشركة بالتأمينات: ${totalGosiEmployer.toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي متوازن تلقائياً.`)) return
-
-    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('id', p.id)))
-
-    // ══ القيد المحاسبي المتوازن ══
-    // مدين: رواتب أساسية (بعد خصم الغياب/الجزاءات) + بدلات وعلاوات + حصة الشركة بالتأمينات (مصروف حقيقي)
-    // دائن: رواتب مستحقة (صافي المستحق للموظفين) + تأمينات مستحقة (حصة الموظف + حصة الشركة معاً — التزام تجاه GOSI)
-    const entryNo = await nextDocNumber(tenant.id, 'JE', 'JE')
-    if (!entryNo) { toast.error('تعذر توليد رقم القيد'); return }
-
-    const { data: entry } = await supabase.from('finance_journal_entries').insert({
-      tenant_id: tenant.id, entry_number: entryNo,
-      entry_date: new Date().toISOString().split('T')[0],
-      description: `مسير رواتب ${ARABIC_MONTHS[month-1]} ${year}`,
-      reference_type: 'رواتب', total_debit: totalBasic - totalOtherDeduct + totalAllowances + totalGosiEmployer,
-      total_credit: totalNet + totalGosiEmployee + totalGosiEmployer,
-      status: 'معتمد', entry_source: 'آلي',
-    }).select('id').single()
-
-    if (entry) {
-      const [salAcc, allowAcc, gosiExpAcc, payableAcc, gosiPayableAcc] = await Promise.all([
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5210').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5230').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5220').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2120').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2160').single(),
-      ])
-      const lines: any[] = []
-      if (salAcc.data)      lines.push({ entry_id: entry.id, account_id: salAcc.data.id,      debit: totalBasic - totalOtherDeduct, credit: 0, description: `رواتب أساسية — ${ARABIC_MONTHS[month-1]}` })
-      if (allowAcc.data && totalAllowances > 0) lines.push({ entry_id: entry.id, account_id: allowAcc.data.id, debit: totalAllowances, credit: 0, description: `بدلات وعلاوات — ${ARABIC_MONTHS[month-1]}` })
-      if (gosiExpAcc.data && totalGosiEmployer > 0) lines.push({ entry_id: entry.id, account_id: gosiExpAcc.data.id, debit: totalGosiEmployer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
-      if (payableAcc.data)  lines.push({ entry_id: entry.id, account_id: payableAcc.data.id,  debit: 0, credit: totalNet, description: `صافي رواتب مستحقة — ${ARABIC_MONTHS[month-1]}` })
-      if (gosiPayableAcc.data && (totalGosiEmployee + totalGosiEmployer) > 0)
-        lines.push({ entry_id: entry.id, account_id: gosiPayableAcc.data.id, debit: 0, credit: totalGosiEmployee + totalGosiEmployer, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
-      if (lines.length > 0) await supabase.from('finance_journal_lines').insert(lines)
-    }
-
-    // ══ تحديث رأس المسير: مرحّل للمالية ══
-    await supabase.from('hr_payroll_runs').update({
-      status: 'مرحّل للمالية', posted_by: currentUser?.id || null, posted_at: new Date().toISOString(),
-      journal_entry_id: entry?.id || null,
-    }).eq('tenant_id', tenant.id).eq('month', month).eq('year', year)
-
-    await load()
-    toast.success(`✅ تم ترحيل مسير ${ARABIC_MONTHS[month-1]} للمالية — القيد ${entryNo}`)
-    setActiveTab('archive')
-  }
-
   function exportCSV(data: Payroll[], month: number, year: number) {
     const headers = ['الموظف','الراتب الأساسي','السكن','النقل','بدلات أخرى','إضافي','مكافآت','الإجمالي','تأمينات','خصم غياب','خصومات أخرى','صافي الراتب','أيام الحضور','الحالة']
     const csvRows = data.map(p => [p.emp_name||'',p.basic_salary,p.housing_allow,p.transport_allow,p.other_allow,p.overtime_pay,p.bonuses,p.gross_salary,p.gosi_deduction,p.absence_deduct,p.other_deduct,p.net_salary,p.present_days,p.status])
@@ -812,12 +751,11 @@ export default function PayrollPage() {
                         ⏳ بانتظار اعتماد رئيس الموارد البشرية
                       </span>
                     )}
-                    {/* زر الترحيل للمالية — يظهر فقط بعد الاعتماد، ولرئيس الموارد البشرية حصراً */}
-                    {isApproved && !isPaid && isHRHead && (
-                      <button onClick={() => handlePay(filterMonth, filterYear)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#1a56db', color: 'white', fontWeight: 600, fontSize: '0.875rem', fontFamily: 'inherit' }}>
-                        <Send style={{ width: '16px', height: '16px' }} /> ترحيل للمالية
-                      </button>
+                    {/* ══ الترحيل للمالية لم يعد يُنفَّذ من هنا — فصل حقيقي بين اعتماد HR وترحيل المحاسبة ══ */}
+                    {isApproved && !isPaid && (
+                      <span style={{ fontSize: '0.78rem', color: '#1a56db', padding: '6px 12px', background: '#eff6ff', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Send style={{ width: '14px', height: '14px' }} /> بانتظار ترحيل قسم المالية والمحاسبة
+                      </span>
                     )}
                     {/* حالة المسير */}
                     {filteredPayrolls.length > 0 && (
