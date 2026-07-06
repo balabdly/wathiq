@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download } from 'lucide-react'
+import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download, ShieldCheck, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { nextDocNumber } from '@/lib/journal'
 
 type HREmployee = {
   id: number; employee_id: number; name?: string; basic_salary: number; housing_allow: number
@@ -18,14 +19,14 @@ type PendingDeduct = {
 type Payroll = {
   id: number; employee_id: number; month: number; year: number
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
-  overtime_pay: number; bonuses: number; gosi_deduction: number; absence_deduct: number
+  overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
   other_deduct: number; gross_salary: number; net_salary: number
   present_days: number; absent_days: number; notes?: string; status: string; emp_name?: string
 }
 type PayrollRow = {
   employee_id: number; name: string; role: string; included: boolean
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
-  overtime_pay: number; bonuses: number; gosi_deduction: number; absence_deduct: number
+  overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
   other_deduct: number; present_days: number; notes: string; gross: number; net: number; existingId?: number
   _pendingDeductIds?: number[]
 }
@@ -97,7 +98,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div style={{ background: 'var(--bg2)', borderRadius: '12px', padding: '14px' }}>
               <div style={{ fontWeight: 700, color: '#0ea77b', marginBottom: '10px', fontSize: '0.875rem' }}>✅ المستحقات</div>
-              <div className="grid grid-cols-2 gap-3">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
                 {[{k:'basic_salary',l:'الراتب الأساسي'},{k:'housing_allow',l:'بدل السكن'},{k:'transport_allow',l:'بدل النقل'},{k:'other_allow',l:'بدلات أخرى'},{k:'overtime_pay',l:'أجر الإضافي'},{k:'bonuses',l:'مكافآت'}].map(({k,l}) => (
                   <div key={k}><label className="block text-xs text-gray-500 mb-1">{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
                 ))}
@@ -105,7 +106,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
             </div>
             <div style={{ background: '#fff5f5', borderRadius: '12px', padding: '14px' }}>
               <div style={{ fontWeight: 700, color: '#c81e1e', marginBottom: '10px', fontSize: '0.875rem' }}>❌ الخصومات</div>
-              <div className="grid grid-cols-3 gap-3">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                 {[{k:'gosi_deduction',l:'التأمينات'},{k:'absence_deduct',l:'خصم الغياب'},{k:'other_deduct',l:'خصومات أخرى'}].map(({k,l}) => (
                   <div key={k}><label className="block text-xs text-gray-500 mb-1">{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
                 ))}
@@ -116,7 +117,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
               <div style={{ background: '#fff5f5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الخصومات</div><div style={{ fontWeight: 700, color: '#c81e1e' }}>{(form.gosi_deduction+form.absence_deduct+form.other_deduct).toLocaleString()}</div></div>
               <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الصافي</div><div style={{ fontWeight: 700, color: '#0ea77b' }}>{net.toLocaleString()}</div></div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">أيام الحضور</label><input type="number" value={form.present_days} onChange={e => set('present_days', Number(e.target.value))} className="input" min="0" max="31" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label><select value={form.status} onChange={e => set('status', e.target.value)} className="select">{['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}</select></div>
             </div>
@@ -125,7 +126,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ التعديل
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '16px', height: '16px' }} />} حفظ التعديل
             </button>
           </div>
         </form>
@@ -300,7 +301,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
             <button type="button" onClick={() => setShowForm(false)} className="btn btn-ghost">إلغاء</button>
             <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ التعويض
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ التعويض
             </button>
           </div>
         </div>
@@ -468,6 +469,9 @@ export default function PayrollPage() {
   const [pendingDeducts, setPendingDeducts] = useState<PendingDeduct[]>([])
   const [approvedDeducts, setApprovedDeducts] = useState<Set<number>>(new Set())
   const isAdmin = currentUser?.role === 'مدير عام'
+  const isHRHead = isAdmin || currentUser?.role === 'مدير الموارد البشرية'
+  // إنشاء/تعديل المسير: أي موظف موارد بشرية مخوَّل (نطبّق نفس صلاحية الاعتماد حالياً لعدم وجود دور "موظف HR" منفصل بالنظام)
+  const canManagePayroll = isHRHead
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -548,6 +552,9 @@ export default function PayrollPage() {
       // hr_payroll يخزن hr_employees.id في employee_id — نطابق بـ emp.id
       const ex = existing.find(p => p.employee_id === emp.id)
       const gosiAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100)) : 0
+      // حصة الشركة الفعلية بالتأمينات — 11.75% سعودي / 2% وافد (منفصلة تماماً عن حصة الموظف المخصومة)
+      const employerRate = emp.nationality === 'سعودي' ? 11.75 : 2
+      const gosiEmployerAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (employerRate / 100)) : 0
       return calcRow({
         employee_id: emp.id,  // نستخدم hr_employees.id مباشرة
         name: emp.name || `موظف #${emp.id}`,
@@ -556,7 +563,7 @@ export default function PayrollPage() {
         basic_salary: ex?.basic_salary ?? emp.basic_salary, housing_allow: ex?.housing_allow ?? emp.housing_allow,
         transport_allow: ex?.transport_allow ?? emp.transport_allow, other_allow: ex?.other_allow ?? emp.other_allow,
         overtime_pay: ex?.overtime_pay ?? 0, bonuses: ex?.bonuses ?? 0,
-        gosi_deduction: ex?.gosi_deduction ?? gosiAmt, absence_deduct: ex?.absence_deduct ?? 0,
+        gosi_deduction: ex?.gosi_deduction ?? gosiAmt, gosi_employer_amount: ex?.gosi_employer_amount ?? gosiEmployerAmt, absence_deduct: ex?.absence_deduct ?? 0,
         other_deduct: ex?.other_deduct ?? 0, present_days: ex?.present_days ?? 26,
         notes: ex?.notes ?? '', gross: 0, net: 0, existingId: ex?.id,
         _pendingDeductIds: pendingDeducts.filter(d => d.employee_id === emp.id).map(d => d.id),
@@ -585,7 +592,7 @@ export default function PayrollPage() {
         basic_salary: row.basic_salary, housing_allow: row.housing_allow,
         transport_allow: row.transport_allow, other_allow: row.other_allow,
         overtime_pay: row.overtime_pay, bonuses: row.bonuses,
-        gosi_deduction: row.gosi_deduction, absence_deduct: row.absence_deduct,
+        gosi_deduction: row.gosi_deduction, gosi_employer_amount: row.gosi_employer_amount, absence_deduct: row.absence_deduct,
         other_deduct: row.other_deduct, present_days: row.present_days,
         absent_days: 26 - row.present_days, overtime_hours: 0,
         gross_salary: row.gross, net_salary: row.net,
@@ -594,6 +601,25 @@ export default function PayrollPage() {
       if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
       else await supabase.from('hr_payroll').insert(payload)
     }
+
+    // ══ إنشاء/تحديث رأس مسير الرواتب — يحمل هوية من أنشأه ومسار الاعتماد الهرمي ══
+    const hrHeadRes = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('role', 'مدير الموارد البشرية').eq('is_active', true).limit(1).maybeSingle()
+    const runNumber = `PR-${tenant.id.slice(0, 4)}-${filterYear}-${String(filterMonth).padStart(2, '0')}`
+    const runPayload = {
+      tenant_id: tenant.id, branch_id: activeBranch?.id || null, run_number: runNumber,
+      month: filterMonth, year: filterYear, status: 'مسودة',
+      employee_count: includedRows.length,
+      total_basic: includedRows.reduce((s, r) => s + r.basic_salary, 0),
+      total_allowances: includedRows.reduce((s, r) => s + r.housing_allow + r.transport_allow + r.other_allow + r.overtime_pay + r.bonuses, 0),
+      total_gosi_employee: includedRows.reduce((s, r) => s + r.gosi_deduction, 0),
+      total_gosi_employer: includedRows.reduce((s, r) => s + r.gosi_employer_amount, 0),
+      total_deductions: includedRows.reduce((s, r) => s + r.absence_deduct + r.other_deduct, 0),
+      total_gross: totalGross, total_net: totalNet,
+      created_by: currentUser?.id || null,
+      hr_head_id: hrHeadRes.data?.id || null,
+    }
+    await supabase.from('hr_payroll_runs').upsert(runPayload, { onConflict: 'tenant_id,month,year,branch_id' })
+
     await load(); setMode('view'); setSaving(false)
     // تسجيل الإنذارات المطبقة كـ deduct_applied
     if (approvedDeducts.size > 0) {
@@ -616,57 +642,76 @@ export default function PayrollPage() {
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
   }
 
-  // اعتماد المسير
+  // اعتماد المسير — رئيس الموارد البشرية فقط (أو المدير العام كتجاوز إشرافي)
   async function handleApprove(month: number, year: number) {
+    if (!isHRHead) { toast.error('⛔ اعتماد مسير الرواتب صلاحية حصرية لرئيس الموارد البشرية'); return }
     if (!confirm(`اعتماد مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nبعد الاعتماد لا يمكن تعديله.`)) return
     const recs = payrolls.filter(p => p.month === month && p.year === year)
     await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id)))
+    await supabase.from('hr_payroll_runs').update({
+      status: 'معتمد', approved_by: currentUser?.id || null, approved_at: new Date().toISOString(),
+    }).eq('tenant_id', tenant!.id).eq('month', month).eq('year', year)
     await load()
-    toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]}`)
+    toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]} بواسطة ${currentUser?.name || 'رئيس الموارد البشرية'}`)
   }
 
-  // تسجيل الدفع — يُرحّل للأرشيف ويسجل قيد محاسبي
+  // ترحيل المسير للمالية — رئيس الموارد البشرية فقط، بعد الاعتماد
   async function handlePay(month: number, year: number) {
     if (!tenant) return
+    if (!isHRHead) { toast.error('⛔ ترحيل الرواتب للمالية صلاحية حصرية لرئيس الموارد البشرية'); return }
     const recs = payrolls.filter(p => p.month === month && p.year === year)
-    if (!confirm(`تسجيل دفع مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nإجمالي الصافي: ${recs.reduce((s,p)=>s+Number(p.net_salary),0).toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي تلقائياً وينتقل للأرشيف.`)) return
+    const totalNet   = recs.reduce((s, p) => s + Number(p.net_salary), 0)
+    const totalBasic = recs.reduce((s, p) => s + Number(p.basic_salary), 0)
+    const totalAllowances = recs.reduce((s, p) => s + Number(p.housing_allow) + Number(p.transport_allow) + Number(p.other_allow) + Number(p.overtime_pay) + Number(p.bonuses), 0)
+    const totalGosiEmployee = recs.reduce((s, p) => s + Number(p.gosi_deduction), 0)
+    const totalGosiEmployer = recs.reduce((s, p) => s + Number(p.gosi_employer_amount || 0), 0)
+    const totalOtherDeduct  = recs.reduce((s, p) => s + Number(p.absence_deduct) + Number(p.other_deduct), 0)
 
-    // تحديث الحالة لمدفوع
+    if (!confirm(`ترحيل مسير ${ARABIC_MONTHS[month-1]} ${year} للمالية؟\nإجمالي الصافي: ${totalNet.toLocaleString()} ر.س\nحصة الشركة بالتأمينات: ${totalGosiEmployer.toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي متوازن تلقائياً.`)) return
+
     await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('id', p.id)))
 
-    // القيد المحاسبي: مدين رواتب الموظفين / دائن بنك الرواتب
-    const totalNet = recs.reduce((s, p) => s + Number(p.net_salary), 0)
-    const totalGosi = recs.reduce((s, p) => s + Number(p.gosi_deduction), 0)
-    const totalGross = recs.reduce((s, p) => s + Number(p.gross_salary), 0)
-
-    const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenant.id)
-    const entryNo = `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`
+    // ══ القيد المحاسبي المتوازن ══
+    // مدين: رواتب أساسية (بعد خصم الغياب/الجزاءات) + بدلات وعلاوات + حصة الشركة بالتأمينات (مصروف حقيقي)
+    // دائن: رواتب مستحقة (صافي المستحق للموظفين) + تأمينات مستحقة (حصة الموظف + حصة الشركة معاً — التزام تجاه GOSI)
+    const entryNo = await nextDocNumber(tenant.id, 'JE', 'JE')
+    if (!entryNo) { toast.error('تعذر توليد رقم القيد'); return }
 
     const { data: entry } = await supabase.from('finance_journal_entries').insert({
       tenant_id: tenant.id, entry_number: entryNo,
       entry_date: new Date().toISOString().split('T')[0],
       description: `مسير رواتب ${ARABIC_MONTHS[month-1]} ${year}`,
-      reference_type: 'رواتب', total_debit: totalGross, total_credit: totalGross,
+      reference_type: 'رواتب', total_debit: totalBasic - totalOtherDeduct + totalAllowances + totalGosiEmployer,
+      total_credit: totalNet + totalGosiEmployee + totalGosiEmployer,
       status: 'معتمد', entry_source: 'آلي',
     }).select('id').single()
 
     if (entry) {
-      // جلب حسابات الرواتب والتأمينات والبنك
-      const [salAcc, gosiAcc, bankAcc] = await Promise.all([
+      const [salAcc, allowAcc, gosiExpAcc, payableAcc, gosiPayableAcc] = await Promise.all([
         supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5210').single(),
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5230').single(),
         supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5220').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id)
-          .in('account_type', ['أصول']).eq('is_parent', false).like('code', '111%').order('code').limit(1).single(),
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2120').single(),
+        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2160').single(),
       ])
-      const lines = []
-      if (salAcc.data) lines.push({ entry_id: entry.id, account_id: salAcc.data.id, debit: totalNet,  credit: 0,         description: `رواتب صافية — ${ARABIC_MONTHS[month-1]}` })
-      if (gosiAcc.data && totalGosi > 0) lines.push({ entry_id: entry.id, account_id: gosiAcc.data.id, debit: totalGosi, credit: 0,         description: 'اشتراكات GOSI' })
-      if (bankAcc.data) lines.push({ entry_id: entry.id, account_id: bankAcc.data.id, debit: 0,        credit: totalGross, description: `دفع رواتب ${ARABIC_MONTHS[month-1]}` })
+      const lines: any[] = []
+      if (salAcc.data)      lines.push({ entry_id: entry.id, account_id: salAcc.data.id,      debit: totalBasic - totalOtherDeduct, credit: 0, description: `رواتب أساسية — ${ARABIC_MONTHS[month-1]}` })
+      if (allowAcc.data && totalAllowances > 0) lines.push({ entry_id: entry.id, account_id: allowAcc.data.id, debit: totalAllowances, credit: 0, description: `بدلات وعلاوات — ${ARABIC_MONTHS[month-1]}` })
+      if (gosiExpAcc.data && totalGosiEmployer > 0) lines.push({ entry_id: entry.id, account_id: gosiExpAcc.data.id, debit: totalGosiEmployer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
+      if (payableAcc.data)  lines.push({ entry_id: entry.id, account_id: payableAcc.data.id,  debit: 0, credit: totalNet, description: `صافي رواتب مستحقة — ${ARABIC_MONTHS[month-1]}` })
+      if (gosiPayableAcc.data && (totalGosiEmployee + totalGosiEmployer) > 0)
+        lines.push({ entry_id: entry.id, account_id: gosiPayableAcc.data.id, debit: 0, credit: totalGosiEmployee + totalGosiEmployer, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
       if (lines.length > 0) await supabase.from('finance_journal_lines').insert(lines)
     }
 
+    // ══ تحديث رأس المسير: مرحّل للمالية ══
+    await supabase.from('hr_payroll_runs').update({
+      status: 'مرحّل للمالية', posted_by: currentUser?.id || null, posted_at: new Date().toISOString(),
+      journal_entry_id: entry?.id || null,
+    }).eq('tenant_id', tenant.id).eq('month', month).eq('year', year)
+
     await load()
-    toast.success(`✅ تم تسجيل دفع مسير ${ARABIC_MONTHS[month-1]} وتسجيل القيد المحاسبي — انتقل للمسيرات السابقة`)
+    toast.success(`✅ تم ترحيل مسير ${ARABIC_MONTHS[month-1]} للمالية — القيد ${entryNo}`)
     setActiveTab('archive')
   }
 
@@ -739,7 +784,7 @@ export default function PayrollPage() {
               )}
             </div>
             {mode === 'view' ? (
-              isAdmin && (() => {
+              canManagePayroll && (() => {
                 const check = canCreatePayroll(filterMonth, filterYear)
                 const isPaid     = isMonthPaid(filterMonth, filterYear)
                 const isApproved = filteredPayrolls.length > 0 && filteredPayrolls.every(p => p.status === 'معتمد')
@@ -756,17 +801,22 @@ export default function PayrollPage() {
                       </div>
                     )}
                     {/* زر الاعتماد — يظهر عندما المسير مسودة */}
-                    {isDraft && !isApproved && (
+                    {isDraft && !isApproved && isHRHead && (
                       <button onClick={() => handleApprove(filterMonth, filterYear)}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#0ea77b', color: 'white', fontWeight: 600, fontSize: '0.875rem', fontFamily: 'inherit' }}>
-                        ✅ اعتماد المسير
+                        <ShieldCheck style={{ width: '16px', height: '16px' }} /> اعتماد المسير (رئيس الموارد البشرية)
                       </button>
                     )}
-                    {/* زر الدفع — يظهر فقط بعد الاعتماد */}
-                    {isApproved && !isPaid && (
+                    {isDraft && !isApproved && !isHRHead && (
+                      <span style={{ fontSize: '0.78rem', color: '#e6820a', padding: '6px 12px', background: '#fffbeb', borderRadius: '8px' }}>
+                        ⏳ بانتظار اعتماد رئيس الموارد البشرية
+                      </span>
+                    )}
+                    {/* زر الترحيل للمالية — يظهر فقط بعد الاعتماد، ولرئيس الموارد البشرية حصراً */}
+                    {isApproved && !isPaid && isHRHead && (
                       <button onClick={() => handlePay(filterMonth, filterYear)}
                         style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#1a56db', color: 'white', fontWeight: 600, fontSize: '0.875rem', fontFamily: 'inherit' }}>
-                        💳 تسجيل الدفع
+                        <Send style={{ width: '16px', height: '16px' }} /> ترحيل للمالية
                       </button>
                     )}
                     {/* حالة المسير */}
@@ -784,14 +834,14 @@ export default function PayrollPage() {
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="button" onClick={() => setMode('view')} className="btn btn-ghost"><X style={{ width: '15px', height: '15px' }} /> إلغاء</button>
                 <button type="button" onClick={handleSaveBulk} disabled={saving} className="btn btn-primary">
-                  {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ المسير ({includedRows.length} موظف)
+                  {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ المسير ({includedRows.length} موظف)
                 </button>
               </div>
             )}
           </div>
 
           {(mode === 'view' ? filteredPayrolls.length > 0 : includedRows.length > 0) && (
-            <div className="grid grid-cols-3 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
               {[
                 { label: 'إجمالي المستحقات', value: (mode==='view'?vGross:totalGross).toLocaleString()+' ر.س', color: 'var(--primary)', bg: 'var(--primary-light)' },
                 { label: 'إجمالي الخصومات', value: (mode==='view'?vDeduct:totalDeduct).toLocaleString()+' ر.س', color: '#c81e1e', bg: '#fef2f2' },
@@ -931,7 +981,7 @@ export default function PayrollPage() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button type="button" onClick={() => setMode('view')} className="btn btn-ghost"><X style={{ width: '15px', height: '15px' }} /> إلغاء</button>
                   <button type="button" onClick={handleSaveBulk} disabled={saving || includedRows.length === 0} className="btn btn-primary">
-                    {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ مسير {ARABIC_MONTHS[filterMonth - 1]} ({includedRows.length} موظف)
+                    {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '15px', height: '15px' }} />} حفظ مسير {ARABIC_MONTHS[filterMonth - 1]} ({includedRows.length} موظف)
                   </button>
                 </div>
               </div>
@@ -940,7 +990,7 @@ export default function PayrollPage() {
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
               <Banknote style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} />
               <p style={{ color: 'var(--text3)', marginBottom: '16px' }}>لا توجد كشوف رواتب لهذا الشهر</p>
-              {isAdmin && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
+              {canManagePayroll && <button onClick={enterCreateMode} className="btn btn-primary"><Banknote style={{ width: '16px', height: '16px' }} /> إنشاء مسير رواتب</button>}
             </div>
           ) : (() => {
             const currentKey = filterYear + '-' + filterMonth
@@ -959,7 +1009,7 @@ export default function PayrollPage() {
                     <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '4px 14px', textAlign: 'center' }}><div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>الصافي</div><div style={{ fontWeight: 700, color: '#0ea77b' }}>{gNet.toLocaleString()} ر.س</div></div>
                     <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                       <button onClick={() => exportCSV(filteredPayrolls, filterMonth, filterYear)} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', fontSize: '0.78rem' }}><Download style={{ width: '13px', height: '13px' }} /> CSV</button>
-                      {isAdmin && <button onClick={() => enterCreateMode()} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /> تعديل</button>}
+                      {canManagePayroll && <button onClick={() => enterCreateMode()} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /> تعديل</button>}
                     </div>
                     {isOpen ? <ChevronUp style={{ width: '18px', height: '18px', color: 'var(--text3)' }} /> : <ChevronDown style={{ width: '18px', height: '18px', color: 'var(--text3)' }} />}
                   </div>
@@ -971,7 +1021,7 @@ export default function PayrollPage() {
                         {['الموظف','الأساسي','البدلات','إضافي+مكافآت','الإجمالي','تأمينات','خصومات','الصافي','حضور','الحالة'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap', background: h==='الصافي'?'#ecfdf5':'transparent', color: h==='الصافي'?'#0ea77b':['تأمينات','خصومات'].includes(h)?'#c81e1e':h==='الإجمالي'?'var(--primary)':'var(--text3)' }}>{h}</th>
                         ))}
-                        {isAdmin && <th></th>}
+                        {canManagePayroll && <th></th>}
                       </tr></thead>
                       <tbody>
                         {filteredPayrolls.map(p => (
@@ -988,7 +1038,7 @@ export default function PayrollPage() {
                             <td style={{ padding: '11px 14px', color: '#0ea77b', fontWeight: 700, background: '#f0fdf4' }}>{p.net_salary.toLocaleString()} ر.س</td>
                             <td style={{ padding: '11px 14px', textAlign: 'center' }}>{p.present_days}/26</td>
                             <td style={{ padding: '11px 14px', textAlign: 'center' }}><span className={'badge ' + (STATUS_COLOR[p.status] || 'badge-gray')}>{p.status}</span></td>
-                            {isAdmin && <td style={{ padding: '11px 14px' }}><button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button></td>}
+                            {canManagePayroll && <td style={{ padding: '11px 14px' }}><button onClick={() => setEditPayroll(p)} className="btn btn-ghost btn-xs"><Pencil style={{ width: '13px', height: '13px' }} /></button></td>}
                           </tr>
                         ))}
                       </tbody>
@@ -1000,7 +1050,7 @@ export default function PayrollPage() {
           })()}
         </>
       )}
-      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls.filter(p => p.status === 'مدفوع')} isAdmin={isAdmin} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
+      {activeTab === 'archive' && <ArchiveTab payrolls={payrolls.filter(p => p.status === 'مدفوع')} isAdmin={canManagePayroll} onEdit={p => setEditPayroll(p)} onEditPayroll={handleEditPayroll} exportCSV={exportCSV} />}
       {activeTab === 'settlements' && <SettlementsTab tenant={tenant} hrEmployees={hrEmployees} />}
       {activeTab === 'leave_comp' && <LeaveCompensationTab tenant={tenant} hrEmployees={hrEmployees} />}
       {editPayroll && <EditPayrollModal payroll={editPayroll} onClose={() => setEditPayroll(null)} onSave={handleEditSave} />}
