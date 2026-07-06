@@ -61,8 +61,8 @@ type Leave = {
   status: string; reason?: string; sick_pay_info?: string
   employee?: { name: string }
   // ── مسار الموافقة الهرمي (لقطة وقت التقديم) ──
-  direct_manager_id?: number; direct_manager_status?: string; direct_manager_note?: string; direct_manager_at?: string
-  dept_manager_id?: number;   dept_manager_status?: string;   dept_manager_note?: string;   dept_manager_at?: string
+  direct_manager_id?: number; direct_manager_status?: string; direct_manager_note?: string | null; direct_manager_at?: string
+  dept_manager_id?: number;   dept_manager_status?: string;   dept_manager_note?: string | null;   dept_manager_at?: string
 }
 
 const STATUS_COLOR: Record<string, string> = {
