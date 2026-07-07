@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Printer, ChevronDown, ChevronUp, Paperclip, Filter } from 'lucide-react'
 import { useMaterials } from '../MaterialsContext'
-import { OperationModal, ReturnModal, printOperationReceipt } from '../opsShared'
+import { OperationModal, LoanModal, SettleLoanModal, printOperationReceipt } from '../opsShared'
 
 const FETCH_LIMIT = 300
 const ACCENT = '#c81e1e'
@@ -14,6 +14,7 @@ type LedgerRow = {
   id: number; txn_number?: string; type: string; movement_category?: string
   mat_name: string; mat_code?: string; unit: string
   qty: number; qty_before: number; qty_after: number; return_type?: string
+  is_loan?: boolean; loan_from_project?: string; loan_to_project?: string
   wh_name: string; project_name?: string; vendor_name?: string; client_name?: string
   exit_permit_no?: string; doc_code?: string; booking_no?: string
   dispatch_note?: string; attachment_url?: string; created_at: string
@@ -32,8 +33,8 @@ export default function IssueVouchersPage() {
   const { tenantId, branchId, warehouses, projects, loading: ctxLoading, reloadKpis } = useMaterials()
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [modal,   setModal]   = useState<'صرف' | 'إرجاع' | null>(null)
-  const [chip,    setChip]    = useState<'all' | 'صرف' | 'إرجاع'>('all')
+  const [modal,   setModal]   = useState<'صرف' | 'إرجاع' | 'استعارة' | 'تسوية' | null>(null)
+  const [chip,    setChip]    = useState<'all' | 'صرف' | 'إرجاع' | 'استعارة'>('all')
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -73,9 +74,10 @@ export default function IssueVouchersPage() {
     }
     let list = Array.from(map.values())
     if (chip !== 'all') {
-      list = list.filter(d => chip === 'إرجاع'
-        ? d.lines[0].type === 'إرجاع للعميل'
-        : d.lines[0].type === 'صرف')
+      list = list.filter(d =>
+        chip === 'استعارة' ? d.lines[0].is_loan === true
+        : chip === 'إرجاع' ? d.lines[0].type === 'إرجاع للعميل'
+        : (d.lines[0].type === 'صرف' && !d.lines[0].is_loan))
     }
     if (search.trim()) {
       const s = search.trim()
@@ -90,7 +92,8 @@ export default function IssueVouchersPage() {
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: first.type === 'إرجاع للعميل' ? 'إرجاع' : 'صرف',
+      type: first.is_loan ? ((first.dispatch_note || '').startsWith('تسوية') ? 'تسوية استعارة' : 'استعارة بين مشاريع')
+        : first.type === 'إرجاع للعميل' ? 'إرجاع' : 'صرف',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -121,13 +124,19 @@ export default function IssueVouchersPage() {
           <button onClick={() => setModal('إرجاع')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#e6820a' }}>
             <Plus style={{ width: '15px', height: '15px' }} /> إرجاع للعميل
           </button>
+          <button onClick={() => setModal('استعارة')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#7c3aed' }}>
+            <Plus style={{ width: '15px', height: '15px' }} /> استعارة بين مشاريع
+          </button>
+          <button onClick={() => setModal('تسوية')} className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#0ea77b', borderColor: '#a7f3d0' }}>
+            تسوية استعارة
+          </button>
         </div>
       </div>
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '5px' }}>
-          {([['all', 'الكل'], ['صرف', '📤 صرف'], ['إرجاع', '↩️ إرجاع للعميل']] as const).map(([id, label]) => (
+          {([['all', 'الكل'], ['صرف', '📤 صرف'], ['إرجاع', '↩️ إرجاع للعميل'], ['استعارة', '🔁 استعارات']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setChip(id)}
               style={{ padding: '6px 13px', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
                 borderColor: chip === id ? ACCENT : 'var(--border)',
@@ -182,7 +191,12 @@ export default function IssueVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
-                        {doc.lines[0].type === 'إرجاع للعميل' && (() => {
+                        {doc.lines[0].is_loan && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#f5f3ff', color: '#7c3aed' }}>
+                            🔁 {(doc.lines[0].dispatch_note || '').startsWith('تسوية') ? 'تسوية' : 'استعارة'}: {doc.lines[0].loan_from_project || '؟'} ← {doc.lines[0].loan_to_project || '؟'}
+                          </span>
+                        )}
+                        {!doc.lines[0].is_loan && doc.lines[0].type === 'إرجاع للعميل' && (() => {
                           const rt = doc.lines[0].return_type || ((doc.wh_name || '').includes('سكراب') ? 'سكراب' : (doc.wh_name || '').includes('رجيع') ? 'فائض' : '')
                           return (
                             <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px',
@@ -260,6 +274,14 @@ export default function IssueVouchersPage() {
         <OperationModal type="إرجاع"
           tenantId={tenantId} branchId={branchId}
           warehouses={warehouses} projects={projects}
+          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
+      )}
+      {modal === 'استعارة' && tenantId && branchId != null && (
+        <LoanModal tenantId={tenantId} branchId={branchId} projects={projects}
+          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
+      )}
+      {modal === 'تسوية' && tenantId && branchId != null && (
+        <SettleLoanModal tenantId={tenantId} branchId={branchId}
           onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
       )}
     </div>

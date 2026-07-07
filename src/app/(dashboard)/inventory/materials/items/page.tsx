@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight, FileSpreadsheet, Upload
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import Link from 'next/link'
 import { useMaterials } from '../MaterialsContext'
 import { UNITS, type Warehouse, type Material } from '../opsShared'
 
@@ -417,10 +418,19 @@ export default function MaterialsItemsPage() {
   const [editMat,    setEditMat]    = useState<Material | null>(null)
   const [checkItems, setCheckItems] = useState<any[]>([])
   const [checkWh,    setCheckWh]    = useState('')
+  const [openLoans,  setOpenLoans]  = useState(0)
 
   const totalPages = Math.ceil(matTotal / PAGE_SIZE)
 
   useEffect(() => { if (tenant && !ctxLoading) loadMaterials(1) }, [tenant?.id, ctxLoading])
+
+  useEffect(() => {
+    if (!tenant) return
+    supabase.from('project_material_loans')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.id).neq('status', 'مُعاد كلياً')
+      .then(({ count }) => setOpenLoans(count || 0))
+  }, [tenant?.id])
 
   async function loadMaterials(page = 1) {
     if (!tenant) return
@@ -528,6 +538,15 @@ export default function MaterialsItemsPage() {
           </button>
         </div>
       </div>
+
+      {/* ذمم الاستعارة المفتوحة */}
+      {openLoans > 0 && (
+        <Link href="/inventory/materials/issue" style={{ textDecoration: 'none' }}>
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#7c3aed', cursor: 'pointer' }}>
+            🔁 <strong>{openLoans}</strong> ذمّة استعارة مفتوحة بين المشاريع — التسوية من تبويب أذون الصرف ←
+          </div>
+        </Link>
+      )}
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>

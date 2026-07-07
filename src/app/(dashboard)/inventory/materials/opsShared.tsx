@@ -1013,3 +1013,403 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
   )
 }
 
+
+// ══════════════════════════════════════════
+// مودال: استعارة بين مشاريع
+// صرفٌ بذمّة: مواد تخرج من عهدة المُعير لموقع المستعير — لا يمس المقايسة إطلاقاً
+// ══════════════════════════════════════════
+export function LoanModal({ tenantId, branchId, projects, onClose, onSave }: {
+  tenantId: string; branchId: number
+  projects: any[]
+  onClose: () => void; onSave: () => void
+}) {
+  const [saving,        setSaving]        = useState(false)
+  const [fromProjectId, setFromProjectId] = useState('')
+  const [toProjectId,   setToProjectId]   = useState('')
+  const [custody,       setCustody]       = useState<any[]>([])
+  const [loanQtys,      setLoanQtys]      = useState<Record<string, string>>({})
+  const [date,          setDate]          = useState(new Date().toISOString().split('T')[0])
+  const [notes,         setNotes]         = useState('')
+
+  const fromName = projects.find((p: any) => p.id === Number(fromProjectId))?.name || ''
+  const toName   = projects.find((p: any) => p.id === Number(toProjectId))?.name || ''
+
+  // عهدة المُعير المتاحة (رصيد > 0) في كل مستودعات المشاريع
+  async function loadCustody() {
+    if (!fromProjectId) { setCustody([]); return }
+    const { data } = await supabase.from('project_materials')
+      .select('*, material:materials(id, name, unit, mat_code), warehouse:warehouses(name)')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', Number(fromProjectId))
+      .gt('qty_balance', 0)
+    setCustody(data || [])
+    setLoanQtys({})
+  }
+  useEffect(() => { loadCustody() }, [fromProjectId])
+
+  const totalLoan = Object.values(loanQtys).reduce<number>((s, v) => s + Number(v || 0), 0)
+
+  async function handleSave() {
+    const validRows = Object.entries(loanQtys).filter(([, q]) => Number(q) > 0)
+    if (validRows.length === 0)              { toast.error('أدخل كمية لمادة واحدة على الأقل'); return }
+    if (!fromProjectId)                      { toast.error('اختر المشروع المُعير'); return }
+    if (!toProjectId)                        { toast.error('اختر المشروع المستعير'); return }
+    if (fromProjectId === toProjectId)       { toast.error('لا يمكن الاستعارة من المشروع نفسه'); return }
+    setSaving(true)
+
+    const { data: voucherNo } = await supabase.rpc('generate_txn_number', { p_type: 'صرف' })
+    if (!voucherNo) { toast.error('تعذر توليد رقم الإذن'); setSaving(false); return }
+
+    const printRows: { name: string; unit: string; qty: number; note: string }[] = []
+    for (const [pmIdStr, qtyStr] of validRows) {
+      const qty = Number(qtyStr)
+      const pm  = custody.find(c => String(c.id) === pmIdStr)
+      if (!pm) continue
+
+      if (qty > Number(pm.qty_balance)) {
+        toast.error(`رصيد "${pm.material?.name}" في عهدة المُعير: ${pm.qty_balance} فقط`)
+        setSaving(false); return
+      }
+
+      // المواد تخرج فعلياً من المستودع لموقع المستعير — التحقق من رصيد المستودع
+      const { data: mat } = await supabase.from('materials').select('id, qty, name, unit, mat_code')
+        .eq('id', pm.material_id).single()
+      if (!mat) continue
+      const qtyBefore = Number(mat.qty)
+      if (qty > qtyBefore) {
+        toast.error(`رصيد المستودع من "${mat.name}": ${qtyBefore} فقط`)
+        setSaving(false); return
+      }
+      await supabase.from('materials').update({ qty: qtyBefore - qty }).eq('id', mat.id)
+
+      // سجل الذمّة
+      const { data: loan, error: loanErr } = await supabase.from('project_material_loans').insert({
+        tenant_id: tenantId,
+        from_project_id: Number(fromProjectId), to_project_id: Number(toProjectId),
+        material_id: pm.material_id, warehouse_id: pm.warehouse_id,
+        qty_loaned: qty, qty_returned: 0, status: 'نشط',
+        loan_date: date, notes: notes || null,
+      }).select('id').single()
+      if (loanErr) { toast.error('خطأ تسجيل الذمّة: ' + loanErr.message); setSaving(false); return }
+
+      // سطر الدفتر: صرف من عهدة المُعير (الـ trigger يزيد qty_issued له فينخفض رصيده)
+      const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
+        tenant_id: tenantId, branch_id: branchId,
+        txn_number: voucherNo,
+        type: 'صرف', movement_category: 'صرف_عهدة',
+        mat_name: mat.name, mat_code: mat.mat_code || null, unit: mat.unit,
+        qty, qty_before: qtyBefore, qty_after: qtyBefore - qty,
+        wh_name: pm.warehouse?.name || '',
+        project_id: Number(fromProjectId), project_name: fromName,
+        is_loan: true, loan_from_project: fromName, loan_to_project: toName,
+        loan_id: loan?.id || null,
+        dispatch_note: notes || `استعارة لمشروع ${toName}`,
+      })
+      if (ledgerErr) { toast.error('خطأ تسجيل الحركة: ' + ledgerErr.message); setSaving(false); return }
+      printRows.push({ name: mat.name, unit: mat.unit, qty, note: notes || '' })
+    }
+
+    setSaving(false)
+    toast.success(`🔁 تم تسجيل الاستعارة — ${printRows.length} مادة (ذمّة مفتوحة على ${toName})`)
+    printOperationReceipt({
+      type: 'استعارة بين مشاريع',
+      warehouseName: custody[0]?.warehouse?.name || '',
+      projectName: `من: ${fromName} ← إلى: ${toName}`,
+      date, rows: printRows,
+      txnNumber: voucherNo || '',
+    })
+    onSave(); onClose()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#f5f3ff', borderBottom: '2px solid #ddd6fe' }}>
+          <h3 style={{ fontWeight: 700, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ArrowLeftRight style={{ width: '18px', height: '18px' }} /> استعارة بين مشاريع
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#7c3aed' }}>
+            🔁 صرفٌ بذمّة داخلية — لا يمس المقايسة، ويُسوَّى لاحقاً بإعادة الكمية للمُعير. ذمّة مفتوحة = لا إقفال للمشروع
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                المشروع المُعير (صاحب العهدة) <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={fromProjectId} onChange={e => setFromProjectId(e.target.value)} className="select">
+                <option value="">— اختر —</option>
+                {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                المشروع المستعير (المستعجل) <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={toProjectId} onChange={e => setToProjectId(e.target.value)} className="select">
+                <option value="">— اختر —</option>
+                {projects.filter((p: any) => String(p.id) !== fromProjectId).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" style={{ maxWidth: '200px' }} />
+          </div>
+
+          {fromProjectId && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#7c3aed' }}>عهدة المُعير المتاحة — أدخل الكمية المستعارة:</label>
+                {totalLoan > 0 && (
+                  <span style={{ background: '#f5f3ff', color: '#7c3aed', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+                    إجمالي الاستعارة: {totalLoan}
+                  </span>
+                )}
+              </div>
+              {custody.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: 'var(--text3)', fontSize: '0.875rem' }}>
+                  لا توجد عهدة متاحة لهذا المشروع
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '280px', overflowY: 'auto' }}>
+                  {custody.map(pm => (
+                    <div key={pm.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px',
+                      background: loanQtys[pm.id] && Number(loanQtys[pm.id]) > 0 ? '#f5f3ff' : '#f8fafc',
+                      border: `1px solid ${loanQtys[pm.id] && Number(loanQtys[pm.id]) > 0 ? '#ddd6fe' : 'var(--border)'}`,
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pm.material?.name || '—'}</div>
+                        <div style={{ fontSize: '0.72rem', marginTop: '2px', display: 'flex', gap: '10px' }}>
+                          <span style={{ color: '#0ea77b' }}>الرصيد: <strong>{pm.qty_balance}</strong></span>
+                          <span style={{ color: 'var(--text3)' }}>{pm.material?.unit} — {pm.warehouse?.name}</span>
+                        </div>
+                      </div>
+                      <input type="number" value={loanQtys[pm.id] || ''} min="0" max={pm.qty_balance}
+                        onChange={e => setLoanQtys(prev => ({ ...prev, [pm.id]: e.target.value }))}
+                        onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                        placeholder="0"
+                        style={{ width: '75px', padding: '6px 8px', borderRadius: '8px', border: '2px solid #ddd6fe', fontSize: '0.875rem', textAlign: 'center', fontWeight: 700 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} className="input" placeholder="سبب الاستعارة — تصريح بلدية، متابعة... (اختياري)" />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || totalLoan === 0}
+            className="btn btn-primary" style={{ background: '#7c3aed' }}>
+            {saving ? 'جاري الحفظ...' : `تسجيل الاستعارة${totalLoan > 0 ? ` (${totalLoan})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════
+// مودال: تسوية استعارة
+// سداد داخلي بحت: عهدة المستعير تُسدد للمُعير — بلا حركة مستودع فيزيائية وبلا تعديل مقايسة
+// ══════════════════════════════════════════
+export function SettleLoanModal({ tenantId, branchId, onClose, onSave }: {
+  tenantId: string; branchId: number
+  onClose: () => void; onSave: () => void
+}) {
+  const [saving,     setSaving]     = useState(false)
+  const [loans,      setLoans]      = useState<any[]>([])
+  const [projNames,  setProjNames]  = useState<Record<number, string>>({})
+  const [settleQtys, setSettleQtys] = useState<Record<string, string>>({})
+  const [loading,    setLoading]    = useState(true)
+
+  useEffect(() => { load() }, [])
+  async function load() {
+    setLoading(true)
+    const [loansRes, projRes] = await Promise.all([
+      supabase.from('project_material_loans')
+        .select('*, material:materials(id, name, unit, mat_code), warehouse:warehouses(name)')
+        .eq('tenant_id', tenantId).neq('status', 'مُعاد كلياً').order('loan_date'),
+      supabase.from('projects').select('id, name').eq('tenant_id', tenantId),
+    ])
+    setLoans(loansRes.data || [])
+    const map: Record<number, string> = {}
+    ;(projRes.data || []).forEach((p: any) => { map[p.id] = p.name })
+    setProjNames(map)
+    setLoading(false)
+  }
+
+  const totalSettle = Object.values(settleQtys).reduce<number>((s, v) => s + Number(v || 0), 0)
+
+  async function handleSave() {
+    const validRows = Object.entries(settleQtys).filter(([, q]) => Number(q) > 0)
+    if (validRows.length === 0) { toast.error('أدخل كمية تسوية لذمّة واحدة على الأقل'); return }
+    setSaving(true)
+
+    const { data: voucherNo } = await supabase.rpc('generate_txn_number', { p_type: 'صرف' })
+    if (!voucherNo) { toast.error('تعذر توليد رقم الإذن'); setSaving(false); return }
+
+    const printRows: { name: string; unit: string; qty: number; note: string }[] = []
+    for (const [loanId, qtyStr] of validRows) {
+      const qty  = Number(qtyStr)
+      const loan = loans.find(l => l.id === loanId)
+      if (!loan) continue
+
+      const remaining = Number(loan.qty_loaned) - Number(loan.qty_returned)
+      if (qty > remaining) {
+        toast.error(`المتبقي على ذمّة "${loan.material?.name}": ${remaining} فقط`)
+        setSaving(false); return
+      }
+
+      const fromName = projNames[loan.from_project_id] || `مشروع ${loan.from_project_id}`
+      const toName   = projNames[loan.to_project_id]   || `مشروع ${loan.to_project_id}`
+
+      // شرط السداد: المستعير يجب أن يملك عهدة كافية (استلم مواده من SEC)
+      const { data: borrowerPm } = await supabase.from('project_materials')
+        .select('qty_balance')
+        .eq('tenant_id', tenantId).eq('project_id', loan.to_project_id)
+        .eq('material_id', loan.material_id).eq('warehouse_id', loan.warehouse_id)
+        .maybeSingle()
+      const borrowerBalance = Number(borrowerPm?.qty_balance ?? 0)
+      if (qty > borrowerBalance) {
+        toast.error(`عهدة "${toName}" من "${loan.material?.name}": ${borrowerBalance} — استلم مواده من SEC أولاً`)
+        setSaving(false); return
+      }
+
+      // رصيد المستودع الفيزيائي لا يتغير — تسوية ورقية بين عهدتين
+      const { data: mat } = await supabase.from('materials').select('qty').eq('id', loan.material_id).single()
+      const stockQty = Number(mat?.qty ?? 0)
+
+      // السطر ١: المستعير يسدد (يخرج من عهدته — trigger: qty_issued له +)
+      const { error: e1 } = await supabase.from('stock_ledger').insert({
+        tenant_id: tenantId, branch_id: branchId,
+        txn_number: voucherNo,
+        type: 'صرف', movement_category: 'صرف_عهدة',
+        mat_name: loan.material?.name || '', mat_code: loan.material?.mat_code || null,
+        unit: loan.material?.unit || '', qty,
+        qty_before: stockQty, qty_after: stockQty,
+        wh_name: loan.warehouse?.name || '',
+        project_id: loan.to_project_id, project_name: toName,
+        is_loan: true, loan_from_project: fromName, loan_to_project: toName, loan_id: loan.id,
+        dispatch_note: `تسوية استعارة — سداد إلى ${fromName}`,
+      })
+      if (e1) { toast.error('خطأ تسجيل السداد: ' + e1.message); setSaving(false); return }
+
+      // السطر ٢: المُعير يسترد (يعود لعهدته — trigger: qty_issued له −)
+      const { error: e2 } = await supabase.from('stock_ledger').insert({
+        tenant_id: tenantId, branch_id: branchId,
+        txn_number: voucherNo,
+        type: 'استلام', movement_category: 'مرتجع_موقع',
+        mat_name: loan.material?.name || '', mat_code: loan.material?.mat_code || null,
+        unit: loan.material?.unit || '', qty,
+        qty_before: stockQty, qty_after: stockQty,
+        wh_name: loan.warehouse?.name || '',
+        project_id: loan.from_project_id, project_name: fromName,
+        is_loan: true, loan_from_project: fromName, loan_to_project: toName, loan_id: loan.id,
+        dispatch_note: `تسوية استعارة — استرداد من ${toName}`,
+      })
+      if (e2) { toast.error('خطأ تسجيل الاسترداد: ' + e2.message); setSaving(false); return }
+
+      // تحديث الذمّة
+      const newReturned = Number(loan.qty_returned) + qty
+      const fully = newReturned >= Number(loan.qty_loaned)
+      await supabase.from('project_material_loans').update({
+        qty_returned: newReturned,
+        status: fully ? 'مُعاد كلياً' : 'مُعاد جزئياً',
+        return_date: fully ? new Date().toISOString().split('T')[0] : null,
+      }).eq('id', loan.id)
+
+      printRows.push({ name: loan.material?.name || '', unit: loan.material?.unit || '', qty, note: `${toName} ← ${fromName}` })
+    }
+
+    setSaving(false)
+    toast.success(`✅ تمت التسوية — ${printRows.length} ذمّة`)
+    printOperationReceipt({
+      type: 'تسوية استعارة',
+      warehouseName: '', projectName: 'تسوية ذمم داخلية',
+      date: new Date().toISOString().split('T')[0],
+      rows: printRows,
+      txnNumber: voucherNo || '',
+    })
+    onSave(); onClose()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#ecfdf5', borderBottom: '2px solid #a7f3d0' }}>
+          <h3 style={{ fontWeight: 700, color: '#0ea77b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Save style={{ width: '18px', height: '18px' }} /> تسوية استعارة
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+          <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#065f46' }}>
+            ✅ سداد داخلي: عهدة المستعير (بعد استلام مواده) تسدد للمُعير — لا حركة مستودع ولا تعديل مقايسة
+          </div>
+
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+              <div style={{ width: '26px', height: '26px', border: '3px solid var(--border)', borderTopColor: '#0ea77b', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : loans.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: 'var(--text3)', fontSize: '0.875rem' }}>
+              🎉 لا توجد ذمم استعارة مفتوحة
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
+              {loans.map(loan => {
+                const remaining = Number(loan.qty_loaned) - Number(loan.qty_returned)
+                const active = Number(settleQtys[loan.id] || 0) > 0
+                return (
+                  <div key={loan.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px',
+                    background: active ? '#ecfdf5' : '#f8fafc',
+                    border: `1px solid ${active ? '#a7f3d0' : 'var(--border)'}`,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{loan.material?.name || '—'}</div>
+                      <div style={{ fontSize: '0.72rem', marginTop: '2px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#7c3aed', fontWeight: 600 }}>
+                          {projNames[loan.from_project_id] || loan.from_project_id} ← {projNames[loan.to_project_id] || loan.to_project_id}
+                        </span>
+                        <span style={{ color: 'var(--text3)' }}>مستعار: <strong>{loan.qty_loaned}</strong></span>
+                        <span style={{ color: '#0ea77b' }}>مُسوّى: <strong>{loan.qty_returned}</strong></span>
+                        <span style={{ color: '#c81e1e' }}>متبقٍ: <strong>{remaining}</strong></span>
+                        <span style={{ color: 'var(--text3)' }}>{loan.loan_date}</span>
+                      </div>
+                    </div>
+                    <input type="number" value={settleQtys[loan.id] || ''} min="0" max={remaining}
+                      onChange={e => setSettleQtys(prev => ({ ...prev, [loan.id]: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                      placeholder={String(remaining)}
+                      style={{ width: '75px', padding: '6px 8px', borderRadius: '8px', border: '2px solid #a7f3d0', fontSize: '0.875rem', textAlign: 'center', fontWeight: 700 }} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleSave} disabled={saving || totalSettle === 0}
+            className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            {saving ? 'جاري الحفظ...' : `تأكيد التسوية${totalSettle > 0 ? ` (${totalSettle})` : ''}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
