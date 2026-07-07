@@ -353,7 +353,7 @@ export default function EnvironmentPage() {
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#0f766e', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
