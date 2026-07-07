@@ -1,11 +1,11 @@
 // src/app/(dashboard)/inventory/materials/returns/page.tsx
-// تبويب: أذون الإرجاع (RET) — مرتجع الموقع وإرجاع العميل — عرض مستندي: كل إذن صف واحد ينبسط لسطوره ويُطبع
+// تبويب: أذون الإرجاع للعميل (RET) — إرجاع الفائض والسكراب لشركة الكهرباء (مرتجع الموقع في تبويب الاستلام)
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Printer, ChevronDown, ChevronUp, Paperclip, Filter } from 'lucide-react'
 import { useMaterials } from '../MaterialsContext'
-import { OperationModal, ReturnModal, printOperationReceipt } from '../opsShared'
+import { OperationModal, printOperationReceipt } from '../opsShared'
 
 const FETCH_LIMIT = 300
 const ACCENT = '#e6820a'
@@ -32,7 +32,7 @@ export default function ReturnVouchersPage() {
   const { tenantId, branchId, warehouses, projects, loading: ctxLoading, reloadKpis } = useMaterials()
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [modal,   setModal]   = useState<'إرجاع' | 'مرتجع' | null>(null)
+  const [modal,   setModal]   = useState<'إرجاع' | null>(null)
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -47,7 +47,7 @@ export default function ReturnVouchersPage() {
     let q = supabase.from('stock_ledger').select('*')
       .eq('tenant_id', tenantId)
       .order('id', { ascending: false }).limit(FETCH_LIMIT)
-    q = q.or('type.eq.إرجاع للعميل,movement_category.eq.مرتجع_موقع')
+    q = q.eq('type', 'إرجاع للعميل')
     if (filterWh) q = q.eq('wh_name', filterWh)
     const { data } = await q
     setRows((data || []) as LedgerRow[])
@@ -83,7 +83,7 @@ export default function ReturnVouchersPage() {
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: first.movement_category === 'مرتجع_موقع' ? 'مرتجع موقع' : 'إرجاع',
+      type: 'إرجاع',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -108,9 +108,6 @@ export default function ReturnVouchersPage() {
           {docs.length.toLocaleString()} إذن — آخر {FETCH_LIMIT} حركة
         </span>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button onClick={() => setModal('مرتجع')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#1a56db' }}>
-            <Plus style={{ width: '15px', height: '15px' }} /> مرتجع من الموقع
-          </button>
           <button onClick={() => setModal('إرجاع')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#e6820a' }}>
             <Plus style={{ width: '15px', height: '15px' }} /> إرجاع للعميل
           </button>
@@ -224,12 +221,6 @@ export default function ReturnVouchersPage() {
       {/* المودالات */}
       {modal === 'إرجاع' && tenantId && branchId != null && (
         <OperationModal type="إرجاع"
-          tenantId={tenantId} branchId={branchId}
-          warehouses={warehouses} projects={projects}
-          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
-      )}
-      {modal === 'مرتجع' && tenantId && branchId != null && (
-        <ReturnModal
           tenantId={tenantId} branchId={branchId}
           warehouses={warehouses} projects={projects}
           onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />

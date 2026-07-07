@@ -17,7 +17,7 @@ const TABS = [
   { href: '/inventory/materials/items',    label: 'الأصناف والأرصدة', emoji: '📦', color: '#1a56db' },
   { href: '/inventory/materials/receive',  label: 'أذون الاستلام',    emoji: '📥', color: '#0ea77b' },
   { href: '/inventory/materials/issue',    label: 'أذون الصرف',       emoji: '📤', color: '#c81e1e' },
-  { href: '/inventory/materials/returns',  label: 'أذون الإرجاع',     emoji: '↩️', color: '#e6820a' },
+  { href: '/inventory/materials/returns',  label: 'إرجاع للعميل',     emoji: '↩️', color: '#e6820a' },
   { href: '/inventory/materials/transfer', label: 'أذون التحويل',     emoji: '🔄', color: '#0891b2' },
 ]
 
