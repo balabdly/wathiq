@@ -17,7 +17,6 @@ const TABS = [
   { href: '/inventory/materials/items',    label: 'الأصناف والأرصدة', emoji: '📦', color: '#1a56db' },
   { href: '/inventory/materials/receive',  label: 'أذون الاستلام',    emoji: '📥', color: '#0ea77b' },
   { href: '/inventory/materials/issue',    label: 'أذون الصرف',       emoji: '📤', color: '#c81e1e' },
-  { href: '/inventory/materials/returns',  label: 'إرجاع للعميل',     emoji: '↩️', color: '#e6820a' },
   { href: '/inventory/materials/transfer', label: 'أذون التحويل',     emoji: '🔄', color: '#0891b2' },
 ]
 
@@ -80,7 +79,7 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
               <Package style={{ width: '20px', height: '20px', color: '#1a56db' }} />
               المواد
             </h1>
-            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>الأصناف والأرصدة — أذون الاستلام والصرف والإرجاع والتحويل</p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>الأصناف والأرصدة — أذون الاستلام (وارد) والصرف (صادر) والتحويل</p>
           </div>
         </div>
 

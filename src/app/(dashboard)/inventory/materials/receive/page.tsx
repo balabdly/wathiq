@@ -1,5 +1,5 @@
 // src/app/(dashboard)/inventory/materials/receive/page.tsx
-// تبويب: أذون الاستلام (RCV) — كل ما يدخل المستودع: استلام من SEC/مورد + مرتجع من الموقع
+// تبويب: أذون الاستلام (RCV) — كل ما يدخل المستودع: استلام من SEC/مورد + مرتجع موقع + مزال (سكراب)
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -33,6 +33,7 @@ export default function ReceiveVouchersPage() {
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
   const [modal,   setModal]   = useState<'استلام' | 'مرتجع' | null>(null)
+  const [chip,    setChip]    = useState<'all' | 'استلام' | 'مرتجع' | 'مزال'>('all')
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -70,7 +71,11 @@ export default function ReceiveVouchersPage() {
         lines: [r],
       })
     }
+    const natureOf = (d: VoucherDoc) =>
+      d.lines[0].movement_category === 'مرتجع_موقع' ? 'مرتجع'
+      : d.lines[0].movement_category === 'مزال_موقع' ? 'مزال' : 'استلام'
     let list = Array.from(map.values())
+    if (chip !== 'all') list = list.filter(d => natureOf(d) === chip)
     if (search.trim()) {
       const s = search.trim()
       list = list.filter(d =>
@@ -79,12 +84,12 @@ export default function ReceiveVouchersPage() {
       )
     }
     return list
-  }, [rows, search])
+  }, [rows, search, chip])
 
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: first.movement_category === 'مرتجع_موقع' ? 'مرتجع موقع' : 'استلام',
+      type: first.movement_category === 'مرتجع_موقع' ? 'مرتجع موقع' : first.movement_category === 'مزال_موقع' ? 'مزال من الموقع' : 'استلام',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -120,6 +125,17 @@ export default function ReceiveVouchersPage() {
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          {([['all', 'الكل'], ['استلام', '📥 استلام'], ['مرتجع', '📦 مرتجع موقع'], ['مزال', '🔩 مزال']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setChip(id)}
+              style={{ padding: '6px 13px', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
+                borderColor: chip === id ? ACCENT : 'var(--border)',
+                background: chip === id ? ACCENT + '12' : 'transparent',
+                color: chip === id ? ACCENT : 'var(--text3)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -165,6 +181,12 @@ export default function ReceiveVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
+                        {doc.lines[0].movement_category === 'مرتجع_موقع' && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#eff6ff', color: '#1a56db' }}>📦 مرتجع موقع</span>
+                        )}
+                        {doc.lines[0].movement_category === 'مزال_موقع' && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#f3f4f6', color: '#374151' }}>🔩 مزال</span>
+                        )}
                         {doc.legacy && <span style={{ marginRight: '6px', fontSize: '0.62rem', color: 'var(--text3)', fontFamily: 'inherit', fontWeight: 400 }}>(قديم)</span>}
                         {hasAttach && <Paperclip style={{ width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px', color: 'var(--text3)' }} />}
                       </td>

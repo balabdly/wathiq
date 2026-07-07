@@ -1,5 +1,5 @@
 // src/app/(dashboard)/inventory/materials/issue/page.tsx
-// تبويب: أذون الصرف (ISS) — عرض مستندي: كل إذن صف واحد ينبسط لسطوره ويُطبع
+// تبويب: أذون الصرف — كل ما يخرج من المستودع: صرف للتنفيذ (ISS) + إرجاع للعميل فائض/سكراب (RET)
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -13,7 +13,7 @@ const ACCENT = '#c81e1e'
 type LedgerRow = {
   id: number; txn_number?: string; type: string; movement_category?: string
   mat_name: string; mat_code?: string; unit: string
-  qty: number; qty_before: number; qty_after: number
+  qty: number; qty_before: number; qty_after: number; return_type?: string
   wh_name: string; project_name?: string; vendor_name?: string; client_name?: string
   exit_permit_no?: string; doc_code?: string; booking_no?: string
   dispatch_note?: string; attachment_url?: string; created_at: string
@@ -32,7 +32,8 @@ export default function IssueVouchersPage() {
   const { tenantId, branchId, warehouses, projects, loading: ctxLoading, reloadKpis } = useMaterials()
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [modal,   setModal]   = useState<'صرف' | null>(null)
+  const [modal,   setModal]   = useState<'صرف' | 'إرجاع' | null>(null)
+  const [chip,    setChip]    = useState<'all' | 'صرف' | 'إرجاع'>('all')
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -47,11 +48,11 @@ export default function IssueVouchersPage() {
     let q = supabase.from('stock_ledger').select('*')
       .eq('tenant_id', tenantId)
       .order('id', { ascending: false }).limit(FETCH_LIMIT)
-    q = q.eq('type', 'صرف')
-      .not('movement_category', 'eq', 'تحويل')
+    q = q.in('type', ['صرف', 'إرجاع للعميل'])
     if (filterWh) q = q.eq('wh_name', filterWh)
     const { data } = await q
-    setRows((data || []) as LedgerRow[])
+    // استبعاد ساق التحويل (تُعرض في تبويب التحويل)
+    setRows(((data || []) as LedgerRow[]).filter(r => r.movement_category !== 'تحويل'))
     setLoading(false)
   }
 
@@ -71,6 +72,11 @@ export default function IssueVouchersPage() {
       })
     }
     let list = Array.from(map.values())
+    if (chip !== 'all') {
+      list = list.filter(d => chip === 'إرجاع'
+        ? d.lines[0].type === 'إرجاع للعميل'
+        : d.lines[0].type === 'صرف')
+    }
     if (search.trim()) {
       const s = search.trim()
       list = list.filter(d =>
@@ -79,12 +85,12 @@ export default function IssueVouchersPage() {
       )
     }
     return list
-  }, [rows, search])
+  }, [rows, search, chip])
 
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: 'صرف',
+      type: first.type === 'إرجاع للعميل' ? 'إرجاع' : 'صرف',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -112,11 +118,25 @@ export default function IssueVouchersPage() {
           <button onClick={() => setModal('صرف')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#c81e1e' }}>
             <Plus style={{ width: '15px', height: '15px' }} /> إذن صرف جديد
           </button>
+          <button onClick={() => setModal('إرجاع')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#e6820a' }}>
+            <Plus style={{ width: '15px', height: '15px' }} /> إرجاع للعميل
+          </button>
         </div>
       </div>
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          {([['all', 'الكل'], ['صرف', '📤 صرف'], ['إرجاع', '↩️ إرجاع للعميل']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setChip(id)}
+              style={{ padding: '6px 13px', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
+                borderColor: chip === id ? ACCENT : 'var(--border)',
+                background: chip === id ? ACCENT + '12' : 'transparent',
+                color: chip === id ? ACCENT : 'var(--text3)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -162,6 +182,16 @@ export default function IssueVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
+                        {doc.lines[0].type === 'إرجاع للعميل' && (() => {
+                          const rt = doc.lines[0].return_type || ((doc.wh_name || '').includes('سكراب') ? 'سكراب' : (doc.wh_name || '').includes('رجيع') ? 'فائض' : '')
+                          return (
+                            <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px',
+                              background: rt === 'سكراب' ? '#f3f4f6' : '#fffbeb',
+                              color: rt === 'سكراب' ? '#374151' : '#b45309' }}>
+                              ↩️ {rt ? `إرجاع ${rt}` : 'إرجاع للعميل'}
+                            </span>
+                          )
+                        })()}
                         {doc.legacy && <span style={{ marginRight: '6px', fontSize: '0.62rem', color: 'var(--text3)', fontFamily: 'inherit', fontWeight: 400 }}>(قديم)</span>}
                         {hasAttach && <Paperclip style={{ width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px', color: 'var(--text3)' }} />}
                       </td>
@@ -222,6 +252,12 @@ export default function IssueVouchersPage() {
       {/* المودالات */}
       {modal === 'صرف' && tenantId && branchId != null && (
         <OperationModal type="صرف"
+          tenantId={tenantId} branchId={branchId}
+          warehouses={warehouses} projects={projects}
+          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
+      )}
+      {modal === 'إرجاع' && tenantId && branchId != null && (
+        <OperationModal type="إرجاع"
           tenantId={tenantId} branchId={branchId}
           warehouses={warehouses} projects={projects}
           onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />

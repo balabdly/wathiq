@@ -319,6 +319,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         exit_permit_no: form.exit_permit_no || null,
         doc_code:      form.doc_code || null,
         booking_no:    form.booking_no || null,
+        return_type:   type === 'إرجاع' ? (form.return_type || null) : null,
         dispatch_note: row.note || null,
         attachment_url: attachmentUrl,
       })
@@ -623,6 +624,13 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
   const [date,           setDate]           = useState(new Date().toISOString().split('T')[0])
   const [notes,          setNotes]          = useState('')
 
+  // ── وضع المودال: مرتجع مصروفات (يرد للعهدة) أو مزال من الموقع (شبكة قديمة/تالف → السكراب) ──
+  const [mode,        setMode]        = useState<'مصروفات' | 'مزال'>('مصروفات')
+  const [scrapWhId,   setScrapWhId]   = useState('')
+  const [removedRows, setRemovedRows] = useState<{ name: string; unit: string; qty: string }[]>([{ name: '', unit: 'قطعة', qty: '' }])
+  const scrapWarehouses = warehouses.filter(w => w.wh_category === 'سكراب' || (w.name || '').includes('سكراب'))
+  const scrapOptions    = scrapWarehouses.length > 0 ? scrapWarehouses : warehouses
+
   async function loadIssuedMats() {
     if (!warehouseId || !projectId) return
     const { data } = await supabase.from('project_materials')
@@ -713,6 +721,70 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
     onSave(); onClose()
   }
 
+  // ══ حفظ المزال من الموقع: إدخال حر بكميات إلزامية → مستودع السكراب مباشرة (لا يمس عهدة المشروع) ══
+  async function handleSaveRemoved() {
+    const rows = removedRows.map(r => ({ ...r, name: r.name.trim(), qty: Number(r.qty) })).filter(r => r.name && r.qty > 0)
+    if (rows.length === 0)  { toast.error('أدخل مادة واحدة على الأقل باسم وكمية'); return }
+    if (!projectId)         { toast.error('اختر المشروع'); return }
+    if (!scrapWhId)         { toast.error('اختر مستودع السكراب'); return }
+    setSaving(true)
+
+    const wh = warehouses.find(w => w.id === Number(scrapWhId))
+    const { data: voucherNo } = await supabase.rpc('generate_txn_number', { p_type: 'استلام' })
+    if (!voucherNo) { toast.error('تعذر توليد رقم الإذن'); setSaving(false); return }
+
+    const printRows: { name: string; unit: string; qty: number; note: string }[] = []
+    for (const row of rows) {
+      // المادة تدخل رصيد مستودع السكراب (لتُصرف لاحقاً بإذن إرجاع سكراب للعميل)
+      const { data: existing } = await supabase.from('materials').select('id, qty')
+        .eq('tenant_id', tenantId).eq('warehouse_id', Number(scrapWhId))
+        .eq('name', row.name).maybeSingle()
+
+      let qtyBefore = 0
+      if (existing) {
+        qtyBefore = Number(existing.qty)
+        await supabase.from('materials').update({ qty: qtyBefore + row.qty }).eq('id', existing.id)
+      } else {
+        await supabase.from('materials').insert({
+          tenant_id: tenantId, warehouse_id: Number(scrapWhId),
+          name: row.name, unit: row.unit, qty: row.qty, reorder: 0, source: 'SEC',
+        })
+      }
+
+      const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
+        tenant_id:         tenantId,
+        branch_id:         branchId,
+        txn_number:        voucherNo,
+        type:              'استلام',
+        movement_category: 'مزال_موقع',
+        mat_name:          row.name,
+        unit:              row.unit,
+        qty:               row.qty,
+        qty_before:        qtyBefore,
+        qty_after:         qtyBefore + row.qty,
+        wh_name:           wh?.name || '',
+        project_id:        Number(projectId),
+        project_name:      projectName,
+        dispatch_note:     notes || 'مزال من الموقع',
+      })
+      if (ledgerErr) { toast.error('خطأ تسجيل الحركة: ' + ledgerErr.message); setSaving(false); return }
+      printRows.push({ name: row.name, unit: row.unit, qty: row.qty, note: notes || '' })
+    }
+
+    setSaving(false)
+    toast.success(`✅ تم تسجيل المزال — ${printRows.length} مادة إلى ${wh?.name || 'السكراب'}`)
+    printOperationReceipt({
+      type: 'مزال من الموقع',
+      warehouseName: wh?.name || '',
+      projectName,
+      date,
+      rows: printRows,
+      txnNumber: voucherNo || '',
+    })
+    onSave(); onClose()
+  }
+
+  const totalRemoved = removedRows.reduce((s, r) => s + Number(r.qty || 0), 0)
   const isProjectWh = warehouses.find(w => w.id === Number(warehouseId))
   const totalReturn = Object.values(returnQtys).reduce((s, v) => s + Number(v || 0), 0)
 
@@ -721,7 +793,7 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
       <div className="modal-box" style={{ maxWidth: '620px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ background: '#eff6ff', borderBottom: '2px solid #bfdbfe' }}>
           <h3 style={{ fontWeight: 700, color: '#1a56db', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <RotateCcw style={{ width: '18px', height: '18px' }} /> مرتجع موقع
+            <RotateCcw style={{ width: '18px', height: '18px' }} /> {mode === 'مزال' ? 'مزال من الموقع (سكراب)' : 'مرتجع موقع'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
             <X style={{ width: '18px', height: '18px' }} />
@@ -729,6 +801,19 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+          {/* مبدّل الوضع */}
+          <div style={{ display: 'flex', gap: '6px', background: '#f3f4f6', padding: '5px', borderRadius: '12px', width: 'fit-content' }}>
+            {([['مصروفات', '📦 مرتجع مصروفات'], ['مزال', '🔩 مزال من الموقع']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)}
+                style={{ padding: '7px 16px', borderRadius: '9px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700,
+                  background: mode === m ? (m === 'مزال' ? '#374151' : '#1a56db') : 'transparent',
+                  color: mode === m ? 'white' : 'var(--text3)', transition: 'all 0.15s' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'مصروفات' && (<>
           <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#1a56db' }}>
             📦 مواد خرجت للموقع ولم تُستخدم — ترجع للمستودع وتزيد رصيد العهدة
           </div>
@@ -830,18 +915,97 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
             </div>
           )}
 
+          </>)}
+
+          {mode === 'مزال' && (<>
+          <div style={{ background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#374151' }}>
+            🔩 شبكة قديمة مفكوكة أو مواد تالفة — تدخل مستودع السكراب مباشرة برسم الإرجاع لشركة الكهرباء، ولا تمس عهدة المشروع
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                مستودع السكراب <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={scrapWhId} onChange={e => setScrapWhId(e.target.value)} className="select">
+                <option value="">— اختر —</option>
+                {scrapOptions.map((w: any) => <option key={w.id} value={w.id}>{w.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                المشروع <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              <select value={projectId} onChange={e => {
+                const p = projects.find((p: any) => p.id === Number(e.target.value))
+                setProjectId(e.target.value)
+                setProjectName(p?.name || '')
+              }} className="select">
+                <option value="">— اختر المشروع —</option>
+                {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>التاريخ</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="input" style={{ maxWidth: '200px' }} />
+          </div>
+
+          {/* بنود المزال — كميات إلزامية */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>المواد المزالة — الاسم والوحدة والكمية:</label>
+              {totalRemoved > 0 && (
+                <span style={{ background: '#f3f4f6', color: '#374151', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
+                  إجمالي المزال: {totalRemoved}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {removedRows.map((row, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input value={row.name} onChange={e => setRemovedRows(prev => prev.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
+                    className="input" placeholder="اسم المادة المزالة (كيبل قديم، محول...)" style={{ flex: 1 }} />
+                  <select value={row.unit} onChange={e => setRemovedRows(prev => prev.map((r, j) => j === i ? { ...r, unit: e.target.value } : r))}
+                    className="select" style={{ width: '110px' }}>
+                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <input type="number" value={row.qty} min="0"
+                    onChange={e => setRemovedRows(prev => prev.map((r, j) => j === i ? { ...r, qty: e.target.value } : r))}
+                    onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                    placeholder="الكمية" style={{ width: '90px', padding: '8px', borderRadius: '8px', border: '2px solid #d1d5db', fontSize: '0.875rem', textAlign: 'center', fontWeight: 700 }} dir="ltr" />
+                  {removedRows.length > 1 && (
+                    <button onClick={() => setRemovedRows(prev => prev.filter((_, j) => j !== i))}
+                      style={{ padding: '6px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
+                      <Trash2 style={{ width: '13px', height: '13px' }} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button onClick={() => setRemovedRows(prev => [...prev, { name: '', unit: 'قطعة', qty: '' }])}
+                className="btn btn-ghost" style={{ fontSize: '0.78rem', width: 'fit-content' }}>
+                <Plus style={{ width: '13px', height: '13px' }} /> إضافة مادة
+              </button>
+            </div>
+          </div>
+          </>)}
+
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>ملاحظات</label>
             <input value={notes} onChange={e => setNotes(e.target.value)}
-              className="input" placeholder="سبب الإرجاع (اختياري)" />
+              className="input" placeholder={mode === 'مزال' ? 'وصف المزال أو سببه (اختياري)' : 'سبب الإرجاع (اختياري)'} />
           </div>
         </div>
 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving || totalReturn === 0}
-            className="btn btn-primary" style={{ background: '#1a56db' }}>
-            {saving ? 'جاري الحفظ...' : `تأكيد المرتجع${totalReturn > 0 ? ` (${totalReturn})` : ''}`}
+          <button onClick={mode === 'مزال' ? handleSaveRemoved : handleSave}
+            disabled={saving || (mode === 'مزال' ? totalRemoved === 0 : totalReturn === 0)}
+            className="btn btn-primary" style={{ background: mode === 'مزال' ? '#374151' : '#1a56db' }}>
+            {saving ? 'جاري الحفظ...'
+              : mode === 'مزال' ? `تسجيل المزال${totalRemoved > 0 ? ` (${totalRemoved})` : ''}`
+              : `تأكيد المرتجع${totalReturn > 0 ? ` (${totalReturn})` : ''}`}
           </button>
         </div>
       </div>
