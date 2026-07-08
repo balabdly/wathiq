@@ -180,7 +180,7 @@ function WarehouseModal({ wh, onClose, onSave, tenantId, branchId }: {
 // مودال: تعريف مادة
 // ══════════════════════════════════════════
 function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }: {
-  tenantId: string; branchId: number; warehouses: WH[]
+  tenantId: string; branchId: number; warehouses: Warehouse[]
   onClose: () => void; onSave: () => void
 }) {
   const [tab,     setTab]     = useState<'manual' | 'import'>('manual')
@@ -448,7 +448,7 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
 // مودال: تعديل مادة
 // ══════════════════════════════════════════
 function MaterialEditModal({ material, warehouses, onClose, onSave }: {
-  material: Material; warehouses: WH[]
+  material: Material; warehouses: Warehouse[]
   onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -561,113 +561,210 @@ function MaterialEditModal({ material, warehouses, onClose, onSave }: {
 
 
 // ══════════════════════════════════════════
-function WarehouseCard({ wh, stats, onEdit, onDelete, onItems, canEdit }: {
-  wh: WH; stats: { total: number; low: number }
-  onEdit: () => void; onDelete: () => void; onItems: () => void; canEdit: boolean
+// مودال: استيراد أصناف من Excel (لصق مباشر بأعمدة مفصولة بـ Tab)
+// ══════════════════════════════════════════
+function ImportMaterialsModal({ tenantId, branchId, warehouse, existingNames, onClose, onSave }: {
+  tenantId: string; branchId: number
+  warehouse: WH; existingNames: string[]
+  onClose: () => void; onSave: () => void
 }) {
-  const info = WH_CATEGORY_INFO[wh.wh_category] || WH_CATEGORY_INFO['عام']
-  const Icon = info.icon
-  const [showInfo, setShowInfo] = useState(false)
+  const [raw,     setRaw]     = useState('')
+  const [rows,    setRows]    = useState<any[]>([])
+  const [saving,  setSaving]  = useState(false)
+  const [phase,   setPhase]   = useState<'paste' | 'preview'>('paste')
+
+  const HEADERS = ['اسم المادة', 'الوحدة', 'الكمية الافتتاحية', 'حد الأمان', 'المصدر', 'رقم الكتالوج', 'رقم SEC', 'الموقع']
+
+  function downloadTemplate() {
+    const example = ['كيبل نحاس 4×16', 'متر', '0', '10', 'كهرباء', 'C-1234', '90812345', 'رف A-1']
+    const example2 = ['قفازات عزل', 'قطعة', '50', '5', 'خاص', '', '', 'رف B-3']
+    const tsv = [HEADERS, example, example2].map(r => r.join('\t')).join('\n')
+    const blob = new Blob(['\uFEFF' + tsv], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+    a.download = `قالب_استيراد_أصناف_${warehouse.name}.xls`; a.click()
+  }
+
+  function parseRaw() {
+    const lines = raw.split('\n').map(l => l.replace(/\r/g, '')).filter(l => l.trim())
+    if (lines.length === 0) { toast.error('الصق بيانات من Excel أولاً'); return }
+    const seen = new Set<string>()
+    const parsed = lines
+      .filter((l, i) => !(i === 0 && l.includes('اسم')))  // تجاهل صف العناوين
+      .map((line, i) => {
+        const c = line.split('\t').map(v => v.trim())
+        const name = c[0] || ''
+        const unit = c[1] || ''
+        const qty     = Number(c[2] || 0)
+        const reorder = Number(c[3] || 0)
+        const srcRaw  = (c[4] || '').trim()
+        const source  = srcRaw.includes('كهرب') || srcRaw.toUpperCase() === 'SEC' ? 'كهرباء' : 'خاص'
+        const catalog = c[5] || ''
+        const sec     = c[6] || ''
+        const location = c[7] || ''
+
+        let status = existingNames.includes(name) ? 'تحديث' : 'جديد'
+        let reason = ''
+        if (!name)                                   { status = 'مرفوض'; reason = 'الاسم فارغ' }
+        else if (!unit)                              { status = 'مرفوض'; reason = 'الوحدة فارغة' }
+        else if (seen.has(name))                     { status = 'مرفوض'; reason = 'مكرر داخل الملف' }
+        else if (isNaN(qty) || qty < 0)              { status = 'مرفوض'; reason = 'كمية غير صالحة' }
+        else if (source === 'كهرباء' && !sec)        { status = 'مرفوض'; reason = 'رقم SEC إلزامي لمواد الكهرباء' }
+        else if (source === 'كهرباء' && !catalog)    { status = 'مرفوض'; reason = 'رقم الكتالوج إلزامي لمواد الكهرباء' }
+        if (name) seen.add(name)
+        return { idx: i + 1, name, unit, qty, reorder: isNaN(reorder) ? 0 : reorder, source, catalog, sec, location, status, reason }
+      })
+    setRows(parsed)
+    setPhase('preview')
+  }
+
+  const counts = {
+    جديد:   rows.filter(r => r.status === 'جديد').length,
+    تحديث: rows.filter(r => r.status === 'تحديث').length,
+    مرفوض: rows.filter(r => r.status === 'مرفوض').length,
+  }
+
+  async function doImport() {
+    const okRows = rows.filter(r => r.status !== 'مرفوض')
+    if (okRows.length === 0) { toast.error('لا صفوف صالحة للاستيراد'); return }
+    setSaving(true)
+
+    // إذن استلام موحد للأرصدة الافتتاحية — الدفتر يبقى مصدر الحقيقة
+    const withQty = okRows.filter(r => r.status === 'جديد' && r.qty > 0)
+    let voucherNo: string | null = null
+    if (withQty.length > 0) {
+      const { data } = await supabase.rpc('generate_txn_number', { p_type: 'استلام' })
+      voucherNo = data
+      if (!voucherNo) { toast.error('تعذر توليد رقم إذن الرصيد الافتتاحي'); setSaving(false); return }
+    }
+
+    let added = 0, updated = 0
+    for (const r of okRows) {
+      if (r.status === 'جديد') {
+        const { error: insErr } = await supabase.from('materials').insert({
+          tenant_id: tenantId, warehouse_id: warehouse.id,
+          name: r.name, unit: r.unit, qty: r.qty, reorder: r.reorder,
+          source: r.source, catalog_no: r.catalog || null, sec_number: r.sec || null,
+          location: r.location || null, is_active: true,
+        })
+        if (insErr) { toast.error(`⛔ توقف عند "${r.name}": ${insErr.message} — أُضيف ${added} وحُدّث ${updated}`); setSaving(false); return }
+        if (r.qty > 0 && voucherNo) {
+          const { error: ledErr } = await supabase.from('stock_ledger').insert({
+            tenant_id: tenantId, branch_id: branchId,
+            txn_number: voucherNo, type: 'استلام', movement_category: 'استلام_عام',
+            mat_name: r.name, unit: r.unit, qty: r.qty,
+            qty_before: 0, qty_after: r.qty,
+            wh_name: warehouse.name,
+            dispatch_note: 'رصيد افتتاحي — استيراد Excel',
+          })
+          if (ledErr) { toast.error(`⛔ قيد الدفتر لـ"${r.name}": ${ledErr.message}`); setSaving(false); return }
+        }
+        added++
+      } else {
+        // تحديث بيانات التعريف فقط — الكمية لا تُمس (تعديلها من الأذون حصراً)
+        const { error: updErr } = await supabase.from('materials').update({
+          unit: r.unit, reorder: r.reorder, source: r.source,
+          catalog_no: r.catalog || null, sec_number: r.sec || null,
+          location: r.location || null,
+        }).eq('tenant_id', tenantId).eq('warehouse_id', warehouse.id).eq('name', r.name)
+        if (updErr) { toast.error(`⛔ تحديث "${r.name}": ${updErr.message}`); setSaving(false); return }
+        updated++
+      }
+    }
+
+    setSaving(false)
+    toast.success(`✅ اكتمل الاستيراد — أُضيف ${added}، حُدّث ${updated}${counts.مرفوض ? `، رُفض ${counts.مرفوض}` : ''}${voucherNo ? ` — إذن الرصيد الافتتاحي ${voucherNo}` : ''}`)
+    onSave(); onClose()
+  }
+
+  const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+    جديد:   { bg: '#ecfdf5', color: '#0ea77b' },
+    تحديث: { bg: '#eff6ff', color: '#1a56db' },
+    مرفوض: { bg: '#fef2f2', color: '#c81e1e' },
+  }
 
   return (
-    <div style={{
-      background: 'var(--card-bg, white)', borderRadius: '14px',
-      border: `2px solid ${info.border}`, overflow: 'hidden',
-      transition: 'box-shadow 0.2s', position: 'relative',
-    }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(0,0,0,0.08)'}
-      onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = 'none'}>
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '860px', maxHeight: '92vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#ecfdf5', borderBottom: '2px solid #a7f3d0' }}>
+          <h3 style={{ fontWeight: 700, color: '#0ea77b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileSpreadsheet style={{ width: '18px', height: '18px' }} /> استيراد أصناف من Excel — {warehouse.name}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* شريط علوي ملون */}
-      <div style={{ height: '4px', background: info.color }} />
+          {phase === 'paste' && (<>
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '10px 14px', fontSize: '0.78rem', color: '#065f46', lineHeight: 1.7 }}>
+              <strong>الطريقة:</strong> ① نزّل القالب واملأه في Excel ② ظلّل الصفوف وانسخها (Ctrl+C) ③ الصقها هنا (Ctrl+V) ④ معاينة ثم استيراد
+              <br />الأصناف الموجودة بنفس الاسم تُحدَّث بياناتها <strong>بدون لمس كميتها</strong> — والأرصدة الافتتاحية للجديدة تُقيَّد بإذن استلام موحد في الدفتر
+            </div>
+            <button onClick={downloadTemplate} className="btn btn-ghost" style={{ fontSize: '0.82rem', width: 'fit-content' }}>
+              <Save style={{ width: '14px', height: '14px' }} /> تنزيل القالب
+            </button>
+            <textarea value={raw} onChange={e => setRaw(e.target.value)}
+              placeholder={'الصق هنا من Excel...\nاسم المادة⇥الوحدة⇥الكمية⇥حد الأمان⇥المصدر⇥الكتالوج⇥SEC⇥الموقع'}
+              style={{ width: '100%', minHeight: '220px', padding: '12px', borderRadius: '10px', border: '2px dashed var(--border)', fontFamily: 'monospace', fontSize: '0.8rem', resize: 'vertical', direction: 'rtl' }} />
+          </>)}
 
-      <div style={{ padding: '18px' }}>
-        {/* الرأس */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: info.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Icon style={{ width: '22px', height: '22px', color: info.color }} />
+          {phase === 'preview' && (<>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {Object.entries(counts).map(([k, v]) => (
+                <span key={k} style={{ background: STATUS_STYLE[k].bg, color: STATUS_STYLE[k].color, borderRadius: '20px', padding: '4px 14px', fontSize: '0.78rem', fontWeight: 700 }}>
+                  {k}: {v}
+                </span>
+              ))}
             </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{wh.name}</div>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, background: info.bg, color: info.color, borderRadius: '20px', padding: '1px 8px' }}>
-                {wh.wh_category === 'مشاريع' ? 'مستودع مشاريع' : 'مستودع عام'}
-              </span>
+            <div style={{ overflowX: 'auto', maxHeight: '380px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '10px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg2, #f8fafc)', position: 'sticky', top: 0 }}>
+                    {['#', 'الحالة', 'الاسم', 'الوحدة', 'كمية', 'حد أمان', 'المصدر', 'كتالوج', 'SEC', 'السبب'].map(h => (
+                      <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text3)', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.idx} style={{ borderTop: '1px solid var(--bg2)', background: r.status === 'مرفوض' ? '#fff5f5' : 'transparent' }}>
+                      <td style={{ padding: '7px 10px', color: 'var(--text3)', fontFamily: 'monospace' }}>{r.idx}</td>
+                      <td style={{ padding: '7px 10px' }}>
+                        <span style={{ background: STATUS_STYLE[r.status].bg, color: STATUS_STYLE[r.status].color, borderRadius: '12px', padding: '1px 8px', fontSize: '0.68rem', fontWeight: 700 }}>{r.status}</span>
+                      </td>
+                      <td style={{ padding: '7px 10px', fontWeight: 600 }}>{r.name || '—'}</td>
+                      <td style={{ padding: '7px 10px' }}>{r.unit || '—'}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{r.qty}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{r.reorder}</td>
+                      <td style={{ padding: '7px 10px' }}>{r.source}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{r.catalog || '—'}</td>
+                      <td style={{ padding: '7px 10px', fontFamily: 'monospace' }}>{r.sec || '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#c81e1e', fontSize: '0.7rem' }}>{r.reason || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          {canEdit && (
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button onClick={onItems} title="أصناف المستودع"
-                style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Package style={{ width: '13px', height: '13px' }} /> الأصناف
-              </button>
-              <button onClick={() => setShowInfo(!showInfo)} title="معلومات"
-                style={{ padding: '5px', borderRadius: '6px', border: '1px solid var(--border)', background: showInfo ? info.bg : 'white', cursor: 'pointer', color: info.color }}>
-                <Info style={{ width: '14px', height: '14px' }} />
-              </button>
-              <button onClick={onEdit} title="تعديل"
-                style={{ padding: '5px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
-                <Pencil style={{ width: '14px', height: '14px' }} />
-              </button>
-              <button onClick={onDelete} title="حذف"
-                style={{ padding: '5px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
-                <Trash2 style={{ width: '14px', height: '14px' }} />
-              </button>
-            </div>
+          </>)}
+        </div>
+        <div className="modal-footer">
+          {phase === 'preview' && (
+            <button onClick={() => setPhase('paste')} className="btn btn-ghost">◂ رجوع للتعديل</button>
           )}
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          {phase === 'paste'
+            ? <button onClick={parseRaw} className="btn btn-primary" style={{ background: '#0ea77b' }}>معاينة البيانات</button>
+            : <button onClick={doImport} disabled={saving || counts.جديد + counts.تحديث === 0}
+                className="btn btn-primary" style={{ background: '#0ea77b' }}>
+                {saving ? 'جاري الاستيراد...' : `استيراد ${counts.جديد + counts.تحديث} صنف`}
+              </button>}
         </div>
-
-        {/* معلومات الموقع */}
-        {wh.location && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginBottom: '10px' }}>📍 {wh.location}</div>
-        )}
-
-        {/* وصف المستودع */}
-        {wh.description && (
-          <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginBottom: '10px', lineHeight: 1.5 }}>{wh.description}</div>
-        )}
-
-        {/* توضيح طريقة العمل */}
-        {showInfo && (
-          <div style={{ background: info.bg, border: `1px solid ${info.border}`, borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: info.color, marginBottom: '6px' }}>طريقة العمل:</div>
-            {info.points.map((p, i) => (
-              <div key={i} style={{ fontSize: '0.72rem', color: info.color, display: 'flex', gap: '6px', marginBottom: '3px' }}>
-                <span>•</span><span>{p}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* الإحصائيات */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-          <div style={{ background: 'var(--bg2, #f8fafc)', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: '1.2rem', color: info.color }}>{stats.total}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>صنف</div>
-          </div>
-          <div style={{ background: stats.low > 0 ? '#fffbeb' : 'var(--bg2, #f8fafc)', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: '1.2rem', color: stats.low > 0 ? '#d97706' : 'var(--text3)' }}>{stats.low}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>منخفض</div>
-          </div>
-        </div>
-
-        {/* الأقسام */}
-        {wh.sections && wh.sections.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-            {wh.sections.map((s, i) => (
-              <span key={i} style={{ background: info.bg, border: `1px solid ${info.border}`, borderRadius: '6px', padding: '2px 8px', fontSize: '0.68rem', color: info.color, fontWeight: 600 }}>
-                📦 {s}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
 // ══════════════════════════════════════════
-// الصفحة الرئيسية
+// الصفحة الرئيسية: المستودعات والأصناف — Master-Detail
+// اليمين: قائمة المستودعات (الرئيسي) | اليسار: أصناف المستودع المحدد (التفصيل)
 // ══════════════════════════════════════════
 export default function WarehousesPage() {
   const { tenant, activeBranch, currentUser } = useStore()
@@ -677,26 +774,27 @@ export default function WarehousesPage() {
   const [showModal,  setShowModal]  = useState(false)
   const [editWh,     setEditWh]     = useState<WH | undefined>()
 
-  // ══ لوحة أصناف المستودع (الإعداد الأولي للمواد) ══
-  const [itemsWhId,   setItemsWhId]   = useState<number | null>(null)
+  // التفصيل: أصناف المستودع المحدد
+  const [selWhId,     setSelWhId]     = useState<number | null>(null)
   const [whMats,      setWhMats]      = useState<Material[]>([])
   const [matsLoading, setMatsLoading] = useState(false)
   const [matSearch,   setMatSearch]   = useState('')
-  const [matModal,    setMatModal]    = useState<'define' | 'edit' | null>(null)
+  const [matModal,    setMatModal]    = useState<'define' | 'edit' | 'import' | null>(null)
   const [editMat,     setEditMat]     = useState<Material | null>(null)
 
   const canEdit = currentUser?.permissions?.includes('inventory') || currentUser?.role === 'مدير عام'
+  const selWh   = warehouses.find(w => w.id === selWhId)
 
   useEffect(() => { if (tenant && activeBranch) loadData() }, [tenant?.id, activeBranch?.id])
 
   // فتح مستودع محدد قادماً من صفحة الأرصدة (?wh=)
   useEffect(() => {
     const whParam = new URLSearchParams(window.location.search).get('wh')
-    if (whParam) openItems(Number(whParam))
+    if (whParam && tenant) selectWh(Number(whParam))
   }, [tenant?.id])
 
-  async function openItems(whId: number) {
-    setItemsWhId(whId); setMatSearch('')
+  async function selectWh(whId: number) {
+    setSelWhId(whId); setMatSearch('')
     await loadWhMats(whId)
   }
 
@@ -713,7 +811,7 @@ export default function WarehousesPage() {
   async function toggleMaterial(id: number, current: boolean) {
     if (!confirm(current ? 'تعطيل هذه المادة؟' : 'تفعيل هذه المادة؟')) return
     await supabase.from('materials').update({ is_active: !current }).eq('id', id)
-    if (itemsWhId) loadWhMats(itemsWhId)
+    if (selWhId) loadWhMats(selWhId)
     loadData()
     toast.success(current ? 'تم التعطيل' : 'تم التفعيل')
   }
@@ -742,245 +840,222 @@ export default function WarehousesPage() {
     if (!confirm(`حذف مستودع "${wh.name}"؟\n\nسيتم حذف كل المواد والحركات المرتبطة به.`)) return
     const { error } = await supabase.from('warehouses').delete().eq('id', wh.id)
     if (error) { toast.error('لا يمكن الحذف: ' + error.message); return }
+    if (selWhId === wh.id) setSelWhId(null)
     toast.success('تم الحذف')
     loadData()
   }
 
-  const generalWhs  = warehouses.filter(w => w.wh_category !== 'مشاريع')
-  const projectWhs  = warehouses.filter(w => w.wh_category === 'مشاريع')
+  const statList   = Object.values(stats) as { total: number; low: number }[]
+  const totalItems = statList.reduce((s, v) => s + v.total, 0)
+  const totalLow   = statList.reduce((s, v) => s + v.low, 0)
+  const shownMats  = matSearch.trim()
+    ? whMats.filter(m => m.name.includes(matSearch) || (m.catalog_no || '').includes(matSearch) || (m.sec_number || '').includes(matSearch) || (m.mat_code || '').includes(matSearch))
+    : whMats
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-      <div style={{ width: '32px', height: '32px', border: '3px solid #e5e7eb', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      {/* العنوان */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* ══ العنوان ══ */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Warehouse style={{ width: '22px', height: '22px', color: '#7c3aed' }} /> المستودعات والأصناف
           </h1>
           <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>
-            {warehouses.length} مستودع — {generalWhs.length} عام، {projectWhs.length} مشاريع — الإعداد الأولي: تعريف المستودعات وأصنافها
+            الإعداد الأولي — اختر مستودعاً من القائمة لإدارة أصنافه
           </p>
         </div>
         {canEdit && (
-          <button onClick={() => { setEditWh(undefined); setShowModal(true) }} className="btn btn-primary">
+          <button onClick={() => { setEditWh(undefined); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#7c3aed' }}>
             <Plus style={{ width: '15px', height: '15px' }} /> مستودع جديد
           </button>
         )}
       </div>
 
+      {/* ══ KPIs ══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', maxWidth: '560px' }}>
+        {[
+          { label: 'مستودعات',              value: warehouses.length, color: '#7c3aed', bg: '#f5f3ff' },
+          { label: 'أصناف نشطة',            value: totalItems,        color: '#1a56db', bg: '#eff6ff' },
+          { label: 'تنبيهات كمية منخفضة',  value: totalLow,          color: '#e6820a', bg: '#fffbeb' },
+        ].map(k => (
+          <div key={k.label} style={{ background: k.bg, borderRadius: '12px', padding: '13px 16px' }}>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text3)', marginTop: '2px' }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
 
-      {/* ══ لوحة أصناف المستودع المحدد — الإعداد الأولي ══ */}
-      {itemsWhId !== null && (() => {
-        const selWh = warehouses.find(w => w.id === itemsWhId)
-        const shown = matSearch.trim()
-          ? whMats.filter(m => m.name.includes(matSearch) || (m.catalog_no || '').includes(matSearch) || (m.sec_number || '').includes(matSearch) || (m.mat_code || '').includes(matSearch))
-          : whMats
-        return (
-          <div style={{ background: 'var(--card-bg, white)', border: '2px solid #bfdbfe', borderRadius: '14px', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', background: '#eff6ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Package style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-                <span style={{ fontWeight: 700, color: '#1a56db' }}>أصناف: {selWh?.name || '—'}</span>
-                <span style={{ background: 'white', color: '#1a56db', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700 }}>{whMats.length} صنف</span>
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative' }}>
-                  <Search style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)', width: '13px', height: '13px', color: 'var(--text3)' }} />
-                  <input value={matSearch} onChange={e => setMatSearch(e.target.value)}
-                    placeholder="بحث..." className="input" style={{ paddingRight: '28px', width: '160px', fontSize: '0.78rem' }} />
-                </div>
-                <button onClick={() => setMatModal('define')} className="btn btn-primary" style={{ fontSize: '0.78rem' }}>
-                  <Plus style={{ width: '14px', height: '14px' }} /> إضافة مادة
-                </button>
-                <button onClick={() => setItemsWhId(null)} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
-                  <X style={{ width: '14px', height: '14px' }} /> إغلاق
-                </button>
+      {/* ══ Master-Detail ══ */}
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+
+        {/* ── القائمة الرئيسية: المستودعات ── */}
+        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px', minWidth: '260px' }}>
+          {[
+            { title: '🏬 مستودعات عامة',   list: warehouses.filter(w => w.wh_category !== 'مشاريع') },
+            { title: '🏗️ مستودعات مشاريع', list: warehouses.filter(w => w.wh_category === 'مشاريع') },
+          ].map(group => group.list.length > 0 && (
+            <div key={group.title}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text3)', marginBottom: '6px', paddingRight: '4px' }}>{group.title}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {group.list.map(wh => {
+                  const info = WH_CATEGORY_INFO[wh.wh_category] || WH_CATEGORY_INFO['عام']
+                  const st = stats[wh.id] || { total: 0, low: 0 }
+                  const active = selWhId === wh.id
+                  return (
+                    <div key={wh.id} onClick={() => selectWh(wh.id)}
+                      style={{ padding: '11px 14px', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.15s',
+                        background: active ? info.bg : 'var(--card-bg, white)',
+                        border: `2px solid ${active ? info.color : 'var(--border)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: active ? info.color : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wh.name}</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '2px', display: 'flex', gap: '8px' }}>
+                            <span>{st.total} صنف</span>
+                            {st.low > 0 && <span style={{ color: '#e6820a', fontWeight: 700 }}>⚠ {st.low} منخفض</span>}
+                          </div>
+                        </div>
+                        {canEdit && (
+                          <div style={{ display: 'flex', gap: '3px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button onClick={() => { setEditWh(wh); setShowModal(true) }} title="تعديل"
+                              style={{ padding: '4px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
+                              <Pencil style={{ width: '11px', height: '11px' }} />
+                            </button>
+                            <button onClick={() => handleDelete(wh)} title="حذف"
+                              style={{ padding: '4px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
+                              <Trash2 style={{ width: '11px', height: '11px' }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
+          ))}
+        </div>
 
-            {matsLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-                <div style={{ width: '26px', height: '26px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        {/* ── التفصيل: أصناف المستودع المحدد ── */}
+        <div style={{ flex: 1, minWidth: '320px' }}>
+          {!selWh ? (
+            <div style={{ background: 'var(--card-bg, white)', border: '2px dashed var(--border)', borderRadius: '14px', padding: '70px 20px', textAlign: 'center', color: 'var(--text3)' }}>
+              <Package style={{ width: '36px', height: '36px', margin: '0 auto 10px', color: '#d1d5db' }} />
+              <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>اختر مستودعاً من القائمة لعرض أصنافه وإدارتها</div>
+            </div>
+          ) : (
+            <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
+
+              {/* شريط أدوات التفصيل */}
+              <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', background: 'var(--bg2, #f8fafc)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Package style={{ width: '16px', height: '16px', color: '#1a56db' }} />
+                  <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{selWh.name}</span>
+                  <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '2px 9px', fontSize: '0.7rem', fontWeight: 700 }}>{whMats.length} صنف</span>
+                </div>
+                <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ position: 'relative' }}>
+                    <Search style={{ position: 'absolute', right: '9px', top: '50%', transform: 'translateY(-50%)', width: '13px', height: '13px', color: 'var(--text3)' }} />
+                    <input value={matSearch} onChange={e => setMatSearch(e.target.value)}
+                      placeholder="بحث..." className="input" style={{ paddingRight: '28px', width: '150px', fontSize: '0.78rem' }} />
+                  </div>
+                  <button onClick={() => setMatModal('define')} className="btn btn-primary" style={{ fontSize: '0.78rem' }}>
+                    <Plus style={{ width: '14px', height: '14px' }} /> إضافة مادة
+                  </button>
+                  <button onClick={() => setMatModal('import')} className="btn btn-primary" style={{ fontSize: '0.78rem', background: '#0ea77b' }}>
+                    <FileSpreadsheet style={{ width: '14px', height: '14px' }} /> استيراد Excel
+                  </button>
+                </div>
               </div>
-            ) : shown.length === 0 ? (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.875rem' }}>
-                {matSearch ? 'لا نتائج للبحث' : 'لا توجد أصناف — أضف أول مادة لهذا المستودع'}
-              </div>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg2, #f8fafc)' }}>
-                      {['الكود', 'رقم الكتالوج', 'رقم SEC', 'الاسم', 'المصدر', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة', ''].map(h => (
-                        <th key={h} style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text3)', fontSize: '0.73rem', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.map(m => (
-                      <tr key={m.id} style={{ borderBottom: '1px solid var(--bg2, #f8fafc)', opacity: m.is_active === false ? 0.5 : 1 }}>
-                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#7c3aed', fontWeight: 700 }}>{m.mat_code || '—'}</td>
-                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db' }}>{m.catalog_no || '—'}</td>
-                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text3)' }}>{m.sec_number || '—'}</td>
-                        <td style={{ padding: '9px 12px', fontWeight: 700 }}>{m.name}</td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <span style={{ background: m.source === 'كهرباء' || m.source === 'SEC' ? '#ecfdf5' : '#f5f3ff', color: m.source === 'كهرباء' || m.source === 'SEC' ? '#0ea77b' : '#7c3aed', borderRadius: '20px', padding: '2px 9px', fontSize: '0.68rem', fontWeight: 700 }}>
-                            {m.source || 'خاص'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '9px 12px', color: 'var(--text3)' }}>{m.unit}</td>
-                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 700, color: Number(m.qty) <= 0 ? '#c81e1e' : '#0ea77b' }}>{Number(m.qty).toLocaleString()}</td>
-                        <td style={{ padding: '9px 12px', fontFamily: 'monospace', color: 'var(--text3)' }}>{m.reorder || '—'}</td>
-                        <td style={{ padding: '9px 12px' }}>
-                          <span style={{ background: m.is_active === false ? '#f3f4f6' : '#ecfdf5', color: m.is_active === false ? '#6b7280' : '#0ea77b', borderRadius: '20px', padding: '2px 9px', fontSize: '0.68rem', fontWeight: 700 }}>
-                            {m.is_active === false ? 'معطلة' : 'نشطة'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '9px 8px', whiteSpace: 'nowrap' }}>
-                          <button onClick={() => { setEditMat(m); setMatModal('edit') }} title="تعديل"
-                            style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', marginLeft: '4px' }}>
-                            <Pencil style={{ width: '12px', height: '12px' }} />
-                          </button>
-                          <button onClick={() => toggleMaterial(m.id, m.is_active !== false)}
-                            style={{ padding: '4px 9px', borderRadius: '6px', border: '1px solid ' + (m.is_active === false ? '#86efac' : '#fecaca'), background: m.is_active === false ? '#ecfdf5' : '#fef2f2', cursor: 'pointer', color: m.is_active === false ? '#0ea77b' : '#c81e1e', fontSize: '0.7rem', fontWeight: 700 }}>
-                            {m.is_active === false ? 'تفعيل' : 'تعطيل'}
-                          </button>
-                        </td>
+
+              {/* جدول الأصناف */}
+              {matsLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                  <div style={{ width: '26px', height: '26px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                </div>
+              ) : shownMats.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.875rem' }}>
+                  {matSearch ? 'لا نتائج للبحث' : 'لا توجد أصناف — أضف أول مادة أو استورد ملف Excel'}
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr>
+                        {['الكود', 'الكتالوج', 'SEC', 'الاسم', 'المصدر', 'الوحدة', 'الكمية', 'حد الأمان', 'الحالة', ''].map(h => (
+                          <th key={h} style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )
-      })()}
-
-      {/* مستودعات المشاريع */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-          <div style={{ height: '1px', flex: 1, background: '#99f6e4' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: '20px' }}>
-            <FolderOpen style={{ width: '16px', height: '16px', color: '#0f766e' }} />
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f766e' }}>مستودعات المشاريع (العهدة)</span>
-          </div>
-          <div style={{ height: '1px', flex: 1, background: '#99f6e4' }} />
+                    </thead>
+                    <tbody>
+                      {shownMats.map(m => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid var(--bg2, #f8fafc)', opacity: m.is_active === false ? 0.5 : 1 }}>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.7rem', color: '#7c3aed', fontWeight: 700 }}>{m.mat_code || '—'}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.73rem', color: '#1a56db' }}>{m.catalog_no || '—'}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontSize: '0.73rem', color: 'var(--text3)' }}>{m.sec_number || '—'}</td>
+                          <td style={{ padding: '9px 12px', fontWeight: 700 }}>{m.name}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: m.source === 'كهرباء' || m.source === 'SEC' ? '#ecfdf5' : '#f5f3ff', color: m.source === 'كهرباء' || m.source === 'SEC' ? '#0ea77b' : '#7c3aed', borderRadius: '20px', padding: '2px 9px', fontSize: '0.66rem', fontWeight: 700 }}>
+                              {m.source || 'خاص'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 12px', color: 'var(--text3)' }}>{m.unit}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', fontWeight: 700, color: Number(m.qty) <= 0 ? '#c81e1e' : '#0ea77b' }}>{Number(m.qty).toLocaleString()}</td>
+                          <td style={{ padding: '9px 12px', fontFamily: 'monospace', color: 'var(--text3)' }}>{m.reorder || '—'}</td>
+                          <td style={{ padding: '9px 12px' }}>
+                            <span style={{ background: m.is_active === false ? '#f3f4f6' : '#ecfdf5', color: m.is_active === false ? '#6b7280' : '#0ea77b', borderRadius: '20px', padding: '2px 9px', fontSize: '0.66rem', fontWeight: 700 }}>
+                              {m.is_active === false ? 'معطلة' : 'نشطة'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '9px 8px', whiteSpace: 'nowrap' }}>
+                            <button onClick={() => { setEditMat(m); setMatModal('edit') }} title="تعديل"
+                              style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280', marginLeft: '4px' }}>
+                              <Pencil style={{ width: '12px', height: '12px' }} />
+                            </button>
+                            <button onClick={() => toggleMaterial(m.id, m.is_active !== false)}
+                              style={{ padding: '4px 9px', borderRadius: '6px', border: '1px solid ' + (m.is_active === false ? '#86efac' : '#fecaca'), background: m.is_active === false ? '#ecfdf5' : '#fef2f2', cursor: 'pointer', color: m.is_active === false ? '#0ea77b' : '#c81e1e', fontSize: '0.68rem', fontWeight: 700 }}>
+                              {m.is_active === false ? 'تفعيل' : 'تعطيل'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        {/* بطاقة توضيح */}
-        <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: '12px', padding: '14px 18px', marginBottom: '14px', fontSize: '0.82rem', color: '#0f766e' }}>
-          <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Info style={{ width: '15px', height: '15px' }} /> كيف تعمل مستودعات المشاريع؟
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '6px' }}>
-            {WH_CATEGORY_INFO.مشاريع.points.map((p, i) => (
-              <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '1rem' }}>{['📥','📤','↩️','📋'][i]}</span>
-                <span style={{ lineHeight: 1.4 }}>{p}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {projectWhs.length === 0 ? (
-          <div style={{ background: 'var(--card-bg, white)', border: '2px dashed #99f6e4', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#0f766e' }}>
-            <FolderOpen style={{ width: '40px', height: '40px', margin: '0 auto 10px', opacity: 0.4 }} />
-            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '8px' }}>لا توجد مستودعات مشاريع</div>
-            {canEdit && (
-              <button onClick={() => { setEditWh(undefined); setShowModal(true) }} className="btn btn-primary" style={{ background: '#0f766e', fontSize: '0.82rem' }}>
-                <Plus style={{ width: '14px', height: '14px' }} /> إنشاء مستودع مشاريع
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
-            {projectWhs.map(wh => (
-              <WarehouseCard key={wh.id} wh={wh} stats={stats[wh.id] || { total: 0, low: 0 }} canEdit={canEdit}
-                onEdit={() => { setEditWh(wh); setShowModal(true) }}
-                onDelete={() => handleDelete(wh)}
-                onItems={() => openItems(wh.id)} />
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* مستودعات عامة */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-          <div style={{ height: '1px', flex: 1, background: '#bfdbfe' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '20px' }}>
-            <Warehouse style={{ width: '16px', height: '16px', color: '#1a56db' }} />
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1a56db' }}>المستودعات العامة</span>
-          </div>
-          <div style={{ height: '1px', flex: 1, background: '#bfdbfe' }} />
-        </div>
-
-        {/* بطاقة توضيح */}
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px 18px', marginBottom: '14px', fontSize: '0.82rem', color: '#1a56db' }}>
-          <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Info style={{ width: '15px', height: '15px' }} /> كيف تعمل المستودعات العامة؟
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '6px' }}>
-            {WH_CATEGORY_INFO.عام.points.map((p, i) => (
-              <div key={i} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '1rem' }}>{['📥','📤','↩️','🔄'][i]}</span>
-                <span style={{ lineHeight: 1.4 }}>{p}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {generalWhs.length === 0 ? (
-          <div style={{ background: 'var(--card-bg, white)', border: '2px dashed #bfdbfe', borderRadius: '14px', padding: '40px', textAlign: 'center', color: '#1a56db' }}>
-            <Warehouse style={{ width: '40px', height: '40px', margin: '0 auto 10px', opacity: 0.4 }} />
-            <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '8px' }}>لا توجد مستودعات عامة</div>
-            {canEdit && (
-              <button onClick={() => { setEditWh(undefined); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
-                <Plus style={{ width: '14px', height: '14px' }} /> إنشاء مستودع عام
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
-            {generalWhs.map(wh => (
-              <WarehouseCard key={wh.id} wh={wh} stats={stats[wh.id] || { total: 0, low: 0 }} canEdit={canEdit}
-                onEdit={() => { setEditWh(wh); setShowModal(true) }}
-                onDelete={() => handleDelete(wh)}
-                onItems={() => openItems(wh.id)} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {matModal === 'define' && tenant && activeBranch && (
+      {/* ══ المودالات ══ */}
+      {matModal === 'define' && tenant && activeBranch && selWh && (
         <MaterialDefineModal tenantId={tenant.id} branchId={activeBranch.id} warehouses={warehouses as any}
           onClose={() => setMatModal(null)}
-          onSave={() => { if (itemsWhId) loadWhMats(itemsWhId); loadData() }} />
+          onSave={() => { if (selWhId) loadWhMats(selWhId); loadData() }} />
       )}
       {matModal === 'edit' && editMat && (
         <MaterialEditModal material={editMat} warehouses={warehouses as any}
           onClose={() => { setMatModal(null); setEditMat(null) }}
-          onSave={() => { if (itemsWhId) loadWhMats(itemsWhId); loadData() }} />
+          onSave={() => { if (selWhId) loadWhMats(selWhId); loadData() }} />
       )}
-
+      {matModal === 'import' && tenant && activeBranch && selWh && (
+        <ImportMaterialsModal tenantId={tenant.id} branchId={activeBranch.id}
+          warehouse={selWh} existingNames={whMats.map(m => m.name)}
+          onClose={() => setMatModal(null)}
+          onSave={() => { if (selWhId) loadWhMats(selWhId); loadData() }} />
+      )}
       {showModal && tenant && activeBranch && (
-        <WarehouseModal
-          wh={editWh}
-          tenantId={tenant.id}
-          branchId={activeBranch.id}
+        <WarehouseModal wh={editWh} tenantId={tenant.id} branchId={activeBranch.id}
           onClose={() => { setShowModal(false); setEditWh(undefined) }}
-          onSave={loadData}
-        />
+          onSave={() => { setShowModal(false); setEditWh(undefined); loadData() }} />
       )}
-
-      <style jsx global>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

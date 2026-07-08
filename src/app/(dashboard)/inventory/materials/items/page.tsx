@@ -152,9 +152,9 @@ export default function MaterialsItemsPage() {
 
       {/* ذمم الاستعارة المفتوحة */}
       {openLoans > 0 && (
-        <Link href="/inventory/materials/issue" style={{ textDecoration: 'none' }}>
+        <Link href="/inventory/materials/transfer" style={{ textDecoration: 'none' }}>
           <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#7c3aed', cursor: 'pointer' }}>
-            🔁 <strong>{openLoans}</strong> ذمّة استعارة مفتوحة بين المشاريع — التسوية من تبويب أذون الصرف ←
+            🔁 <strong>{openLoans}</strong> ذمّة استعارة مفتوحة بين المشاريع — التسوية من تبويب التحويل والاستعارة ←
           </div>
         </Link>
       )}

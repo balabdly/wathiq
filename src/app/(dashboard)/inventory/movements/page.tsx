@@ -121,10 +121,20 @@ export default function InventoryMovementsPage() {
     setKpis({ todayMoves: todayRes.count || 0, todayVouchers, monthMoves: monthRes.count || 0, openLoans: loansRes.count || 0 })
   }
 
-  async function loadMovements(p = 1) {
+  async function loadMovements(p = 1, ov?: { type?: string; voucher?: string; reset?: boolean }) {
     if (!tenant) return
     setLoading(true)
     const from = (p - 1) * PAGE_SIZE
+
+    // القيم الفعلية: التجاوز الفوري (من نقرة الرقاقة/الإذن) يسبق الحالة — يمنع فلترة "الضغطة السابقة"
+    const _type    = ov?.reset ? '' : (ov?.type    ?? fType)
+    const _voucher = ov?.reset ? '' : (ov?.voucher ?? fVoucher)
+    const _wh      = ov?.reset ? '' : fWh
+    const _proj    = ov?.reset ? '' : fProject
+    const _mat     = ov?.reset ? '' : fMaterial
+    const _dFrom   = ov?.reset ? '' : fDateFrom
+    const _dTo     = ov?.reset ? '' : fDateTo
+    const _search  = ov?.reset ? '' : fSearch
 
     let q = supabase.from('stock_ledger')
       .select('*', { count: 'exact' })
@@ -132,21 +142,21 @@ export default function InventoryMovementsPage() {
       .order('created_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
 
-    if (fType === '__استلام__')
+    if (_type === '__استلام__')
       q = q.in('movement_category', ['استلام_عهدة', 'استلام_عام', 'استلام_مقايسة'])
-    else if (fType === '__صرف__')
+    else if (_type === '__صرف__')
       q = q.in('movement_category', ['صرف_عهدة', 'صرف_عام'])
-    else if (fType === '__استعارة__')
+    else if (_type === '__استعارة__')
       q = q.eq('is_loan', true)
-    else if (fType)
-      q = q.eq('movement_category', fType)
-    if (fVoucher)  q = q.eq('txn_number', fVoucher)
-    if (fWh)       q = q.eq('wh_name', fWh)
-    if (fProject)  q = q.eq('project_name', fProject)
-    if (fMaterial) q = q.ilike('mat_name', `%${fMaterial}%`)
-    if (fDateFrom) q = q.gte('created_at', fDateFrom)
-    if (fDateTo)   q = q.lte('created_at', fDateTo + 'T23:59:59')
-    if (fSearch)   q = q.ilike('mat_name', `%${fSearch}%`)
+    else if (_type)
+      q = q.eq('movement_category', _type)
+    if (_voucher)  q = q.eq('txn_number', _voucher)
+    if (_wh)       q = q.eq('wh_name', _wh)
+    if (_proj)     q = q.eq('project_name', _proj)
+    if (_mat)      q = q.ilike('mat_name', `%${_mat}%`)
+    if (_dFrom)    q = q.gte('created_at', _dFrom)
+    if (_dTo)      q = q.lte('created_at', _dTo + 'T23:59:59')
+    if (_search)   q = q.ilike('mat_name', `%${_search}%`)
 
     const { data, count } = await q
     setEntries(data || [])
@@ -290,7 +300,7 @@ export default function InventoryMovementsPage() {
           { val: 'مزال_موقع',   label: '🔩 مزال',           color: '#374151', bg: '#f3f4f6' },
           { val: '__استعارة__', label: '🔁 استعارات',       color: '#7c3aed', bg: '#f5f3ff' },
         ].map(opt => (
-          <button key={opt.val} onClick={() => { setFType(opt.val); setTimeout(() => loadMovements(1), 0) }}
+          <button key={opt.val} onClick={() => { setFType(opt.val); loadMovements(1, { type: opt.val }) }}
             style={{
               padding: '7px 16px', borderRadius: '20px', border: '2px solid', cursor: 'pointer',
               fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
@@ -334,7 +344,7 @@ export default function InventoryMovementsPage() {
           <Filter style={{ width: '13px', height: '13px' }} /> بحث
         </button>
         {(fSearch || fWh || fProject || fMaterial || fDateFrom || fDateTo || fType || fVoucher) && (
-          <button onClick={() => { setFSearch(''); setFType(''); setFWh(''); setFProject(''); setFMaterial(''); setFDateFrom(''); setFDateTo(''); setFVoucher(''); setTimeout(() => loadMovements(1), 0) }}
+          <button onClick={() => { setFSearch(''); setFType(''); setFWh(''); setFProject(''); setFMaterial(''); setFDateFrom(''); setFDateTo(''); setFVoucher(''); loadMovements(1, { reset: true }) }}
             className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#c81e1e' }}>
             <X style={{ width: '13px', height: '13px' }} /> مسح
           </button>
@@ -349,7 +359,7 @@ export default function InventoryMovementsPage() {
             {total.toLocaleString()} حركة
             {(fSearch || fWh || fProject || fDateFrom || fDateTo || fType) && ' (مفلترة)'}
             {fVoucher && (
-              <span onClick={() => { setFVoucher(''); setTimeout(() => loadMovements(1), 0) }}
+              <span onClick={() => { setFVoucher(''); loadMovements(1, { voucher: '' }) }}
                 style={{ marginRight: '8px', background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer' }}>
                 إذن: {fVoucher} ✕
               </span>
@@ -392,7 +402,7 @@ export default function InventoryMovementsPage() {
                         {/* رقم الإذن — الضغط يفلتر الدفتر على سطور الإذن */}
                         <td style={{ padding: '11px 12px', whiteSpace: 'nowrap' }}>
                           {e.txn_number ? (
-                            <span onClick={() => { setFVoucher(e.txn_number!); setTimeout(() => loadMovements(1), 0) }}
+                            <span onClick={() => { setFVoucher(e.txn_number!); loadMovements(1, { voucher: e.txn_number! }) }}
                               title="عرض كل سطور هذا الإذن"
                               style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', color: '#1a56db', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
                               {e.txn_number}

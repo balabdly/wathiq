@@ -1,11 +1,12 @@
 // src/app/(dashboard)/inventory/materials/issue/page.tsx
-// تبويب: أذون الصرف — كل ما يخرج من المستودع: صرف للتنفيذ (ISS) + إرجاع للعميل فائض/سكراب (RET)
+// تبويب: أذون الصرف — الخروج النهائي من الحوزة: صرف للتنفيذ (ISS) + إرجاع للعميل فائض/سكراب (RET)
+// (الاستعارة والتسوية في تبويب التحويل — إعادة توزيع داخلي لا خروج)
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Printer, ChevronDown, ChevronUp, Paperclip, Filter } from 'lucide-react'
 import { useMaterials } from '../MaterialsContext'
-import { OperationModal, LoanModal, SettleLoanModal, printOperationReceipt } from '../opsShared'
+import { OperationModal, printOperationReceipt } from '../opsShared'
 
 const FETCH_LIMIT = 300
 const ACCENT = '#c81e1e'
@@ -33,8 +34,8 @@ export default function IssueVouchersPage() {
   const { tenantId, branchId, warehouses, projects, loading: ctxLoading, reloadKpis } = useMaterials()
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [modal,   setModal]   = useState<'صرف' | 'إرجاع' | 'استعارة' | 'تسوية' | null>(null)
-  const [chip,    setChip]    = useState<'all' | 'صرف' | 'إرجاع' | 'استعارة'>('all')
+  const [modal,   setModal]   = useState<'صرف' | 'إرجاع' | null>(null)
+  const [chip,    setChip]    = useState<'all' | 'صرف' | 'إرجاع'>('all')
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -52,8 +53,8 @@ export default function IssueVouchersPage() {
     q = q.in('type', ['صرف', 'إرجاع للعميل'])
     if (filterWh) q = q.eq('wh_name', filterWh)
     const { data } = await q
-    // استبعاد ساق التحويل (تُعرض في تبويب التحويل)
-    setRows(((data || []) as LedgerRow[]).filter(r => r.movement_category !== 'تحويل'))
+    // استبعاد ساق التحويل والاستعارات/التسويات (كلها في تبويب التحويل والاستعارة)
+    setRows(((data || []) as LedgerRow[]).filter(r => r.movement_category !== 'تحويل' && !r.is_loan))
     setLoading(false)
   }
 
@@ -74,10 +75,9 @@ export default function IssueVouchersPage() {
     }
     let list = Array.from(map.values())
     if (chip !== 'all') {
-      list = list.filter(d =>
-        chip === 'استعارة' ? d.lines[0].is_loan === true
-        : chip === 'إرجاع' ? d.lines[0].type === 'إرجاع للعميل'
-        : (d.lines[0].type === 'صرف' && !d.lines[0].is_loan))
+      list = list.filter(d => chip === 'إرجاع'
+        ? d.lines[0].type === 'إرجاع للعميل'
+        : d.lines[0].type === 'صرف')
     }
     if (search.trim()) {
       const s = search.trim()
@@ -92,8 +92,7 @@ export default function IssueVouchersPage() {
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: first.is_loan ? ((first.dispatch_note || '').startsWith('تسوية') ? 'تسوية استعارة' : 'استعارة بين مشاريع')
-        : first.type === 'إرجاع للعميل' ? 'إرجاع' : 'صرف',
+      type: first.type === 'إرجاع للعميل' ? 'إرجاع' : 'صرف',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -124,19 +123,13 @@ export default function IssueVouchersPage() {
           <button onClick={() => setModal('إرجاع')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#e6820a' }}>
             <Plus style={{ width: '15px', height: '15px' }} /> إرجاع للعميل
           </button>
-          <button onClick={() => setModal('استعارة')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#7c3aed' }}>
-            <Plus style={{ width: '15px', height: '15px' }} /> استعارة بين مشاريع
-          </button>
-          <button onClick={() => setModal('تسوية')} className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#0ea77b', borderColor: '#a7f3d0' }}>
-            تسوية استعارة
-          </button>
         </div>
       </div>
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '5px' }}>
-          {([['all', 'الكل'], ['صرف', '📤 صرف'], ['إرجاع', '↩️ إرجاع للعميل'], ['استعارة', '🔁 استعارات']] as const).map(([id, label]) => (
+          {([['all', 'الكل'], ['صرف', '📤 صرف'], ['إرجاع', '↩️ إرجاع للعميل']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setChip(id)}
               style={{ padding: '6px 13px', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
                 borderColor: chip === id ? ACCENT : 'var(--border)',
@@ -191,12 +184,7 @@ export default function IssueVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
-                        {doc.lines[0].is_loan && (
-                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#f5f3ff', color: '#7c3aed' }}>
-                            🔁 {(doc.lines[0].dispatch_note || '').startsWith('تسوية') ? 'تسوية' : 'استعارة'}: {doc.lines[0].loan_from_project || '؟'} ← {doc.lines[0].loan_to_project || '؟'}
-                          </span>
-                        )}
-                        {!doc.lines[0].is_loan && doc.lines[0].type === 'إرجاع للعميل' && (() => {
+                        {doc.lines[0].type === 'إرجاع للعميل' && (() => {
                           const rt = doc.lines[0].return_type || ((doc.wh_name || '').includes('سكراب') ? 'سكراب' : (doc.wh_name || '').includes('رجيع') ? 'فائض' : '')
                           return (
                             <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px',
@@ -274,14 +262,6 @@ export default function IssueVouchersPage() {
         <OperationModal type="إرجاع"
           tenantId={tenantId} branchId={branchId}
           warehouses={warehouses} projects={projects}
-          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
-      )}
-      {modal === 'استعارة' && tenantId && branchId != null && (
-        <LoanModal tenantId={tenantId} branchId={branchId} projects={projects}
-          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
-      )}
-      {modal === 'تسوية' && tenantId && branchId != null && (
-        <SettleLoanModal tenantId={tenantId} branchId={branchId}
           onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
       )}
     </div>

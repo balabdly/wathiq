@@ -332,7 +332,7 @@ export default function InventoryProjectsPage() {
                     {projLoans.length > 0 && (
                       <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: '#faf9ff' }}>
                         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7c3aed', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <ArrowLeftRight style={{ width: '14px', height: '14px' }} /> ذمم الاستعارة المفتوحة — تُسوَّى من تبويب أذون الصرف، وذمّة مفتوحة = لا إقفال
+                          <ArrowLeftRight style={{ width: '14px', height: '14px' }} /> ذمم الاستعارة المفتوحة — تُسوَّى من تبويب التحويل والاستعارة، وذمّة مفتوحة = لا إقفال
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                           {projLoans.map(loan => {

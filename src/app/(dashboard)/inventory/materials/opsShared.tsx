@@ -213,7 +213,26 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         .map(([matId, qty]) => ({ mat_id: matId, qty, note: '' }))
     }
     const validRows = effectiveRows.filter(r => r.mat_id && Number(r.qty) > 0)
-    if (validRows.length === 0) { toast.error('أدخل كمية لمادة واحدة على الأقل'); return }
+
+    // ══ حارس السطور الناقصة: لا سطر يُرمى بصمت — مادة بلا كمية أو كمية بلا مادة = إيقاف برسالة تسمّيه ══
+    if (effectiveRows === rows) {
+      const incomplete = rows
+        .map((r, i) => ({ ...r, idx: i + 1 }))
+        .filter(r => (r.mat_id && !(Number(r.qty) > 0)) || (!r.mat_id && Number(r.qty) > 0))
+      if (incomplete.length > 0) {
+        const details = incomplete.map(r => {
+          const matName = materials.find(m => m.id === Number(r.mat_id))?.name
+          return r.mat_id
+            ? `سطر ${r.idx}: "${matName || r.mat_id}" بدون كمية صالحة`
+            : `سطر ${r.idx}: كمية ${r.qty} بدون اختيار مادة`
+        }).join(' — ')
+        toast.error(`⛔ لم يُحفظ شيء — أكمل أو احذف السطور الناقصة: ${details}`)
+        savingRef.current = false
+        return
+      }
+    }
+
+    if (validRows.length === 0) { toast.error('أدخل كمية لمادة واحدة على الأقل'); savingRef.current = false; return }
     if (type === 'صرف' && !form.project_id) { toast.error('اسم المشروع مطلوب'); return }
     if (type === 'إرجاع' && !form.project_id && isProjectWh) { toast.error('اختر المشروع'); return }
     if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) { toast.error('المشروع إلزامي لهذا المستودع'); return }

@@ -17,7 +17,7 @@ const TABS = [
   { href: '/inventory/materials/items',    label: 'الأرصدة',          emoji: '📦', color: '#1a56db' },
   { href: '/inventory/materials/receive',  label: 'أذون الاستلام',    emoji: '📥', color: '#0ea77b' },
   { href: '/inventory/materials/issue',    label: 'أذون الصرف',       emoji: '📤', color: '#c81e1e' },
-  { href: '/inventory/materials/transfer', label: 'أذون التحويل',     emoji: '🔄', color: '#0891b2' },
+  { href: '/inventory/materials/transfer', label: 'التحويل والاستعارة', emoji: '🔄', color: '#0891b2' },
 ]
 
 export default function MaterialsLayout({ children }: { children: React.ReactNode }) {

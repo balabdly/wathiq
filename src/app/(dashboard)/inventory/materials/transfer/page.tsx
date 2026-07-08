@@ -1,11 +1,12 @@
 // src/app/(dashboard)/inventory/materials/transfer/page.tsx
-// تبويب: أذون التحويل (TRF) — نقل بين المستودعات — عرض مستندي: كل إذن صف واحد ينبسط لسطوره ويُطبع
+// تبويب: التحويل والاستعارة — إعادة التوزيع الداخلي: نقل بين المستودعات + استعارة/تسوية بين المشاريع
+// (لا يغيّر إجمالي الحوزة — بعكس الصرف والإرجاع للعميل)
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Printer, ChevronDown, ChevronUp, Paperclip, Filter } from 'lucide-react'
 import { useMaterials } from '../MaterialsContext'
-import { OperationModal, ReturnModal, printOperationReceipt } from '../opsShared'
+import { OperationModal, LoanModal, SettleLoanModal, printOperationReceipt } from '../opsShared'
 
 const FETCH_LIMIT = 300
 const ACCENT = '#0891b2'
@@ -14,6 +15,7 @@ type LedgerRow = {
   id: number; txn_number?: string; type: string; movement_category?: string
   mat_name: string; mat_code?: string; unit: string
   qty: number; qty_before: number; qty_after: number
+  is_loan?: boolean; loan_from_project?: string; loan_to_project?: string
   wh_name: string; project_name?: string; vendor_name?: string; client_name?: string
   exit_permit_no?: string; doc_code?: string; booking_no?: string
   dispatch_note?: string; attachment_url?: string; created_at: string
@@ -32,7 +34,8 @@ export default function TransferVouchersPage() {
   const { tenantId, branchId, warehouses, projects, loading: ctxLoading, reloadKpis } = useMaterials()
   const [rows,    setRows]    = useState<LedgerRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [modal,   setModal]   = useState<'تحويل' | null>(null)
+  const [modal,   setModal]   = useState<'تحويل' | 'استعارة' | 'تسوية' | null>(null)
+  const [chip,    setChip]    = useState<'all' | 'تحويل' | 'استعارة'>('all')
   const [openDoc, setOpenDoc] = useState<string | null>(null)
 
   // فلاتر
@@ -47,7 +50,7 @@ export default function TransferVouchersPage() {
     let q = supabase.from('stock_ledger').select('*')
       .eq('tenant_id', tenantId)
       .order('id', { ascending: false }).limit(FETCH_LIMIT)
-    q = q.eq('movement_category', 'تحويل')
+    q = q.or('movement_category.eq.تحويل,is_loan.eq.true')
     if (filterWh) q = q.eq('wh_name', filterWh)
     const { data } = await q
     setRows((data || []) as LedgerRow[])
@@ -70,6 +73,9 @@ export default function TransferVouchersPage() {
       })
     }
     let list = Array.from(map.values())
+    if (chip !== 'all') {
+      list = list.filter(d => chip === 'استعارة' ? d.lines[0].is_loan === true : !d.lines[0].is_loan)
+    }
     if (search.trim()) {
       const s = search.trim()
       list = list.filter(d =>
@@ -78,12 +84,12 @@ export default function TransferVouchersPage() {
       )
     }
     return list
-  }, [rows, search])
+  }, [rows, search, chip])
 
   function reprint(doc: VoucherDoc) {
     const first = doc.lines[0]
     printOperationReceipt({
-      type: 'تحويل',
+      type: first.is_loan ? ((first.dispatch_note || '').startsWith('تسوية') ? 'تسوية استعارة' : 'استعارة بين مشاريع') : 'تحويل',
       warehouseName: doc.wh_name,
       projectName:   first.project_name || '',
       date:          doc.date.split('T')[0],
@@ -109,13 +115,30 @@ export default function TransferVouchersPage() {
         </span>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={() => setModal('تحويل')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#0891b2' }}>
-            <Plus style={{ width: '15px', height: '15px' }} /> إذن تحويل جديد
+            <Plus style={{ width: '15px', height: '15px' }} /> تحويل بين مستودعات
+          </button>
+          <button onClick={() => setModal('استعارة')} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#7c3aed' }}>
+            <Plus style={{ width: '15px', height: '15px' }} /> استعارة بين مشاريع
+          </button>
+          <button onClick={() => setModal('تسوية')} className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#0ea77b', borderColor: '#a7f3d0' }}>
+            تسوية استعارة
           </button>
         </div>
       </div>
 
       {/* الفلاتر */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 16px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          {([['all', 'الكل'], ['تحويل', '🔄 مستودعي'], ['استعارة', '🔁 استعارات']] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setChip(id)}
+              style={{ padding: '6px 13px', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600,
+                borderColor: chip === id ? ACCENT : 'var(--border)',
+                background: chip === id ? ACCENT + '12' : 'transparent',
+                color: chip === id ? ACCENT : 'var(--text3)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
@@ -161,6 +184,11 @@ export default function TransferVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
+                        {doc.lines[0].is_loan && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#f5f3ff', color: '#7c3aed' }}>
+                            🔁 {(doc.lines[0].dispatch_note || '').startsWith('تسوية') ? 'تسوية' : 'استعارة'}: {doc.lines[0].loan_from_project || '؟'} ← {doc.lines[0].loan_to_project || '؟'}
+                          </span>
+                        )}
                         {doc.legacy && <span style={{ marginRight: '6px', fontSize: '0.62rem', color: 'var(--text3)', fontFamily: 'inherit', fontWeight: 400 }}>(قديم)</span>}
                         {hasAttach && <Paperclip style={{ width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px', color: 'var(--text3)' }} />}
                       </td>
@@ -223,6 +251,14 @@ export default function TransferVouchersPage() {
         <OperationModal type="تحويل"
           tenantId={tenantId} branchId={branchId}
           warehouses={warehouses} projects={projects}
+          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
+      )}
+      {modal === 'استعارة' && tenantId && branchId != null && (
+        <LoanModal tenantId={tenantId} branchId={branchId} projects={projects}
+          onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
+      )}
+      {modal === 'تسوية' && tenantId && branchId != null && (
+        <SettleLoanModal tenantId={tenantId} branchId={branchId}
           onClose={() => setModal(null)} onSave={() => { setModal(null); load(); reloadKpis() }} />
       )}
     </div>
