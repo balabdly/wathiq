@@ -206,11 +206,9 @@ export default function InventoryProjectsPage() {
             const isLoading    = loadingProj.has(proj.id)
             const mats         = materials[proj.id] || []
             const projLoans    = loans[proj.id]     || []
-            const totalRecv     = mats.reduce((s, m) => s + Number(m.qty_received), 0)
-            const totalIssued   = mats.reduce((s, m) => s + Number(m.qty_issued), 0)
-            const totalReturned = mats.reduce((s, m) => s + Number(m.qty_returned || 0), 0)
-            const totalBalance  = mats.reduce((s, m) => s + Number(m.qty_balance), 0)
-            const zeroItems    = mats.filter(m => Number(m.qty_balance) === 0).length
+            // لا جمع كميات عبر الأصناف — وحدات مختلطة (متر + قطعة) رقمها بلا معنى
+            const zeroItems   = mats.filter(m => Number(m.qty_balance) === 0).length
+            const activeItems = mats.length - zeroItems
 
             return (
               <div key={proj.id} style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
@@ -239,23 +237,19 @@ export default function InventoryProjectsPage() {
                     </div>
                   </div>
 
-                  {/* إحصائيات سريعة */}
+                  {/* عدّادات أصناف فقط — الكميات التفصيلية بوحداتها في الجدول أدناه */}
                   {mats.length > 0 && (
-                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexShrink: 0 }}>
-                      {[
-                        { label: 'صنف',          value: mats.length,        color: '#0f766e' },
-                        { label: 'مستلم',        value: fmt(totalRecv),     color: '#0ea77b' },
-                        { label: 'مصروف',        value: fmt(totalIssued),   color: '#c81e1e' },
-                        { label: 'مرجع للعميل', value: fmt(totalReturned), color: '#e6820a' },
-                        { label: 'الرصيد',       value: fmt(totalBalance),  color: totalBalance > 0 ? '#1a56db' : '#c81e1e' },
-                      ].map(s => (
-                        <div key={s.label} style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-                          <div style={{ fontSize: '0.62rem', color: 'var(--text3)' }}>{s.label}</div>
-                        </div>
-                      ))}
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
+                      <span style={{ background: '#f0fdfa', color: '#0f766e', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {mats.length} صنف
+                      </span>
+                      {activeItems > 0 && (
+                        <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
+                          {activeItems} برصيد
+                        </span>
+                      )}
                       {zeroItems > 0 && (
-                        <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '20px', padding: '3px 10px', fontSize: '0.68rem', fontWeight: 700 }}>
+                        <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
                           {zeroItems} نفذت
                         </span>
                       )}

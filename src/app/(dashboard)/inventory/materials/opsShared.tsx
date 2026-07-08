@@ -253,26 +253,36 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     const matsMap: Record<number, any> = {}
     ;(freshMats || []).forEach((m: any) => { matsMap[m.id] = m })
 
-
+    // ══ تحقق مسبق شامل — لا نكتب حرفاً قبل سلامة كل السطور (يمنع الحفظ الجزئي الصامت) ══
+    const missingRows = finalRows.filter(r => !matsMap[Number(r.mat_id)])
+    if (missingRows.length > 0) {
+      toast.error(`⛔ لم يُحفظ شيء — ${missingRows.length} مادة غير موجودة في المستودع المحدد. راجع اختيار المواد والمستودع`)
+      setSaving(false); savingRef.current = false; return
+    }
     for (const row of finalRows) {
       const mat = matsMap[Number(row.mat_id)]
-      if (!mat) { toast.error('لم يتم العثور على المادة'); setSaving(false); savingRef.current = false; return }
+      const qty = Number(row.qty)
+      const isProjectWarehouse = isProjectWh && !!form.project_id
+      if (type === 'صرف' || type === 'تحويل') {
+        const available = isProjectWarehouse && form.project_id ? (projectBalances[mat.id] ?? 0) : Number(mat.qty)
+        if (qty > available) { toast.error(`⛔ لم يُحفظ شيء — رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
+      }
+      if (type === 'إرجاع' && isProjectWarehouse && form.project_id) {
+        const available = projectBalances[mat.id] ?? 0
+        if (qty > available) { toast.error(`⛔ لم يُحفظ شيء — رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
+      }
+    }
+
+    // ══ الكتابة — بفشل صاخب: أي خطأ يوقف فوراً ويصرّح بما كُتب وما لم يُكتب ══
+    let savedCount = 0
+    for (const row of finalRows) {
+      const mat = matsMap[Number(row.mat_id)]
       const qty = Number(row.qty)
       const isProjectWarehouse = isProjectWh && !!form.project_id
 
       // جلب الرصيد الحالي fresh من DB
       const { data: freshQty } = await supabase.from('materials').select('qty').eq('id', mat.id).single()
       const qtyBefore = Number(freshQty?.qty ?? mat.qty)
-
-      // التحقق من الرصيد
-      if (type === 'صرف' || type === 'تحويل') {
-        const available = isProjectWarehouse && form.project_id ? (projectBalances[mat.id] ?? 0) : qtyBefore
-        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
-      }
-      if (type === 'إرجاع' && isProjectWarehouse && form.project_id) {
-        const available = projectBalances[mat.id] ?? 0
-        if (qty > available) { toast.error(`⛔ رصيد "${mat.name}" المتاح: ${available} ${mat.unit} فقط`); setSaving(false); savingRef.current = false; return }
-      }
 
       // حساب الرصيد الجديد
       let qtyAfter = qtyBefore
@@ -283,7 +293,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         else qtyAfter = qtyBefore
       }
 
-      await supabase.from('materials').update({ qty: qtyAfter }).eq('id', mat.id)
+      const { error: updErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', mat.id)
+      if (updErr) {
+        toast.error(`⛔ توقف الحفظ عند "${mat.name}" (تحديث الرصيد): ${updErr.message} — حُفظ ${savedCount} من ${finalRows.length} صنف على الإذن ${voucherNo}`)
+        setSaving(false); savingRef.current = false; return
+      }
 
       // تحديد نوع الحركة
       let ledgerType: string
@@ -305,7 +319,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         ledgerType = type; movementCategory = 'استلام_عام'
       }
 
-      await supabase.from('stock_ledger').insert({
+      const { error: ledErr } = await supabase.from('stock_ledger').insert({
         tenant_id: tenantId, branch_id: branchId,
         txn_number: voucherNo,
         type: ledgerType, movement_category: movementCategory,
@@ -323,6 +337,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         dispatch_note: row.note || null,
         attachment_url: attachmentUrl,
       })
+      if (ledErr) {
+        toast.error(`⛔ توقف الحفظ عند "${mat.name}" (قيد الدفتر): ${ledErr.message} — حُفظ ${savedCount} من ${finalRows.length} صنف على الإذن ${voucherNo}`)
+        setSaving(false); savingRef.current = false; return
+      }
+      savedCount++
 
       // ── project_materials يُحدَّث تلقائياً بـ trigger على stock_ledger ──
 
@@ -346,9 +365,17 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
       }
     }
 
+    // ══ تحقق بعدي: المكتوب فعلاً في الدفتر = المطلوب ══
+    const expectedLines = type === 'تحويل' ? finalRows.length * 2 : finalRows.length
+    const { count: writtenLines } = await supabase.from('stock_ledger')
+      .select('*', { count: 'exact', head: true }).eq('txn_number', voucherNo)
+    if ((writtenLines ?? 0) !== expectedLines) {
+      toast.error(`⚠️ تنبيه مطابقة: الإذن ${voucherNo} فيه ${writtenLines ?? 0} سطر والمتوقع ${expectedLines} — راجع دفتر الحركات فوراً`)
+    }
+
     setSaving(false)
     savingRef.current = false
-    toast.success(type + ' تم بنجاح ✅')
+    toast.success(`${type} تم بنجاح ✅ — إذن ${voucherNo} بعدد ${finalRows.length} صنف`)
 
     // طباعة وصل واحد لكل العملية بعد الحفظ — برقم الإذن الموحد
     if (type === 'استلام' || type === 'صرف' || type === 'إرجاع') {

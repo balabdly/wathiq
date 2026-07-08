@@ -37,6 +37,9 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
   async function handleSave() {
     if (!form.name.trim())       { toast.error('اسم المادة مطلوب'); return }
     if (!form.warehouse_id)      { toast.error('اختر المستودع'); return }
+    // مواد الكهرباء (SEC) تُعرَّف حصراً بأرقامها الرسمية — إلزامي
+    if (form.source === 'كهرباء' && !String(form.sec_number || '').trim()) { toast.error('رقم SEC إلزامي لمواد الكهرباء'); return }
+    if (form.source === 'كهرباء' && !String(form.catalog_no || '').trim()) { toast.error('رقم الكتالوج إلزامي لمواد الكهرباء'); return }
     setSaving(true)
     const { error } = await supabase.from('materials').insert({
       tenant_id: tenantId, branch_id: branchId,
@@ -305,6 +308,8 @@ function MaterialEditModal({ material, warehouses, onClose, onSave }: {
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error('الاسم مطلوب'); return }
+    if (form.source === 'كهرباء' && !String(form.sec_number || '').trim()) { toast.error('رقم SEC إلزامي لمواد الكهرباء'); return }
+    if (form.source === 'كهرباء' && !String(form.catalog_no || '').trim()) { toast.error('رقم الكتالوج إلزامي لمواد الكهرباء'); return }
     setSaving(true)
     const { error } = await supabase.from('materials').update({
       name: form.name.trim(), catalog_no: form.catalog_no || null,
