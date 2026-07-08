@@ -14,7 +14,7 @@ import { MaterialsContext, type ProjectLite } from './MaterialsContext'
 // (تصدير named export من نفس layout.tsx يكسر البناء)
 
 const TABS = [
-  { href: '/inventory/materials/items',    label: 'الأصناف والأرصدة', emoji: '📦', color: '#1a56db' },
+  { href: '/inventory/materials/items',    label: 'الأرصدة',          emoji: '📦', color: '#1a56db' },
   { href: '/inventory/materials/receive',  label: 'أذون الاستلام',    emoji: '📥', color: '#0ea77b' },
   { href: '/inventory/materials/issue',    label: 'أذون الصرف',       emoji: '📤', color: '#c81e1e' },
   { href: '/inventory/materials/transfer', label: 'أذون التحويل',     emoji: '🔄', color: '#0891b2' },
@@ -79,7 +79,7 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
               <Package style={{ width: '20px', height: '20px', color: '#1a56db' }} />
               المواد
             </h1>
-            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>الأصناف والأرصدة — أذون الاستلام (وارد) والصرف (صادر) والتحويل</p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>الأرصدة وأذون الاستلام (وارد) والصرف (صادر) والتحويل — تعريف الأصناف من المستودعات والأصناف</p>
           </div>
         </div>
 
