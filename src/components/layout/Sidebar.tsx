@@ -344,7 +344,7 @@ export default function Sidebar() {
             onToggle={() => setInventoryOpen(o => !o)}>
             <SubLink href="/inventory/materials"   label="المواد"           icon={IC.inventory} active={pathname.startsWith('/inventory/materials')} />
             <SubLink href="/inventory/projects"    label="عهدة المشاريع"    icon={IC.projects}  active={pathname.startsWith('/inventory/projects')} />
-            <SubLink href="/inventory/movements"   label="الحركات"          icon={IC.reports}   active={pathname.startsWith('/inventory/movements')} />
+            <SubLink href="/inventory/movements"   label="دفتر الحركات"          icon={IC.reports}   active={pathname.startsWith('/inventory/movements')} />
             <SubLink href="/inventory/warehouses"  label="المستودعات"       icon={IC.dashboard} active={pathname.startsWith('/inventory/warehouses')} />
           </NavSection>
         )}
