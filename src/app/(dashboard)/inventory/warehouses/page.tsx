@@ -180,7 +180,7 @@ function WarehouseModal({ wh, onClose, onSave, tenantId, branchId }: {
 // مودال: تعريف مادة
 // ══════════════════════════════════════════
 function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }: {
-  tenantId: string; branchId: number; warehouses: Warehouse[]
+  tenantId: string; branchId: number; warehouses: WH[]
   onClose: () => void; onSave: () => void
 }) {
   const [tab,     setTab]     = useState<'manual' | 'import'>('manual')
@@ -448,7 +448,7 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
 // مودال: تعديل مادة
 // ══════════════════════════════════════════
 function MaterialEditModal({ material, warehouses, onClose, onSave }: {
-  material: Material; warehouses: Warehouse[]
+  material: Material; warehouses: WH[]
   onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
