@@ -7,6 +7,7 @@ import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Eye } from 'l
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -214,7 +215,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         await createJournalEntry({ tenantId, date: payload.invoice_date, description: `قيد تصحيحي — تعديل فاتورة مورد ${invoice.invoice_number}`, referenceType: 'تصحيح فاتورة مورد', referenceId: invoice.id, source: 'آلي',
           lines: [
             { accountCode: oldDebitCode, debit: 0, credit: Number(invoice.subtotal), description: `عكس: فاتورة ${invoice.invoice_number}` },
-            ...(Number(invoice.vat_amount) > 0 ? [{ accountCode: '2140', debit: 0, credit: Number(invoice.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
+            ...(Number(invoice.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(invoice.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
             { accountCode: '2110', debit: Number(invoice.total_amount), credit: 0, description: `عكس مستحق المورد ${invoice.vendor_name}` },
           ]
         })
@@ -236,7 +237,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
       await createJournalEntry({ tenantId, date: payload.invoice_date, description: `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: invId, source: 'آلي',
         lines: [
           { accountCode: debitAccountCode, debit: payload.subtotal, credit: 0, description: `فاتورة ${payload.invoice_number}` },
-          ...(payload.vat_amount > 0 ? [{ accountCode: '2140', debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
+          ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
           { accountCode: '2110', debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
         ]
       })
@@ -521,7 +522,7 @@ function VendorInvoicesPage() {
     await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
       lines: [
         { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
-        ...(Number(inv.vat_amount) > 0 ? [{ accountCode: '2140', debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
+        ...(Number(inv.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
         { accountCode: '2110', debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
       ]
     })

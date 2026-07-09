@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry } from '@/lib/journal'
+import { suggestChildAccountCode, suggestRootAccountCode } from '@/lib/suggest-account-code'
 import type { Account, AccountLedgerLine } from '@/lib/accounting-types'
 import { ACCOUNT_TYPE_COLOR } from '@/lib/accounting-types'
 
@@ -37,26 +38,23 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
   const inheritedClass   = parentAcc?.account_class   || account?.account_class   ||
     (['أصول','خصوم','حقوق ملكية'].includes(inheritedType) ? 'ميزانية' : 'دخل')
 
+  const [selectedType, setSelectedType] = useState(
+    parentAcc?.account_type || account?.account_type || 'أصول'
+  )
+
   // حساب الكود المقترح تلقائياً
   function suggestCode(parentId: string): string {
     if (!parentId) return ''
     const par = accounts.find(a => a.id === Number(parentId))
     if (!par) return ''
-    const parCode = par.code
-    const siblings = accounts
+    const siblingCodes = accounts
       .filter(a => a.parent_id === Number(parentId))
-      .filter(a => !account || a.id !== account.id) // استبعاد الحساب المعدَّل نفسه
-      .map(a => parseInt(a.code))
-      .filter(n => !isNaN(n) && n > 0)
-    let next: number
-    if (siblings.length === 0) {
-      next = parseInt(parCode) * 10 + 1
-    } else {
-      next = Math.max(...siblings) + 1
-    }
-    // تجنب التكرار
-    while (accounts.some(a => String(a.id !== account?.id) && a.code === String(next))) next++
-    return String(next)
+      .filter(a => !account || a.id !== account.id)
+      .map(a => a.code)
+    return suggestChildAccountCode(par.code, siblingCodes, {
+      excludeCode: account?.code,
+      allCodes: accounts.map(a => a.code),
+    })
   }
 
   const initParentId = account?.parent_id ? String(account.parent_id)
@@ -93,32 +91,29 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
         finalCode = suggestCode(form.parent_id)
         if (!finalCode) { toast.error('تعذّر توليد رقم الحساب'); setSaving(false); return }
       } else {
-        // حساب رئيسي بدون أب
-        const TYPE_START: Record<string, number> = {
-          'أصول': 1000, 'خصوم': 2000, 'حقوق ملكية': 3000,
-          'إيرادات': 4000, 'تكلفة': 5000, 'مصروفات': 6000,
-        }
-        const start = TYPE_START[inheritedType] || 9000
-        const existing = accounts
-          .filter(a => !a.parent_id && parseInt(a.code) >= start && parseInt(a.code) < start + 1000)
-          .map(a => parseInt(a.code)).filter(n => !isNaN(n))
-        const maxE = existing.length > 0 ? Math.max(...existing) : start - 100
-        finalCode = String(maxE + 100)
-        while (accounts.some(a => a.code === finalCode)) finalCode = String(parseInt(finalCode) + 10)
+        const rootCodes = accounts.filter(a => !a.parent_id).map(a => a.code)
+        finalCode = suggestRootAccountCode(selectedType, rootCodes)
       }
     } else if (!account && accounts.some(a => a.code === finalCode)) {
       toast.error(`الكود ${finalCode} مستخدم مسبقاً`); setSaving(false); return
     }
 
     const par = accounts.find(a => a.id === Number(form.parent_id))
+    const accountType = par?.account_type || selectedType
+    const accountClass = par?.account_class || (
+      ['أصول','خصوم','حقوق ملكية'].includes(accountType) ? 'ميزانية' : 'دخل'
+    )
+    const normalBalance = par?.normal_balance || (
+      ['أصول','تكلفة','مصروفات'].includes(accountType) ? 'مدين' : 'دائن'
+    )
     const payload = {
       tenant_id:      tenantId,
       code:           finalCode,
       name:           form.name.trim(),
       name_en:        form.name_en || null,
-      account_type:   par?.account_type   || inheritedType,
-      account_class:  par?.account_class  || inheritedClass,
-      normal_balance: par?.normal_balance || inheritedBalance,
+      account_type:   accountType,
+      account_class:  accountClass,
+      normal_balance: normalBalance,
       parent_id:      form.parent_id ? Number(form.parent_id) : null,
       level:          par ? (par.level || 1) + 1 : 1,
       is_parent:      form.is_parent,
@@ -224,14 +219,12 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
                   const tColor = ACCOUNT_TYPE_COLOR[t] || '#374151'
                   return (
                     <button key={t} type="button"
-                      onClick={() => setForm(f => ({ ...f,
-                        code: '',
-                      }))}
+                      onClick={() => { setSelectedType(t); set('code', '') }}
                       style={{ padding: '6px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
-                        borderColor: inheritedType === t ? tColor : 'var(--border)',
-                        background:  inheritedType === t ? tColor + '15' : 'white',
-                        color:       inheritedType === t ? tColor : 'var(--text3)',
-                        opacity: inheritedType === t ? 1 : 0.5,
+                        borderColor: selectedType === t ? tColor : 'var(--border)',
+                        background:  selectedType === t ? tColor + '15' : 'white',
+                        color:       selectedType === t ? tColor : 'var(--text3)',
+                        opacity: selectedType === t ? 1 : 0.5,
                       }}>
                       {t}
                     </button>

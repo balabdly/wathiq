@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Trash2, Search, FileText, Eye, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry, nextDocNumber } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { DebitNote, VendorInvoice, POItem, Vendor } from '@/lib/purchases-types'
@@ -269,7 +270,7 @@ export default function DebitNotesPage() {
       lines: [
         { accountCode: '2110',     debit: Number(note.total_amount), credit: 0, description: `تخفيض مستحق ${note.vendor_name}` },
         { accountCode: creditCode, debit: 0, credit: Number(note.subtotal),     description: `إشعار مدين ${note.note_number}` },
-        ...(Number(note.vat_amount) > 0 ? [{ accountCode: '2140', debit: 0, credit: Number(note.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
+        ...(Number(note.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(note.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
       ],
     })
     if (!result) { toast.error('تعذر ترحيل قيد الإشعار'); return }

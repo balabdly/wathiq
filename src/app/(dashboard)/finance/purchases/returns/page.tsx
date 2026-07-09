@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Trash2, Search, RotateCcw, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry, nextDocNumber } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { PurchaseReturn, VendorInvoice, POItem, Vendor } from '@/lib/purchases-types'
@@ -204,7 +205,7 @@ export default function PurchaseReturnsPage() {
       lines: [
         { accountCode: '2110',     debit: Number(ret.total_amount), credit: 0, description: `تخفيض مستحق ${ret.vendor_name}` },
         { accountCode: creditCode, debit: 0, credit: Number(ret.subtotal),     description: `مرتجع ${ret.return_number}` },
-        ...(Number(ret.vat_amount) > 0 ? [{ accountCode: '2140', debit: 0, credit: Number(ret.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
+        ...(Number(ret.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(ret.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
       ],
     })
     if (!result) { toast.error('تعذر ترحيل قيد المرتجع'); return }

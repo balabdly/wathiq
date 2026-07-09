@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, Save, Trash2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { createJournalEntry } from '@/lib/journal'
 import type { Account, CostCenter, JournalEntry, JournalLine } from '@/lib/accounting-types'
 
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
@@ -79,30 +80,32 @@ function JournalEntriesTab({ tenantId }: { tenantId: string }) {
     if (validLines.length < 2) { toast.error('يجب إضافة سطرين على الأقل'); return }
     if (!isBalanced) { toast.error('القيد غير متوازن — مجموع المدين يجب أن يساوي مجموع الدائن'); return }
 
-    const td = validLines.reduce((s, l) => s + Number(l.debit || 0), 0)
-    const tc = validLines.reduce((s, l) => s + Number(l.credit || 0), 0)
+    const journalLines = validLines.map(l => {
+      const acc = accounts.find(a => a.id === l.account_id)
+      if (!acc) return null
+      return {
+        accountCode: acc.code,
+        debit: Number(l.debit || 0),
+        credit: Number(l.credit || 0),
+        description: l.description || undefined,
+        costCenterId: l.cost_center_id,
+      }
+    }).filter(Boolean) as { accountCode: string; debit: number; credit: number; description?: string; costCenterId?: number }[]
 
-    const { count } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const entryNumber = `JE-${new Date().getFullYear()}-${String((count || 0) + 1).padStart(4, '0')}`
+    if (journalLines.length < 2) { toast.error('حسابات غير صالحة في السطور'); return }
 
-    const { data: entry, error } = await supabase.from('finance_journal_entries').insert({
-      tenant_id: tenantId, entry_number: entryNumber, entry_date: form.entry_date,
-      description: form.description, total_debit: td, total_credit: tc,
-      status: form.status, entry_source: 'يدوي',
-    }).select('id').single()
+    const result = await createJournalEntry({
+      tenantId,
+      date: form.entry_date,
+      description: form.description,
+      referenceType: 'قيد يدوي',
+      lines: journalLines,
+      source: 'يدوي',
+    })
 
-    if (error || !entry) { toast.error('خطأ: ' + (error?.message || 'فشل الحفظ')); return }
+    if (!result) return
 
-    await supabase.from('finance_journal_lines').insert(
-      validLines.map(l => ({
-        entry_id: entry.id, account_id: l.account_id,
-        cost_center_id: l.cost_center_id || null,
-        debit: Number(l.debit || 0), credit: Number(l.credit || 0),
-        description: l.description || null,
-      }))
-    )
-
-    toast.success('✅ تم تسجيل القيد اليدوي')
+    toast.success(`✅ تم تسجيل القيد اليدوي ${result.entryNumber}`)
     setShowForm(false)
     setForm({ entry_date: today, description: '', status: 'معتمد' })
     setLines([

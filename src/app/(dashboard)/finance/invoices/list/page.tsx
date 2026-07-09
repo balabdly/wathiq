@@ -7,6 +7,7 @@ import { Plus, X, Save, Search, Eye, Printer, Pencil, Trash2, FileText, Package,
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -415,9 +416,9 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
         tenantId, date: payload.invoice_date, description: `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
         referenceType: 'فاتورة مبيعات', referenceId: invoiceId, source: 'آلي',
         lines: [
-          { accountCode: '1120', debit: payload.total_amount, credit: 0, description: `فاتورة ${payload.invoice_number}` },
-          { accountCode: '4110', debit: 0, credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
-          ...(payload.vat_amount > 0 ? [{ accountCode: '2130', debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
+          { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: payload.total_amount, credit: 0, description: `فاتورة ${payload.invoice_number}` },
+          { accountCode: ACC.SALES_REVENUE, debit: 0, credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
+          ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_OUTPUT, debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
         ]
       })
     }
@@ -580,8 +581,8 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: Invoice
 
   function getDebitAccountCode(): string {
     if (selectedAccount?.account_code) return selectedAccount.account_code
-    if (form.payment_method === 'نقداً') return '1111'
-    return '1120'
+    if (form.payment_method === 'نقداً') return ACC.CASH_LOCAL
+    return ACC.BANK
   }
 
   async function handleSave() {
@@ -598,7 +599,7 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: Invoice
       referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
       lines: [
         { accountCode: getDebitAccountCode(), debit: netDue, credit: 0, description: `${form.payment_method} — ${accountLabel}` },
-        { accountCode: '1120', debit: 0, credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
+        { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
       ]
     })
     toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')

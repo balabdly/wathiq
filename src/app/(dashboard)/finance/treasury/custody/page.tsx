@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Users, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { suggestChildAccountCode } from '@/lib/suggest-account-code'
 import { useTreasury } from '../TreasuryContext'
 import type { Custody, Employee, Project, CashAccount } from '@/lib/treasury-types'
 
@@ -80,8 +81,8 @@ function CustodyModal({ employees, projects, cashAccounts, tenantId, onClose, on
           let { data: empAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('parent_id', parentAcc.id).eq('name', empAccName).maybeSingle()
           if (!empAcc) {
             const siblings = await supabase.from('finance_accounts').select('code').eq('tenant_id', tenantId).eq('parent_id', parentAcc.id)
-            const codes = (siblings.data || []).map((s: any) => parseInt(s.code)).filter((n: number) => !isNaN(n))
-            const nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : String(parseInt(parentAcc.code) * 10 + 1)
+            const siblingCodes = (siblings.data || []).map((s: { code: string }) => s.code)
+            const nextCode = suggestChildAccountCode(parentAcc.code, siblingCodes)
             const { data: newAcc } = await supabase.from('finance_accounts').insert({
               tenant_id: tenantId, code: nextCode, name: empAccName,
               account_type: 'أصول', account_class: 'ميزانية', normal_balance: 'مدين',
@@ -259,8 +260,8 @@ ${form.notes}` : `طريقة السداد: ${form.repay_method} | عدد الأ�
           let { data: empAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('parent_id', parentAcc.id).eq('name', empAccName).maybeSingle()
           if (!empAcc) {
             const siblings = await supabase.from('finance_accounts').select('code').eq('tenant_id', tenantId).eq('parent_id', parentAcc.id)
-            const codes = (siblings.data || []).map((s: any) => parseInt(s.code)).filter((n: number) => !isNaN(n))
-            const nextCode = codes.length > 0 ? String(Math.max(...codes) + 1) : String(parseInt(parentAcc.code) * 10 + 1)
+            const siblingCodes = (siblings.data || []).map((s: { code: string }) => s.code)
+            const nextCode = suggestChildAccountCode(parentAcc.code, siblingCodes)
             const { data: newAcc } = await supabase.from('finance_accounts').insert({
               tenant_id: tenantId, code: nextCode, name: empAccName,
               account_type: 'أصول', account_class: 'ميزانية', normal_balance: 'مدين',

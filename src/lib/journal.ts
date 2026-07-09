@@ -13,6 +13,7 @@
 
 import { supabase } from '@/lib/supabase'
 import { logAudit } from '@/lib/audit'
+import { ACC } from '@/lib/account-codes'
 
 // ════════════════════════════════════
 // Types
@@ -22,6 +23,7 @@ export type JournalLine = {
   debit:       number
   credit:      number
   description?: string
+  costCenterId?: number
 }
 
 export type CreateJournalParams = {
@@ -225,11 +227,12 @@ export async function createJournalEntry(
     .from('finance_journal_lines')
     .insert(
       validLines.map(l => ({
-        entry_id:    entry.id,
-        account_id:  codeMap.get(l.accountCode)!,
-        debit:       l.debit,
-        credit:      l.credit,
-        description: l.description || null,
+        entry_id:       entry.id,
+        account_id:     codeMap.get(l.accountCode)!,
+        debit:          l.debit,
+        credit:         l.credit,
+        description:    l.description || null,
+        cost_center_id: l.costCenterId ?? null,
       }))
     )
 
@@ -261,8 +264,8 @@ export async function createJournalEntry(
 
 /**
  * قيد فاتورة مبيعات
- * مدين: الذمم المدينة (1120) بالإجمالي
- * دائن: الإيرادات (4110) بالصافي + ضريبة المحصّلة (2130)
+ * مدين: ذمم العملاء (1210) بالإجمالي
+ * دائن: الإيرادات (4110) بالصافي + ضريبة المحصّلة (2320)
  */
 export async function journalSalesInvoice(params: {
   tenantId:      string
@@ -275,11 +278,11 @@ export async function journalSalesInvoice(params: {
   total:         number
 }): Promise<JournalResult> {
   const lines: JournalLine[] = [
-    { accountCode: '1120', debit: params.total,    credit: 0,              description: `فاتورة ${params.invoiceNumber}` },
-    { accountCode: '4110', debit: 0,               credit: params.subtotal, description: `إيرادات ${params.invoiceNumber}` },
+    { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: params.total,    credit: 0,              description: `فاتورة ${params.invoiceNumber}` },
+    { accountCode: ACC.SALES_REVENUE,       debit: 0,               credit: params.subtotal, description: `إيرادات ${params.invoiceNumber}` },
   ]
   if (params.vatAmount > 0) {
-    lines.push({ accountCode: '2130', debit: 0, credit: params.vatAmount, description: 'ضريبة القيمة المضافة المحصّلة' })
+    lines.push({ accountCode: ACC.VAT_OUTPUT, debit: 0, credit: params.vatAmount, description: 'ضريبة القيمة المضافة المحصّلة' })
   }
   return createJournalEntry({
     tenantId:      params.tenantId,
@@ -314,7 +317,7 @@ export async function journalSalesCollection(params: {
     referenceId:   params.invoiceId,
     lines: [
       { accountCode: params.cashAccountCode, debit: params.amount, credit: 0,              description: `تحصيل ${params.invoiceNumber}` },
-      { accountCode: '1120',                 debit: 0,             credit: params.amount,  description: `إقفال ذمة ${params.clientName}` },
+      { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0,             credit: params.amount,  description: `إقفال ذمة ${params.clientName}` },
     ],
     source: 'آلي',
   })
@@ -338,10 +341,10 @@ export async function journalVendorInvoice(params: {
 }): Promise<JournalResult> {
   const lines: JournalLine[] = [
     { accountCode: params.debitAccountCode, debit: params.subtotal,   credit: 0,            description: `فاتورة ${params.invoiceNumber}` },
-    { accountCode: '2110',                  debit: 0,                 credit: params.total,  description: `مستحق للمورد ${params.vendorName}` },
+    { accountCode: ACC.SUPPLIER_PAYABLE,    debit: 0,                 credit: params.total,  description: `مستحق للمورد ${params.vendorName}` },
   ]
   if (params.vatAmount > 0) {
-    lines.splice(1, 0, { accountCode: '2140', debit: params.vatAmount, credit: 0, description: 'ضريبة المدخلات' })
+    lines.splice(1, 0, { accountCode: ACC.VAT_INPUT, debit: params.vatAmount, credit: 0, description: 'ضريبة المدخلات' })
   }
   return createJournalEntry({
     tenantId:      params.tenantId,
@@ -375,7 +378,7 @@ export async function journalVendorPayment(params: {
     referenceType: 'سداد فاتورة مورد',
     referenceId:   params.invoiceId,
     lines: [
-      { accountCode: '2110',                  debit: params.amount, credit: 0,             description: `سداد ${params.invoiceNumber}` },
+      { accountCode: ACC.SUPPLIER_PAYABLE,    debit: params.amount, credit: 0,             description: `سداد ${params.invoiceNumber}` },
       { accountCode: params.cashAccountCode,  debit: 0,             credit: params.amount, description: `دفع عبر ${params.vendorName}` },
     ],
     source: 'آلي',
@@ -404,7 +407,7 @@ export async function journalExpense(params: {
     { accountCode: params.expenseAccountCode, debit: params.amount,    credit: 0,           description: params.description },
   ]
   if (params.vatAmount > 0) {
-    lines.push({ accountCode: '2140', debit: params.vatAmount, credit: 0, description: `ضريبة مدخلات — ${params.category}` })
+    lines.push({ accountCode: ACC.VAT_INPUT, debit: params.vatAmount, credit: 0, description: `ضريبة مدخلات — ${params.category}` })
   }
   lines.push({
     accountCode: params.creditAccountCode,
@@ -426,8 +429,8 @@ export async function journalExpense(params: {
 /**
  * قيد إشعار دائن
  * مدين: الإيرادات (4110) بالصافي
- * مدين: ضريبة مستردة (2130)
- * دائن: الذمم المدينة (1120) بالإجمالي
+ * مدين: ضريبة مستردة (2320)
+ * دائن: ذمم العملاء (1210) بالإجمالي
  */
 export async function journalCreditNote(params: {
   tenantId:   string
@@ -441,12 +444,12 @@ export async function journalCreditNote(params: {
   total:      number
 }): Promise<JournalResult> {
   const lines: JournalLine[] = [
-    { accountCode: '4110', debit: params.subtotal,  credit: 0,           description: `${params.noteType} ${params.noteNumber}` },
+    { accountCode: ACC.SALES_REVENUE, debit: params.subtotal,  credit: 0,           description: `${params.noteType} ${params.noteNumber}` },
   ]
   if (params.vatAmount > 0) {
-    lines.push({ accountCode: '2130', debit: params.vatAmount, credit: 0, description: 'ضريبة مستردة' })
+    lines.push({ accountCode: ACC.VAT_OUTPUT, debit: params.vatAmount, credit: 0, description: 'ضريبة مستردة' })
   }
-  lines.push({ accountCode: '1120', debit: 0, credit: params.total, description: `إشعار للعميل ${params.clientName}` })
+  lines.push({ accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: params.total, description: `إشعار للعميل ${params.clientName}` })
 
   return createJournalEntry({
     tenantId:      params.tenantId,
@@ -479,20 +482,20 @@ export async function journalPayroll(params: {
   const lines: JournalLine[] = []
   const salaryDebit = params.totalBasic - params.totalDeductions
   if (salaryDebit > 0) {
-    lines.push({ accountCode: '5210', debit: salaryDebit, credit: 0, description: `رواتب أساسية — ${params.monthLabel}` })
+    lines.push({ accountCode: ACC.SALARIES_EXPENSE, debit: salaryDebit, credit: 0, description: `رواتب أساسية — ${params.monthLabel}` })
   }
   if (params.totalAllowances > 0) {
-    lines.push({ accountCode: '5230', debit: params.totalAllowances, credit: 0, description: `بدلات وعلاوات — ${params.monthLabel}` })
+    lines.push({ accountCode: ACC.ALLOWANCES_EXPENSE, debit: params.totalAllowances, credit: 0, description: `بدلات وعلاوات — ${params.monthLabel}` })
   }
   if (params.totalGosiEmployer > 0) {
-    lines.push({ accountCode: '5220', debit: params.totalGosiEmployer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
+    lines.push({ accountCode: ACC.GOSI_EXPENSE, debit: params.totalGosiEmployer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
   }
   if (params.totalNet > 0) {
-    lines.push({ accountCode: '2120', debit: 0, credit: params.totalNet, description: `صافي رواتب مستحقة — ${params.monthLabel}` })
+    lines.push({ accountCode: ACC.EMPLOYEE_PAYABLE, debit: 0, credit: params.totalNet, description: `صافي رواتب مستحقة — ${params.monthLabel}` })
   }
   const gosiPayable = params.totalGosiEmployee + params.totalGosiEmployer
   if (gosiPayable > 0) {
-    lines.push({ accountCode: '2160', debit: 0, credit: gosiPayable, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
+    lines.push({ accountCode: ACC.GOSI_PAYABLE, debit: 0, credit: gosiPayable, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
   }
   return createJournalEntry({
     tenantId:      params.tenantId,
@@ -522,10 +525,10 @@ export async function journalPayrollPayment(params: {
   const lines: JournalLine[] = []
   const total = params.netAmount + params.gosiAmount
   if (params.netAmount > 0) {
-    lines.push({ accountCode: '2120', debit: params.netAmount, credit: 0, description: `سداد رواتب — ${params.monthLabel}` })
+    lines.push({ accountCode: ACC.EMPLOYEE_PAYABLE, debit: params.netAmount, credit: 0, description: `سداد رواتب — ${params.monthLabel}` })
   }
   if (params.gosiAmount > 0) {
-    lines.push({ accountCode: '2160', debit: params.gosiAmount, credit: 0, description: `سداد تأمينات — ${params.monthLabel}` })
+    lines.push({ accountCode: ACC.GOSI_PAYABLE, debit: params.gosiAmount, credit: 0, description: `سداد تأمينات — ${params.monthLabel}` })
   }
   if (total > 0) {
     lines.push({ accountCode: params.cashAccountCode, debit: 0, credit: total, description: `صرف رواتب وتأمينات — ${params.monthLabel}` })
@@ -558,14 +561,14 @@ export async function journalSettlement(params: {
 }): Promise<JournalResult> {
   const lines: JournalLine[] = []
   if (params.gratuityAmount > 0) {
-    lines.push({ accountCode: '5240', debit: params.gratuityAmount, credit: 0, description: `مكافأة نهاية خدمة — ${params.employeeName}` })
+    lines.push({ accountCode: ACC.EOS_EXPENSE, debit: params.gratuityAmount, credit: 0, description: `مكافأة نهاية خدمة — ${params.employeeName}` })
   }
   const otherEnt = params.salaryAmount + params.leaveAmount
   if (otherEnt > 0) {
-    lines.push({ accountCode: '5210', debit: otherEnt, credit: 0, description: `مستحقات نهاية خدمة — ${params.employeeName}` })
+    lines.push({ accountCode: ACC.SALARIES_EXPENSE, debit: otherEnt, credit: 0, description: `مستحقات نهاية خدمة — ${params.employeeName}` })
   }
   if (params.netAmount > 0) {
-    lines.push({ accountCode: '2120', debit: 0, credit: params.netAmount, description: `تسوية مستحقة — ${params.employeeName}` })
+    lines.push({ accountCode: ACC.EMPLOYEE_PAYABLE, debit: 0, credit: params.netAmount, description: `تسوية مستحقة — ${params.employeeName}` })
   }
   return createJournalEntry({
     tenantId:      params.tenantId,
@@ -590,7 +593,7 @@ export async function journalLeaveCompensation(params: {
   amount:          number
   cashAccountCode?: string
 }): Promise<JournalResult> {
-  const creditCode = params.cashAccountCode || '2120'
+  const creditCode = params.cashAccountCode || ACC.EMPLOYEE_PAYABLE
   return createJournalEntry({
     tenantId:      params.tenantId,
     date:          params.date,
@@ -598,7 +601,7 @@ export async function journalLeaveCompensation(params: {
     referenceType: 'تعويض إجازة',
     referenceId:   params.compensationId,
     lines: [
-      { accountCode: '5210', debit: params.amount, credit: 0, description: `تعويض إجازة — ${params.employeeName}` },
+      { accountCode: ACC.SALARIES_EXPENSE, debit: params.amount, credit: 0, description: `تعويض إجازة — ${params.employeeName}` },
       { accountCode: creditCode, debit: 0, credit: params.amount, description: `صرف تعويض إجازة — ${params.employeeName}` },
     ],
     source: 'آلي',
@@ -621,8 +624,8 @@ export async function journalEOSProvision(params: {
     description:   `مخصص مكافأة نهاية خدمة — ${params.monthLabel}`,
     referenceType: 'مخصص نهاية خدمة',
     lines: [
-      { accountCode: '5240', debit: params.totalAmount, credit: 0, description: `مصروف مخصص — ${params.monthLabel}` },
-      { accountCode: '2420', debit: 0, credit: params.totalAmount, description: `مخصص نهاية خدمة — ${params.monthLabel}` },
+      { accountCode: ACC.EOS_EXPENSE, debit: params.totalAmount, credit: 0, description: `مصروف مخصص — ${params.monthLabel}` },
+      { accountCode: ACC.EOS_PROVISION, debit: 0, credit: params.totalAmount, description: `مخصص نهاية خدمة — ${params.monthLabel}` },
     ],
     source: 'آلي',
   })
@@ -666,7 +669,7 @@ export async function getCashAccountCode(
     .eq('id', cashAccountId)
     .single()
 
-  if (!data?.account_id) return '1111'  // fallback: الصندوق الرئيسي
+  if (!data?.account_id) return ACC.CASH_LOCAL  // fallback: الصندوق الرئيسي
 
   const { data: acc } = await supabase
     .from('finance_accounts')
@@ -674,7 +677,7 @@ export async function getCashAccountCode(
     .eq('id', data.account_id)
     .single()
 
-  return acc?.code || '1111'
+  return acc?.code || ACC.CASH_LOCAL
 }
 
 /**

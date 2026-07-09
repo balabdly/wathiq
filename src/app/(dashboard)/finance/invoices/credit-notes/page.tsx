@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Search, Eye, Printer, RotateCcw, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry, nextDocNumber } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { useSales } from '../SalesContext'
 import type { Invoice, InvoiceItem, Client, Company, CreditNote } from '@/lib/sales-types'
@@ -308,9 +309,9 @@ function CreditNotesPage() {
       tenantId: tenantId!, date: cn.note_date, description: `${cn.note_type} ${cn.note_number} — ${cn.client_name}`,
       referenceType: cn.note_type, referenceId: cn.id, source: 'آلي',
       lines: [
-        { accountCode: '4110', debit: Number(cn.subtotal), credit: 0, description: `${cn.note_type} ${cn.note_number}` },
-        ...(Number(cn.vat_amount) > 0 ? [{ accountCode: '2130', debit: Number(cn.vat_amount), credit: 0, description: 'ضريبة مستردة' }] : []),
-        { accountCode: '1120', debit: 0, credit: Number(cn.total_amount), description: `إشعار للعميل ${cn.client_name}` },
+        { accountCode: ACC.SALES_REVENUE, debit: Number(cn.subtotal), credit: 0, description: `${cn.note_type} ${cn.note_number}` },
+        ...(Number(cn.vat_amount) > 0 ? [{ accountCode: ACC.VAT_OUTPUT, debit: Number(cn.vat_amount), credit: 0, description: 'ضريبة مستردة' }] : []),
+        { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: Number(cn.total_amount), description: `إشعار للعميل ${cn.client_name}` },
       ],
     })
     if (!result) { toast.error('تعذر ترحيل قيد الإشعار'); return }
