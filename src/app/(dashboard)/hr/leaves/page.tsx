@@ -76,14 +76,15 @@ const STATUS_COLOR: Record<string, string> = {
 // ══════════════════════════════════════
 // نافذة تقديم إجازة
 // ══════════════════════════════════════
-function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, onSave }: {
+function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChangeStatus, lockEmployeeId, onClose, onSave }: {
   leave: Leave | null; hrEmployees: HREmployee[]
   sickDaysMap: Record<number, number>; annualTakenMap: Record<number, number>
+  canChangeStatus: boolean; lockEmployeeId?: number | null
   onClose: () => void; onSave: (d: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    employee_id: leave?.employee_id ? String(leave.employee_id) : '',
+    employee_id: leave?.employee_id ? String(leave.employee_id) : (lockEmployeeId ? String(lockEmployeeId) : ''),
     leave_type:  leave?.leave_type  || 'سنوية',
     start_date:  leave?.start_date  || '',
     end_date:    leave?.end_date    || '',
@@ -111,7 +112,13 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
       if (!confirm(`تنبيه: الرصيد المتاح ${annualBalance.balance} يوم فقط، هل تريد المتابعة؟`)) return
     }
     setSaving(true)
-    await onSave({ ...(leave ? { id: leave.id } : {}), ...form, employee_id: Number(form.employee_id), days, sick_pay_info: sickPayInfo?.breakdown || null })
+    await onSave({
+      ...(leave ? { id: leave.id } : {}),
+      ...form,
+      employee_id: lockEmployeeId || Number(form.employee_id),
+      days,
+      sick_pay_info: sickPayInfo?.breakdown || null,
+    })
     setSaving(false)
   }
 
@@ -126,10 +133,19 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
-              <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
-                <option value="">— اختر موظف —</option>
-                {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+              {lockEmployeeId ? (
+                <input
+                  type="text"
+                  className="input"
+                  readOnly
+                  value={hrEmployees.find(e => e.id === lockEmployeeId)?.name || '—'}
+                />
+              ) : (
+                <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
+                  <option value="">— اختر موظف —</option>
+                  {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
             </div>
 
             {selectedEmp && annualBalance && form.leave_type === 'سنوية' && (
@@ -202,14 +218,25 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, onClose, 
               <textarea value={form.reason} onChange={e => set('reason', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">حالة الطلب</label>
-              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                <option value="بانتظار الموافقة">⏳ بانتظار الموافقة</option>
-                <option value="موافق">✅ موافق</option>
-                <option value="مرفوض">❌ مرفوض</option>
-              </select>
-            </div>
+            {leave && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">حالة الطلب</label>
+                <span className={`badge ${STATUS_COLOR[leave.status] || 'badge-gray'}`}>{leave.status}</span>
+              </div>
+            )}
+
+            {canChangeStatus && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">تغيير حالة الموافقة (مدير عام)</label>
+                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                  <option value="بانتظار الموافقة">⏳ بانتظار الموافقة</option>
+                  <option value="قيد موافقة المدير المباشر">⏳ قيد موافقة المدير المباشر</option>
+                  <option value="قيد موافقة مدير الإدارة">⏳ قيد موافقة مدير الإدارة</option>
+                  <option value="موافق">✅ موافق</option>
+                  <option value="مرفوض">❌ مرفوض</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="modal-footer">
@@ -355,8 +382,29 @@ export default function LeavesPage() {
   const [historyEmp, setHistoryEmp]     = useState<HREmployee | null>(null)
 
   const isAdmin = currentUser?.role === 'مدير عام'
+  const isHRHead = currentUser?.role === 'مدير الموارد البشرية'
+  const isHRStaff = isAdmin || isHRHead
+    || !!currentUser?.permissions?.includes('hr')
+    || !!currentUser?.permissions?.includes('employees')
+
+  const myHrEmployeeId = hrEmployees.find(e => e.employee_id === currentUser?.id)?.id
+    ?? (currentUser as any)?.hr_employee_id
+    ?? null
+  const isSelfServiceOnly = !isHRStaff && !!myHrEmployeeId
+
   const isDirectManagerOf = (l: Leave) => !!currentUser && l.direct_manager_id === currentUser.id
   const isDeptManagerOf   = (l: Leave) => !!currentUser && l.dept_manager_id === currentUser.id
+
+  const PENDING_STATUSES = ['بانتظار الموافقة', 'قيد موافقة المدير المباشر', 'قيد موافقة مدير الإدارة']
+  const canEditLeave = (l: Leave) => {
+    if (isHRStaff) return true
+    if (!myHrEmployeeId || l.employee_id !== myHrEmployeeId) return false
+    return PENDING_STATUSES.includes(l.status)
+  }
+
+  useEffect(() => {
+    if (isSelfServiceOnly) setActiveTab('requests')
+  }, [isSelfServiceOnly])
 
   // ── جلب الموظفين مرة واحدة ──
   useEffect(() => {
@@ -404,6 +452,7 @@ export default function LeavesPage() {
     if (filterStatus)                query = query.eq('status', filterStatus)
     if (filterType)                  query = query.eq('leave_type', filterType)
     if (filterEmpId)                 query = query.eq('employee_id', Number(filterEmpId))
+    else if (isSelfServiceOnly && myHrEmployeeId) query = query.eq('employee_id', myHrEmployeeId)
     if (filterYear) {
       query = query
         .gte('start_date', `${filterYear}-01-01`)
@@ -424,7 +473,7 @@ export default function LeavesPage() {
   // ── جلب عند تغيير الفلاتر أو تغيير التاب ──
   useEffect(() => {
     if (activeTab === 'requests') fetchLeaves(true)
-  }, [activeTab, filterStatus, filterType, filterEmpId, filterYear, tenant?.id])
+  }, [activeTab, filterStatus, filterType, filterEmpId, filterYear, tenant?.id, isSelfServiceOnly, myHrEmployeeId])
 
   // ── جلب كل الإجازات لحساب الأرصدة (تاب رصيد) ──
   const [allLeaves, setAllLeaves] = useState<Leave[]>([])
@@ -456,9 +505,24 @@ export default function LeavesPage() {
   // ── حفظ الإجازة ──
   async function handleSave(data: any) {
     if (!tenant) return
-    const payload: any = { ...data, tenant_id: tenant.id }
 
-    // ══ عند التقديم الجديد فقط: نحدّد مسار الموافقة الهرمي ولا نلمسه عند التعديل ══
+    if (!isHRStaff && myHrEmployeeId && Number(data.employee_id) !== myHrEmployeeId) {
+      toast.error('لا يمكنك تقديم إجازة لموظف آخر')
+      return
+    }
+
+    const payload: any = {
+      employee_id: Number(data.employee_id),
+      leave_type: data.leave_type,
+      start_date: data.start_date,
+      end_date: data.end_date,
+      days: data.days,
+      reason: data.reason || null,
+      sick_pay_info: data.sick_pay_info || null,
+      tenant_id: tenant.id,
+    }
+
+    // ══ عند التقديم الجديد: مسار الموافقة الهرمي (لا يقبل status من الواجهة) ══
     if (!data.id) {
       const emp = hrEmployees.find(e => e.id === Number(data.employee_id))
       const directManagerId = emp?.direct_manager ?? null
@@ -466,25 +530,48 @@ export default function LeavesPage() {
 
       payload.direct_manager_id = directManagerId
       payload.dept_manager_id   = deptManagerId
+      payload.direct_manager_status = null
+      payload.dept_manager_status = null
+      payload.direct_manager_note = null
+      payload.dept_manager_note = null
+      payload.direct_manager_at = null
+      payload.dept_manager_at = null
 
       if (directManagerId) {
         payload.status = 'قيد موافقة المدير المباشر'
       } else if (deptManagerId) {
-        // ما فيه مدير مباشر مُسجَّل — يبدأ المسار مباشرة عند مدير الإدارة
         payload.direct_manager_status = 'موافق'
         payload.status = 'قيد موافقة مدير الإدارة'
       } else {
-        // ما فيه مدير مباشر ولا مدير إدارة معروف — يبقى بالمسار القديم (اعتماد الأدمن يدوياً)
         payload.status = 'بانتظار الموافقة'
+      }
+
+      await supabase.from('hr_leaves').insert(payload)
+    } else {
+      const existing = editLeave || leaves.find(l => l.id === data.id)
+      if (!existing) { toast.error('الطلب غير موجود'); return }
+
+      if (!isHRStaff) {
+        if (!canEditLeave(existing)) {
+          toast.error('لا يمكن تعديل هذا الطلب بعد بدء الموافقة أو اعتماده')
+          return
+        }
+        await supabase.from('hr_leaves').update(payload).eq('id', data.id)
+      } else if (isAdmin && data.status && data.status !== existing.status) {
+        await supabase.from('hr_leaves').update({ ...payload, status: data.status }).eq('id', data.id)
+      } else {
+        await supabase.from('hr_leaves').update(payload).eq('id', data.id)
       }
     }
 
-    if (data.id) await supabase.from('hr_leaves').update(payload).eq('id', data.id)
-    else await supabase.from('hr_leaves').insert(payload)
     setShowModal(false); setEditLeave(null)
-    toast.success('تم الحفظ ✅')
+    const statusMsg = payload.status === 'قيد موافقة المدير المباشر'
+      ? 'تم تقديم الطلب — بانتظار موافقة المدير المباشر'
+      : payload.status === 'قيد موافقة مدير الإدارة'
+        ? 'تم تقديم الطلب — بانتظار موافقة مدير الإدارة'
+        : data.id ? 'تم حفظ التعديل ✅' : 'تم تقديم الطلب ✅'
+    toast.success(statusMsg)
     fetchLeaves(true)
-    // تحديث allLeaves للأرصدة
     supabase.from('hr_leaves').select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
       .eq('tenant_id', tenant.id).eq('status', 'موافق')
       .then(({ data: d }) => setAllLeaves(d || []))
@@ -565,8 +652,8 @@ export default function LeavesPage() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content' }}>
         {[
-          { id: 'balance',  label: 'رصيد الإجازات', icon: <Clock style={{ width: '16px', height: '16px' }} /> },
-          { id: 'requests', label: 'طلبات الإجازة',  icon: <Calendar style={{ width: '16px', height: '16px' }} />, badge: pending },
+          ...(!isSelfServiceOnly ? [{ id: 'balance', label: 'رصيد الإجازات', icon: <Clock style={{ width: '16px', height: '16px' }} /> }] : []),
+          { id: 'requests', label: isSelfServiceOnly ? 'طلباتي' : 'طلبات الإجازة', icon: <Calendar style={{ width: '16px', height: '16px' }} />, badge: pending },
         ].map(t => (
           <button key={t.id} type="button" onClick={() => setActiveTab(t.id as any)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 20px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.2s',
@@ -672,11 +759,12 @@ export default function LeavesPage() {
           {/* شريط الفلاتر */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {/* فلتر الموظف */}
-              <select value={filterEmpId} onChange={e => setFilterEmpId(e.target.value)} className="select" style={{ width: 'auto', minWidth: '150px' }}>
-                <option value="">كل الموظفين</option>
-                {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+              {!isSelfServiceOnly && (
+                <select value={filterEmpId} onChange={e => setFilterEmpId(e.target.value)} className="select" style={{ width: 'auto', minWidth: '150px' }}>
+                  <option value="">كل الموظفين</option>
+                  {hrEmployees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+              )}
               {/* فلتر السنة */}
               <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="select" style={{ width: 'auto' }}>
                 <option value="">كل السنوات</option>
@@ -685,6 +773,8 @@ export default function LeavesPage() {
               {/* فلتر الحالة */}
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
                 <option value="">كل الحالات</option>
+                <option value="قيد موافقة المدير المباشر">⏳ قيد موافقة المدير المباشر</option>
+                <option value="قيد موافقة مدير الإدارة">⏳ قيد موافقة مدير الإدارة</option>
                 <option value="بانتظار الموافقة">⏳ بانتظار الموافقة</option>
                 <option value="موافق">✅ موافق</option>
                 <option value="مرفوض">❌ مرفوض</option>
@@ -808,9 +898,11 @@ export default function LeavesPage() {
                                     ↩ إعادة
                                   </button>
                                 )}
-                                <button type="button" onClick={() => { setEditLeave(l); setShowModal(true) }} className="btn btn-ghost btn-xs">
-                                  <Pencil style={{ width: '13px', height: '13px' }} />
-                                </button>
+                                {canEditLeave(l) && (
+                                  <button type="button" onClick={() => { setEditLeave(l); setShowModal(true) }} className="btn btn-ghost btn-xs">
+                                    <Pencil style={{ width: '13px', height: '13px' }} />
+                                  </button>
+                                )}
                                 {isAdmin && (
                                   <button type="button" onClick={() => handleDelete(l.id)} className="btn btn-ghost btn-xs" style={{ color: '#c81e1e' }}>
                                     <Trash2 style={{ width: '13px', height: '13px' }} />
@@ -850,6 +942,8 @@ export default function LeavesPage() {
         <LeaveModal
           leave={editLeave} hrEmployees={hrEmployees}
           sickDaysMap={sickDaysMap} annualTakenMap={annualTakenMap}
+          canChangeStatus={isAdmin}
+          lockEmployeeId={isSelfServiceOnly ? myHrEmployeeId : null}
           onClose={() => { setShowModal(false); setEditLeave(null) }}
           onSave={handleSave}
         />
