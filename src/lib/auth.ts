@@ -8,7 +8,9 @@ const SALT_BYTES = 16
 const HASH_BYTES = 32
 
 function toBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin)
 }
 
 function fromBase64(b64: string): Uint8Array {
@@ -20,11 +22,12 @@ function fromBase64(b64: string): Uint8Array {
 
 async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
   const enc = new TextEncoder()
+  const saltBuffer = new Uint8Array(salt)
   const keyMaterial = await crypto.subtle.importKey(
     'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
   )
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: saltBuffer, iterations, hash: 'SHA-256' },
     keyMaterial,
     HASH_BYTES * 8
   )

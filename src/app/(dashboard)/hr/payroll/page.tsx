@@ -683,6 +683,7 @@ export default function PayrollPage() {
   async function handleSaveBulk() {
     if (!tenant || includedRows.length === 0) { toast.error('اختر موظفاً واحداً على الأقل'); return }
     setSaving(true)
+    const workingDays = getWorkingDaysInMonth(filterMonth, filterYear)
     for (const row of includedRows) {
       const payload = {
         tenant_id: tenant.id, branch_id: activeBranch?.id || 0,
@@ -694,7 +695,7 @@ export default function PayrollPage() {
         other_deduct: row.other_deduct, present_days: row.present_days,
         absent_days: workingDays - row.present_days, overtime_hours: 0,
         gross_salary: row.gross, net_salary: row.net,
-        notes: row.notes || null, status: 'مسودة', working_days: getWorkingDaysInMonth(filterMonth, filterYear),
+        notes: row.notes || null, status: 'مسودة', working_days: workingDays,
       }
       if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
       else await supabase.from('hr_payroll').insert(payload)
