@@ -323,7 +323,7 @@ export default function EmployeesSettingsPage() {
       name:            data.name,
       role:            data.role,
       username:        data.username,
-      permissions:     [...new Set([...(data.permissions || []), 'dashboard', 'hr_self'])],
+      permissions:     Array.from(new Set([...(data.permissions || []), 'dashboard', 'hr_self'])),
       is_active:       true,
       hr_employee_id:  data.hrEmpId,
     }
