@@ -279,7 +279,7 @@ function ProgressUpdater({ project, tenant, onRefresh }: { project: Project; ten
       project_id: project.id,
       tenant_id:  tenant.id,
       progress,
-      notes: `تحديث يدوي إلى ${progress}%`,
+      note: `تحديث يدوي إلى ${progress}%`,
     }).then(() => {})
 
     await onRefresh()

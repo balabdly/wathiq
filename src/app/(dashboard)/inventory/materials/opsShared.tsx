@@ -233,11 +233,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     }
 
     if (validRows.length === 0) { toast.error('أدخل كمية لمادة واحدة على الأقل'); savingRef.current = false; return }
-    if (type === 'صرف' && !form.project_id) { toast.error('اسم المشروع مطلوب'); return }
-    if (type === 'إرجاع' && !form.project_id && isProjectWh) { toast.error('اختر المشروع'); return }
-    if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) { toast.error('المشروع إلزامي لهذا المستودع'); return }
-    if (type === 'تحويل' && !form.to_warehouse_id) { toast.error('اختر المستودع المستلم'); return }
-    if (type === 'إرجاع' && !form.return_type) { toast.error('يجب تحديد نوع الإرجاع'); return }
+    if (type === 'صرف' && !form.project_id) { toast.error('اسم المشروع مطلوب'); savingRef.current = false; return }
+    if (type === 'إرجاع' && !form.project_id && isProjectWh) { toast.error('اختر المشروع'); savingRef.current = false; return }
+    if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) { toast.error('المشروع إلزامي لهذا المستودع'); savingRef.current = false; return }
+    if (type === 'تحويل' && !form.to_warehouse_id) { toast.error('اختر المستودع المستلم'); savingRef.current = false; return }
+    if (type === 'إرجاع' && !form.return_type) { toast.error('يجب تحديد نوع الإرجاع'); savingRef.current = false; return }
 
     setSaving(true)
     let attachmentUrl: string | null = null

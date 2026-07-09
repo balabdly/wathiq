@@ -180,13 +180,14 @@ export default function ReportsProjectsPage() {
 
     } else if (selected === 'tasks') {
       // جلب المهام لكل مشروع
-      const { data: tasks } = await supabase.from('tasks')
+      const { data: tasks } = await supabase.from('project_tasks')
         .select('project_id, status')
         .eq('tenant_id', tenant.id)
+      const closedStatuses = new Set(['مغلق', 'مغلقة', 'مكتمل', 'مكتملة', 'ملغاة'])
       const taskMap: Record<number, { open: number; closed: number }> = {}
       ;(tasks || []).forEach((t: any) => {
         if (!taskMap[t.project_id]) taskMap[t.project_id] = { open: 0, closed: 0 }
-        t.status === 'مغلق' || t.status === 'مكتمل' ? taskMap[t.project_id].closed++ : taskMap[t.project_id].open++
+        closedStatuses.has(t.status) ? taskMap[t.project_id].closed++ : taskMap[t.project_id].open++
       })
       setResults(projects.map(p => ({
         name: p.name,
