@@ -57,3 +57,8 @@ export async function verifyPasswordServer(
 export function authEmailForEmployee(employeeId: number | string) {
   return `${employeeId}@wathiq.internal`
 }
+
+/** كلمة مرور داخلية لـ Supabase Auth (يتطلب 6 أحرف على الأقل) */
+export function supabaseAuthPassword(employeeId: number | string, employeePassword: string) {
+  return `wathiq:${employeeId}:${employeePassword}`
+}

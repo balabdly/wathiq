@@ -31,13 +31,21 @@ export default function LoginPage() {
       }
 
       if (data.session) {
-        await supabase.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        })
+        try {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+        } catch (sessionErr) {
+          console.warn('setSession failed:', sessionErr)
+        }
       }
 
       const emp = data.employee
+      if (!emp) {
+        toast.error('بيانات المستخدم غير مكتملة')
+        return
+      }
       setCurrentUser(emp)
       setTenant(data.tenant)
       setBranches(data.branches || [])
@@ -48,7 +56,10 @@ export default function LoginPage() {
       toast.success(`أهلاً ${emp.name} 👋`)
       router.push('/dashboard')
 
-    } catch { toast.error('حدث خطأ') }
+    } catch (err) {
+      console.error('login error:', err)
+      toast.error('تعذّر الاتصال بالخادم — تأكد من إعدادات Vercel')
+    }
     finally { setLoading(false) }
   }
 

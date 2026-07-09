@@ -1,7 +1,56 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createServerSupabase } from '@/lib/supabase/server'
-import { authEmailForEmployee, hashPasswordServer, verifyPasswordServer } from '@/lib/auth-server'
+import {
+  authEmailForEmployee,
+  hashPasswordServer,
+  supabaseAuthPassword,
+  verifyPasswordServer,
+} from '@/lib/auth-server'
+
+function createAnonClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) throw new Error('NEXT_PUBLIC_SUPABASE keys غير مضبوطة')
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+}
+
+async function ensureAuthUser(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string,
+  authPassword: string,
+  appMeta: Record<string, unknown>,
+  userMeta: Record<string, unknown>,
+) {
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email,
+    password: authPassword,
+    email_confirm: true,
+    app_metadata: appMeta,
+    user_metadata: userMeta,
+  })
+
+  if (!createError) return
+
+  const alreadyExists = createError.message?.toLowerCase().includes('already')
+    || createError.message?.toLowerCase().includes('registered')
+  if (!alreadyExists) throw createError
+
+  const { data: listed, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  if (listError) throw listError
+
+  const existing = listed?.users?.find(u => u.email === email)
+  if (!existing) throw new Error('تعذّر العثور على مستخدم المصادقة')
+
+  const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
+    password: authPassword,
+    app_metadata: appMeta,
+    user_metadata: userMeta,
+  })
+  if (updateError) throw updateError
+}
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +65,11 @@ export async function POST(request: Request) {
       .select('*')
       .ilike('username', username.trim())
 
-    if (lookupError || !candidates?.length) {
+    if (lookupError) {
+      console.error('[auth/login] lookup', lookupError)
+      return NextResponse.json({ error: 'خطأ في الاتصال بقاعدة البيانات' }, { status: 500 })
+    }
+    if (!candidates?.length) {
       return NextResponse.json({ error: 'اسم المستخدم غير موجود' }, { status: 401 })
     }
 
@@ -45,41 +98,29 @@ export async function POST(request: Request) {
     }
 
     const authEmail = authEmailForEmployee(emp.id)
+    const authPassword = supabaseAuthPassword(emp.id, password)
     const appMeta = {
       tenant_id: String(emp.tenant_id),
       employee_id: emp.id,
       role: emp.role,
     }
+    const userMeta = { name: emp.name, username: emp.username }
 
-    const { data: existing } = await admin.auth.admin.listUsers()
-    const authUser = existing?.users?.find(u => u.email === authEmail)
-
-    if (!authUser) {
-      const { error: createError } = await admin.auth.admin.createUser({
-        email: authEmail,
-        password,
-        email_confirm: true,
-        app_metadata: appMeta,
-        user_metadata: { name: emp.name, username: emp.username },
-      })
-      if (createError) {
-        return NextResponse.json({ error: 'فشل إنشاء جلسة المصادقة' }, { status: 500 })
-      }
-    } else {
-      await admin.auth.admin.updateUserById(authUser.id, {
-        password,
-        app_metadata: appMeta,
-        user_metadata: { name: emp.name, username: emp.username },
-      })
+    try {
+      await ensureAuthUser(admin, authEmail, authPassword, appMeta, userMeta)
+    } catch (authErr: any) {
+      console.error('[auth/login] ensureAuthUser', authErr)
+      return NextResponse.json({ error: 'فشل إنشاء جلسة المصادقة' }, { status: 500 })
     }
 
-    const supabase = createServerSupabase()
-    const { data: sessionData, error: signInError } = await supabase.auth.signInWithPassword({
+    const anon = createAnonClient()
+    const { data: sessionData, error: signInError } = await anon.auth.signInWithPassword({
       email: authEmail,
-      password,
+      password: authPassword,
     })
 
     if (signInError || !sessionData.session) {
+      console.error('[auth/login] signIn', signInError)
       return NextResponse.json({ error: 'فشل تسجيل الدخول' }, { status: 500 })
     }
 
@@ -95,7 +136,15 @@ export async function POST(request: Request) {
       branches: branches || [],
       session: sessionData.session,
     })
-  } catch {
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+      return NextResponse.json({ error: 'إعدادات الخادم غير مكتملة — أضف SUPABASE_SERVICE_ROLE_KEY في Vercel' }, { status: 500 })
+    }
+    if (msg.includes('NEXT_PUBLIC_SUPABASE')) {
+      return NextResponse.json({ error: 'إعدادات Supabase غير مكتملة في Vercel' }, { status: 500 })
+    }
+    console.error('[auth/login]', err)
+    return NextResponse.json({ error: 'حدث خطأ في الخادم' }, { status: 500 })
   }
 }
