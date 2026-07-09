@@ -133,7 +133,7 @@ const PERMISSION_GROUPS = [
   { label: 'الزيارات',          color: '#0ea77b', perms: [{ id: 'visits', label: 'كل الزيارات', icon: '🔎' }, { id: 'visits_quality', label: 'زيارات الجودة', icon: '✅' }, { id: 'visits_safety', label: 'زيارات السلامة', icon: '🦺' }, { id: 'visits_electrical', label: 'زيارات كهربائية', icon: '⚡' }, { id: 'visits_field', label: 'زيارات ميدانية', icon: '🏗️' }] },
   { label: 'QHSE',              color: '#e6820a', perms: [{ id: 'qhse', label: 'QHSE', icon: '🛡️' }] },
   { label: 'المخزون والمشتريات', color: '#7c3aed', perms: [{ id: 'inventory', label: 'المخزون', icon: '📦' }, { id: 'purchases', label: 'المشتريات', icon: '🛒' }] },
-  { label: 'الموارد البشرية',   color: '#9333ea', perms: [{ id: 'hr', label: 'HR', icon: '👥' }, { id: 'employees', label: 'الموظفون', icon: '👤' }] },
+  { label: 'الموارد البشرية',   color: '#9333ea', perms: [{ id: 'hr', label: 'HR', icon: '👥' }, { id: 'employees', label: 'الموظفون', icon: '👤' }, { id: 'hr_self', label: 'الخدمة الذاتية', icon: '🙋' }] },
   { label: 'المالية',           color: '#0f766e', perms: [{ id: 'finance', label: 'المالية', icon: '💰' }] },
   { label: 'التقارير',          color: '#64748b', perms: [{ id: 'reports', label: 'التقارير', icon: '📈' }] },
 ]
@@ -141,12 +141,12 @@ const PERMISSION_GROUPS = [
 const DEFAULT_ROLES_PERMS: Record<string, string[]> = {
   'مدير عام':     ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','qhse','employees','reports','finance','pmo','hr'],
   'مدير مشروع':  ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','reports','pmo'],
-  'مهندس جودة':  ['dashboard','projects_view','visits_quality','qhse','reports'],
-  'مهندس سلامة': ['dashboard','projects_view','visits_safety','qhse','reports'],
-  'مهندس كهرباء':['dashboard','projects_view','visits_electrical','visits_field','inventory','reports'],
-  'مهندس ميداني':['dashboard','projects_view','visits_field','reports'],
-  'مشرف':        ['dashboard','projects_view','visits_field','reports'],
-  'محاسب':       ['dashboard','finance','purchases','reports'],
+  'مهندس جودة':  ['dashboard','projects_view','visits_quality','qhse','reports','hr_self'],
+  'مهندس سلامة': ['dashboard','projects_view','visits_safety','qhse','reports','hr_self'],
+  'مهندس كهرباء':['dashboard','projects_view','visits_electrical','visits_field','inventory','reports','hr_self'],
+  'مهندس ميداني':['dashboard','projects_view','visits_field','reports','hr_self'],
+  'مشرف':        ['dashboard','projects_view','visits_field','reports','hr_self'],
+  'محاسب':       ['dashboard','finance','purchases','reports','hr_self'],
   'مدير HR':     ['dashboard','hr','employees','reports'],
 }
 
@@ -323,7 +323,7 @@ export default function EmployeesSettingsPage() {
       name:            data.name,
       role:            data.role,
       username:        data.username,
-      permissions:     data.permissions,
+      permissions:     [...new Set([...(data.permissions || []), 'dashboard', 'hr_self'])],
       is_active:       true,
       hr_employee_id:  data.hrEmpId,
     }

@@ -38,6 +38,7 @@ const IC = {
   logout:      'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
   chevron:     'M6 9l6 6 6-6',
   assets:      'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
+  user:        'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
   branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
 }
 
@@ -243,6 +244,7 @@ export default function Sidebar() {
   const hasFinance   = perms.includes('finance')                        && tenantModules.finance   !== false
   const hasReports   = perms.includes('reports')
   const hasHR        = perms.some(p => ['hr','employees'].includes(p))
+  const hasSelfHR    = perms.includes('hr_self') || hasHR
   const hasDashboard = perms.includes('dashboard')
   const hasAssets    = perms.includes('assets')                         && tenantModules.assets    !== false
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
@@ -250,6 +252,7 @@ export default function Sidebar() {
   const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
+  const inMyHR     = pathname.startsWith('/my-hr')
   const inSettings = pathname.startsWith('/settings')
   const inReports  = pathname.startsWith('/reports')
   const inFinance  = pathname.startsWith('/finance')
@@ -260,6 +263,7 @@ export default function Sidebar() {
   const [qhseOpen,      setQhseOpen]      = useState(inQHSE)
   const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith('/inventory'))
   const [hrOpen,       setHrOpen]       = useState(inHR)
+  const [myHrOpen,     setMyHrOpen]     = useState(inMyHR)
   const [settingsOpen, setSettingsOpen] = useState(inSettings)
   const [reportsOpen,  setReportsOpen]  = useState(pathname.startsWith('/reports'))
   const [financeOpen,  setFinanceOpen]  = useState(inFinance)
@@ -357,6 +361,17 @@ export default function Sidebar() {
             <SubLink href="/qhse/safety"      label="السلامة (HSE)" icon={IC.safety}      active={pathname.startsWith('/qhse/safety')} />
             <SubLink href="/qhse/quality"     label="الجودة (QC)"   icon={IC.quality}     active={pathname.startsWith('/qhse/quality')} />
             <SubLink href="/qhse/environment" label="البيئة (ENV)"  icon={IC.environment} active={pathname.startsWith('/qhse/environment')} />
+          </NavSection>
+        )}
+
+        {hasSelfHR && (
+          <NavSection label="الخدمة الذاتية" icon={IC.user}
+            isActive={inMyHR} isOpen={myHrOpen} onToggle={() => setMyHrOpen(o => !o)}>
+            <SubLink href="/my-hr"              label="لوحة الخدمة"       icon={IC.dashboard}   active={pathname === '/my-hr'} />
+            <SubLink href="/my-hr/attendance"   label="الحضور والانصراف"  icon={IC.attendance}  active={pathname.startsWith('/my-hr/attendance')} />
+            <SubLink href="/my-hr/leaves"       label="الإجازات"          icon={IC.leaves}      active={pathname.startsWith('/my-hr/leaves')} />
+            <SubLink href="/my-hr/disciplinary" label="الجزاءات"          icon={IC.disciplinary} active={pathname.startsWith('/my-hr/disciplinary')} />
+            <SubLink href="/my-hr/payroll"      label="الرواتب"           icon={IC.payroll}     active={pathname.startsWith('/my-hr/payroll')} />
           </NavSection>
         )}
 

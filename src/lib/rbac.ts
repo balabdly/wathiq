@@ -19,6 +19,7 @@ export type Permission =
   | 'finance'
   | 'pmo'
   | 'hr'
+  | 'hr_self'
 
 // ── خريطة الصفحات والصلاحيات المطلوبة ──
 export const PAGE_PERMISSIONS: Record<string, Permission[]> = {
@@ -29,6 +30,7 @@ export const PAGE_PERMISSIONS: Record<string, Permission[]> = {
   '/inventory':          ['inventory'],
   '/purchases':          ['purchases'],
   '/hr':                 ['hr', 'employees'],
+  '/my-hr':              ['hr_self', 'hr', 'employees'],
   '/finance':            ['finance'],
   '/reports':            ['reports'],
   '/pmo':                ['pmo'],
@@ -60,23 +62,23 @@ export const ROLES: Record<string, {
   },
   'مهندس جودة': {
     label: 'مهندس جودة', color: '#0ea77b', icon: '🔍',
-    permissions: ['dashboard','projects_view','visits_quality','qhse','reports'],
+    permissions: ['dashboard','projects_view','visits_quality','qhse','reports','hr_self'],
   },
   'مهندس سلامة': {
     label: 'مهندس سلامة', color: '#e6820a', icon: '🦺',
-    permissions: ['dashboard','projects_view','visits_safety','qhse','reports'],
+    permissions: ['dashboard','projects_view','visits_safety','qhse','reports','hr_self'],
   },
   'مهندس كهرباء': {
     label: 'مهندس كهرباء', color: '#0891b2', icon: '⚡',
-    permissions: ['dashboard','projects_view','visits_electrical','visits_field','inventory','reports'],
+    permissions: ['dashboard','projects_view','visits_electrical','visits_field','inventory','reports','hr_self'],
   },
   'مهندس ميداني': {
     label: 'مهندس ميداني', color: '#6366f1', icon: '🏗️',
-    permissions: ['dashboard','projects_view','visits_field','reports'],
+    permissions: ['dashboard','projects_view','visits_field','reports','hr_self'],
   },
   'مشرف': {
     label: 'مشرف', color: '#64748b', icon: '👷',
-    permissions: ['dashboard','projects_view','visits_field','reports'],
+    permissions: ['dashboard','projects_view','visits_field','reports','hr_self'],
   },
   'محاسب': {
     label: 'محاسب', color: '#0f766e', icon: '💰',
@@ -158,6 +160,7 @@ export function getSidebarItems(
   if (hasPermission(userPermissions, 'inventory'))     items.push('inventory')
   if (hasPermission(userPermissions, 'purchases'))     items.push('purchases')
   if (hasAnyPermission(userPermissions, ['hr','employees'])) items.push('hr')
+  if (hasPermission(userPermissions, 'hr_self'))           items.push('my-hr')
   if (hasPermission(userPermissions, 'finance'))       items.push('finance')
   if (hasPermission(userPermissions, 'reports'))       items.push('reports')
   if (hasPermission(userPermissions, 'pmo'))           items.push('pmo')

@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, XCircle, AlertTriangle, Info, Search, ChevronDown, ChevronUp, FileText, Eye } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 import toast from 'react-hot-toast'
 
 // ── أنواع الإجازات ──
@@ -351,6 +352,8 @@ function EmployeeLeaveHistory({ emp, leaves, onClose }: {
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function LeavesPage() {
+  const pathname = usePathname()
+  const forceSelfService = pathname.startsWith('/my-hr')
   const { tenant, currentUser } = useStore()
   const [activeTab, setActiveTab] = useState<'balance'|'requests'>('balance')
 
@@ -390,7 +393,7 @@ export default function LeavesPage() {
   const myHrEmployeeId = hrEmployees.find(e => e.employee_id === currentUser?.id)?.id
     ?? (currentUser as any)?.hr_employee_id
     ?? null
-  const isSelfServiceOnly = !isHRStaff && !!myHrEmployeeId
+  const isSelfServiceOnly = forceSelfService || (!isHRStaff && !!myHrEmployeeId)
 
   const isDirectManagerOf = (l: Leave) => !!currentUser && l.direct_manager_id === currentUser.id
   const isDeptManagerOf   = (l: Leave) => !!currentUser && l.dept_manager_id === currentUser.id
@@ -644,12 +647,16 @@ export default function LeavesPage() {
     <div className="space-y-5 fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Calendar style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> إدارة الإجازات
+          <Calendar style={{ width: '20px', height: '20px', color: 'var(--primary)' }} />
+          {forceSelfService ? 'إجازاتي' : 'إدارة الإجازات'}
         </h1>
-        <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>وفق نظام العمل السعودي</p>
+        <p className="text-gray-400 text-sm" style={{ marginTop: '2px' }}>
+          {forceSelfService ? 'تقديم ومتابعة طلبات الإجازة الخاصة بك' : 'وفق نظام العمل السعودي'}
+        </p>
       </div>
 
       {/* Tabs */}
+      {!forceSelfService && (
       <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content' }}>
         {[
           ...(!isSelfServiceOnly ? [{ id: 'balance', label: 'رصيد الإجازات', icon: <Clock style={{ width: '16px', height: '16px' }} /> }] : []),
@@ -665,6 +672,7 @@ export default function LeavesPage() {
           </button>
         ))}
       </div>
+      )}
 
       {/* ══ تاب رصيد الإجازات ══ */}
       {activeTab === 'balance' && (
@@ -754,7 +762,7 @@ export default function LeavesPage() {
       )}
 
       {/* ══ تاب طلبات الإجازة ══ */}
-      {activeTab === 'requests' && (
+      {(forceSelfService || activeTab === 'requests') && (
         <div className="space-y-4">
           {/* شريط الفلاتر */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>

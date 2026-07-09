@@ -8,6 +8,7 @@ const PAGE_PERMISSIONS: Record<string, string[]> = {
   '/inventory':            ['inventory'],
   '/purchases':            ['purchases'],
   '/hr':                   ['hr', 'employees'],
+  '/my-hr':                ['hr_self', 'hr', 'employees'],
   '/finance':              ['finance'],
   '/reports':              ['reports'],
   '/pmo':                  ['pmo'],
