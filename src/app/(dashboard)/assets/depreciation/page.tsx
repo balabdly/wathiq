@@ -76,7 +76,9 @@ export default function DepreciationPage() {
     const monthLabel = `${ARABIC_MONTHS[selMonth - 1]} ${selYear}`
 
     // جلب أكواد الحسابات
-    const accountIds = [...new Set(pending.flatMap(p => [p.asset.expense_account_id, p.asset.accum_account_id].filter(Boolean)))]
+    const accountIds = Array.from(new Set(
+      pending.flatMap(p => [p.asset.expense_account_id, p.asset.accum_account_id].filter((id): id is number => Boolean(id)))
+    ))
     const { data: accRows } = await supabase.from('finance_accounts').select('id, code').in('id', accountIds)
     const codeMap = Object.fromEntries((accRows || []).map((a: any) => [a.id, a.code]))
 
