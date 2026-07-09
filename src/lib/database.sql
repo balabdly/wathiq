@@ -725,12 +725,17 @@ create table if not exists hr_payroll (
   overtime_pay      numeric default 0,
   bonuses           numeric default 0,
   gosi_deduction    numeric default 0,
+  gosi_employer_amount numeric default 0,
   absence_deduct    numeric default 0,
   other_deduct      numeric default 0,
   gross_salary      numeric default 0,
   net_salary        numeric default 0,
   present_days      int default 26,
   absent_days       int default 0,
+  working_days      int default 26,
+  overtime_hours    numeric default 0,
+  run_id            bigint,
+  branch_id         bigint,
   notes             text,
   status            text default 'مسودة',
   created_at        timestamptz default now(),
@@ -1628,6 +1633,56 @@ create trigger project_tasks_updated_at
 -- دوال RPC
 -- ══════════════════════════════════════════════════════
 
+-- ── مسيرات الرواتب ──
+create table if not exists hr_payroll_runs (
+  id                  bigint primary key generated always as identity,
+  tenant_id           uuid references tenants(id) on delete cascade not null,
+  branch_id           bigint references branches(id),
+  run_number          text not null,
+  month               int not null,
+  year                int not null,
+  status              text default 'مسودة',
+  employee_count      int default 0,
+  total_basic         numeric default 0,
+  total_allowances    numeric default 0,
+  total_gosi_employee numeric default 0,
+  total_gosi_employer numeric default 0,
+  total_deductions    numeric default 0,
+  total_gross         numeric default 0,
+  total_net           numeric default 0,
+  created_by          bigint references employees(id),
+  hr_head_id          bigint references employees(id),
+  approved_by         bigint references employees(id),
+  approved_at         timestamptz,
+  posted_by           bigint references employees(id),
+  posted_at           timestamptz,
+  journal_entry_id    bigint references finance_journal_entries(id),
+  created_at          timestamptz default now(),
+  unique(tenant_id, month, year, branch_id)
+);
+
+-- ── الفترات المحاسبية ──
+create table if not exists finance_fiscal_periods (
+  id          bigint primary key generated always as identity,
+  tenant_id   uuid references tenants(id) on delete cascade not null,
+  year        int not null,
+  month       int not null,
+  status      text default 'مقفلة',
+  closed_at   timestamptz default now(),
+  closed_by   text,
+  unique(tenant_id, year, month)
+);
+
+-- ── تسلسل أرقام المستندات ──
+create table if not exists finance_doc_sequences (
+  id          bigint primary key generated always as identity,
+  tenant_id   uuid references tenants(id) on delete cascade not null,
+  doc_type    text not null,
+  prefix      text not null default '',
+  last_number int not null default 0,
+  unique(tenant_id, doc_type)
+);
+
 -- دالة: جلب معرّفات الحسابات من قائمة الأكواد (batch)
 create or replace function get_account_ids_by_codes(
   p_tenant_id uuid,
@@ -1656,6 +1711,44 @@ begin
     and employee_number ~ '^\d+$';
   return lpad((v_count + 1)::text, 5, '0');
 end;
+$$;
+
+-- دالة: توليد رقم مستند ذرّي
+create or replace function next_doc_number(
+  p_tenant_id uuid,
+  p_doc_type  text,
+  p_prefix    text default ''
+)
+returns text
+language plpgsql as $$
+declare
+  v_next int;
+begin
+  insert into finance_doc_sequences (tenant_id, doc_type, prefix, last_number)
+  values (p_tenant_id, p_doc_type, p_prefix, 1)
+  on conflict (tenant_id, doc_type)
+  do update set last_number = finance_doc_sequences.last_number + 1
+  returning last_number into v_next;
+
+  return p_prefix || '-' || lpad(v_next::text, 6, '0');
+end;
+$$;
+
+-- دالة: أرصدة الحسابات النقدية من دفتر الأستاذ
+create or replace function get_cash_account_balances(p_tenant_id uuid)
+returns table(cash_account_id bigint, ledger_balance numeric)
+language sql stable as $$
+  select
+    ca.id as cash_account_id,
+    coalesce(sum(jl.debit), 0) - coalesce(sum(jl.credit), 0) as ledger_balance
+  from finance_cash_accounts ca
+  left join finance_journal_lines jl on jl.account_id = ca.account_id
+  left join finance_journal_entries je on je.id = jl.entry_id
+    and je.tenant_id::text = p_tenant_id::text
+    and je.status = 'معتمد'
+  where ca.tenant_id::text = p_tenant_id::text
+    and ca.is_active = true
+  group by ca.id;
 $$;
 
 -- ══════════════════════════════════════════════════════

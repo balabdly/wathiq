@@ -1,22 +1,12 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// ── Auth helpers ──
-export async function signIn(username: string, password: string) {
-  // نستخدم email = username@tenant.wathiq.app
-  // لأن Supabase يتطلب email
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: `${username}@wathiq.internal`,
-    password,
-  })
-  return { data, error }
-}
+export const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function signOut() {
+  await fetch('/api/auth/logout', { method: 'POST' })
   return supabase.auth.signOut()
 }
 

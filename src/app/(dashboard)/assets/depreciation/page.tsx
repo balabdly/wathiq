@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { TrendingDown, Play, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { journalDepreciation } from '@/lib/journal'
 
 type Asset = {
   id: number; asset_no: string; name: string; category: string
@@ -72,19 +73,32 @@ export default function DepreciationPage() {
     setRunning(true)
 
     const depDate = `${selYear}-${String(selMonth).padStart(2,'0')}-01`
-    const totalDep = pending.reduce((s,p) => s + p.amount, 0)
+    const monthLabel = `${ARABIC_MONTHS[selMonth - 1]} ${selYear}`
 
-    // القيد المحاسبي الموحّد
-    const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenant.id)
-    const { data: entry } = await supabase.from('finance_journal_entries').insert({
-      tenant_id: tenant.id,
-      entry_number: `JE-${selYear}-${String((jc||0)+1).padStart(4,'0')}`,
-      entry_date: depDate,
-      description: `إهلاك شهر ${ARABIC_MONTHS[selMonth-1]} ${selYear}`,
-      reference_type: 'إهلاك',
-      total_debit: totalDep, total_credit: totalDep,
-      status: 'معتمد', entry_source: 'آلي',
-    }).select('id').single()
+    // جلب أكواد الحسابات
+    const accountIds = [...new Set(pending.flatMap(p => [p.asset.expense_account_id, p.asset.accum_account_id].filter(Boolean)))]
+    const { data: accRows } = await supabase.from('finance_accounts').select('id, code').in('id', accountIds)
+    const codeMap = Object.fromEntries((accRows || []).map((a: any) => [a.id, a.code]))
+
+    const depLines = pending
+      .filter(p => p.asset.expense_account_id && p.asset.accum_account_id && codeMap[p.asset.expense_account_id] && codeMap[p.asset.accum_account_id])
+      .map(p => ({
+        expenseCode: codeMap[p.asset.expense_account_id!],
+        accumCode:   codeMap[p.asset.accum_account_id!],
+        amount:      p.amount,
+        description: `إهلاك: ${p.asset.name}`,
+      }))
+
+    if (depLines.length > 0) {
+      const result = await journalDepreciation({
+        tenantId: tenant.id, date: depDate, monthLabel, lines: depLines,
+      })
+      if (!result) { setRunning(false); return }
+    } else {
+      toast.error('لا توجد حسابات إهلاك مرتبطة بالأصول — أضف حسابات المصروف والمجمع لكل أصل')
+      setRunning(false)
+      return
+    }
 
     for (const p of pending) {
       const newAccum    = Number(p.asset.accumulated_depreciation) + p.amount
@@ -105,17 +119,9 @@ export default function DepreciationPage() {
         last_depreciation_date: depDate,
         status: fullyDep ? 'مُهلَك كلياً' : 'نشط',
       }).eq('id', p.asset.id)
-
-      // أسطر القيد
-      if (entry && p.asset.expense_account_id && p.asset.accum_account_id) {
-        await supabase.from('finance_journal_lines').insert([
-          { entry_id: entry.id, account_id: p.asset.expense_account_id, debit: p.amount, credit: 0,        description: `إهلاك: ${p.asset.name}` },
-          { entry_id: entry.id, account_id: p.asset.accum_account_id,   debit: 0,        credit: p.amount, description: `مجمع إهلاك: ${p.asset.name}` },
-        ])
-      }
     }
 
-    toast.success(`✅ تم تنفيذ إهلاك ${pending.length} أصل — ${ARABIC_MONTHS[selMonth-1]} ${selYear}`)
+    toast.success(`✅ تم تنفيذ إهلاك ${pending.length} أصل — ${monthLabel}`)
     await loadAll()
     setRunning(false)
   }

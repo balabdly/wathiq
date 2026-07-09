@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Users, Pencil, X, Save, Search, Shield, UserCheck, UserX, RefreshCw, UserPlus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { hashPassword } from '@/lib/auth'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -306,7 +307,7 @@ export default function EmployeesSettingsPage() {
     if (!selectedEmp || !tenant) return
     setSaving(true)
     const payload: any = { role: editForm.role, username: editForm.username || null, permissions: userPerms }
-    if (editForm.password) payload.password = editForm.password
+    if (editForm.password) payload.password = await hashPassword(editForm.password)
     const { error } = await supabase.from('employees').update(payload).eq('id', selectedEmp.id).eq('tenant_id', tenant.id)
     setSaving(false)
     if (error) { toast.error('خطأ: ' + error.message); return }
@@ -326,7 +327,7 @@ export default function EmployeesSettingsPage() {
       is_active:       true,
       hr_employee_id:  data.hrEmpId,
     }
-    if (data.password) payload.password = data.password
+    if (data.password) payload.password = await hashPassword(data.password)
     const { error } = await supabase.from('employees').insert(payload)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await load()
@@ -342,7 +343,7 @@ export default function EmployeesSettingsPage() {
       permissions: data.permissions, // نحفظ permissions من المودال
       is_active: data.is_active,
     }
-    if (data.password) payload.password = data.password
+    if (data.password) payload.password = await hashPassword(data.password)
     const { error } = await supabase.from('employees').update(payload).eq('id', data.id)
     if (error) { toast.error('خطأ: ' + error.message); return }
     await load()

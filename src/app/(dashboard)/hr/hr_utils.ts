@@ -133,8 +133,16 @@ export function calcGratuity(
   }
 }
 
-export function calcGOSI(nationality: string, basicSalary: number, housingAllow: number, transportAllow: number = 0) {
-  const base = basicSalary + housingAllow + transportAllow
+/** سقف الأجر الخاضع للتأمينات الاجتماعية (GOSI) — ر.س */
+export const GOSI_CEILING = 45_000
+
+/** أساس التأمينات: الراتب الأساسي + بدل السكن (بدون بدل النقل) مع تطبيق السقف */
+export function gosiContributoryWage(basicSalary: number, housingAllow: number): number {
+  return Math.min(basicSalary + housingAllow, GOSI_CEILING)
+}
+
+export function calcGOSI(nationality: string, basicSalary: number, housingAllow: number, _transportAllow: number = 0) {
+  const base = gosiContributoryWage(basicSalary, housingAllow)
   if (nationality === 'سعودي') {
     return {
       employeeDeduction: Math.round(base * 0.0975),
@@ -162,6 +170,21 @@ export function calcGOSI(nationality: string, basicSalary: number, housingAllow:
       }
     }
   }
+}
+
+/**
+ * مخصص مكافأة نهاية الخدمة الشهري (IAS 19 مبسّط)
+ * أول 5 سنوات: 15 يوم/سنة ÷ 12 | بعد 5 سنوات: 30 يوم/سنة ÷ 12
+ */
+export function calcMonthlyEOSProvision(basicSalary: number, hireDateStr: string): number {
+  if (!hireDateStr || !basicSalary) return 0
+  const hire = new Date(hireDateStr)
+  const today = new Date()
+  if (today <= hire) return 0
+  const years = (today.getTime() - hire.getTime()) / (365.25 * 24 * 3600 * 1000)
+  const daily = basicSalary / 30
+  const annualDays = years >= 5 ? 30 : 15
+  return Math.round(daily * annualDays / 12)
 }
 
 // ══════════════════════════════════════

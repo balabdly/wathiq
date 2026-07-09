@@ -18,40 +18,31 @@ export default function LoginPage() {
     if (!username || !password) return toast.error('يرجى إدخال بيانات الدخول')
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .ilike('username', username.trim())
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      const data = await res.json()
 
-      if (error || !data || data.length === 0) {
-        toast.error('اسم المستخدم غير موجود'); return
+      if (!res.ok) {
+        toast.error(data.error || 'فشل تسجيل الدخول')
+        return
       }
 
-      const emp = data.find((e: any) => e.password === password)
-      if (!emp) { toast.error('كلمة المرور غير صحيحة'); return }
+      if (data.session) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        })
+      }
 
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('id', emp.tenant_id)
-        .single()
+      const emp = data.employee
+      setCurrentUser(emp)
+      setTenant(data.tenant)
+      setBranches(data.branches || [])
 
-      const { data: branches } = await supabase
-        .from('branches')
-        .select('*')
-        .eq('tenant_id', emp.tenant_id)
-        .order('id')
-
-      // ── تحميل permissions مباشرة من DB بدون تعديل ──
-      const perms: string[] = emp.permissions || []
-
-      const updatedEmp = { ...emp, permissions: perms }
-
-      setCurrentUser(updatedEmp)
-      setTenant(tenant)
-      setBranches(branches || [])
-
-      const userBranch = branches?.find((b: any) => b.id === emp.branch_id) || branches?.[0]
+      const userBranch = data.branches?.find((b: any) => b.id === emp.branch_id) || data.branches?.[0]
       if (userBranch) setActiveBranch(userBranch)
 
       toast.success(`أهلاً ${emp.name} 👋`)

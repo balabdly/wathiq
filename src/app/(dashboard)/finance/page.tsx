@@ -4,7 +4,8 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import { nextDocNumber } from '@/lib/journal'
+import { journalPayroll, journalPayrollPayment, journalEOSProvision, getCashAccountCode, confirmCashSpendById } from '@/lib/journal'
+import { calcMonthlyEOSProvision } from '@/app/(dashboard)/hr/hr_utils'
 import {
   TrendingUp, TrendingDown, DollarSign, FileText,
   ShoppingCart, AlertCircle, CheckCircle2, Clock,
@@ -28,7 +29,12 @@ export default function FinanceDashboard() {
   const { tenant, activeBranch, currentUser } = useStore()
   const [loading,  setLoading]  = useState(true)
   const [posting,  setPosting]  = useState<number | null>(null)
+  const [paying,   setPaying]   = useState<number | null>(null)
+  const [eosRunning, setEosRunning] = useState(false)
   const [pendingRuns, setPendingRuns] = useState<PendingPayrollRun[]>([])
+  const [postedRuns,  setPostedRuns]  = useState<PendingPayrollRun[]>([])
+  const [cashAccounts, setCashAccounts] = useState<{ id: number; name: string }[]>([])
+  const [selectedCashId, setSelectedCashId] = useState<number | null>(null)
 
   // KPIs
   const [kpis, setKpis] = useState({
@@ -59,13 +65,18 @@ export default function FinanceDashboard() {
     const tid = tenant.id
 
     // ── ١ KPIs ──
-    const [invRes, expRes, purRes, payrollRes] = await Promise.all([
+    const [invRes, expRes, purRes, payrollRes, postedRes, cashRes] = await Promise.all([
       supabase.from('finance_invoices').select('total_amount, subtotal, vat_amount, status, invoice_date, due_date').eq('tenant_id', tid),
       supabase.from('finance_expenses').select('amount, vat_amount, expense_date').eq('tenant_id', tid),
       supabase.from('finance_purchase_orders').select('total_amount, expense_date:created_at').eq('tenant_id', tid),
       supabase.from('hr_payroll_runs').select('id, month, year, employee_count, total_basic, total_allowances, total_gosi_employee, total_gosi_employer, total_deductions, total_net, approved_by, approved_at').eq('tenant_id', tid).eq('status', 'معتمد'),
+      supabase.from('hr_payroll_runs').select('id, month, year, employee_count, total_basic, total_allowances, total_gosi_employee, total_gosi_employer, total_deductions, total_net, approved_by, approved_at').eq('tenant_id', tid).eq('status', 'مرحّل للمالية'),
+      supabase.from('finance_cash_accounts').select('id, name').eq('tenant_id', tid).eq('is_active', true).order('name'),
     ])
     setPendingRuns((payrollRes.data || []) as PendingPayrollRun[])
+    setPostedRuns((postedRes.data || []) as PendingPayrollRun[])
+    setCashAccounts(cashRes.data || [])
+    if (cashRes.data?.length && !selectedCashId) setSelectedCashId(cashRes.data[0].id)
 
     const invoices  = invRes.data  || []
     const expenses  = expRes.data  || []
@@ -133,46 +144,96 @@ export default function FinanceDashboard() {
     if (!confirm(`ترحيل مسير ${ARABIC_MONTHS[run.month - 1]} ${run.year} للدفاتر؟\nإجمالي الصافي: ${run.total_net.toLocaleString()} ر.س\nسيُسجَّل قيد محاسبي متوازن نهائي.`)) return
 
     setPosting(run.id)
-    const entryNo = await nextDocNumber(tenant.id, 'JE', 'JE')
-    if (!entryNo) { toast.error('تعذر توليد رقم القيد'); setPosting(null); return }
+    const result = await journalPayroll({
+      tenantId:          tenant.id,
+      date:              new Date().toISOString().split('T')[0],
+      runId:             run.id,
+      monthLabel:        `${ARABIC_MONTHS[run.month - 1]} ${run.year}`,
+      totalBasic:        run.total_basic,
+      totalAllowances:   run.total_allowances,
+      totalGosiEmployee: run.total_gosi_employee,
+      totalGosiEmployer: run.total_gosi_employer,
+      totalDeductions:   run.total_deductions,
+      totalNet:          run.total_net,
+    })
 
-    const { data: entry } = await supabase.from('finance_journal_entries').insert({
-      tenant_id: tenant.id, entry_number: entryNo,
-      entry_date: new Date().toISOString().split('T')[0],
-      description: `مسير رواتب ${ARABIC_MONTHS[run.month - 1]} ${run.year}`,
-      reference_type: 'رواتب', reference_id: run.id,
-      total_debit: run.total_basic - run.total_deductions + run.total_allowances + run.total_gosi_employer,
-      total_credit: run.total_net + run.total_gosi_employee + run.total_gosi_employer,
-      status: 'معتمد', entry_source: 'آلي',
-    }).select('id').single()
-
-    if (entry) {
-      const [salAcc, allowAcc, gosiExpAcc, payableAcc, gosiPayableAcc] = await Promise.all([
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5210').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5230').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '5220').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2120').single(),
-        supabase.from('finance_accounts').select('id').eq('tenant_id', tenant.id).eq('code', '2160').single(),
-      ])
-      const lines: any[] = []
-      if (salAcc.data)      lines.push({ entry_id: entry.id, account_id: salAcc.data.id,      debit: run.total_basic - run.total_deductions, credit: 0, description: `رواتب أساسية — ${ARABIC_MONTHS[run.month - 1]}` })
-      if (allowAcc.data && run.total_allowances > 0) lines.push({ entry_id: entry.id, account_id: allowAcc.data.id, debit: run.total_allowances, credit: 0, description: `بدلات وعلاوات — ${ARABIC_MONTHS[run.month - 1]}` })
-      if (gosiExpAcc.data && run.total_gosi_employer > 0) lines.push({ entry_id: entry.id, account_id: gosiExpAcc.data.id, debit: run.total_gosi_employer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
-      if (payableAcc.data)  lines.push({ entry_id: entry.id, account_id: payableAcc.data.id,  debit: 0, credit: run.total_net, description: `صافي رواتب مستحقة — ${ARABIC_MONTHS[run.month - 1]}` })
-      if (gosiPayableAcc.data && (run.total_gosi_employee + run.total_gosi_employer) > 0)
-        lines.push({ entry_id: entry.id, account_id: gosiPayableAcc.data.id, debit: 0, credit: run.total_gosi_employee + run.total_gosi_employer, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
-      if (lines.length > 0) await supabase.from('finance_journal_lines').insert(lines)
+    if (!result) {
+      toast.error('⛔ فشل ترحيل المسير — تحقق من شجرة الحسابات (5210، 5230، 5220، 2120، 2160) والفترة المحاسبية')
+      setPosting(null)
+      return
     }
 
-    await supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('run_id', run.id)
     await supabase.from('hr_payroll_runs').update({
       status: 'مرحّل للمالية', posted_by: currentUser?.id || null, posted_at: new Date().toISOString(),
-      journal_entry_id: entry?.id || null,
+      journal_entry_id: result.entryId,
     }).eq('id', run.id)
 
-    toast.success(`✅ تم ترحيل مسير ${ARABIC_MONTHS[run.month - 1]} للدفاتر — القيد ${entryNo}`)
+    toast.success(`✅ تم ترحيل مسير ${ARABIC_MONTHS[run.month - 1]} للدفاتر — القيد ${result.entryNumber}\nالخطوة التالية: دفع الرواتب من الخزينة`)
     setPendingRuns(prev => prev.filter(r => r.id !== run.id))
+    setPostedRuns(prev => [...prev, run])
     setPosting(null)
+  }
+
+  // ══ دفع الرواتب من الخزينة بعد الترحيل ══
+  async function handlePayPayroll(run: PendingPayrollRun) {
+    if (!tenant || !selectedCashId) { toast.error('اختر حساباً نقدياً للصرف'); return }
+    const gosiTotal = run.total_gosi_employee + run.total_gosi_employer
+    const payTotal  = run.total_net + gosiTotal
+    if (!confirm(`دفع مسير ${ARABIC_MONTHS[run.month - 1]} ${run.year}؟\nصافي الرواتب: ${run.total_net.toLocaleString()} ر.س\nالتأمينات: ${gosiTotal.toLocaleString()} ر.س\nالإجمالي: ${payTotal.toLocaleString()} ر.س`)) return
+
+    const ok = await confirmCashSpendById(tenant.id, selectedCashId, payTotal)
+    if (!ok) return
+
+    setPaying(run.id)
+    const cashCode = await getCashAccountCode(selectedCashId)
+    const result = await journalPayrollPayment({
+      tenantId:        tenant.id,
+      date:            new Date().toISOString().split('T')[0],
+      runId:           run.id,
+      monthLabel:      `${ARABIC_MONTHS[run.month - 1]} ${run.year}`,
+      netAmount:       run.total_net,
+      gosiAmount:      gosiTotal,
+      cashAccountCode: cashCode,
+    })
+    if (!result) { setPaying(null); return }
+
+    await supabase.from('hr_payroll').update({ status: 'مدفوع' }).eq('run_id', run.id)
+    await supabase.from('hr_payroll').update({ status: 'مدفوع' })
+      .eq('tenant_id', tenant.id).eq('month', run.month).eq('year', run.year).in('status', ['معتمد', 'مرحّل للمالية'])
+    await supabase.from('hr_payroll_runs').update({ status: 'مدفوع' }).eq('id', run.id)
+
+    toast.success(`✅ تم دفع المسير — القيد ${result.entryNumber}`)
+    setPostedRuns(prev => prev.filter(r => r.id !== run.id))
+    setPaying(null)
+  }
+
+  // ══ مخصص مكافأة نهاية الخدمة الشهري (IAS 19) ══
+  async function handleEOSProvision() {
+    if (!tenant) return
+    const now = new Date()
+    const month = now.getMonth() + 1
+    const year  = now.getFullYear()
+
+    const { data: emps } = await supabase.from('hr_employees')
+      .select('basic_salary, hire_date')
+      .eq('tenant_id', tenant.id).eq('is_active', true)
+
+    const total = (emps || []).reduce((s: number, e: any) =>
+      s + calcMonthlyEOSProvision(Number(e.basic_salary || 0), e.hire_date || ''), 0)
+
+    if (total <= 0) { toast.error('لا يوجد موظفون نشطون لاحتساب المخصص'); return }
+    if (!confirm(`تسجيل مخصص نهاية الخدمة لـ ${ARABIC_MONTHS[month - 1]} ${year}؟\nإجمالي المخصص: ${total.toLocaleString()} ر.س\n(${(emps || []).length} موظف)`)) return
+
+    setEosRunning(true)
+    const result = await journalEOSProvision({
+      tenantId:    tenant.id,
+      date:        new Date().toISOString().split('T')[0],
+      monthLabel:  `${ARABIC_MONTHS[month - 1]} ${year}`,
+      totalAmount: total,
+    })
+    setEosRunning(false)
+    if (!result) return
+    toast.success(`✅ تم تسجيل مخصص نهاية الخدمة — ${total.toLocaleString()} ر.س — القيد ${result.entryNumber}`)
   }
 
   // ── الرسم البياني ──
@@ -244,6 +305,51 @@ export default function FinanceDashboard() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ══ مسيرات مرحّلة بانتظار الدفع من الخزينة ══ */}
+      {currentUser?.permissions?.includes('finance') && postedRuns.length > 0 && (
+        <div className="card" style={{ padding: '16px', border: '2px solid #bfdbfe', background: '#eff6ff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <DollarSign style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+              <h3 style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1a56db' }}>مسيرات بانتظار الدفع — {postedRuns.length}</h3>
+            </div>
+            <select value={selectedCashId || ''} onChange={e => setSelectedCashId(Number(e.target.value))} className="select" style={{ width: 'auto', minWidth: '180px' }}>
+              {cashAccounts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {postedRuns.map(run => (
+              <div key={run.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'white', borderRadius: '10px', border: '1px solid #bfdbfe', flexWrap: 'wrap', gap: '10px' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>💳 دفع مسير {ARABIC_MONTHS[run.month - 1]} {run.year}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '2px' }}>
+                    صافي {run.total_net.toLocaleString()} ر.س + تأمينات {(run.total_gosi_employee + run.total_gosi_employer).toLocaleString()} ر.س
+                  </div>
+                </div>
+                <button onClick={() => handlePayPayroll(run)} disabled={paying === run.id || !selectedCashId}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#0ea77b', color: 'white', fontWeight: 600, fontSize: '0.82rem' }}>
+                  {paying === run.id ? '...' : '💸 دفع من الخزينة'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ══ مخصص مكافأة نهاية الخدمة ══ */}
+      {currentUser?.permissions?.includes('finance') && (
+        <div className="card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', border: '1px solid #e9d5ff', background: '#faf5ff' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#7c3aed' }}>📊 مخصص مكافأة نهاية الخدمة (IAS 19)</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '2px' }}>احتساب وتسجيل المخصص الشهري لجميع الموظفين النشطين</div>
+          </div>
+          <button onClick={handleEOSProvision} disabled={eosRunning}
+            style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', background: '#7c3aed', color: 'white', fontWeight: 600, fontSize: '0.82rem' }}>
+            {eosRunning ? 'جاري التسجيل...' : 'تسجيل المخصص الشهري'}
+          </button>
         </div>
       )}
 

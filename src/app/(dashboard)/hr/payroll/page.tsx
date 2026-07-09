@@ -4,6 +4,12 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download, ShieldCheck, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { calcGOSI } from '../hr_utils'
+import {
+  fetchAttendanceByEmployee, calcAttendanceStats, calcDisciplinaryDeduct,
+  getWorkingDaysInMonth, dailyRate,
+} from '@/lib/payrollAttendance'
+import { journalSettlement, journalLeaveCompensation } from '@/lib/journal'
 
 type HREmployee = {
   id: number; employee_id: number; name?: string; basic_salary: number; housing_allow: number
@@ -51,7 +57,7 @@ type LeaveCompensation = {
 }
 
 const ARABIC_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
-const STATUS_COLOR: Record<string, string> = { 'مسودة': 'badge-gray', 'معتمد': 'badge-blue', 'مدفوع': 'badge-green' }
+const STATUS_COLOR: Record<string, string> = { 'مسودة': 'badge-gray', 'معتمد': 'badge-blue', 'مدفوع': 'badge-green', 'مرحّل للمالية': 'badge-blue' }
 
 function calcRow(r: PayrollRow): PayrollRow {
   const gross = r.basic_salary + r.housing_allow + r.transport_allow + r.other_allow + r.overtime_pay + r.bonuses
@@ -138,6 +144,7 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
   const [settlements, setSettlements] = useState<Settlement[]>([])
   const [terminations, setTerminations] = useState<Termination[]>([])
   const [loading, setLoading] = useState(false)
+  const [posting, setPosting] = useState<number | null>(null)
   const empNameMap = buildEmpNameMap(hrEmployees)
   useEffect(() => { loadData() }, [tenant?.id])
   async function loadData() {
@@ -148,24 +155,26 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
       supabase.from('hr_terminations').select('*').eq('tenant_id', tenant.id).order('termination_date', { ascending: false }),
     ])
     setSettlements((sRes.data || []).map((s: any) => ({ ...s, emp_name: empNameMap[s.employee_id] || '#' + s.employee_id })))
-    setTerminations((tRes.data || []).map((t: any) => ({ ...t, emp_name: empNameMap[t.employee_id] || '#' + t.employee_id })))
+    setTerminations((tRes.data || []).map((t: any) => ({ ...t, emp_name: empNameMap[t.hr_employee_id] || '#' + t.hr_employee_id })))
     setLoading(false)
   }
   async function createFromTermination(term: Termination) {
-    const emp = hrEmployees.find(e => e.employee_id === term.employee_id)
+    const emp = hrEmployees.find(e => e.id === term.hr_employee_id)
     if (!emp) { toast.error('لم يتم العثور على بيانات الموظف'); return }
     const lastDay = new Date(term.last_working_day)
     const workedDays = lastDay.getDate()
     const daily = dailySalary(emp)
     const monthSalaryAmt = Math.round(daily * workedDays)
-    const { data: leaveData } = await supabase.from('hr_leaves').select('days, leave_type').eq('employee_id', term.employee_id).eq('tenant_id', tenant.id).eq('status', 'معتمد')
-    const totalEntitled = Math.floor(term.years_of_service * 21)
+    const { data: leaveData } = await supabase.from('hr_leaves').select('days, leave_type').eq('employee_id', term.hr_employee_id).eq('tenant_id', tenant.id).eq('status', 'معتمد')
+    const yearsOfService = (new Date(term.last_working_day).getTime() - new Date(emp.hire_date || term.termination_date).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+    const annualEntitlement = yearsOfService >= 5 ? 30 : 21
+    const totalEntitled = Math.floor(yearsOfService * annualEntitlement)
     const takenDays = (leaveData || []).filter((l: any) => l.leave_type === 'سنوية').reduce((s: number, l: any) => s + (l.days || 0), 0)
     const leaveBalance = Math.max(0, totalEntitled - takenDays)
     const leaveCompensation = Math.round(daily * leaveBalance)
     const totalEnt = term.gratuity_amount + monthSalaryAmt + leaveCompensation
     const { error } = await supabase.from('hr_settlements').insert({
-      tenant_id: tenant.id, employee_id: term.employee_id, termination_id: term.id,
+      tenant_id: tenant.id, employee_id: term.hr_employee_id, termination_id: term.id,
       termination_date: term.termination_date, last_working_day: term.last_working_day,
       termination_type: term.termination_type, gratuity_amount: term.gratuity_amount,
       month_salary_days: workedDays, month_salary_amount: monthSalaryAmt,
@@ -177,6 +186,32 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
     })
     if (error) { toast.error('خطأ: ' + error.message); return }
     await loadData(); toast.success('✅ تم إنشاء التسوية تلقائياً')
+  }
+
+  async function handlePostSettlement(s: Settlement) {
+    if (!tenant) return
+    if (!confirm(`ترحيل تسوية ${s.emp_name} للدفاتر؟\nالصافي: ${s.net_settlement.toLocaleString()} ر.س`)) return
+    setPosting(s.id)
+    const result = await journalSettlement({
+      tenantId:       tenant.id,
+      date:           s.last_working_day || new Date().toISOString().split('T')[0],
+      settlementId:   s.id,
+      employeeName:   s.emp_name || '',
+      gratuityAmount: s.gratuity_amount,
+      salaryAmount:   s.month_salary_amount,
+      leaveAmount:    s.leave_compensation,
+      netAmount:      s.net_settlement,
+    })
+    if (!result) { setPosting(null); return }
+    await supabase.from('hr_settlements').update({ status: 'مرحّل للمالية' }).eq('id', s.id)
+    await loadData()
+    toast.success(`✅ تم ترحيل التسوية — القيد ${result.entryNumber}`)
+    setPosting(null)
+  }
+
+  async function handleApproveSettlement(s: Settlement) {
+    await supabase.from('hr_settlements').update({ status: 'معتمد' }).eq('id', s.id)
+    await loadData(); toast.success('✅ تم اعتماد التسوية')
   }
   const pendingTerminations = terminations.filter(t => !settlements.find(s => s.termination_id === t.id))
   return (
@@ -200,7 +235,7 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead><tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['الموظف','نوع الإنهاء','آخر يوم','مكافأة','راتب الشهر','تعويض إجازات','صافي التسوية','الحالة'].map(h => (
+                {['الموظف','نوع الإنهاء','آخر يوم','مكافأة','راتب الشهر','تعويض إجازات','صافي التسوية','الحالة',''].map(h => (
                   <th key={h} style={{ padding: '11px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
@@ -217,6 +252,16 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
                     <td style={{ padding: '12px', fontSize: '0.82rem' }}>{s.leave_compensation.toLocaleString()} ر.س</td>
                     <td style={{ padding: '12px', fontWeight: 700, color: 'var(--primary)' }}>{s.net_settlement.toLocaleString()} ر.س</td>
                     <td style={{ padding: '12px' }}><span className={'badge ' + (STATUS_COLOR[s.status] || 'badge-gray')}>{s.status}</span></td>
+                    <td style={{ padding: '12px' }}>
+                      {s.status === 'مسودة' && (
+                        <button onClick={() => handleApproveSettlement(s)} className="btn btn-primary btn-sm">اعتماد</button>
+                      )}
+                      {s.status === 'معتمد' && (
+                        <button onClick={() => handlePostSettlement(s)} disabled={posting === s.id} className="btn btn-primary btn-sm" style={{ background: '#1a56db' }}>
+                          {posting === s.id ? '...' : 'ترحيل للمالية'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -232,10 +277,11 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
   const [records, setRecords] = useState<LeaveCompensation[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [posting, setPosting] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ employee_id: '', compensation_date: new Date().toISOString().split('T')[0], leave_days: '', reason: 'صرف رصيد نقدي', notes: '', status: 'مسودة' })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
-  const selectedEmp = hrEmployees.find(e => e.employee_id === Number(form.employee_id))
+  const selectedEmp = hrEmployees.find(e => e.id === Number(form.employee_id))
   const daily = selectedEmp ? dailySalary(selectedEmp) : 0
   const totalAmt = Math.round(daily * Number(form.leave_days || 0))
   const empNameMap = buildEmpNameMap(hrEmployees)
@@ -262,6 +308,24 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
     setForm({ employee_id: '', compensation_date: new Date().toISOString().split('T')[0], leave_days: '', reason: 'صرف رصيد نقدي', notes: '', status: 'مسودة' })
     setShowForm(false); setSaving(false); toast.success('✅ تم حفظ تعويض الإجازة')
   }
+
+  async function handlePostCompensation(r: LeaveCompensation) {
+    if (!tenant) return
+    if (!confirm(`ترحيل تعويض ${r.emp_name} للدفاتر؟\nالمبلغ: ${r.total_amount.toLocaleString()} ر.س`)) return
+    setPosting(r.id)
+    const result = await journalLeaveCompensation({
+      tenantId:       tenant.id,
+      date:           r.compensation_date,
+      compensationId: r.id,
+      employeeName:   r.emp_name || '',
+      amount:         r.total_amount,
+    })
+    if (!result) { setPosting(null); return }
+    await supabase.from('hr_leave_compensations').update({ status: 'مرحّل للمالية' }).eq('id', r.id)
+    await loadData()
+    toast.success(`✅ تم ترحيل التعويض — القيد ${result.entryNumber}`)
+    setPosting(null)
+  }
   return (
     <div className="space-y-4">
       {!showForm && <div style={{ display: 'flex', justifyContent: 'flex-end' }}><button onClick={() => setShowForm(true)} className="btn btn-primary"><Palmtree style={{ width: '16px', height: '16px' }} /> إضافة تعويض إجازة</button></div>}
@@ -274,7 +338,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select">
                 <option value="">— اختر الموظف —</option>
                 {hrEmployees.filter(e => e.is_active !== false).map(e => (
-                  <option key={e.employee_id} value={e.employee_id}>{e.name || `موظف #${e.employee_id}`} — {e.job_title || e.department || ''}</option>
+                  <option key={e.id} value={e.id}>{e.name || `موظف #${e.id}`} — {e.job_title || e.department || ''}</option>
                 ))}
               </select>
             </div>
@@ -312,7 +376,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
               <thead><tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['الموظف','تاريخ الصرف','عدد الأيام','الراتب اليومي','إجمالي التعويض','السبب','الحالة'].map(h => (
+                {['الموظف','تاريخ الصرف','عدد الأيام','الراتب اليومي','إجمالي التعويض','السبب','الحالة',''].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr></thead>
@@ -328,6 +392,13 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
                     <td style={{ padding: '12px 14px', fontWeight: 700, color: '#0ea77b' }}>{r.total_amount.toLocaleString()} ر.س</td>
                     <td style={{ padding: '12px 14px', color: 'var(--text3)' }}>{r.reason}</td>
                     <td style={{ padding: '12px 14px' }}><span className={'badge ' + (STATUS_COLOR[r.status] || 'badge-gray')}>{r.status}</span></td>
+                    <td style={{ padding: '12px 14px' }}>
+                      {r.status === 'معتمد' && (
+                        <button onClick={() => handlePostCompensation(r)} disabled={posting === r.id} className="btn btn-primary btn-sm" style={{ background: '#1a56db' }}>
+                          {posting === r.id ? '...' : 'ترحيل'}
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -536,6 +607,10 @@ export default function PayrollPage() {
   }
 
   function enterCreateMode() {
+    enterCreateModeAsync()
+  }
+
+  async function enterCreateModeAsync() {
     const check = canCreatePayroll(filterMonth, filterYear)
     if (!check.allowed) { toast.error(check.reason || 'غير مسموح بإنشاء مسير لهذا الشهر'); return }
     const existing = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
@@ -544,30 +619,54 @@ export default function PayrollPage() {
         toast.error(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} مدفوع بالفعل ولا يمكن تعديله`)
         return
       }
-      // مسير موجود بحالة مسودة — نسأل المستخدم
       if (!confirm(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} موجود مسبقاً (${existing.length} موظف).\nهل تريد فتحه للتعديل؟`)) return
     }
+
+    const workingDays = getWorkingDaysInMonth(filterMonth, filterYear)
+    const attendanceMap = tenant ? await fetchAttendanceByEmployee(supabase, tenant.id, filterMonth, filterYear) : {}
+
     const built: PayrollRow[] = activeHREmployees.map(emp => {
-      // hr_payroll يخزن hr_employees.id في employee_id — نطابق بـ emp.id
       const ex = existing.find(p => p.employee_id === emp.id)
-      const gosiAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (emp.gosi_pct / 100)) : 0
-      // حصة الشركة الفعلية بالتأمينات — 11.75% سعودي / 2% وافد (منفصلة تماماً عن حصة الموظف المخصومة)
-      const employerRate = emp.nationality === 'سعودي' ? 11.75 : 2
-      const gosiEmployerAmt = emp.gosi_enrolled ? Math.round((emp.basic_salary + emp.housing_allow) * (employerRate / 100)) : 0
+      const gosi = emp.gosi_enrolled ? calcGOSI(emp.nationality, emp.basic_salary, emp.housing_allow, emp.transport_allow) : null
+      const gosiAmt = gosi?.employeeDeduction ?? 0
+      const gosiEmployerAmt = gosi?.employerContribution ?? 0
+
+      const attRecords = attendanceMap[emp.id] || []
+      const attStats = calcAttendanceStats(attRecords, {
+        basic: emp.basic_salary, housing: emp.housing_allow,
+        transport: emp.transport_allow, other: emp.other_allow,
+      }, workingDays)
+
+      const empDeducts = pendingDeducts.filter(d => d.employee_id === emp.id)
+      const daily = dailyRate(emp.basic_salary, emp.housing_allow, emp.transport_allow, emp.other_allow, workingDays)
+      const disciplinaryDeduct = calcDisciplinaryDeduct(empDeducts, daily)
+
+      const absenceDeduct = ex?.absence_deduct ?? (attStats.absence_deduct + disciplinaryDeduct)
+      const overtimePay   = ex?.overtime_pay ?? attStats.overtime_pay
+      const presentDays   = ex?.present_days ?? attStats.present_days
+
       return calcRow({
-        employee_id: emp.id,  // نستخدم hr_employees.id مباشرة
+        employee_id: emp.id,
         name: emp.name || `موظف #${emp.id}`,
         role: emp.job_title || emp.department || '—',
         included: true,
         basic_salary: ex?.basic_salary ?? emp.basic_salary, housing_allow: ex?.housing_allow ?? emp.housing_allow,
         transport_allow: ex?.transport_allow ?? emp.transport_allow, other_allow: ex?.other_allow ?? emp.other_allow,
-        overtime_pay: ex?.overtime_pay ?? 0, bonuses: ex?.bonuses ?? 0,
-        gosi_deduction: ex?.gosi_deduction ?? gosiAmt, gosi_employer_amount: ex?.gosi_employer_amount ?? gosiEmployerAmt, absence_deduct: ex?.absence_deduct ?? 0,
-        other_deduct: ex?.other_deduct ?? 0, present_days: ex?.present_days ?? 26,
-        notes: ex?.notes ?? '', gross: 0, net: 0, existingId: ex?.id,
-        _pendingDeductIds: pendingDeducts.filter(d => d.employee_id === emp.id).map(d => d.id),
+        overtime_pay: overtimePay, bonuses: ex?.bonuses ?? 0,
+        gosi_deduction: ex?.gosi_deduction ?? gosiAmt, gosi_employer_amount: ex?.gosi_employer_amount ?? gosiEmployerAmt,
+        absence_deduct: absenceDeduct,
+        other_deduct: ex?.other_deduct ?? 0,
+        present_days: presentDays,
+        notes: attStats.has_records
+          ? (ex?.notes || `حضور: ${attStats.present_days} | غياب: ${attStats.absent_days} | إضافي: ${attStats.overtime_hours}س`)
+          : (ex?.notes ?? ''),
+        gross: 0, net: 0, existingId: ex?.id,
+        _pendingDeductIds: empDeducts.map(d => d.id),
       })
     })
+
+    const withAttendance = Object.keys(attendanceMap).length
+    if (withAttendance > 0) toast.success(`📋 تم ربط الحضور تلقائياً — ${withAttendance} موظف لديهم سجلات`)
     setRows(built); setExpandedRow(null); setMode('create')
   }
 
@@ -586,16 +685,16 @@ export default function PayrollPage() {
     setSaving(true)
     for (const row of includedRows) {
       const payload = {
-        tenant_id: tenant.id, branch_id: activeBranch?.id || null,
+        tenant_id: tenant.id, branch_id: activeBranch?.id || 0,
         employee_id: row.employee_id, month: filterMonth, year: filterYear,
         basic_salary: row.basic_salary, housing_allow: row.housing_allow,
         transport_allow: row.transport_allow, other_allow: row.other_allow,
         overtime_pay: row.overtime_pay, bonuses: row.bonuses,
         gosi_deduction: row.gosi_deduction, gosi_employer_amount: row.gosi_employer_amount, absence_deduct: row.absence_deduct,
         other_deduct: row.other_deduct, present_days: row.present_days,
-        absent_days: 26 - row.present_days, overtime_hours: 0,
+        absent_days: workingDays - row.present_days, overtime_hours: 0,
         gross_salary: row.gross, net_salary: row.net,
-        notes: row.notes || null, status: 'مسودة', working_days: 26,
+        notes: row.notes || null, status: 'مسودة', working_days: getWorkingDaysInMonth(filterMonth, filterYear),
       }
       if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
       else await supabase.from('hr_payroll').insert(payload)
@@ -605,7 +704,7 @@ export default function PayrollPage() {
     const hrHeadRes = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('role', 'مدير الموارد البشرية').eq('is_active', true).limit(1).maybeSingle()
     const runNumber = `PR-${tenant.id.slice(0, 4)}-${filterYear}-${String(filterMonth).padStart(2, '0')}`
     const runPayload = {
-      tenant_id: tenant.id, branch_id: activeBranch?.id || null, run_number: runNumber,
+      tenant_id: tenant.id, branch_id: activeBranch?.id || 0, run_number: runNumber,
       month: filterMonth, year: filterYear, status: 'مسودة',
       employee_count: includedRows.length,
       total_basic: includedRows.reduce((s, r) => s + r.basic_salary, 0),
@@ -617,7 +716,18 @@ export default function PayrollPage() {
       created_by: currentUser?.id || null,
       hr_head_id: hrHeadRes.data?.id || null,
     }
-    await supabase.from('hr_payroll_runs').upsert(runPayload, { onConflict: 'tenant_id,month,year,branch_id' })
+    const { data: runRow } = await supabase.from('hr_payroll_runs')
+      .upsert(runPayload, { onConflict: 'tenant_id,month,year,branch_id' })
+      .select('id')
+      .single()
+
+    if (runRow?.id) {
+      await supabase.from('hr_payroll')
+        .update({ run_id: runRow.id })
+        .eq('tenant_id', tenant.id)
+        .eq('month', filterMonth)
+        .eq('year', filterYear)
+    }
 
     await load(); setMode('view'); setSaving(false)
     // تسجيل الإنذارات المطبقة كـ deduct_applied

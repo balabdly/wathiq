@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
+import { signOut } from '@/lib/supabase'
 import React, { useState } from 'react'
 
 const IC = {
@@ -450,7 +451,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <button onClick={() => { reset(); router.push('/login') }} style={{
+        <button onClick={async () => { await signOut(); reset(); router.push('/login') }} style={{
           width: '100%', background: 'transparent', color: C.textSecondary,
           border: '1px solid ' + C.border, borderRadius: '8px', padding: '8px 12px',
           cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,

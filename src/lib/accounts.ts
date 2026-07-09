@@ -1,9 +1,11 @@
 import { supabase } from "./supabase";
 
-export async function getChartOfAccounts() {
+export async function getChartOfAccounts(tenantId: string) {
   const { data, error } = await supabase
-    .from("chart_of_accounts")
+    .from("finance_accounts")
     .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
     .order("code", { ascending: true });
 
   if (error) throw error;

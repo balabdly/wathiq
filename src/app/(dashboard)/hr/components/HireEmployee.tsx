@@ -6,6 +6,7 @@ import { Save, User, Briefcase, DollarSign, Building2, CheckCircle2 } from 'luci
 import toast from 'react-hot-toast'
 import type { HREmployee, Department, JobTitle } from '../hr_types'
 import { calcGOSI } from '../hr_utils'
+import { hashPassword } from '@/lib/auth'
 
 const WORK_LOCATIONS = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الأحساء','القطيف','حائل','تبوك','الجوف','نجران','عسير','جازان','الباحة']
 const CONTRACT_TYPES = ['دوام كامل','دوام جزئي','مؤقت','موسمي']
@@ -115,10 +116,12 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const { data: existingEmp } = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('name', fullName).eq('is_active', true).maybeSingle()
       let newEmp = existingEmp
       if (!existingEmp) {
+        const tempUsername = `emp_${Date.now()}`
+        const tempPassword = await hashPassword(crypto.randomUUID())
         const { data: createdEmp } = await supabase.from('employees').insert({
           tenant_id: tenant.id, name: fullName,
           role: form.job_title || 'موظف',
-          username: `emp_${Date.now()}`, password: '1234',
+          username: tempUsername, password: tempPassword,
           permissions: [], is_active: true,
         }).select('id').single()
         newEmp = createdEmp

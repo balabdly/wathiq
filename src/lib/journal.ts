@@ -12,6 +12,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
+import { logAudit } from '@/lib/audit'
 
 // ════════════════════════════════════
 // Types
@@ -152,19 +153,22 @@ export async function createJournalEntry(
     (accountRows || []).map((r: { code: string; account_id: number }) => [r.code, r.account_id])
   )
 
-  // تحديد الأكواد غير الموجودة
+  // تحديد الأكواد غير الموجودة — رفض القيد بدل التجاهل الصامت
   const skippedCodes = uniqueCodes.filter(c => !codeMap.has(c))
   if (skippedCodes.length > 0) {
-    console.warn('[journal] أكواد حسابات غير موجودة:', skippedCodes)
+    console.error('[journal] أكواد حسابات غير موجودة:', skippedCodes)
+    const { default: toast } = await import('react-hot-toast')
+    toast.error(`⛔ لا يمكن إنشاء القيد — الحسابات التالية غير موجودة في شجرة الحسابات: ${skippedCodes.join('، ')}`, { duration: 7000 })
+    return null
   }
 
-  // فلترة الأسطر الصالحة فقط
-  const validLines = lines
-    .filter(l => codeMap.has(l.accountCode))
-    .filter(l => l.debit > 0 || l.credit > 0)
+  // فلترة الأسطر ذات المبالغ فقط
+  const validLines = lines.filter(l => l.debit > 0 || l.credit > 0)
 
   if (validLines.length < 2) {
-    console.warn('[journal] أسطر غير كافية للقيد — تخطي')
+    console.error('[journal] أسطر غير كافية للقيد')
+    const { default: toast } = await import('react-hot-toast')
+    toast.error('⛔ القيد يحتاج سطرين على الأقل بمبالغ موجبة', { duration: 5000 })
     return null
   }
 
@@ -235,6 +239,14 @@ export async function createJournalEntry(
     await supabase.from('finance_journal_entries').delete().eq('id', entry.id)
     return null
   }
+
+  await logAudit({
+    tenantId: tenantId,
+    tableName: 'finance_journal_entries',
+    recordId: entry.id,
+    action: 'INSERT',
+    newData: { entry_number: entryNumber, description, total_debit: totalDebit, total_credit: totalCredit },
+  })
 
   return {
     entryId:      entry.id,
@@ -443,6 +455,201 @@ export async function journalCreditNote(params: {
     referenceType: params.noteType,
     referenceId:   params.noteId,
     lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد مسير رواتب معتمد
+ * مدين: رواتب أساسية (5210) + بدلات (5230) + تأمينات شركة (5220)
+ * دائن: رواتب مستحقة (2120) + تأمينات مستحقة (2160)
+ */
+export async function journalPayroll(params: {
+  tenantId:          string
+  date:              string
+  runId:             number
+  monthLabel:        string
+  totalBasic:        number
+  totalAllowances:   number
+  totalGosiEmployee: number
+  totalGosiEmployer: number
+  totalDeductions:   number
+  totalNet:          number
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = []
+  const salaryDebit = params.totalBasic - params.totalDeductions
+  if (salaryDebit > 0) {
+    lines.push({ accountCode: '5210', debit: salaryDebit, credit: 0, description: `رواتب أساسية — ${params.monthLabel}` })
+  }
+  if (params.totalAllowances > 0) {
+    lines.push({ accountCode: '5230', debit: params.totalAllowances, credit: 0, description: `بدلات وعلاوات — ${params.monthLabel}` })
+  }
+  if (params.totalGosiEmployer > 0) {
+    lines.push({ accountCode: '5220', debit: params.totalGosiEmployer, credit: 0, description: 'حصة الشركة — التأمينات الاجتماعية' })
+  }
+  if (params.totalNet > 0) {
+    lines.push({ accountCode: '2120', debit: 0, credit: params.totalNet, description: `صافي رواتب مستحقة — ${params.monthLabel}` })
+  }
+  const gosiPayable = params.totalGosiEmployee + params.totalGosiEmployer
+  if (gosiPayable > 0) {
+    lines.push({ accountCode: '2160', debit: 0, credit: gosiPayable, description: 'تأمينات مستحقة (حصة الموظف + الشركة)' })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `مسير رواتب ${params.monthLabel}`,
+    referenceType: 'رواتب',
+    referenceId:   params.runId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد دفع الرواتب من الخزينة
+ * مدين: رواتب مستحقة (2120) + تأمينات مستحقة (2160)
+ * دائن: البنك / الصندوق
+ */
+export async function journalPayrollPayment(params: {
+  tenantId:        string
+  date:            string
+  runId:           number
+  monthLabel:      string
+  netAmount:       number
+  gosiAmount:      number
+  cashAccountCode: string
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = []
+  const total = params.netAmount + params.gosiAmount
+  if (params.netAmount > 0) {
+    lines.push({ accountCode: '2120', debit: params.netAmount, credit: 0, description: `سداد رواتب — ${params.monthLabel}` })
+  }
+  if (params.gosiAmount > 0) {
+    lines.push({ accountCode: '2160', debit: params.gosiAmount, credit: 0, description: `سداد تأمينات — ${params.monthLabel}` })
+  }
+  if (total > 0) {
+    lines.push({ accountCode: params.cashAccountCode, debit: 0, credit: total, description: `صرف رواتب وتأمينات — ${params.monthLabel}` })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `دفع رواتب ${params.monthLabel}`,
+    referenceType: 'رواتب',
+    referenceId:   params.runId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد تسوية نهاية خدمة
+ * مدين: مصروف مكافأة (5240) + مصروف رواتب (5210)
+ * دائن: البنك / مستحقات موظفين (2120)
+ */
+export async function journalSettlement(params: {
+  tenantId:       string
+  date:           string
+  settlementId:   number
+  employeeName:   string
+  gratuityAmount: number
+  salaryAmount:   number
+  leaveAmount:    number
+  netAmount:      number
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = []
+  if (params.gratuityAmount > 0) {
+    lines.push({ accountCode: '5240', debit: params.gratuityAmount, credit: 0, description: `مكافأة نهاية خدمة — ${params.employeeName}` })
+  }
+  const otherEnt = params.salaryAmount + params.leaveAmount
+  if (otherEnt > 0) {
+    lines.push({ accountCode: '5210', debit: otherEnt, credit: 0, description: `مستحقات نهاية خدمة — ${params.employeeName}` })
+  }
+  if (params.netAmount > 0) {
+    lines.push({ accountCode: '2120', debit: 0, credit: params.netAmount, description: `تسوية مستحقة — ${params.employeeName}` })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `تسوية نهاية خدمة — ${params.employeeName}`,
+    referenceType: 'تسوية نهاية خدمة',
+    referenceId:   params.settlementId,
+    lines,
+    source:        'آلي',
+  })
+}
+
+/**
+ * قيد تعويض إجازة نقداً
+ * مدين: مصروف رواتب (5210) | دائن: بنك أو مستحقات (2120)
+ */
+export async function journalLeaveCompensation(params: {
+  tenantId:        string
+  date:            string
+  compensationId:  number
+  employeeName:    string
+  amount:          number
+  cashAccountCode?: string
+}): Promise<JournalResult> {
+  const creditCode = params.cashAccountCode || '2120'
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `تعويض إجازة — ${params.employeeName}`,
+    referenceType: 'تعويض إجازة',
+    referenceId:   params.compensationId,
+    lines: [
+      { accountCode: '5210', debit: params.amount, credit: 0, description: `تعويض إجازة — ${params.employeeName}` },
+      { accountCode: creditCode, debit: 0, credit: params.amount, description: `صرف تعويض إجازة — ${params.employeeName}` },
+    ],
+    source: 'آلي',
+  })
+}
+
+/**
+ * قيد مخصص مكافأة نهاية الخدمة الشهري (IAS 19)
+ * مدين: مصروف مكافأة (5240) | دائن: مخصص نهاية خدمة (2420)
+ */
+export async function journalEOSProvision(params: {
+  tenantId:    string
+  date:        string
+  monthLabel:  string
+  totalAmount: number
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `مخصص مكافأة نهاية خدمة — ${params.monthLabel}`,
+    referenceType: 'مخصص نهاية خدمة',
+    lines: [
+      { accountCode: '5240', debit: params.totalAmount, credit: 0, description: `مصروف مخصص — ${params.monthLabel}` },
+      { accountCode: '2420', debit: 0, credit: params.totalAmount, description: `مخصص نهاية خدمة — ${params.monthLabel}` },
+    ],
+    source: 'آلي',
+  })
+}
+
+/**
+ * قيد إهلاك أصول — أسطر متعددة بأكواد حسابات
+ */
+export async function journalDepreciation(params: {
+  tenantId:    string
+  date:        string
+  monthLabel:  string
+  lines:       { expenseCode: string; accumCode: string; amount: number; description: string }[]
+}): Promise<JournalResult> {
+  const journalLines: JournalLine[] = []
+  for (const l of params.lines) {
+    if (l.amount <= 0) continue
+    journalLines.push({ accountCode: l.expenseCode, debit: l.amount, credit: 0, description: l.description })
+    journalLines.push({ accountCode: l.accumCode,   debit: 0, credit: l.amount, description: `مجمع — ${l.description}` })
+  }
+  const total = params.lines.reduce((s, l) => s + l.amount, 0)
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   `إهلاك أصول — ${params.monthLabel}`,
+    referenceType: 'إهلاك',
+    lines:         journalLines,
     source:        'آلي',
   })
 }

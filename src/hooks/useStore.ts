@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { createBrowserClient } from '@supabase/ssr'
 
 export type DisplayView = 'list' | 'cards' | 'kanban'
 export type DisplayPrefs = {
@@ -59,8 +60,7 @@ interface AppState {
   reset: () => void
 }
 
-import { createClient } from '@supabase/supabase-js'
-const _sb = createClient(
+const _sb = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
