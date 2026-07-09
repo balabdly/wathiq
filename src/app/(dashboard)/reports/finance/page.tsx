@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { DollarSign, Search, X, Download, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { ACC } from '@/lib/account-codes'
 
 // ═══════════════════════════════════════════════════
 // قواعد المحاسبة حسب IFRS
@@ -85,6 +86,7 @@ const REPORT_GROUPS = [
       { id: 'sales_detail',  title: 'تقرير المبيعات التفصيلي',       icon: '🧾', desc: 'الفواتير مفصلة بالعميل والمبلغ' },
       { id: 'sales_summary', title: 'ملخص المبيعات حسب العميل',      icon: '👤', desc: 'إجمالي مبيعات كل عميل' },
       { id: 'aging',         title: 'تقرير أعمار الديون',            icon: '⏳', desc: '0-30 / 31-60 / 61-90 / +90 يوم' },
+      { id: 'ar_reconcile',  title: 'مطابقة ذمم العملاء',           icon: '🔍', desc: 'مقارنة الفواتير المستحقة مع رصيد حساب 1210' },
       { id: 'statement',     title: 'كشف حساب عميل',                 icon: '📋', desc: 'الفواتير والمدفوعات والرصيد' },
     ]
   },
@@ -93,6 +95,7 @@ const REPORT_GROUPS = [
     reports: [
       { id: 'purchases_detail',  title: 'تقرير المشتريات التفصيلي', icon: '🛒', desc: 'أوامر الشراء مفصلة' },
       { id: 'purchases_summary', title: 'ملخص المشتريات حسب المورد', icon: '🏭', desc: 'إجمالي مشتريات كل مورد' },
+      { id: 'ap_reconcile',      title: 'مطابقة ذمم الموردين',       icon: '🔍', desc: 'مقارنة فواتير الموردين مع رصيد حساب 2110' },
     ]
   },
   {
@@ -594,6 +597,26 @@ export default function ReportsFinancePage() {
       aged.forEach(r => { buckets[r.bucket] = (buckets[r.bucket] || 0) + Number(r.total_amount || 0) })
       setSummary({ ...buckets, 'الإجمالي': aged.reduce((s, r) => s + Number(r.total_amount || 0), 0) })
 
+    } else if (selected === 'ar_reconcile') {
+      const [{ data: allInvoices }, glData] = await Promise.all([
+        supabase.from('finance_invoices').select('invoice_number, client_name, invoice_date, total_amount, status')
+          .eq('tenant_id', tenant.id),
+        fetchAccountBalances(tenant.id, fDateTo, undefined, ['أصول']),
+      ])
+      const openInvoices = (allInvoices || []).filter((r: any) => !['مدفوعة', 'ملغاة', 'مسودة'].includes(r.status))
+      const subledgerTotal = openInvoices.reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0)
+      const glAccount = glData.find(a => a.code === ACC.CUSTOMER_RECEIVABLE)
+      const glBalance = glAccount?.balance || 0
+      const difference = subledgerTotal - glBalance
+      setResults(openInvoices)
+      setSummary({
+        'ذمم العملاء (1210) — دفتر الأستاذ': glBalance,
+        'إجمالي الفواتير المستحقة': subledgerTotal,
+        'الفرق': difference,
+        'الحالة': Math.abs(difference) < 1 ? '✅ متطابق' : '⚠️ يوجد فرق',
+      })
+      setExtra({ reconcileType: 'ar', glBalance, subledgerTotal, difference })
+
     // ══════════════════════════════════════════
     // المشتريات
     // ══════════════════════════════════════════
@@ -622,6 +645,26 @@ export default function ReportsFinancePage() {
         grouped[k].vat += Number(r.vat_amount || 0); grouped[k].total += Number(r.total_amount || 0)
       })
       setResults(Object.values(grouped).sort((a, b) => b.total - a.total))
+      setSummary({ 'إجمالي المشتريات': Object.values(grouped).reduce((s: number, r: any) => s + r.total, 0) })
+
+    } else if (selected === 'ap_reconcile') {
+      const [{ data: openInvoices }, glData] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('invoice_number, vendor_name, invoice_date, total_amount, status')
+          .eq('tenant_id', tenant.id).in('status', ['معتمدة', 'مدفوعة جزئياً']),
+        fetchAccountBalances(tenant.id, fDateTo, undefined, ['خصوم']),
+      ])
+      const subledgerTotal = (openInvoices || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0)
+      const glAccount = glData.find(a => a.code === ACC.SUPPLIER_PAYABLE)
+      const glBalance = glAccount?.balance || 0
+      const difference = subledgerTotal - glBalance
+      setResults(openInvoices || [])
+      setSummary({
+        'ذمم الموردين (2110) — دفتر الأستاذ': glBalance,
+        'إجمالي فواتير الموردين المستحقة': subledgerTotal,
+        'الفرق': difference,
+        'الحالة': Math.abs(difference) < 1 ? '✅ متطابق' : '⚠️ يوجد فرق',
+      })
+      setExtra({ reconcileType: 'ap', glBalance, subledgerTotal, difference })
 
     // ══════════════════════════════════════════
     // الضريبة
@@ -1430,6 +1473,29 @@ export default function ReportsFinancePage() {
                       <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#0ea77b' }}>{fmt(results.reduce((s: number, r: any) => s + r.paid, 0))}</td>
                       <td style={{ padding: '9px 14px', fontFamily: 'monospace', color: '#c81e1e' }}>{fmt(results.reduce((s: number, r: any) => s + r.due, 0))}</td>
                     </tr>
+                  </tbody>
+                </table>
+              )}
+
+              
+              {/* ══ مطابقة الذمم ══ */}
+              {(selected === 'ar_reconcile' || selected === 'ap_reconcile') && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead><tr style={{ background: '#eff6ff' }}>
+                    {['الرقم', 'التاريخ', selected === 'ap_reconcile' ? 'المورد' : 'العميل', 'المبلغ', 'الحالة'].map(h => (
+                      <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #bfdbfe' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {results.map((r: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace' }}>{r.invoice_number}</td>
+                        <td style={{ padding: '9px 14px' }}>{r.invoice_date}</td>
+                        <td style={{ padding: '9px 14px', fontWeight: 600 }}>{selected === 'ap_reconcile' ? r.vendor_name : r.client_name}</td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(Number(r.total_amount || 0))}</td>
+                        <td style={{ padding: '9px 14px' }}>{r.status}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}

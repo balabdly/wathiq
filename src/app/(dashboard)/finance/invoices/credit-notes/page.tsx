@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Search, Eye, Printer, RotateCcw, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { createJournalEntry, nextDocNumber } from '@/lib/journal'
+import { createJournalEntry, nextDocNumber, reverseJournalByReference } from '@/lib/journal'
 import { ACC } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { useSales } from '../SalesContext'
@@ -333,24 +333,16 @@ function CreditNotesPage() {
   // ══ إلغاء إشعار معتمد بقيد عكسي — لا إلغاء صامت لمستند ضريبي صادر ══
   async function cancelCreditNote(cn: any) {
     if (!confirm(`إلغاء الإشعار المعتمد ${cn.note_number}؟\nسيُنشأ قيد عكسي يلغي أثره ويعيد ذمة العميل.`)) return
-    const { data: entry } = await supabase.from('finance_journal_entries')
-      .select('id, total_debit').eq('tenant_id', tenantId).eq('reference_type', cn.note_type).eq('reference_id', cn.id).maybeSingle()
-    if (entry) {
-      const { data: lines } = await supabase.from('finance_journal_lines').select('account_id, debit, credit, description').eq('entry_id', entry.id)
-      const jeNo = await nextDocNumber(tenantId!, 'JE', 'JE')
-      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
-      const { data: rev } = await supabase.from('finance_journal_entries').insert({
-        tenant_id: tenantId, entry_number: jeNo, entry_date: new Date().toISOString().split('T')[0],
-        description: `قيد عكسي — إلغاء إشعار ${cn.note_number} — ${cn.client_name}`,
-        reference_type: 'إلغاء إشعار دائن', reference_id: cn.id,
-        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit), status: 'معتمد', entry_source: 'آلي',
-      }).select('id').single()
-      if (rev) {
-        await supabase.from('finance_journal_lines').insert((lines || []).map((l: any) => ({ entry_id: rev.id, account_id: l.account_id, debit: Number(l.credit), credit: Number(l.debit), description: `عكس: ${l.description || ''}` })))
-      }
-    }
+    const result = await reverseJournalByReference({
+      tenantId: tenantId!,
+      date: new Date().toISOString().split('T')[0],
+      referenceType: cn.note_type,
+      referenceId: cn.id,
+      reverseReferenceType: 'إلغاء إشعار دائن',
+      description: `قيد عكسي — إلغاء إشعار ${cn.note_number} — ${cn.client_name}`,
+    })
     await supabase.from('finance_credit_notes').update({ status: 'ملغي' }).eq('id', cn.id)
-    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${result ? ' وسُجّل القيد العكسي' : ''}`)
     loadCreditNotes()
   }
 

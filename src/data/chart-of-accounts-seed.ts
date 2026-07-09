@@ -32,6 +32,7 @@ export const CHART_OF_ACCOUNTS_SEED: CoaSeedAccount[] = [
   { code: '1130', name: 'الشيكات تحت التحصيل', name_en: 'Cheques Under Collection', account_type: 'أصول', normal_balance: 'مدين', is_parent: false, level: 3, parent_code: '1100' },
   { code: '1140', name: 'التحويلات البنكية', name_en: 'Bank Transfers', account_type: 'أصول', normal_balance: 'مدين', is_parent: false, level: 3, parent_code: '1100' },
   { code: '1150', name: 'عهد الموظفين', name_en: 'Employee Custody', account_type: 'أصول', normal_balance: 'مدين', is_parent: true, level: 3, parent_code: '1100' },
+  { code: '1160', name: 'سلف الموظفين', name_en: 'Employee Loans', account_type: 'أصول', normal_balance: 'مدين', is_parent: true, level: 3, parent_code: '1100' },
   { code: '1200', name: 'الذمم المدينة', name_en: 'Accounts Receivable', account_type: 'أصول', normal_balance: 'مدين', is_parent: true, level: 2, parent_code: '1000' },
   { code: '1210', name: 'ذمم العملاء', name_en: 'Customer Receivables', account_type: 'أصول', normal_balance: 'مدين', is_parent: false, level: 3, parent_code: '1200' },
   { code: '1220', name: 'ذمم موظفين', name_en: 'Employee Receivables', account_type: 'أصول', normal_balance: 'مدين', is_parent: false, level: 3, parent_code: '1200' },

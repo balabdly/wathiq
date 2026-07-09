@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Package, TrendingDown, Wrench, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { journalAssetPurchase } from '@/lib/journal'
 
 // ════════════════════════════════════════
 // Types
@@ -26,16 +27,16 @@ type Asset = {
 
 type Account    = { id: number; code: string; name: string; is_parent?: boolean }
 type Project    = { id: number; name: string }
-type CashAccount = { id: number; name: string; account_type: string }
+type CashAccount = { id: number; name: string; account_type: string; account_id?: number }
 
 const CATEGORIES = ['سيارات ومركبات', 'معدات وآلات', 'أجهزة وحاسبات', 'أثاث ومفروشات', 'أصول أخرى']
 
 const CATEGORY_ACCOUNTS: Record<string, { asset: string; accum: string }> = {
-  'سيارات ومركبات': { asset: '1510', accum: '1511' },
-  'معدات وآلات':    { asset: '1520', accum: '1521' },
-  'أجهزة وحاسبات':  { asset: '1530', accum: '1531' },
-  'أثاث ومفروشات':  { asset: '1540', accum: '1541' },
-  'أصول أخرى':      { asset: '1550', accum: '1551' },
+  'سيارات ومركبات': { asset: '1540', accum: '1630' },
+  'معدات وآلات':    { asset: '1530', accum: '1620' },
+  'أجهزة وحاسبات':  { asset: '1530', accum: '1620' },
+  'أثاث ومفروشات':  { asset: '1550', accum: '1640' },
+  'أصول أخرى':      { asset: '1550', accum: '1640' },
 }
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
@@ -152,30 +153,19 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
         if (savedId && form.cash_account_id) {
           const assetAcc = accounts.find(a => a.id === Number(form.asset_account_id))
           const cashAcc  = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-          if (assetAcc?.code && cashAcc) {
-            const { data: cashFAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('code',
-              cashAcc.account_type === 'صندوق' ? '1111' : '1115'
-            ).maybeSingle()
-            const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-            const { data: entry } = await supabase.from('finance_journal_entries').insert({
-              tenant_id: tenantId,
-              entry_number: `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`,
-              entry_date: form.purchase_date,
-              description: `شراء أصل — ${form.name.trim()} (${assetNo})`,
-              reference_type: 'أصل', reference_id: savedId,
-              total_debit: totalCost, total_credit: totalCost,
-              status: 'معتمد', entry_source: 'آلي',
-            }).select('id').single()
-
-            if (entry) {
-              const debitAccId = Number(form.asset_account_id)
-              const creditAccId = cashFAcc?.id || (cashAccounts.find(a => a.id === Number(form.cash_account_id)) as any)?.account_id
-              if (debitAccId && creditAccId) {
-                await supabase.from('finance_journal_lines').insert([
-                  { entry_id: entry.id, account_id: debitAccId,  debit: totalCost, credit: 0,         description: `شراء: ${form.name.trim()}` },
-                  { entry_id: entry.id, account_id: creditAccId, debit: 0,         credit: totalCost, description: form.payment_method },
-                ])
-              }
+          if (assetAcc?.code && cashAcc?.account_id) {
+            const { data: cashFAcc } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
+            if (cashFAcc?.code) {
+              await journalAssetPurchase({
+                tenantId,
+                date: form.purchase_date,
+                description: `شراء أصل — ${form.name.trim()} (${assetNo})`,
+                referenceId: savedId,
+                amount: totalCost,
+                assetAccountCode: assetAcc.code,
+                cashAccountCode: cashFAcc.code,
+                paymentLabel: form.payment_method,
+              })
             }
           }
         }

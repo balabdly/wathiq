@@ -7,6 +7,7 @@ import { Plus, X, Save, Printer, Trash2, Pencil, Search, ShoppingCart, Eye, File
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { nextDocNumber } from '@/lib/journal'
+import { PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { PurchaseOrder, POItem, Vendor, Project, Warehouse } from '@/lib/purchases-types'
@@ -122,7 +123,7 @@ function DeliveryField({ value, warehouseId, assetType, projects, warehouses, on
       )}
       {value === 'أصل ثابت' && onAssetTypeChange && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-          {[{ val: 'معدات', icon: '🔧', account: '1220' }, { val: 'مركبات', icon: '🚗', account: '1210' }, { val: 'أثاث', icon: '🪑', account: '1230' }].map(t => (
+          {PURCHASE_ASSET_OPTIONS.map(t => (
             <button key={t.val} type="button" onClick={() => onAssetTypeChange(t.val)}
               style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
                 borderColor: assetType === t.val ? '#065f46' : 'var(--border)', background: assetType === t.val ? '#d1fae5' : 'white', color: assetType === t.val ? '#065f46' : 'var(--text3)' }}>

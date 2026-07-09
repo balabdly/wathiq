@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { X, ArrowLeftRight } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { nextDocNumber, journalInternalTransfer, confirmCashSpend } from '@/lib/journal'
 import { useTreasury } from '../TreasuryContext'
 import type { CashAccount } from '@/lib/treasury-types'
 
@@ -59,18 +59,14 @@ function TransferModal({ cashAccounts, tenantId, onClose, onSave }: {
         supabase.from('finance_accounts').select('code').eq('id', toAcc.account_id).single(),
       ])
       if (fromCode?.code && toCode?.code) {
-        const entryNumber = (await nextDocNumber(tenantId, 'JE', 'JE'))!
-        const { data: entry } = await supabase.from('finance_journal_entries').insert({
-          tenant_id: tenantId, entry_number: entryNumber, entry_date: form.transfer_date,
-          description: `تحويل داخلي ${transferNo} — ${form.description}`, reference_type: 'تحويل',
-          total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
-        }).select('id').single()
-        if (entry) {
-          await supabase.from('finance_journal_lines').insert([
-            { entry_id: entry.id, account_id: toAcc.account_id,   debit: amount, credit: 0,      description: `تحويل إلى ${toAcc.name}` },
-            { entry_id: entry.id, account_id: fromAcc.account_id, debit: 0,      credit: amount, description: `تحويل من ${fromAcc.name}` },
-          ])
-        }
+        await journalInternalTransfer({
+          tenantId,
+          date: form.transfer_date,
+          description: `تحويل داخلي ${transferNo} — ${form.description}`,
+          amount,
+          toAccountCode: toCode.code,
+          fromAccountCode: fromCode.code,
+        })
       }
     }
 

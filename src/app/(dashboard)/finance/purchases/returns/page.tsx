@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Trash2, Search, RotateCcw, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { createJournalEntry, nextDocNumber } from '@/lib/journal'
-import { ACC } from '@/lib/account-codes'
+import { createJournalEntry, nextDocNumber, reverseJournalByReference } from '@/lib/journal'
+import { ACC, getPurchaseDebitAccountCode } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { PurchaseReturn, VendorInvoice, POItem, Vendor } from '@/lib/purchases-types'
@@ -198,12 +198,12 @@ export default function PurchaseReturnsPage() {
         return
       }
     }
-    const creditCode = origInv?.delivery_to === 'مستودع' ? '1130' : origInv?.delivery_to === 'أصل ثابت' ? '1220' : '5120'
+    const creditCode = getPurchaseDebitAccountCode(origInv?.delivery_to || '')
     const result = await createJournalEntry({
       tenantId: tenantId!, date: ret.return_date, description: `مرتجع مشتريات ${ret.return_number} — ${ret.vendor_name}`,
       referenceType: 'مرتجع مشتريات', referenceId: ret.id, source: 'آلي',
       lines: [
-        { accountCode: '2110',     debit: Number(ret.total_amount), credit: 0, description: `تخفيض مستحق ${ret.vendor_name}` },
+        { accountCode: ACC.SUPPLIER_PAYABLE, debit: Number(ret.total_amount), credit: 0, description: `تخفيض مستحق ${ret.vendor_name}` },
         { accountCode: creditCode, debit: 0, credit: Number(ret.subtotal),     description: `مرتجع ${ret.return_number}` },
         ...(Number(ret.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(ret.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
       ],
@@ -231,21 +231,14 @@ export default function PurchaseReturnsPage() {
 
   async function cancelReturn(ret: any) {
     if (!confirm(`إلغاء المرتجع المعتمد ${ret.return_number}؟\nسيُنشأ قيد عكسي يلغي أثره ويعيد مستحق المورد.`)) return
-    const { data: entry } = await supabase.from('finance_journal_entries').select('id, total_debit').eq('tenant_id', tenantId).eq('reference_type', 'مرتجع مشتريات').eq('reference_id', ret.id).maybeSingle()
-    if (entry) {
-      const { data: lines } = await supabase.from('finance_journal_lines').select('account_id, debit, credit, description').eq('entry_id', entry.id)
-      const jeNo = await nextDocNumber(tenantId!, 'JE', 'JE')
-      if (!jeNo) { toast.error('فشل توليد رقم القيد'); return }
-      const { data: rev } = await supabase.from('finance_journal_entries').insert({
-        tenant_id: tenantId, entry_number: jeNo, entry_date: new Date().toISOString().split('T')[0],
-        description: `قيد عكسي — إلغاء مرتجع ${ret.return_number} — ${ret.vendor_name}`,
-        reference_type: 'إلغاء مرتجع', reference_id: ret.id,
-        total_debit: Number(entry.total_debit), total_credit: Number(entry.total_debit), status: 'معتمد', entry_source: 'آلي',
-      }).select('id').single()
-      if (rev) {
-        await supabase.from('finance_journal_lines').insert((lines || []).map((l: any) => ({ entry_id: rev.id, account_id: l.account_id, debit: Number(l.credit), credit: Number(l.debit), description: `عكس: ${l.description || ''}` })))
-      }
-    }
+    const result = await reverseJournalByReference({
+      tenantId: tenantId!,
+      date: new Date().toISOString().split('T')[0],
+      referenceType: 'مرتجع مشتريات',
+      referenceId: ret.id,
+      reverseReferenceType: 'إلغاء مرتجع',
+      description: `قيد عكسي — إلغاء مرتجع ${ret.return_number} — ${ret.vendor_name}`,
+    })
     await supabase.from('finance_purchase_returns').update({ status: 'ملغي' }).eq('id', ret.id)
     if (ret.original_invoice_id) {
       const [{ data: inv }, { data: stillApproved }] = await Promise.all([
@@ -257,7 +250,7 @@ export default function PurchaseReturnsPage() {
         await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
       }
     }
-    toast.success(`✅ أُلغي المرتجع ${ret.return_number}${entry ? ' وسُجّل القيد العكسي' : ''}`)
+    toast.success(`✅ أُلغي المرتجع ${ret.return_number}${result ? ' وسُجّل القيد العكسي' : ''}`)
     loadReturns(); reloadKpis()
   }
 

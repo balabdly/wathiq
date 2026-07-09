@@ -4,6 +4,8 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Wrench, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { journalAssetMaintenance } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 
 type Asset       = { id: number; asset_no: string; name: string; category: string }
 type Maintenance = {
@@ -70,32 +72,21 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
       if (form.cash_account_id) {
         const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
         if (cashAcc?.account_id) {
-          const { data: cashCode } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
-          const expAcc = accounts.find(a => a.id === Number(form.expense_account_id))
-          if (expAcc?.code && cashCode?.code) {
-            const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+          const [{ data: cashCode }, { data: expAccRow }] = await Promise.all([
+            supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single(),
+            supabase.from('finance_accounts').select('code').eq('id', Number(form.expense_account_id)).single(),
+          ])
+          const expenseCode = expAccRow?.code || ACC.MAINTENANCE_EXPENSE
+          if (cashCode?.code) {
             const asset = assets.find(a => a.id === Number(form.asset_id))
-            const { data: entry } = await supabase.from('finance_journal_entries').insert({
-              tenant_id: tenantId,
-              entry_number: `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`,
-              entry_date: form.maintenance_date,
+            await journalAssetMaintenance({
+              tenantId,
+              date: form.maintenance_date,
               description: `صيانة — ${asset?.name} — ${form.description}`,
-              reference_type: 'صيانة', total_debit: Number(form.cost), total_credit: Number(form.cost),
-              status: 'معتمد', entry_source: 'آلي',
-            }).select('id').single()
-
-            if (entry) {
-              const [{ data: expAccRow }, { data: cashAccRow }] = await Promise.all([
-                supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', expAcc.code).single(),
-                supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', cashCode.code).single(),
-              ])
-              if (expAccRow && cashAccRow) {
-                await supabase.from('finance_journal_lines').insert([
-                  { entry_id: entry.id, account_id: expAccRow.id,  debit: Number(form.cost), credit: 0,                description: `صيانة: ${asset?.name}` },
-                  { entry_id: entry.id, account_id: cashAccRow.id, debit: 0,                 credit: Number(form.cost), description: form.description },
-                ])
-              }
-            }
+              amount: Number(form.cost),
+              expenseAccountCode: expenseCode,
+              cashAccountCode: cashCode.code,
+            })
           }
         }
       }

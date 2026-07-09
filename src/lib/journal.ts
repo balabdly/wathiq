@@ -731,3 +731,219 @@ export function getExpenseAccountCode(expenseType: string, category: string): st
   }
   return '5800'
 }
+
+// ════════════════════════════════════
+// عكس القيود + قيود متخصصة
+// ════════════════════════════════════
+
+export async function getAccountCodeById(accountId: number): Promise<string | null> {
+  const { data } = await supabase.from('finance_accounts').select('code').eq('id', accountId).single()
+  return data?.code ?? null
+}
+
+/** عكس قيد موجود — مدين↔دائن */
+export async function reverseJournalEntry(params: {
+  tenantId: string
+  date: string
+  originalEntryId: number
+  description: string
+  referenceType: string
+  referenceId?: number
+}): Promise<JournalResult> {
+  const { data: lines, error } = await supabase
+    .from('finance_journal_lines')
+    .select('debit, credit, description, account:finance_accounts(code)')
+    .eq('entry_id', params.originalEntryId)
+
+  if (error || !lines?.length) {
+    const { default: toast } = await import('react-hot-toast')
+    toast.error('تعذر العثور على قيد للعكس')
+    return null
+  }
+
+  const reversed: JournalLine[] = []
+  for (const raw of lines) {
+    const l = raw as { debit: number; credit: number; description?: string; account?: { code: string } | { code: string }[] }
+    const acc = Array.isArray(l.account) ? l.account[0] : l.account
+    const code = acc?.code
+    if (!code) continue
+    reversed.push({
+      accountCode: code,
+      debit:       Number(l.credit || 0),
+      credit:      Number(l.debit || 0),
+      description: `عكس: ${l.description || ''}`,
+    })
+  }
+
+  if (reversed.length < 2) return null
+
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: params.referenceType,
+    referenceId:   params.referenceId,
+    lines:         reversed,
+    source:        'آلي',
+  })
+}
+
+/** عكس قيد بالمرجع (reference_type + reference_id) */
+export async function reverseJournalByReference(params: {
+  tenantId: string
+  date: string
+  referenceType: string
+  referenceId: number
+  reverseReferenceType: string
+  description: string
+}): Promise<JournalResult | null> {
+  const { data: entry } = await supabase
+    .from('finance_journal_entries')
+    .select('id')
+    .eq('tenant_id', params.tenantId)
+    .eq('reference_type', params.referenceType)
+    .eq('reference_id', params.referenceId)
+    .maybeSingle()
+
+  if (!entry) return null
+
+  return reverseJournalEntry({
+    tenantId:        params.tenantId,
+    date:            params.date,
+    originalEntryId: entry.id,
+    description:     params.description,
+    referenceType:   params.reverseReferenceType,
+    referenceId:     params.referenceId,
+  })
+}
+
+/** تحويل داخلي بين حسابين نقديين */
+export async function journalInternalTransfer(params: {
+  tenantId: string
+  date: string
+  description: string
+  amount: number
+  toAccountCode: string
+  fromAccountCode: string
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'تحويل',
+    lines: [
+      { accountCode: params.toAccountCode,   debit: params.amount, credit: 0,              description: params.description },
+      { accountCode: params.fromAccountCode, debit: 0,             credit: params.amount, description: params.description },
+    ],
+    source: 'آلي',
+  })
+}
+
+/** صرف عهدة / سلفة: مدين حساب الموظف / دائن نقدية */
+export async function journalCustodyIssue(params: {
+  tenantId: string
+  date: string
+  description: string
+  referenceType: string
+  amount: number
+  custodyAccountCode: string
+  cashAccountCode: string
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: params.referenceType,
+    lines: [
+      { accountCode: params.custodyAccountCode, debit: params.amount, credit: 0,              description: params.description },
+      { accountCode: params.cashAccountCode,    debit: 0,             credit: params.amount, description: params.description },
+    ],
+    source: 'آلي',
+  })
+}
+
+/** شراء أصل ثابت */
+export async function journalAssetPurchase(params: {
+  tenantId: string
+  date: string
+  description: string
+  referenceId: number
+  amount: number
+  assetAccountCode: string
+  cashAccountCode: string
+  paymentLabel?: string
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'أصل',
+    referenceId:   params.referenceId,
+    lines: [
+      { accountCode: params.assetAccountCode, debit: params.amount, credit: 0,              description: params.description },
+      { accountCode: params.cashAccountCode,  debit: 0,             credit: params.amount, description: params.paymentLabel || params.description },
+    ],
+    source: 'آلي',
+  })
+}
+
+/** استبعاد أصل ثابت */
+export async function journalAssetDisposal(params: {
+  tenantId: string
+  date: string
+  description: string
+  assetAccountCode: string
+  accumAccountCode: string
+  totalCost: number
+  accumDep: number
+  disposalValue: number
+  isSale: boolean
+  gainLoss: number
+  cashAccountCode?: string
+}): Promise<JournalResult> {
+  const lines: JournalLine[] = []
+  if (params.accumDep > 0) {
+    lines.push({ accountCode: params.accumAccountCode, debit: params.accumDep, credit: 0, description: 'استنزال مجمع الإهلاك' })
+  }
+  if (params.isSale && params.cashAccountCode && params.disposalValue > 0) {
+    lines.push({ accountCode: params.cashAccountCode, debit: params.disposalValue, credit: 0, description: 'عائد البيع' })
+  }
+  if (params.gainLoss < 0) {
+    lines.push({ accountCode: ACC.LOSS_ON_ASSET, debit: Math.abs(params.gainLoss), credit: 0, description: 'خسارة بيع أصل' })
+  }
+  lines.push({ accountCode: params.assetAccountCode, debit: 0, credit: params.totalCost, description: params.description })
+  if (params.gainLoss > 0) {
+    lines.push({ accountCode: ACC.GAIN_ON_ASSET, debit: 0, credit: params.gainLoss, description: 'ربح بيع أصل' })
+  }
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'استبعاد',
+    lines,
+    source:        'آلي',
+  })
+}
+
+/** صيانة أصل: مدين مصروف / دائن نقدية */
+export async function journalAssetMaintenance(params: {
+  tenantId: string
+  date: string
+  description: string
+  amount: number
+  expenseAccountCode: string
+  cashAccountCode: string
+}): Promise<JournalResult> {
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'صيانة',
+    lines: [
+      { accountCode: params.expenseAccountCode, debit: params.amount, credit: 0,              description: params.description },
+      { accountCode: params.cashAccountCode,    debit: 0,             credit: params.amount, description: params.description },
+    ],
+    source: 'آلي',
+  })
+}
+

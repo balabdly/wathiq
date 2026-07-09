@@ -7,7 +7,7 @@ import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Eye } from 'l
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber, confirmCashSpend } from '@/lib/journal'
-import { ACC } from '@/lib/account-codes'
+import { ACC, getPurchaseDebitAccountCode, PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -120,7 +120,7 @@ function DeliveryField({ value, warehouseId, assetType, projects, warehouses, on
       )}
       {value === 'أصل ثابت' && onAssetTypeChange && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-          {[{ val: 'معدات', icon: '🔧', account: '1220' }, { val: 'مركبات', icon: '🚗', account: '1210' }, { val: 'أثاث', icon: '🪑', account: '1230' }].map(t => (
+          {PURCHASE_ASSET_OPTIONS.map(t => (
             <button key={t.val} type="button" onClick={() => onAssetTypeChange(t.val)}
               style={{ flex: 1, padding: '8px', borderRadius: '8px', border: '2px solid', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center',
                 borderColor: assetType === t.val ? '#065f46' : 'var(--border)', background: assetType === t.val ? '#d1fae5' : 'white', color: assetType === t.val ? '#065f46' : 'var(--text3)' }}>
@@ -211,12 +211,12 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     let invId = invoice?.id
     if (invoice) {
       if (wasApproved && payload.status === 'معتمدة') {
-        const oldDebitCode = invoice.delivery_to === 'مستودع' ? '1130' : invoice.delivery_to === 'أصل ثابت' ? '1220' : '5120'
+        const oldDebitCode = getPurchaseDebitAccountCode(invoice.delivery_to || '')
         await createJournalEntry({ tenantId, date: payload.invoice_date, description: `قيد تصحيحي — تعديل فاتورة مورد ${invoice.invoice_number}`, referenceType: 'تصحيح فاتورة مورد', referenceId: invoice.id, source: 'آلي',
           lines: [
             { accountCode: oldDebitCode, debit: 0, credit: Number(invoice.subtotal), description: `عكس: فاتورة ${invoice.invoice_number}` },
             ...(Number(invoice.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(invoice.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
-            { accountCode: '2110', debit: Number(invoice.total_amount), credit: 0, description: `عكس مستحق المورد ${invoice.vendor_name}` },
+            { accountCode: ACC.SUPPLIER_PAYABLE, debit: Number(invoice.total_amount), credit: 0, description: `عكس مستحق المورد ${invoice.vendor_name}` },
           ]
         })
       }
@@ -233,12 +233,12 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     }
     if (invId) await saveAttachments(tenantId, 'فاتورة مورد', invId, attachments)
     if (payload.status === 'معتمدة' && invId) {
-      const debitAccountCode = payload.delivery_to === 'مستودع' ? '1130' : payload.delivery_to === 'أصل ثابت' ? (form.asset_type === 'مركبات' ? '1210' : form.asset_type === 'أثاث' ? '1230' : '1220') : '5120'
+      const debitAccountCode = getPurchaseDebitAccountCode(payload.delivery_to, form.asset_type)
       await createJournalEntry({ tenantId, date: payload.invoice_date, description: `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: invId, source: 'آلي',
         lines: [
           { accountCode: debitAccountCode, debit: payload.subtotal, credit: 0, description: `فاتورة ${payload.invoice_number}` },
           ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
-          { accountCode: '2110', debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
+          { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
         ]
       })
     }
@@ -401,7 +401,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
     await createJournalEntry({ tenantId, date: form.payment_date, description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`, referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
       lines: [
-        { accountCode: '2110',         debit: Number(form.amount), credit: 0,                   description: `تسوية مستحق ${invoice.vendor_name}` },
+        { accountCode: ACC.SUPPLIER_PAYABLE,         debit: Number(form.amount), credit: 0,                   description: `تسوية مستحق ${invoice.vendor_name}` },
         { accountCode: getCreditCode(), debit: 0,                   credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
       ]
     })
@@ -517,13 +517,13 @@ function VendorInvoicesPage() {
   }
 
   async function approveInvoice(inv: VendorInvoice) {
-    const debitCode = inv.delivery_to === 'مستودع' ? '1130' : inv.delivery_to === 'أصل ثابت' ? '1220' : '5120'
+    const debitCode = getPurchaseDebitAccountCode(inv.delivery_to || '')
     await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
     await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
       lines: [
         { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
         ...(Number(inv.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
-        { accountCode: '2110', debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
+        { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
       ]
     })
     toast.success('تم الاعتماد والقيد المحاسبي')

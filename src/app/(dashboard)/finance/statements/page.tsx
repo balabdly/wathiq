@@ -15,7 +15,7 @@ type Account = {
 
 type Period = { from: string; to: string }
 
-const ACCOUNT_TYPE_ORDER = ['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'مصروفات']
+const ACCOUNT_TYPE_ORDER = ['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات']
 
 // ════════════════════════════════════
 // مكوّن مشترك: صف الحساب
@@ -178,13 +178,12 @@ function TrialBalance({ accounts, period }: { accounts: Account[]; period: Perio
 // قائمة الدخل
 // ════════════════════════════════════
 function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Period }) {
-  const revenues   = accounts.filter(a => a.account_type === 'إيرادات'  && !a.is_parent)
-  const expenses   = accounts.filter(a => a.account_type === 'مصروفات'  && !a.is_parent)
+  const revenues     = accounts.filter(a => a.account_type === 'إيرادات'  && !a.is_parent)
+  const costAccounts = accounts.filter(a => a.account_type === 'تكلفة'   && !a.is_parent)
+  const expenses     = accounts.filter(a => a.account_type === 'مصروفات'  && !a.is_parent)
 
-  // تصنيف المصروفات
-  const costAccounts  = expenses.filter(a => a.code.startsWith('51')) // تكاليف مباشرة
-  const opexAccounts  = expenses.filter(a => a.code.startsWith('52') || a.code.startsWith('53') || a.code.startsWith('54') || a.code.startsWith('55')) // تشغيلية
-  const otherExpenses = expenses.filter(a => a.code.startsWith('58')) // أخرى
+  const opexAccounts  = expenses.filter(a => a.code.startsWith('52') || a.code.startsWith('53') || a.code.startsWith('54') || a.code.startsWith('55'))
+  const otherExpenses = expenses.filter(a => a.code.startsWith('58'))
 
   const totalRevenue  = revenues.reduce((s, a)  => s + Math.abs(a.balance), 0)
   const totalCost     = costAccounts.reduce((s, a) => s + a.balance, 0)

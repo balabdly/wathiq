@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, LogOut, TrendingUp, TrendingDown } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { journalAssetDisposal } from '@/lib/journal'
 
 type Asset = {
   id: number; asset_no: string; name: string; category: string
@@ -79,52 +80,34 @@ function DisposalModal({ assets, accounts, cashAccounts, tenantId, onClose, onSa
         const totalCost  = Number(asset.total_cost)
         const accumDep   = Number(asset.accumulated_depreciation)
 
-        // جلب أكواد الحسابات
         const [{ data: assetAcc }, { data: accumAcc }] = await Promise.all([
-          supabase.from('finance_accounts').select('id').eq('id', asset.asset_account_id).single(),
-          supabase.from('finance_accounts').select('id').eq('id', asset.accum_account_id).single(),
+          supabase.from('finance_accounts').select('code').eq('id', asset.asset_account_id).single(),
+          supabase.from('finance_accounts').select('code').eq('id', asset.accum_account_id).single(),
         ])
 
-        // حساب الربح/الخسارة
-        const gainAcc  = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', '4200').single()
-        const lossAcc  = await supabase.from('finance_accounts').select('id').eq('tenant_id', tenantId).eq('code', '5710').single()
-
-        // حساب البنك/الصندوق
-        let cashAccId: number | null = null
+        let cashAccountCode: string | undefined
         if (form.cash_account_id) {
           const cashFA = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-          if (cashFA?.account_id) cashAccId = cashFA.account_id
+          if (cashFA?.account_id) {
+            const { data: cashRow } = await supabase.from('finance_accounts').select('code').eq('id', cashFA.account_id).single()
+            cashAccountCode = cashRow?.code
+          }
         }
 
-        const { count: jc } = await supabase.from('finance_journal_entries').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-        const totalDebit  = totalCost + (gainLossAmt < 0 ? Math.abs(gainLossAmt) : 0) + (isSale ? disposalVal : 0)
-        const totalCredit = accumDep + totalCost + (gainLossAmt > 0 ? gainLossAmt : 0)
-
-        const { data: entry } = await supabase.from('finance_journal_entries').insert({
-          tenant_id: tenantId,
-          entry_number: `JE-${new Date().getFullYear()}-${String((jc||0)+1).padStart(4,'0')}`,
-          entry_date: form.disposal_date,
-          description: `استبعاد أصل — ${form.disposal_type} — ${asset.name}`,
-          reference_type: 'استبعاد',
-          total_debit: Math.max(totalDebit, totalCredit),
-          total_credit: Math.max(totalDebit, totalCredit),
-          status: 'معتمد', entry_source: 'آلي',
-        }).select('id').single()
-
-        if (entry) {
-          const lines: any[] = []
-          // مدين: مجمع الإهلاك
-          if (accumAcc) lines.push({ entry_id: entry.id, account_id: accumAcc.id, debit: accumDep, credit: 0, description: 'استنزال مجمع الإهلاك' })
-          // مدين: البنك (إذا بيع)
-          if (isSale && cashAccId && disposalVal > 0) lines.push({ entry_id: entry.id, account_id: cashAccId, debit: disposalVal, credit: 0, description: `عائد البيع` })
-          // مدين: خسارة بيع الأصول (إذا خسارة)
-          if (gainLossAmt < 0 && lossAcc.data) lines.push({ entry_id: entry.id, account_id: lossAcc.data.id, debit: Math.abs(gainLossAmt), credit: 0, description: 'خسارة بيع أصل' })
-          // دائن: الأصل بتكلفته الأصلية
-          if (assetAcc) lines.push({ entry_id: entry.id, account_id: assetAcc.id, debit: 0, credit: totalCost, description: `استبعاد: ${asset.name}` })
-          // دائن: ربح بيع الأصول (إذا ربح)
-          if (gainLossAmt > 0 && gainAcc.data) lines.push({ entry_id: entry.id, account_id: gainAcc.data.id, debit: 0, credit: gainLossAmt, description: 'ربح بيع أصل' })
-
-          if (lines.length > 0) await supabase.from('finance_journal_lines').insert(lines)
+        if (assetAcc?.code && accumAcc?.code) {
+          await journalAssetDisposal({
+            tenantId,
+            date: form.disposal_date,
+            description: `استبعاد أصل — ${form.disposal_type} — ${asset.name}`,
+            assetAccountCode: assetAcc.code,
+            accumAccountCode: accumAcc.code,
+            totalCost,
+            accumDep,
+            disposalValue: disposalVal,
+            isSale,
+            gainLoss: gainLossAmt,
+            cashAccountCode,
+          })
         }
       }
 

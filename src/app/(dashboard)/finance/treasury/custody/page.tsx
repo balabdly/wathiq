@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Users, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { nextDocNumber, confirmCashSpend, journalCustodyIssue } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { suggestChildAccountCode } from '@/lib/suggest-account-code'
 import { useTreasury } from '../TreasuryContext'
 import type { Custody, Employee, Project, CashAccount } from '@/lib/treasury-types'
@@ -74,7 +75,7 @@ function CustodyModal({ employees, projects, cashAccounts, tenantId, onClose, on
       const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
       if (cashAcc?.account_id) {
         // البحث عن الحساب الأب 1150
-        const { data: parentAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('code', '1150').single()
+        const { data: parentAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('code', ACC.CUSTODY_PARENT).single()
         if (parentAcc) {
           // البحث عن الحساب الفرعي للموظف أو إنشاؤه
           const empAccName = `عهدة — ${form.employee_name}`
@@ -93,18 +94,17 @@ function CustodyModal({ employees, projects, cashAccounts, tenantId, onClose, on
             await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id)
           }
           if (empAcc) {
-            const jeNo = (await nextDocNumber(tenantId, 'JE', 'JE'))!
-            const { data: entry } = await supabase.from('finance_journal_entries').insert({
-              tenant_id: tenantId, entry_number: jeNo,
-              entry_date: form.custody_date,
-              description: `عهدة — ${form.employee_name} — ${form.purpose}`,
-              reference_type: 'عهدة', total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
-            }).select('id').single()
-            if (entry) {
-              await supabase.from('finance_journal_lines').insert([
-                { entry_id: entry.id, account_id: empAcc.id,           debit: amount, credit: 0,      description: `عهدة: ${form.employee_name}` },
-                { entry_id: entry.id, account_id: cashAcc.account_id,  debit: 0,      credit: amount, description: form.purpose },
-              ])
+            const { data: cashCode } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
+            if (cashCode?.code) {
+              await journalCustodyIssue({
+                tenantId,
+                date: form.custody_date,
+                description: `عهدة — ${form.employee_name} — ${form.purpose}`,
+                referenceType: 'عهدة',
+                amount,
+                custodyAccountCode: empAcc.code,
+                cashAccountCode: cashCode.code,
+              })
             }
           }
         }
@@ -254,7 +254,7 @@ ${form.notes}` : `طريقة السداد: ${form.repay_method} | عدد الأ�
       // القيد المحاسبي: مدين حساب سلفة الموظف الفرعي / دائن الصندوق
       const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
       if (cashAcc?.account_id) {
-        const { data: parentAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('code', '1160').single()
+        const { data: parentAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('code', ACC.EMPLOYEE_LOAN_PARENT).single()
         if (parentAcc) {
           const empAccName = `سلفة — ${form.employee_name}`
           let { data: empAcc } = await supabase.from('finance_accounts').select('id,code').eq('tenant_id', tenantId).eq('parent_id', parentAcc.id).eq('name', empAccName).maybeSingle()
@@ -271,18 +271,17 @@ ${form.notes}` : `طريقة السداد: ${form.repay_method} | عدد الأ�
             await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', parentAcc.id)
           }
           if (empAcc) {
-            const jeNo = (await nextDocNumber(tenantId, 'JE', 'JE'))!
-            const { data: entry } = await supabase.from('finance_journal_entries').insert({
-              tenant_id: tenantId, entry_number: jeNo,
-              entry_date: form.loan_date,
-              description: `سلفة راتب — ${form.employee_name}`,
-              reference_type: 'سلفة', total_debit: amount, total_credit: amount, status: 'معتمد', entry_source: 'آلي',
-            }).select('id').single()
-            if (entry) {
-              await supabase.from('finance_journal_lines').insert([
-                { entry_id: entry.id, account_id: empAcc.id,           debit: amount, credit: 0,      description: `سلفة: ${form.employee_name}` },
-                { entry_id: entry.id, account_id: cashAcc.account_id,  debit: 0,      credit: amount, description: 'صرف سلفة راتب' },
-              ])
+            const { data: cashCode } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
+            if (cashCode?.code) {
+              await journalCustodyIssue({
+                tenantId,
+                date: form.loan_date,
+                description: `سلفة راتب — ${form.employee_name}`,
+                referenceType: 'سلفة',
+                amount,
+                custodyAccountCode: empAcc.code,
+                cashAccountCode: cashCode.code,
+              })
             }
           }
         }
