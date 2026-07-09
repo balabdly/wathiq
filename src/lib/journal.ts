@@ -352,7 +352,7 @@ export async function journalVendorInvoice(params: {
   subtotal:         number
   vatAmount:        number
   total:            number
-  debitAccountCode: string   // 1130 مخزون / 5120 تكلفة / 1220 أصول
+  debitAccountCode: string   // 1310 مخزون / 5120 تكلفة / 15xx أصول
 }): Promise<JournalResult> {
   const lines: JournalLine[] = [
     { accountCode: params.debitAccountCode, debit: params.subtotal,   credit: 0,            description: `فاتورة ${params.invoiceNumber}` },

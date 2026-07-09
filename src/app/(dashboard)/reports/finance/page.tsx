@@ -14,9 +14,46 @@ const DEBIT_NORMAL  = ['أصول', 'مصروفات']   // رصيد = debit - cre
 const CREDIT_NORMAL = ['خصوم', 'حقوق ملكية', 'إيرادات'] // رصيد = credit - debit
 
 function calcBalance(accountType: string, debit: number, credit: number): number {
-  if (DEBIT_NORMAL.includes(accountType))  return debit - credit
+  if (accountType === '\u062A\u0643\u0644\u0641\u0629' || DEBIT_NORMAL.includes(accountType))  return debit - credit
   if (CREDIT_NORMAL.includes(accountType)) return credit - debit
   return debit - credit
+}
+
+const INCOME_ACCOUNT_TYPES = ['\u0625\u064A\u0631\u0627\u062F\u0627\u062A', '\u062A\u0643\u0644\u0641\u0629', '\u0645\u0635\u0631\u0648\u0641\u0627\u062A']
+
+function calcNetIncome(data: { account_type: string; balance: number }[]) {
+  const rev  = data.filter(a => a.account_type === '\u0625\u064A\u0631\u0627\u062F\u0627\u062A').reduce((s, a) => s + a.balance, 0)
+  const cost = data.filter(a => a.account_type === '\u062A\u0643\u0644\u0641\u0629').reduce((s, a) => s + a.balance, 0)
+  const exp  = data.filter(a => a.account_type === '\u0645\u0635\u0631\u0648\u0641\u0627\u062A').reduce((s, a) => s + a.balance, 0)
+  return rev - cost - exp
+}
+
+async function fetchSubledgerPayments(
+  tenantId: string,
+  referenceType: string,
+  accountCode: string,
+  side: 'debit' | 'credit'
+): Promise<Record<number, number>> {
+  const { data: acc } = await supabase.from('finance_accounts')
+    .select('id').eq('tenant_id', tenantId).eq('code', accountCode).maybeSingle()
+  if (!acc) return {}
+
+  const { data: entries } = await supabase.from('finance_journal_entries')
+    .select('reference_id, finance_journal_lines(debit, credit, account_id)')
+    .eq('tenant_id', tenantId)
+    .eq('reference_type', referenceType)
+    .not('reference_id', 'is', null)
+
+  const paid: Record<number, number> = {}
+  for (const e of entries || []) {
+    const refId = (e as any).reference_id as number
+    const lines = (e as any).finance_journal_lines || []
+    const amt = lines
+      .filter((l: any) => l.account_id === acc.id)
+      .reduce((s: number, l: any) => s + Number(l[side] || 0), 0)
+    if (amt > 0) paid[refId] = (paid[refId] || 0) + amt
+  }
+  return paid
 }
 
 // ═══════════════════════════════════════════════════
@@ -266,30 +303,36 @@ export default function ReportsFinancePage() {
     // ══════════════════════════════════════════
     if (selected === 'income') {
       // قائمة الدخل — حركة الفترة فقط
-      const data = await fetchAccountBalances(tenant.id, fDateTo, fDateFrom, ['إيرادات', 'مصروفات'])
-      const revenues = data.filter(a => a.account_type === 'إيرادات' && a.balance !== 0)
-      const expenses = data.filter(a => a.account_type === 'مصروفات' && a.balance !== 0)
-      const totRev = revenues.reduce((s, a) => s + a.balance, 0)
-      const totExp = expenses.reduce((s, a) => s + a.balance, 0)
+      const data = await fetchAccountBalances(tenant.id, fDateTo, fDateFrom, INCOME_ACCOUNT_TYPES)
+      const revenues = data.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[0] && a.balance !== 0)
+      const costs    = data.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[1] && a.balance !== 0)
+      const expenses = data.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[2] && a.balance !== 0)
+      const totRev   = revenues.reduce((s, a) => s + a.balance, 0)
+      const totCost  = costs.reduce((s, a) => s + a.balance, 0)
+      const totExp   = expenses.reduce((s, a) => s + a.balance, 0)
       setResults([
-        ...revenues.map(a => ({ ...a, section: 'إيرادات' })),
-        ...expenses.map(a => ({ ...a, section: 'مصروفات' })),
+        ...revenues.map(a => ({ ...a, section: INCOME_ACCOUNT_TYPES[0] })),
+        ...costs.map(a    => ({ ...a, section: INCOME_ACCOUNT_TYPES[1] })),
+        ...expenses.map(a => ({ ...a, section: INCOME_ACCOUNT_TYPES[2] })),
       ])
-      setSummary({ revenues: totRev, expenses: totExp, net: totRev - totExp })
+      setSummary({ revenues: totRev, costs: totCost, grossProfit: totRev - totCost, expenses: totExp, net: totRev - totCost - totExp })
 
       // فترة المقارنة
       if (showCompare) {
         const cd = getCompareDates()
-        const cData = await fetchAccountBalances(tenant.id, cd.to, cd.from, ['إيرادات', 'مصروفات'])
-        const cRevenues = cData.filter(a => a.account_type === 'إيرادات' && a.balance !== 0)
-        const cExpenses = cData.filter(a => a.account_type === 'مصروفات' && a.balance !== 0)
-        const cTotRev = cRevenues.reduce((s, a) => s + a.balance, 0)
-        const cTotExp = cExpenses.reduce((s, a) => s + a.balance, 0)
+        const cData = await fetchAccountBalances(tenant.id, cd.to, cd.from, INCOME_ACCOUNT_TYPES)
+        const cRevenues = cData.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[0] && a.balance !== 0)
+        const cCosts    = cData.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[1] && a.balance !== 0)
+        const cExpenses = cData.filter(a => a.account_type === INCOME_ACCOUNT_TYPES[2] && a.balance !== 0)
+        const cTotRev   = cRevenues.reduce((s, a) => s + a.balance, 0)
+        const cTotCost  = cCosts.reduce((s, a) => s + a.balance, 0)
+        const cTotExp   = cExpenses.reduce((s, a) => s + a.balance, 0)
         setCompareResults([
-          ...cRevenues.map(a => ({ ...a, section: 'إيرادات' })),
-          ...cExpenses.map(a => ({ ...a, section: 'مصروفات' })),
+          ...cRevenues.map(a => ({ ...a, section: INCOME_ACCOUNT_TYPES[0] })),
+          ...cCosts.map(a    => ({ ...a, section: INCOME_ACCOUNT_TYPES[1] })),
+          ...cExpenses.map(a => ({ ...a, section: INCOME_ACCOUNT_TYPES[2] })),
         ])
-        setCompareSummary({ revenues: cTotRev, expenses: cTotExp, net: cTotRev - cTotExp, label: cd.label })
+        setCompareSummary({ revenues: cTotRev, costs: cTotCost, grossProfit: cTotRev - cTotCost, expenses: cTotExp, net: cTotRev - cTotCost - cTotExp, label: cd.label })
       }
 
     } else if (selected === 'balance_sheet') {
@@ -297,10 +340,9 @@ export default function ReportsFinancePage() {
       const yearOfBs = fBsDate.substring(0, 4)
       const [bsData, incomeData] = await Promise.all([
         fetchAccountBalances(tenant.id, fBsDate, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
-        fetchAccountBalances(tenant.id, fBsDate, `${yearOfBs}-01-01`, ['إيرادات', 'مصروفات']),
+        fetchAccountBalances(tenant.id, fBsDate, `${yearOfBs}-01-01`, INCOME_ACCOUNT_TYPES),
       ])
-      const netIncome = incomeData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
-                      - incomeData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+      const netIncome = calcNetIncome(incomeData)
       const assets      = bsData.filter(a => a.account_type === 'أصول'         && a.balance !== 0)
       const liabilities = bsData.filter(a => a.account_type === 'خصوم'         && a.balance !== 0)
       const equity      = bsData.filter(a => a.account_type === 'حقوق ملكية'   && a.balance !== 0)
@@ -321,10 +363,9 @@ export default function ReportsFinancePage() {
         const yearOfCompare = cd.to.substring(0, 4)
         const [cBsData, cIncomeData] = await Promise.all([
           fetchAccountBalances(tenant.id, cd.to, undefined, ['أصول', 'خصوم', 'حقوق ملكية']),
-          fetchAccountBalances(tenant.id, cd.to, `${yearOfCompare}-01-01`, ['إيرادات', 'مصروفات']),
+          fetchAccountBalances(tenant.id, cd.to, `${yearOfCompare}-01-01`, INCOME_ACCOUNT_TYPES),
         ])
-        const cNetIncome = cIncomeData.filter(a => a.account_type === 'إيرادات').reduce((s, a) => s + a.balance, 0)
-                         - cIncomeData.filter(a => a.account_type === 'مصروفات').reduce((s, a) => s + a.balance, 0)
+        const cNetIncome = calcNetIncome(cIncomeData)
         const cAssets      = cBsData.filter(a => a.account_type === 'أصول'       && a.balance !== 0)
         const cLiabilities = cBsData.filter(a => a.account_type === 'خصوم'       && a.balance !== 0)
         const cEquity      = cBsData.filter(a => a.account_type === 'حقوق ملكية' && a.balance !== 0)
@@ -495,17 +536,15 @@ export default function ReportsFinancePage() {
       // تعرض كل مكوّن على حدة مع التغيرات
       // ══════════════════════════════════════════════
       const [openData, periodData] = await Promise.all([
-        fetchAccountBalances(tenant.id, fDateFrom, undefined, ['حقوق ملكية', 'إيرادات', 'مصروفات']),
-        fetchAccountBalances(tenant.id, fDateTo,   fDateFrom,  ['حقوق ملكية', 'إيرادات', 'مصروفات']),
+        fetchAccountBalances(tenant.id, fDateFrom, undefined, ['حقوق ملكية', ...INCOME_ACCOUNT_TYPES]),
+        fetchAccountBalances(tenant.id, fDateTo,   fDateFrom,  ['حقوق ملكية', ...INCOME_ACCOUNT_TYPES]),
       ])
       // مكوّنات حقوق الملكية (كل حساب بمفرده)
       const equityAccs = openData.filter(a => a.account_type === 'حقوق ملكية')
       // صافي ربح الفترة السابقة (الأرباح المحتجزة)
-      const prevNetIncome = openData.filter(a => a.account_type === 'إيرادات').reduce((s,a) => s+a.balance,0)
-                          - openData.filter(a => a.account_type === 'مصروفات').reduce((s,a) => s+a.balance,0)
+      const prevNetIncome = calcNetIncome(openData)
       // صافي ربح الفترة الحالية
-      const currNetIncome = periodData.filter(a => a.account_type === 'إيرادات').reduce((s,a) => s+a.balance,0)
-                           - periodData.filter(a => a.account_type === 'مصروفات').reduce((s,a) => s+a.balance,0)
+      const currNetIncome = calcNetIncome(periodData)
       // تغيرات حقوق الملكية في الفترة
       const periodEquityMap: Record<number, number> = {}
       periodData.filter(a => a.account_type === 'حقوق ملكية').forEach(a => { periodEquityMap[a.id] = a.balance })
@@ -598,13 +637,17 @@ export default function ReportsFinancePage() {
       setSummary({ ...buckets, 'الإجمالي': aged.reduce((s, r) => s + Number(r.total_amount || 0), 0) })
 
     } else if (selected === 'ar_reconcile') {
-      const [{ data: allInvoices }, glData] = await Promise.all([
-        supabase.from('finance_invoices').select('invoice_number, client_name, invoice_date, total_amount, status')
+      const [{ data: allInvoices }, glData, collections] = await Promise.all([
+        supabase.from('finance_invoices').select('id, invoice_number, client_name, invoice_date, total_amount, status')
           .eq('tenant_id', tenant.id),
         fetchAccountBalances(tenant.id, fDateTo, undefined, ['أصول']),
+        fetchSubledgerPayments(tenant.id, 'تحصيل فاتورة', '1210', 'credit'),
       ])
       const openInvoices = (allInvoices || []).filter((r: any) => !['مدفوعة', 'ملغاة', 'مسودة'].includes(r.status))
-      const subledgerTotal = openInvoices.reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0)
+      const subledgerTotal = openInvoices.reduce((s: number, r: any) => {
+        const paid = collections[r.id] || 0
+        return s + Math.max(0, Number(r.total_amount || 0) - paid)
+      }, 0)
       const glAccount = glData.find(a => a.code === ACC.CUSTOMER_RECEIVABLE)
       const glBalance = glAccount?.balance || 0
       const difference = subledgerTotal - glBalance
@@ -648,12 +691,16 @@ export default function ReportsFinancePage() {
       setSummary({ 'إجمالي المشتريات': Object.values(grouped).reduce((s: number, r: any) => s + r.total, 0) })
 
     } else if (selected === 'ap_reconcile') {
-      const [{ data: openInvoices }, glData] = await Promise.all([
-        supabase.from('finance_vendor_invoices').select('invoice_number, vendor_name, invoice_date, total_amount, status')
+      const [{ data: openInvoices }, glData, payments] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, invoice_number, vendor_name, invoice_date, total_amount, status')
           .eq('tenant_id', tenant.id).in('status', ['معتمدة', 'مدفوعة جزئياً']),
         fetchAccountBalances(tenant.id, fDateTo, undefined, ['خصوم']),
+        fetchSubledgerPayments(tenant.id, 'دفع مورد', '2110', 'debit'),
       ])
-      const subledgerTotal = (openInvoices || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0)
+      const subledgerTotal = (openInvoices || []).reduce((s: number, r: any) => {
+        const paid = payments[r.id] || 0
+        return s + Math.max(0, Number(r.total_amount || 0) - paid)
+      }, 0)
       const glAccount = glData.find(a => a.code === ACC.SUPPLIER_PAYABLE)
       const glBalance = glAccount?.balance || 0
       const difference = subledgerTotal - glBalance
@@ -1124,8 +1171,8 @@ export default function ReportsFinancePage() {
                       {showCompare && compareResults.length && <span style={{ color: '#bfdbfe' }}>{compareSummary?.label}</span>}
                       {showCompare && compareResults.length && <span>التغيير</span>}
                     </div>
-                    {['إيرادات', 'مصروفات'].map(section => {
-                      const isExp  = section === 'مصروفات'
+                    {INCOME_ACCOUNT_TYPES.map(section => {
+                      const isExp  = section === 'مصروفات' || section === 'تكلفة'
                       const items  = results.filter(r => r.section === section)
                       const total  = items.reduce((s, r) => s + r.balance, 0)
                       const color  = isExp ? '#c81e1e' : '#0ea77b'
@@ -1171,6 +1218,13 @@ export default function ReportsFinancePage() {
                               </span>
                             )}
                           </div>
+                          {section === INCOME_ACCOUNT_TYPES[1] && summary.grossProfit !== undefined && (
+                            <div style={{ padding: '10px 16px', display: 'grid', gridTemplateColumns: showCompare && compareResults.length ? '2fr 1fr 1fr 1fr' : '1fr auto', fontWeight: 700, background: summary.grossProfit >= 0 ? '#ecfdf5' : '#fef2f2', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
+                              <span>مجمل الربح</span>
+                              <span style={{ fontFamily: 'monospace', color: summary.grossProfit >= 0 ? '#0ea77b' : '#c81e1e', textAlign: 'center' }}>{fmt(summary.grossProfit)}</span>
+                              {showCompare && compareResults.length && <span style={{ fontFamily: 'monospace', color: '#9ca3af', textAlign: 'center' }}>{fmt(compareSummary?.grossProfit || 0)}</span>}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

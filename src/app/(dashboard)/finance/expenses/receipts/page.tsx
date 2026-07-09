@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Trash2, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry, getCashAccountCode, nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
 import { useExpenses } from '../ExpensesContext'
 import type { Transaction, Account, CostCenter, Project, Vendor, Client, CashAccount } from '@/lib/expenses-types'
 import { STATUS_COLOR, fmt } from '@/lib/expenses-types'
@@ -83,9 +84,11 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
 
     if (trxData) {
       const selectedCash = cashAccounts.find(ca => ca.id === Number(form.cash_account_id))
-      const cashCode = selectedCash?.account_id ? await getCashAccountCode(selectedCash.id) : '1111'
-      const otherCode = form.account_id ? null : (isReceipt ? '1120' : '2110')
-      if (otherCode && cashCode) {
+      const cashCode = selectedCash?.account_id ? await getCashAccountCode(selectedCash.id) : ACC.CASH_LOCAL
+      const counterCode = form.account_id
+        ? accounts.find(a => a.id === Number(form.account_id))?.code
+        : (isReceipt ? ACC.OTHER_RECEIVABLE : ACC.OTHER_EXPENSE)
+      if (counterCode && cashCode) {
         await createJournalEntry({
           tenantId,
           date: form.transaction_date,
@@ -94,9 +97,9 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
           source: 'آلي',
           lines: isReceipt ? [
             { accountCode: cashCode,  debit: Number(form.amount), credit: 0,                    description: form.description },
-            { accountCode: otherCode, debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
+            { accountCode: counterCode, debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
           ] : [
-            { accountCode: otherCode, debit: Number(form.amount), credit: 0,                    description: form.description },
+            { accountCode: counterCode, debit: Number(form.amount), credit: 0,                    description: form.description },
             { accountCode: cashCode,  debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
           ]
         })

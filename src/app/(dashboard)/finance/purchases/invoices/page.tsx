@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Printer, Trash2, Pencil, Search, FileText, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
-import { createJournalEntry, nextDocNumber, confirmCashSpend } from '@/lib/journal'
+import { createJournalEntry, nextDocNumber, confirmCashSpend, getCashAccountCode } from '@/lib/journal'
 import { ACC, getPurchaseDebitAccountCode, PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
@@ -381,10 +381,11 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
   const bankAccounts = cashAccounts.filter(a => a.account_type === 'بنك' || a.account_type === 'حساب بنكي')
   const cashBoxes    = cashAccounts.filter(a => a.account_type === 'صندوق' || a.account_type === 'نقدية')
   const selectedAccount = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-  function getCreditCode() {
+  async function getCreditCode() {
     if (selectedAccount?.account_code) return selectedAccount.account_code
-    if (form.payment_method === 'نقداً') return '1111'
-    return '1120'
+    if (form.cash_account_id) return await getCashAccountCode(Number(form.cash_account_id))
+    if (form.payment_method === 'نقداً') return ACC.CASH_LOCAL
+    return ACC.BANK
   }
   async function handleSave() {
     if (!form.amount || Number(form.amount) <= 0) { toast.error('أدخل المبلغ'); return }
@@ -402,7 +403,7 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
     await createJournalEntry({ tenantId, date: form.payment_date, description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`, referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
       lines: [
         { accountCode: ACC.SUPPLIER_PAYABLE,         debit: Number(form.amount), credit: 0,                   description: `تسوية مستحق ${invoice.vendor_name}` },
-        { accountCode: getCreditCode(), debit: 0,                   credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
+        { accountCode: await getCreditCode(), debit: 0,                   credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
       ]
     })
     toast.success('تم تسجيل الدفعة')
