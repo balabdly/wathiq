@@ -463,7 +463,7 @@ export default function FinanceDashboard() {
               <FileText style={{ width: '15px', height: '15px', display: 'inline', marginLeft: '6px', color: '#1a56db' }} />
               آخر الفواتير
             </h3>
-            <a href="/finance" style={{ fontSize: '0.72rem', color: '#1a56db', textDecoration: 'none', fontWeight: 600 }}>عرض الكل ←</a>
+            <a href="/finance/invoices/list" style={{ fontSize: '0.72rem', color: '#1a56db', textDecoration: 'none', fontWeight: 600 }}>عرض الكل ←</a>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
             <tbody>
@@ -501,7 +501,7 @@ export default function FinanceDashboard() {
               <ShoppingCart style={{ width: '15px', height: '15px', display: 'inline', marginLeft: '6px', color: '#c81e1e' }} />
               آخر المصروفات
             </h3>
-            <a href="/finance" style={{ fontSize: '0.72rem', color: '#1a56db', textDecoration: 'none', fontWeight: 600 }}>عرض الكل ←</a>
+            <a href="/finance/expenses/list" style={{ fontSize: '0.72rem', color: '#1a56db', textDecoration: 'none', fontWeight: 600 }}>عرض الكل ←</a>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
             <tbody>

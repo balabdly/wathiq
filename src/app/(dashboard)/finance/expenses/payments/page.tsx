@@ -88,6 +88,7 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
       const counterCode = form.account_id
         ? accounts.find(a => a.id === Number(form.account_id))?.code
         : (isReceipt ? ACC.OTHER_RECEIVABLE : ACC.OTHER_EXPENSE)
+      const ccId = form.cost_center_id ? Number(form.cost_center_id) : undefined
       if (counterCode && cashCode) {
         await createJournalEntry({
           tenantId,
@@ -96,10 +97,10 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
           referenceType: type, referenceId: trxData.id,
           source: 'آلي',
           lines: isReceipt ? [
-            { accountCode: cashCode,  debit: Number(form.amount), credit: 0,                    description: form.description },
-            { accountCode: counterCode, debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
+            { accountCode: cashCode,  debit: Number(form.amount), credit: 0,                    description: form.description, costCenterId: ccId },
+            { accountCode: counterCode, debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description, costCenterId: ccId },
           ] : [
-            { accountCode: counterCode, debit: Number(form.amount), credit: 0,                    description: form.description },
+            { accountCode: counterCode, debit: Number(form.amount), credit: 0,                    description: form.description, costCenterId: ccId },
             { accountCode: cashCode,  debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
           ]
         })

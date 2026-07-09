@@ -258,6 +258,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               total:              totalAmount,
               expenseAccountCode: selectedAcc.code,
               creditAccountCode:  creditCode,
+              costCenterId:       form.cost_center_id ? Number(form.cost_center_id) : undefined,
             })
           }
         }
@@ -376,6 +377,16 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               <CashAccountSelector paymentMethod={form.payment_method} value={form.cash_account_id} tenantId={tenantId} onChange={v => set('cash_account_id', v)} />
             </div>
           </div>
+
+          {costCenters.length > 0 && (
+            <div>
+              <label style={lbl}>مركز التكلفة</label>
+              <select value={form.cost_center_id} onChange={e => set('cost_center_id', e.target.value)} className="select">
+                <option value="">— بدون —</option>
+                {costCenters.map(c => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* المورد */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber, confirmCashSpend, getCashAccountCode } from '@/lib/journal'
 import { ACC, getPurchaseDebitAccountCode, PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
+import { receiveVendorInvoiceToWarehouse } from '@/lib/inventory-purchase-bridge'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -140,6 +141,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
   invoice: VendorInvoice | null; convertFromPO?: PurchaseOrder | null; vendors: Vendor[]; projects: Project[]
   warehouses: Warehouse[]; purchaseOrders: PurchaseOrder[]; tenantId: string; onClose: () => void; onSave: () => void
 }) {
+  const { activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
   const invStatusRef = useRef('معتمدة')
   const [items, setItems] = useState<POItem[]>([{ description: '', quantity: 1, unit: 'وحدة', unit_price: 0, total: 0 }])
@@ -241,6 +243,18 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
           { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
         ]
       })
+      if (payload.delivery_to === 'مستودع' && payload.warehouse_id && activeBranch?.id) {
+        const stockResult = await receiveVendorInvoiceToWarehouse({
+          tenantId,
+          branchId:    activeBranch.id,
+          warehouseId: payload.warehouse_id,
+          invoiceNumber: payload.invoice_number,
+          vendorName:    payload.vendor_name,
+          invoiceDate:   payload.invoice_date,
+          items: validItems.map(i => ({ description: i.description, quantity: Number(i.quantity), unit: i.unit || 'وحدة' })),
+        })
+        if (!stockResult.ok) toast.error(`⚠️ القيد سُجّل لكن المخزون: ${stockResult.error}`, { duration: 7000 })
+      }
     }
     toast.success(invoice ? (wasApproved ? 'تم التعديل مع قيد تصحيحي' : 'تم التعديل') : 'تم حفظ فاتورة المورد')
     onSave(); setSaving(false)

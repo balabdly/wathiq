@@ -417,12 +417,14 @@ export async function journalExpense(params: {
   total:              number
   expenseAccountCode: string
   creditAccountCode:  string   // بنك / صندوق / 2110
+  costCenterId?:      number
 }): Promise<JournalResult> {
+  const cc = params.costCenterId
   const lines: JournalLine[] = [
-    { accountCode: params.expenseAccountCode, debit: params.amount,    credit: 0,           description: params.description },
+    { accountCode: params.expenseAccountCode, debit: params.amount, credit: 0, description: params.description, costCenterId: cc },
   ]
   if (params.vatAmount > 0) {
-    lines.push({ accountCode: ACC.VAT_INPUT, debit: params.vatAmount, credit: 0, description: `ضريبة مدخلات — ${params.category}` })
+    lines.push({ accountCode: ACC.VAT_INPUT, debit: params.vatAmount, credit: 0, description: `ضريبة مدخلات — ${params.category}`, costCenterId: cc })
   }
   lines.push({
     accountCode: params.creditAccountCode,
@@ -752,7 +754,7 @@ export async function reverseJournalEntry(params: {
 }): Promise<JournalResult> {
   const { data: lines, error } = await supabase
     .from('finance_journal_lines')
-    .select('debit, credit, description, account:finance_accounts(code)')
+    .select('debit, credit, description, cost_center_id, account:finance_accounts(code)')
     .eq('entry_id', params.originalEntryId)
 
   if (error || !lines?.length) {
@@ -763,7 +765,7 @@ export async function reverseJournalEntry(params: {
 
   const reversed: JournalLine[] = []
   for (const raw of lines) {
-    const l = raw as { debit: number; credit: number; description?: string; account?: { code: string } | { code: string }[] }
+    const l = raw as { debit: number; credit: number; description?: string; cost_center_id?: number; account?: { code: string } | { code: string }[] }
     const acc = Array.isArray(l.account) ? l.account[0] : l.account
     const code = acc?.code
     if (!code) continue
@@ -772,6 +774,7 @@ export async function reverseJournalEntry(params: {
       debit:       Number(l.credit || 0),
       credit:      Number(l.debit || 0),
       description: `عكس: ${l.description || ''}`,
+      costCenterId: l.cost_center_id ?? undefined,
     })
   }
 

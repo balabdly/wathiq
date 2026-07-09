@@ -6,6 +6,7 @@ import { Plus, X, Trash2, Search, RotateCcw, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createJournalEntry, nextDocNumber, reverseJournalByReference } from '@/lib/journal'
 import { ACC, getPurchaseDebitAccountCode } from '@/lib/account-codes'
+import { issuePurchaseReturnFromWarehouse } from '@/lib/inventory-purchase-bridge'
 import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { PurchaseReturn, VendorInvoice, POItem, Vendor } from '@/lib/purchases-types'
@@ -160,6 +161,7 @@ function PurchaseReturnModal({ invoice, vendors, tenantId, onClose, onSave }: { 
 // ════════════════════════════════════════
 export default function PurchaseReturnsPage() {
   const { tenantId, vendors, reloadKpis } = usePurchases()
+  const { activeBranch } = useStore()
   const [returns, setReturns] = useState<PurchaseReturn[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch]   = useState('')
@@ -185,12 +187,15 @@ export default function PurchaseReturnsPage() {
   async function approveReturn(ret: any) {
     if (!confirm(`اعتماد المرتجع ${ret.return_number}؟\nسيُسجَّل القيد المحاسبي (تخفيض مستحق المورد) وينعكس على صافي الفاتورة.`)) return
     let origInv: any = null
+    let retItems: { description: string; quantity: number; unit: string }[] = []
     if (ret.original_invoice_id) {
-      const [{ data: inv }, { data: approved }] = await Promise.all([
-        supabase.from('finance_vendor_invoices').select('id, total_amount, delivery_to, status').eq('id', ret.original_invoice_id).single(),
+      const [{ data: inv }, { data: approved }, { data: items }] = await Promise.all([
+        supabase.from('finance_vendor_invoices').select('id, total_amount, delivery_to, warehouse_id, status').eq('id', ret.original_invoice_id).single(),
         supabase.from('finance_purchase_returns').select('total_amount').eq('tenant_id', tenantId).eq('original_invoice_id', ret.original_invoice_id).eq('status', 'معتمد'),
+        supabase.from('finance_purchase_return_items').select('description, quantity, unit').eq('return_id', ret.id),
       ])
       origInv = inv
+      retItems = (items || []).map((i: any) => ({ description: i.description, quantity: Number(i.quantity), unit: i.unit || 'وحدة' }))
       const prevApproved = (approved || []).reduce((s: number, r: any) => s + Number(r.total_amount), 0)
       const invTotal = Number(inv?.total_amount || 0)
       if (invTotal > 0 && prevApproved + Number(ret.total_amount) > invTotal + 0.01) {
@@ -199,6 +204,18 @@ export default function PurchaseReturnsPage() {
       }
     }
     const creditCode = getPurchaseDebitAccountCode(origInv?.delivery_to || '')
+    if (origInv?.delivery_to === 'مستودع' && origInv.warehouse_id && activeBranch?.id && retItems.length > 0) {
+      const stockResult = await issuePurchaseReturnFromWarehouse({
+        tenantId: tenantId!,
+        branchId:    activeBranch.id,
+        warehouseId: origInv.warehouse_id,
+        returnNumber: ret.return_number,
+        vendorName:   ret.vendor_name,
+        returnDate:   ret.return_date,
+        items:        retItems,
+      })
+      if (!stockResult.ok) { toast.error(`⛔ تعذر اعتماد المرتجع — ${stockResult.error}`, { duration: 7000 }); return }
+    }
     const result = await createJournalEntry({
       tenantId: tenantId!, date: ret.return_date, description: `مرتجع مشتريات ${ret.return_number} — ${ret.vendor_name}`,
       referenceType: 'مرتجع مشتريات', referenceId: ret.id, source: 'آلي',
