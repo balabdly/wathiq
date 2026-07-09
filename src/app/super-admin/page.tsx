@@ -6,6 +6,7 @@ import {
   AlertTriangle, Users, Calendar, Power, ChevronDown, Lock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
 
 // Supabase client مباشر (بدون useStore)
 const supabase = createClient(
@@ -347,6 +348,11 @@ export default function SuperAdminPage() {
           password:  data.admin_password,
         })
         if (empError) throw empError
+
+        const seedResult = await seedChartOfAccounts(tenant.id)
+        if (seedResult.inserted > 0) {
+          toast.success(`تم زرع ${seedResult.inserted} حساب في شجرة الحسابات المعيارية`)
+        }
 
         toast.success(`تم إضافة شركة "${data.name}" بنجاح ✅`)
       }

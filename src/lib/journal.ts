@@ -164,6 +164,21 @@ export async function createJournalEntry(
     return null
   }
 
+  // رفض الترحيل على حسابات تجميعية (is_parent)
+  const { data: parentAccounts } = await supabase
+    .from('finance_accounts')
+    .select('code, name')
+    .eq('tenant_id', tenantId)
+    .in('code', uniqueCodes)
+    .eq('is_parent', true)
+
+  if (parentAccounts && parentAccounts.length > 0) {
+    const { default: toast } = await import('react-hot-toast')
+    const labels = parentAccounts.map(a => `${a.code} (${a.name})`).join('، ')
+    toast.error(`⛔ لا يمكن الترحيل على حسابات تجميعية: ${labels}`, { duration: 7000 })
+    return null
+  }
+
   // فلترة الأسطر ذات المبالغ فقط
   const validLines = lines.filter(l => l.debit > 0 || l.credit > 0)
 

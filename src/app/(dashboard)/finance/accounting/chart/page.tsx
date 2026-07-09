@@ -7,6 +7,7 @@ import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Exte
 import toast from 'react-hot-toast'
 import { createJournalEntry } from '@/lib/journal'
 import { suggestChildAccountCode, suggestRootAccountCode } from '@/lib/suggest-account-code'
+import { seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
 import type { Account, AccountLedgerLine } from '@/lib/accounting-types'
 import { ACCOUNT_TYPE_COLOR } from '@/lib/accounting-types'
 
@@ -564,6 +565,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   const [path,          setPath]          = useState<Account[]>([])
   const [search,        setSearch]        = useState('')
   const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null)
+  const [seeding,       setSeeding]       = useState(false)
 
   useEffect(() => { loadAll() }, [])
 
@@ -626,6 +628,19 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   }
 
   function goTo(idx: number) { setPath(p => p.slice(0, idx)) }
+
+  async function handleSeedStandardChart() {
+    if (!confirm('زرع الشجرة المعيارية الدولية؟\nسيتم إضافة الحسابات الناقصة فقط — الموجود لن يُحذف.')) return
+    setSeeding(true)
+    const result = await seedChartOfAccounts(tenantId)
+    setSeeding(false)
+    if (result.inserted > 0) {
+      toast.success(`✅ تم زرع ${result.inserted} حساب معياري`)
+      await loadAll()
+    } else {
+      toast.success('الشجرة المعيارية مكتملة — لا حسابات ناقصة')
+    }
+  }
 
   async function handleDelete(account: Account) {
     const hasChildren = accounts.some(a => a.parent_id === account.id)
@@ -720,10 +735,16 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
             )}
           </div>
         </div>
-        <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
-          <Plus style={{ width: '16px', height: '16px' }} />
-          إضافة حساب
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={handleSeedStandardChart} disabled={seeding} className="btn btn-ghost"
+            style={{ border: '1px solid #bbf7d0', color: '#0ea77b', fontWeight: 600 }}>
+            {seeding ? 'جاري الزرع...' : '🌱 زرع الشجرة المعيارية'}
+          </button>
+          <button onClick={() => { setEditAccount(null); setParentForNew(path.length > 0 ? path[path.length - 1] : null); setShowModal(true) }} className="btn btn-primary">
+            <Plus style={{ width: '16px', height: '16px' }} />
+            إضافة حساب
+          </button>
+        </div>
       </div>
 
       {/* تلميح */}
