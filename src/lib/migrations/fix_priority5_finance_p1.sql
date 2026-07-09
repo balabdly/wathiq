@@ -160,7 +160,7 @@ begin
   loop
     if exists (
       select 1 from finance_accounts
-      where tenant_id = p_tenant_id and code = r.code
+      where tenant_id = p_tenant_id::text and code = r.code
     ) then
       continue;
     end if;
@@ -169,14 +169,14 @@ begin
     if r.parent_code is not null then
       select id into v_parent_id
       from finance_accounts
-      where tenant_id = p_tenant_id and code = r.parent_code;
+      where tenant_id = p_tenant_id::text and code = r.parent_code;
     end if;
 
     insert into finance_accounts (
       tenant_id, code, name, name_en, account_type, account_class,
       normal_balance, parent_id, level, is_parent, is_active
     ) values (
-      p_tenant_id, r.code, r.name, r.name_en, r.account_type,
+      p_tenant_id::text, r.code, r.name, r.name_en, r.account_type,
       case when r.account_type in ('أصول','خصوم','حقوق ملكية') then 'ميزانية' else 'دخل' end,
       r.normal_balance, v_parent_id, r.lvl, r.is_parent, true
     );

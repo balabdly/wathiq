@@ -25,13 +25,16 @@ begin
   loop
     update finance_journal_lines jl
     set account_id = new_acc.id
-    from finance_journal_entries je
-    join finance_accounts old_acc on old_acc.id = jl.account_id
-      and old_acc.tenant_id = p_tenant_id and old_acc.code = mapping.old_code
-    join finance_accounts new_acc on new_acc.tenant_id = p_tenant_id
-      and new_acc.code = mapping.new_code
+    from finance_journal_entries je,
+         finance_accounts old_acc,
+         finance_accounts new_acc
     where jl.entry_id = je.id
-      and je.tenant_id = p_tenant_id;
+      and je.tenant_id = p_tenant_id::text
+      and old_acc.id = jl.account_id
+      and old_acc.tenant_id = p_tenant_id::text
+      and old_acc.code = mapping.old_code
+      and new_acc.tenant_id = p_tenant_id::text
+      and new_acc.code = mapping.new_code;
 
     get diagnostics v_tmp = row_count;
     v_count := v_count + coalesce(v_tmp, 0);
