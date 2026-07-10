@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { hashPassword } from '@/lib/auth'
 import { syncUserCookie } from '@/lib/authCookie'
+import { deleteEmployeeAccount } from '@/lib/deleteEmployeeAccount'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -406,24 +407,20 @@ export default function EmployeesSettingsPage() {
       `حذف حساب "${emp.name}" نهائياً؟\n\n` +
       `• اسم المستخدم: ${emp.username || '—'}\n` +
       `• ${emp.permissions?.length || 0} صلاحية\n\n` +
-      `لا يوجد ملف HR — مناسب للمحترفين/التجربة.\nهذا الإجراء لا يُراجع.`
+      `لا يوجد ملف HR — مناسب للمحترفين/التجربة.\n` +
+      `سيتم فك الربط تلقائياً (مثل: مدير قسم، مهام).\n` +
+      `هذا الإجراء لا يُراجع.`
     )) return
 
     setDeleting(true)
-    await supabase.from('hr_employees')
-      .update({ employee_id: null })
-      .eq('tenant_id', tenant.id)
-      .eq('employee_id', emp.id)
-
-    const { error } = await supabase
-      .from('employees')
-      .delete()
-      .eq('id', emp.id)
-      .eq('tenant_id', tenant.id)
-
+    const result = await deleteEmployeeAccount(tenant.id, emp.id)
     setDeleting(false)
-    if (error) {
-      toast.error('تعذّر الحذف: ' + error.message + '\nقد يكون مرتبطاً بسجلات أخرى — جرّب التعطيل.')
+
+    if (!result.ok) {
+      toast.error(
+        'تعذّر الحذف: ' + (result.error || '') +
+        '\nجرّب «تعطيل» الحساب، أو أزل المستخدم من مديرية الأقسام في HR → الهيكل التنظيمي.'
+      )
       return
     }
 
@@ -449,15 +446,16 @@ export default function EmployeesSettingsPage() {
 
     setDeleting(true)
     let deleted = 0
+    let lastError = ''
     for (const emp of targets) {
-      await supabase.from('hr_employees')
-        .update({ employee_id: null })
-        .eq('tenant_id', tenant.id)
-        .eq('employee_id', emp.id)
-      const { error } = await supabase.from('employees').delete().eq('id', emp.id).eq('tenant_id', tenant.id)
-      if (!error) deleted++
+      const result = await deleteEmployeeAccount(tenant.id, emp.id)
+      if (result.ok) deleted++
+      else lastError = result.error || lastError
     }
     setDeleting(false)
+    if (deleted < targets.length && lastError) {
+      toast.error(`تم حذف ${deleted} فقط. آخر خطأ: ${lastError}`)
+    }
     setSelectedEmp(null)
     await load()
     toast.success(`🗑️ تم حذف ${deleted} من ${targets.length} حساب`)
