@@ -228,8 +228,8 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           let creditCode: string | null = null
 
           if (form.payment_method === 'عهدة موظف' && form.cash_account_id.startsWith('custody:')) {
-            // دائن حـ/ عهد الموظفين 1150
-            creditCode = '1150'
+            // دائن حـ/ عهد المشاريع والمهندسين 1112 (النظام الخماسي المباشر)
+            creditCode = '1112'
             // تحديث رصيد العهدة
             const custodyId = Number(form.cash_account_id.replace('custody:', ''))
             const { data: cus } = await supabase.from('finance_employee_custody')

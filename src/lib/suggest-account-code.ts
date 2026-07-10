@@ -1,47 +1,58 @@
 /**
- * توليد كود حساب فرعي تلقائي — خوارزمية موحّدة (شجرة الحسابات / الخزينة / العهد)
+ * توليد كود حساب تلقائي — النظام الخماسي المباشر (مرجع أبو خالد، يوليو 2026)
  *
- * أول ابن: كود الأب + 1  (مثال: 1110 → 1111)
- * الأبناء التاليون: max(الإخوة) + 1
+ * الجذور الخمسة ثابتة بأرقام مفردة:
+ *   1 الأصول | 2 الالتزامات | 3 حقوق الملكية | 4 الإيرادات | 5 المصروفات
+ *
+ * كل مستوى فرعي يضيف خانة واحدة فقط على كود الأب مباشرة:
+ *   1 → 11 → 111 → 1111   (وليس "+1" على قيمة الأب كرقم)
+ *
+ * هذا الملف هو المصدر الوحيد للترقيم في كل الشاشات (شجرة الحسابات، الخزينة، العهد)
+ * — لا يوجد إدخال يدوي للكود في أي واجهة، الحقل يُقفل ويُعرض تلقائياً فقط.
  */
+
+const ROOT_CODE: Record<string, string> = {
+  'أصول':        '1',
+  'خصوم':        '2',
+  'حقوق ملكية':  '3',
+  'إيرادات':     '4',
+  'مصروفات':     '5',
+}
+
+/** كود حساب فرعي: يضيف خانة واحدة على كود الأب — أول ابن ينتهي بـ1، الذي يليه بـ2... */
 export function suggestChildAccountCode(
   parentCode: string,
   siblingCodes: string[],
   options?: { excludeCode?: string; allCodes?: string[] }
 ): string {
-  const parentNum = parseInt(parentCode)
-  const base = !isNaN(parentNum) ? parentNum : 0
+  const childLen = parentCode.length + 1
 
-  const siblings = siblingCodes
+  const siblingLastDigits = siblingCodes
     .filter(c => c !== options?.excludeCode)
-    .map(c => parseInt(c))
-    .filter(n => !isNaN(n) && n > 0)
+    .filter(c => c.startsWith(parentCode) && c.length === childLen)
+    .map(c => parseInt(c.slice(-1)))
+    .filter(n => !isNaN(n))
 
-  let next = siblings.length > 0 ? Math.max(...siblings) + 1 : base + 1
+  let nextDigit = siblingLastDigits.length > 0 ? Math.max(...siblingLastDigits) + 1 : 1
 
-  const taken = new Set([...(options?.allCodes || siblingCodes)])
-  while (taken.has(String(next))) next++
+  const taken = new Set(options?.allCodes || siblingCodes)
+  let code = parentCode + String(nextDigit)
+  // تجاوز نادر لتسعة أبناء تحت أب واحد — يمدد الرقم الأخير بدل الاصطدام
+  while (taken.has(code)) { nextDigit++; code = parentCode + String(nextDigit) }
 
-  return String(next)
+  return code
 }
 
-/** كود حساب رئيسي بدون أب حسب نوع الحساب */
+/** كود حساب رئيسي (بدون أب) — رقم مفرد ثابت حسب النوع من الجذور الخمسة المعتمدة */
 export function suggestRootAccountCode(
   accountType: string,
   existingRootCodes: string[]
 ): string {
-  const TYPE_START: Record<string, number> = {
-    'أصول': 1000, 'خصوم': 2000, 'حقوق ملكية': 3000,
-    'إيرادات': 4000, 'تكلفة': 5000, 'مصروفات': 6000,
-  }
-  const start = TYPE_START[accountType] || 9000
-  const existing = existingRootCodes
-    .map(c => parseInt(c))
-    .filter(n => !isNaN(n) && n >= start && n < start + 1000)
+  const fixed = ROOT_CODE[accountType]
+  if (fixed && !existingRootCodes.includes(fixed)) return fixed
 
-  const maxE = existing.length > 0 ? Math.max(...existing) : start - 100
-  let code = maxE + 100
-  const taken = new Set(existingRootCodes)
-  while (taken.has(String(code))) code += 10
-  return String(code)
+  for (let d = 6; d <= 9; d++) {
+    if (!existingRootCodes.includes(String(d))) return String(d)
+  }
+  return String(existingRootCodes.length + 1)
 }

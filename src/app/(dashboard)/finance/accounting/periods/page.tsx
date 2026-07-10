@@ -138,7 +138,7 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
         netProfit = Math.round((sumD - sumC) * 100) / 100   // موجب = ربح
         if (Math.abs(netProfit) > 0.009) {
           closingLines.push({
-            accountCode: '3200',
+            accountCode: '32',  // الأرباح المبقاة (النظام الخماسي المباشر)
             debit:  netProfit < 0 ? -netProfit : 0,
             credit: netProfit > 0 ?  netProfit : 0,
             description: netProfit > 0 ? `صافي ربح سنة ${year}` : `صافي خسارة سنة ${year}`,

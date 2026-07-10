@@ -58,7 +58,7 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
         // ── إضافة حساب جديد ──
         const { data: parent } = await supabase
           .from('finance_accounts').select('id')
-          .eq('tenant_id', tenantId).eq('code', '1110').single()
+          .eq('tenant_id', tenantId).eq('code', '111').single()  // النقدية وما في حكمها (النظام الخماسي المباشر)
 
         let newAccountId: number | null = null
         let newCode: string | null = null

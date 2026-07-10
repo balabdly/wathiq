@@ -158,7 +158,7 @@ export default function FinanceDashboard() {
     })
 
     if (!result) {
-      toast.error('⛔ فشل ترحيل المسير — تحقق من شجرة الحسابات (5210، 5230، 5220، 2120، 2160) والفترة المحاسبية')
+      toast.error('⛔ فشل ترحيل المسير — تحقق من شجرة الحسابات (521، 21411، 21413) والفترة المحاسبية')
       setPosting(null)
       return
     }

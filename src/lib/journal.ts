@@ -563,8 +563,8 @@ export async function journalPayrollPayment(params: {
 
 /**
  * قيد تسوية نهاية خدمة
- * مدين: مصروف مكافأة (5240) + مصروف رواتب (5210)
- * دائن: البنك / مستحقات موظفين (2120)
+ * مدين: تصفية مخصص نهاية الخدمة المتراكم (21412) + مصروف رواتب مستحقة أخرى (521)
+ * دائن: صافي مستحق للموظف (21413)
  */
 export async function journalSettlement(params: {
   tenantId:       string
@@ -578,7 +578,8 @@ export async function journalSettlement(params: {
 }): Promise<JournalResult> {
   const lines: JournalLine[] = []
   if (params.gratuityAmount > 0) {
-    lines.push({ accountCode: ACC.EOS_EXPENSE, debit: params.gratuityAmount, credit: 0, description: `مكافأة نهاية خدمة — ${params.employeeName}` })
+    // تُستهلك من المخصص المتراكم شهرياً (21412) لا كمصروف جديد — يفترض أن journalPayroll كوّنها تدريجياً
+    lines.push({ accountCode: ACC.EOS_PROVISION, debit: params.gratuityAmount, credit: 0, description: `تصفية مخصص نهاية خدمة — ${params.employeeName}` })
   }
   const otherEnt = params.salaryAmount + params.leaveAmount
   if (otherEnt > 0) {
@@ -700,38 +701,39 @@ export async function getCashAccountCode(
 /**
  * getExpenseAccountCode — خريطة الفئة → كود الحساب
  * مُصدَّرة للاستخدام في expenses page
+ * مُحدَّثة على النظام الخماسي المباشر (يوليو 2026) — كل قيمة عبر ACC.* لا نصاً ثابتاً
  */
 export function getExpenseAccountCode(expenseType: string, category: string): string {
   const cat = category || ''
   const typ = expenseType || ''
 
   if (typ === 'مشاريع') {
-    if (cat.includes('عمالة'))                           return '5110'
-    if (cat.includes('مقاول'))                           return '5130'
-    if (cat.includes('موقع') || cat.includes('معدة') || cat.includes('آلة')) return '5140'
-    return '5120'
+    if (cat.includes('عمالة'))                           return ACC.DIRECT_LABOR
+    if (cat.includes('مقاول'))                           return ACC.SUBCONTRACT
+    if (cat.includes('موقع') || cat.includes('معدة') || cat.includes('آلة')) return ACC.SITE_EQUIPMENT
+    return ACC.RAW_MATERIALS_DEFAULT
   }
   if (typ === 'تشغيلي') {
-    if (cat.includes('راتب') || cat.includes('أجور'))    return '5210'
-    if (cat.includes('تأمين'))                           return '5220'
-    if (cat.includes('إيجار'))                           return '5310'
-    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return '5320'
-    if (cat.includes('صيانة'))                           return '5330'
-    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return '5410'
-    if (cat.includes('بنك'))                             return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء'))  return '5520'
-    return '5320'
+    if (cat.includes('راتب') || cat.includes('أجور'))    return ACC.SALARIES_EXPENSE
+    if (cat.includes('تأمين'))                           return ACC.GOSI_EXPENSE
+    if (cat.includes('إيجار'))                           return ACC.RENT_EXPENSE
+    if (cat.includes('كهرب') || cat.includes('ماء') || cat.includes('اتصال') || cat.includes('إنترنت')) return ACC.UTILITIES_EXPENSE
+    if (cat.includes('صيانة'))                           return ACC.MAINTENANCE_EXPENSE
+    if (cat.includes('سيارة') || cat.includes('سيارات') || cat.includes('مركبة') || cat.includes('وقود')) return ACC.VEHICLE_EXPENSE
+    if (cat.includes('بنك'))                             return ACC.BANK_FEES
+    if (cat.includes('غرامة') || cat.includes('جزاء'))  return ACC.PENALTIES
+    return ACC.UTILITIES_EXPENSE
   }
   if (typ === 'إداري') {
-    if (cat.includes('قرطاسية') || cat.includes('مستلزمات')) return '5320'
-    if (cat.includes('ضيافة') || cat.includes('علاقات'))     return '5340'
-    if (cat.includes('رسوم') || cat.includes('ترخيص'))       return '5320'
-    if (cat.includes('سفر') || cat.includes('انتقال'))        return '5410'
-    if (cat.includes('بنك'))                                  return '5510'
-    if (cat.includes('غرامة') || cat.includes('جزاء'))       return '5520'
-    return '5320'
+    if (cat.includes('قرطاسية') || cat.includes('مستلزمات')) return ACC.UTILITIES_EXPENSE
+    if (cat.includes('ضيافة') || cat.includes('علاقات'))     return ACC.HOSPITALITY
+    if (cat.includes('رسوم') || cat.includes('ترخيص'))       return ACC.UTILITIES_EXPENSE
+    if (cat.includes('سفر') || cat.includes('انتقال'))        return ACC.VEHICLE_EXPENSE
+    if (cat.includes('بنك'))                                  return ACC.BANK_FEES
+    if (cat.includes('غرامة') || cat.includes('جزاء'))       return ACC.PENALTIES
+    return ACC.UTILITIES_EXPENSE
   }
-  return '5800'
+  return ACC.OTHER_EXPENSE
 }
 
 // ════════════════════════════════════

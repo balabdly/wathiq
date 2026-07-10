@@ -35,7 +35,7 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
   // القواعد المورّثة من الأب
   const inheritedType    = parentAcc?.account_type   || account?.account_type   || 'مصروفات'
   const inheritedBalance = parentAcc?.normal_balance  || account?.normal_balance  ||
-    (['أصول','تكلفة','مصروفات'].includes(inheritedType) ? 'مدين' : 'دائن')
+    (['أصول','مصروفات'].includes(inheritedType) ? 'مدين' : 'دائن')
   const inheritedClass   = parentAcc?.account_class   || account?.account_class   ||
     (['أصول','خصوم','حقوق ملكية'].includes(inheritedType) ? 'ميزانية' : 'دخل')
 
@@ -105,7 +105,7 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
       ['أصول','خصوم','حقوق ملكية'].includes(accountType) ? 'ميزانية' : 'دخل'
     )
     const normalBalance = par?.normal_balance || (
-      ['أصول','تكلفة','مصروفات'].includes(accountType) ? 'مدين' : 'دائن'
+      ['أصول','مصروفات'].includes(accountType) ? 'مدين' : 'دائن'
     )
     const payload = {
       tenant_id:      tenantId,
@@ -175,11 +175,16 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
           <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px' }}>
             <div>
               <label style={labelStyle}>رمز الحساب</label>
-              <input value={form.code} onChange={e => set('code', e.target.value)} className="input" dir="ltr"
-                placeholder={suggestedCode || 'تلقائي'} style={{ fontFamily: 'monospace', fontWeight: 700 }} />
-              {suggestedCode && !form.code && (
-                <div style={{ fontSize: '0.68rem', color: '#0ea77b', marginTop: '3px' }}>سيُولَّد تلقائياً: {suggestedCode}</div>
-              )}
+              <div style={{
+                padding: '9px 12px', borderRadius: '8px', border: '1px solid var(--border)',
+                background: 'var(--bg2, #f8fafc)', fontFamily: 'monospace', fontWeight: 700,
+                fontSize: '0.95rem', color: form.code || suggestedCode ? typeColor : 'var(--text3)', textAlign: 'center',
+              }}>
+                {account ? form.code : (suggestedCode || '—')}
+              </div>
+              <div style={{ fontSize: '0.66rem', color: 'var(--text3)', marginTop: '3px' }}>
+                {account ? 'الكود ثابت بعد الإنشاء' : 'يُولَّد تلقائياً حسب الأب — لا إدخال يدوي'}
+              </div>
             </div>
             <div>
               <label style={labelStyle}>اسم الحساب *</label>
@@ -216,7 +221,7 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
             <div>
               <label style={labelStyle}>نوع الحساب *</label>
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات'].map(t => {
+                {['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'مصروفات'].map(t => {
                   const tColor = ACCOUNT_TYPE_COLOR[t] || '#374151'
                   return (
                     <button key={t} type="button"
@@ -694,7 +699,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     'إيرادات': '#0ea77b', 'تكلفة': '#e6820a', 'مصروفات': '#6b7280'
   }
 
-  const ROOT_CODES = new Set(['1000', '2000', '3000', '4000', '5000'])
+  const ROOT_CODES = new Set(['1', '2', '3', '4', '5'])  // النظام الخماسي المباشر
   const orphans = accounts.filter(a => a.is_active && !a.parent_id && !ROOT_CODES.has(a.code))
 
   const stats = {
