@@ -57,6 +57,7 @@ export interface Employee {
   email?: string
   permissions: string[]
   is_active: boolean
+  hr_employee_id?: number
   created_at: string
 }
 
