@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/hooks/useStore'
-import toast from 'react-hot-toast'
+import { syncUserCookie } from '@/lib/authCookie'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -47,6 +47,7 @@ export default function LoginPage() {
         return
       }
       setCurrentUser(emp)
+      syncUserCookie(emp)
       setTenant(data.tenant)
       setBranches(data.branches || [])
 

@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { syncUserCookie } from '@/lib/authCookie'
 
 export function usePWA() {
-  const { currentUser, setCurrentUser } = useStore()
+  useAuthSyncInternal()
 
   // تسجيل Service Worker
   useEffect(() => {
@@ -11,63 +12,65 @@ export function usePWA() {
       navigator.serviceWorker.register('/sw.js').catch(() => {})
     }
   }, [])
+}
 
-  // حفظ بيانات المستخدم في cookie
+export function useAuthSync() {
+  useAuthSyncInternal()
+}
+
+function useAuthSyncInternal() {
+  const { currentUser, setCurrentUser } = useStore()
+
   useEffect(() => {
-    if (currentUser) {
-      const userData = {
-        id:          currentUser.id,
-        name:        currentUser.name,
-        role:        currentUser.role,
-        permissions: currentUser.permissions || [],
-      }
-      document.cookie = `wathiq_user=${encodeURIComponent(JSON.stringify(userData))}; path=/; max-age=86400; SameSite=Strict`
-    } else {
-      document.cookie = 'wathiq_user=; path=/; max-age=0'
-    }
-  }, [currentUser?.id, currentUser?.permissions])
+    syncUserCookie(currentUser)
+  }, [currentUser?.id, currentUser?.role, currentUser?.permissions])
 
-  // ── جلب permissions من DB فوراً عند كل تحميل صفحة ──
   useEffect(() => {
     if (!currentUser?.id) return
 
-    async function syncPermissions() {
+    async function syncFromDb() {
       const { data } = await supabase
         .from('employees')
-        .select('permissions, role')
+        .select('permissions, role, hr_employee_id')
         .eq('id', currentUser!.id)
         .single()
 
       if (!data) return
 
-      // تحديث دائماً من DB — permissions لا تُقرأ من localStorage
       setCurrentUser({
         ...currentUser!,
         permissions: data.permissions || [],
         role: data.role,
-      })
+        hr_employee_id: data.hr_employee_id ?? undefined,
+      } as typeof currentUser)
     }
 
-    syncPermissions()
+    syncFromDb()
 
-    // Realtime للتحديث الفوري عند تغيير الصلاحيات
     const channel = supabase
-      .channel(`perms_${currentUser.id}`)
+      .channel(`auth_sync_${currentUser.id}`)
       .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'employees',
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'employees',
         filter: `id=eq.${currentUser.id}`,
       }, (payload) => {
-        const updated = payload.new as any
+        const updated = payload.new as {
+          permissions?: string[]
+          role?: string
+          hr_employee_id?: number | null
+        }
         setCurrentUser({
           ...currentUser!,
           permissions: updated.permissions || [],
           role: updated.role || currentUser!.role,
-        })
+          hr_employee_id: updated.hr_employee_id ?? undefined,
+        } as typeof currentUser)
       })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [currentUser?.id])
+  }, [currentUser?.id, setCurrentUser])
 }
 
 // ── Hook لعرض زر "تثبيت التطبيق" ──

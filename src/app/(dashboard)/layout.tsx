@@ -4,12 +4,15 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import Sidebar from '@/components/layout/Sidebar'
 import { Toaster } from 'react-hot-toast'
+import { useAuthSync } from '@/hooks/usePWA'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
   const { currentUser } = useStore()
   const [open, setOpen] = useState(false)
+
+  useAuthSync()
 
   useEffect(() => {
     if (!currentUser) router.push('/login')

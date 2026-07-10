@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { useMyHrEmployee } from '@/hooks/useMyHrEmployee'
+import { getSelfServiceBlockReason } from '@/lib/hrSelfService'
 
 const TABS = [
   { href: '/my-hr', label: 'الرئيسية' },
@@ -16,11 +17,18 @@ const TABS = [
 export default function MyHrLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { allowed, loading, hrEmployeeId, profile } = useMyHrEmployee()
+  const { allowed, loading, hrEmployeeId, profile, currentUser } = useMyHrEmployee()
+  const blockReason = getSelfServiceBlockReason(
+    currentUser?.permissions,
+    hrEmployeeId,
+    currentUser?.role,
+  )
 
   useEffect(() => {
-    if (!loading && !allowed) router.replace('/unauthorized')
-  }, [loading, allowed, router])
+    if (!loading && blockReason) {
+      router.replace(`/unauthorized?reason=${blockReason}`)
+    }
+  }, [loading, blockReason, router])
 
   if (loading) {
     return (

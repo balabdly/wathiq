@@ -49,6 +49,7 @@ const PERMISSION_GROUPS = [
     perms: [
       { id: 'hr',             label: 'HR',                icon: '👥' },
       { id: 'employees',      label: 'الموظفون',           icon: '👤' },
+      { id: 'hr_self',        label: 'الخدمة الذاتية',     icon: '🙋' },
     ]
   },
   {

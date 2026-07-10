@@ -20,15 +20,34 @@ export function resolveHrEmployeeId(
   return linked?.id ?? null
 }
 
+export type SelfServiceBlockReason = 'no_permission' | 'no_hr_profile'
+
+export function hasSelfServicePermission(
+  permissions: string[] | undefined,
+  role?: string,
+): boolean {
+  if (role === 'مدير عام') return true
+  const perms = permissions || []
+  return perms.includes('hr_self') || perms.includes('hr') || perms.includes('employees')
+}
+
+/** سبب المنع — null = مسموح */
+export function getSelfServiceBlockReason(
+  permissions: string[] | undefined,
+  hrEmployeeId: number | null,
+  role?: string,
+): SelfServiceBlockReason | null {
+  if (!hasSelfServicePermission(permissions, role)) return 'no_permission'
+  if (!hrEmployeeId) return 'no_hr_profile'
+  return null
+}
+
 export function canAccessSelfService(
   permissions: string[] | undefined,
   hrEmployeeId: number | null,
   role?: string,
 ): boolean {
-  if (role === 'مدير عام') return !!hrEmployeeId
-  if (!hrEmployeeId) return false
-  const perms = permissions || []
-  return perms.includes('hr_self') || perms.includes('hr') || perms.includes('employees')
+  return getSelfServiceBlockReason(permissions, hrEmployeeId, role) === null
 }
 
 export const PENDING_LEAVE_STATUSES = [
