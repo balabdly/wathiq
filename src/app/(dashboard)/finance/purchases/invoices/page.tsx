@@ -214,13 +214,14 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     if (invoice) {
       if (wasApproved && payload.status === 'معتمدة') {
         const oldDebitCode = getPurchaseDebitAccountCode(invoice.delivery_to || '')
-        await createJournalEntry({ tenantId, date: payload.invoice_date, description: `قيد تصحيحي — تعديل فاتورة مورد ${invoice.invoice_number}`, referenceType: 'تصحيح فاتورة مورد', referenceId: invoice.id, source: 'آلي',
+        const jrRev = await createJournalEntry({ tenantId, date: payload.invoice_date, description: `قيد تصحيحي — تعديل فاتورة مورد ${invoice.invoice_number}`, referenceType: 'تصحيح فاتورة مورد', referenceId: invoice.id, source: 'آلي',
           lines: [
             { accountCode: oldDebitCode, debit: 0, credit: Number(invoice.subtotal), description: `عكس: فاتورة ${invoice.invoice_number}` },
             ...(Number(invoice.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: 0, credit: Number(invoice.vat_amount), description: 'عكس ضريبة المدخلات' }] : []),
             { accountCode: ACC.SUPPLIER_PAYABLE, debit: Number(invoice.total_amount), credit: 0, description: `عكس مستحق المورد ${invoice.vendor_name}` },
           ]
         })
+        if (!jrRev) { toast.error('⚠️ فشل القيد التصحيحي — لم يُحفظ التعديل، راجع شجرة الحسابات', { duration: 8000 }); setSaving(false); return }
       }
       await supabase.from('finance_vendor_invoices').update(payload).eq('id', invoice.id)
       await supabase.from('finance_vendor_invoice_items').delete().eq('invoice_id', invoice.id)
@@ -236,13 +237,17 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
     if (invId) await saveAttachments(tenantId, 'فاتورة مورد', invId, attachments)
     if (payload.status === 'معتمدة' && invId) {
       const debitAccountCode = getPurchaseDebitAccountCode(payload.delivery_to, form.asset_type)
-      await createJournalEntry({ tenantId, date: payload.invoice_date, description: `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: invId, source: 'آلي',
+      const jr = await createJournalEntry({ tenantId, date: payload.invoice_date, description: `${wasApproved ? 'تعديل ' : ''}فاتورة مورد ${payload.invoice_number} — ${payload.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: invId, source: 'آلي',
         lines: [
           { accountCode: debitAccountCode, debit: payload.subtotal, credit: 0, description: `فاتورة ${payload.invoice_number}` },
           ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: payload.vat_amount, credit: 0, description: 'ضريبة المدخلات' }] : []),
           { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: payload.total_amount, description: `مستحق للمورد ${payload.vendor_name}` },
         ]
       })
+      if (!jr) {
+        toast.error('⚠️ الفاتورة حُفظت لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
+        onSave(); setSaving(false); return
+      }
       if (payload.delivery_to === 'مستودع' && payload.warehouse_id && activeBranch?.id) {
         const stockResult = await receiveVendorInvoiceToWarehouse({
           tenantId,
@@ -414,12 +419,16 @@ function VendorPaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: V
     setSaving(true)
     await supabase.from('finance_vendor_invoices').update({ status: Number(form.amount) >= netDue - 0.01 ? 'مدفوعة' : 'مدفوعة جزئياً' }).eq('id', invoice.id)
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
-    await createJournalEntry({ tenantId, date: form.payment_date, description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`, referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
+    const jr = await createJournalEntry({ tenantId, date: form.payment_date, description: `دفع فاتورة ${invoice.invoice_number} — ${invoice.vendor_name}`, referenceType: 'دفع مورد', referenceId: invoice.id, source: 'آلي',
       lines: [
         { accountCode: ACC.SUPPLIER_PAYABLE,         debit: Number(form.amount), credit: 0,                   description: `تسوية مستحق ${invoice.vendor_name}` },
         { accountCode: await getCreditCode(), debit: 0,                   credit: Number(form.amount), description: `دفع عبر ${accountLabel}` },
       ]
     })
+    if (!jr) {
+      toast.error('⚠️ حالة الفاتورة تحدّثت لكن القيد المحاسبي فشل — راجع شجرة الحسابات فوراً', { duration: 8000 })
+      onSave(); setSaving(false); return
+    }
     toast.success('تم تسجيل الدفعة')
     onSave(); setSaving(false)
   }
@@ -534,14 +543,18 @@ function VendorInvoicesPage() {
   async function approveInvoice(inv: VendorInvoice) {
     const debitCode = getPurchaseDebitAccountCode(inv.delivery_to || '')
     await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-    await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
+    const jr = await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
       lines: [
         { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
         ...(Number(inv.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
         { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
       ]
     })
-    toast.success('تم الاعتماد والقيد المحاسبي')
+    if (!jr) {
+      toast.error('⚠️ اعتُمدت الفاتورة لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
+    } else {
+      toast.success('تم الاعتماد والقيد المحاسبي')
+    }
     loadVendorInvoices(invPagination.page); reloadKpis()
   }
 

@@ -247,7 +247,7 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
           }
 
           if (creditCode) {
-            await journalExpense({
+            const jr = await journalExpense({
               tenantId,
               date:               form.expense_date,
               description:        form.description,
@@ -260,6 +260,10 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
               creditAccountCode:  creditCode,
               costCenterId:       form.cost_center_id ? Number(form.cost_center_id) : undefined,
             })
+            if (!jr) {
+              toast.error('⚠️ المصروف حُفظ لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
+              onSave(); setSaving(false); return
+            }
           }
         }
       }

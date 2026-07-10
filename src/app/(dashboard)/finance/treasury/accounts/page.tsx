@@ -95,8 +95,9 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
         await supabase.from('finance_cash_accounts').insert(payload)
 
         // ✅ قيد الرصيد الافتتاحي
+        let openingBalanceOk = true
         if (newAccountId && newCode && Number(form.opening_balance) > 0) {
-          await createJournalEntry({
+          const jr = await createJournalEntry({
             tenantId,
             date:          new Date().toISOString().split('T')[0],
             description:   `رصيد افتتاحي — ${form.name.trim()}`,
@@ -108,10 +109,12 @@ function CashAccountModal({ account, tenantId, onClose, onSave }: {
             ],
             source: 'آلي',
           })
+          openingBalanceOk = !!jr
+          if (!jr) toast.error('⚠️ الحساب أُنشئ لكن قيد الرصيد الافتتاحي فشل — سجّله يدوياً من القيود اليومية', { duration: 8000 })
         }
 
         toast.success(newAccountId
-          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات' + (Number(form.opening_balance) > 0 ? ' وسُجّل الرصيد الافتتاحي' : '')
+          ? '✅ تمت الإضافة وأُنشئ الحساب في شجرة الحسابات' + (Number(form.opening_balance) > 0 && openingBalanceOk ? ' وسُجّل الرصيد الافتتاحي' : '')
           : '✅ تمت الإضافة (تعذر إنشاء الحساب في الشجرة)'
         )
       }

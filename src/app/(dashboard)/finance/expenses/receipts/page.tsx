@@ -90,7 +90,7 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
         : (isReceipt ? ACC.OTHER_RECEIVABLE : ACC.OTHER_EXPENSE)
       const ccId = form.cost_center_id ? Number(form.cost_center_id) : undefined
       if (counterCode && cashCode) {
-        await createJournalEntry({
+        const jr = await createJournalEntry({
           tenantId,
           date: form.transaction_date,
           description: `${type} — ${form.description}`,
@@ -104,6 +104,10 @@ function VoucherModal({ type, cashAccounts, accounts, costCenters, clients, vend
             { accountCode: cashCode,  debit: 0,                   credit: Number(form.amount),  description: form.party_name || form.description },
           ]
         })
+        if (!jr) {
+          toast.error('⚠️ الحركة حُفظت بالخزينة لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
+          onSave(); setSaving(false); return
+        }
       }
     }
     toast.success(isReceipt ? '✅ تم تسجيل المقبوض والقيد' : '✅ تم تسجيل المدفوع والقيد')
