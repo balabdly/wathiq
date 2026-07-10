@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useStore } from '@/hooks/useStore'
+import toast from 'react-hot-toast'
 import { syncUserCookie } from '@/lib/authCookie'
 
 export default function LoginPage() {
