@@ -14,6 +14,9 @@ import {
   Paperclip,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { fetchOpenReservations } from '@/lib/pmc-service'
+import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
+import type { MaterialReservation } from '@/lib/pmc-types'
 
 // ══════════════════════════════════════════
 // Types
@@ -146,8 +149,10 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     to_warehouse_id: '', project_id: '', project_name: '',
     vendor_name: '', doc_code: '', booking_no: '',
     client_name_recv: '', exit_permit_no: '',
+    reservation_id: '',
     date: new Date().toISOString().split('T')[0], return_type: '',
   })
+  const [reservations, setReservations] = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[]>([])
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   // قائمة العملاء المحفوظة محلياً
@@ -179,6 +184,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     else { setProjectBalances({}); setDirectQtys({}) }
   }, [form.project_id, form.warehouse_id, type])
 
+  useEffect(() => {
+    if (!form.project_id) { setReservations([]); return }
+    fetchOpenReservations(tenantId, Number(form.project_id)).then(({ data }) => setReservations(data || []))
+  }, [form.project_id, tenantId])
+
   async function loadMats() {
     const { data } = await supabase.from('materials').select('*')
       .eq('tenant_id', tenantId).eq('warehouse_id', Number(form.warehouse_id)).order('name')
@@ -202,6 +212,13 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   function handleProjectChange(projectId: string) {
     const proj = projects.find((p: any) => p.id === Number(projectId))
     set('project_id', projectId); set('project_name', proj?.name || '')
+    set('reservation_id', ''); set('booking_no', '')
+  }
+
+  function handleReservationChange(reservationId: string) {
+    set('reservation_id', reservationId)
+    const res = reservations.find(r => String(r.id) === reservationId)
+    if (res) set('booking_no', res.reservation_no)
   }
 
   async function handleSave() {
@@ -239,14 +256,61 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     if (type === 'تحويل' && !form.to_warehouse_id) { toast.error('اختر المستودع المستلم'); savingRef.current = false; return }
     if (type === 'إرجاع' && !form.return_type) { toast.error('يجب تحديد نوع الإرجاع'); savingRef.current = false; return }
 
+    const mapping = resolveVoucherMapping(type, isProjectWh, form.project_id, form.return_type)
+    if (mapping.requiresReservation && !form.reservation_id) {
+      toast.error('يجب اختيار حجز المواد لعمليات عهدة SEC'); savingRef.current = false; return
+    }
+
     setSaving(true)
     let attachmentUrl: string | null = null
     if (attachmentFile) attachmentUrl = await uploadAttachment(attachmentFile, tenantId)
 
     const wh = warehouses.find(w => w.id === Number(form.warehouse_id))
 
-    // ── رقم الإذن الموحد: يُولَّد مرة واحدة ويُختم على كل سطور العملية ──
-    // (سابقاً كان الـ trigger يعطي كل سطر رقماً مستقلاً — إذن بثلاث مواد = ثلاثة أرقام)
+    // تجميع الصفوف
+    const mergedRows: Record<number, { mat_id: number; qty: number; note: string }> = {}
+    for (const row of validRows) {
+      const id = Number(row.mat_id)
+      if (mergedRows[id]) mergedRows[id].qty += Number(row.qty)
+      else mergedRows[id] = { mat_id: id, qty: Number(row.qty), note: row.note }
+    }
+    const finalRows = Object.values(mergedRows)
+
+    // ══ مسار RPC ذرّي (المرحلة 2) ══
+    if (canUseAtomicVoucher(type, isProjectWh, form.project_id, form.return_type)) {
+      const { data, error } = await submitOperationVoucher(
+        type, tenantId, branchId,
+        { ...form, reservation_id: form.reservation_id },
+        finalRows,
+        { isProjectWh, whName: wh?.name, attachmentUrl },
+      )
+      if (error) {
+        toast.error(`⛔ فشل الحفظ: ${error.message}`)
+        setSaving(false); savingRef.current = false; return
+      }
+      const voucherNo = data?.voucher_no || ''
+      setSaving(false); savingRef.current = false
+      toast.success(`${type} تم بنجاح ✅ — إذن ${voucherNo} بعدد ${finalRows.length} صنف`)
+
+      if (type === 'استلام' || type === 'صرف' || type === 'إرجاع') {
+        const proj = projects.find((p: any) => p.id === Number(form.project_id))
+        const printRows = validRows.map(r => {
+          const mat = materials.find(m => String(m.id) === String(r.mat_id))
+          return { name: mat?.name || '', unit: mat?.unit || '', qty: Number(r.qty), note: r.note }
+        })
+        printOperationReceipt({
+          type, warehouseName: wh?.name || '', projectName: proj?.name || form.project_name || '',
+          date: form.date, rows: printRows, vendorName: form.vendor_name || '',
+          docCode: form.doc_code || '', bookingNo: form.booking_no || '',
+          clientName: form.client_name_recv || '', exitPermitNo: form.exit_permit_no || '',
+          txnNumber: voucherNo,
+        })
+      }
+      onSave(); onClose()
+      return
+    }
+
+    // ══ مسار قديم (سكراب بدون مشروع) ══
     let opNumberType: string = 'استلام'
     if (type === 'صرف' || type === 'تحويل') opNumberType = 'صرف'
     else if (type === 'إرجاع') {
@@ -255,15 +319,6 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     }
     const { data: voucherNo } = await supabase.rpc('generate_txn_number', { p_type: opNumberType })
     if (!voucherNo) { toast.error('تعذر توليد رقم الإذن'); setSaving(false); savingRef.current = false; return }
-
-    // تجميع الصفوف — لو نفس المادة مكررة نجمع كمياتها
-    const mergedRows: Record<number, { mat_id: number; qty: number; note: string }> = {}
-    for (const row of validRows) {
-      const id = Number(row.mat_id)
-      if (mergedRows[id]) mergedRows[id].qty += Number(row.qty)
-      else mergedRows[id] = { mat_id: id, qty: Number(row.qty), note: row.note }
-    }
-    const finalRows = Object.values(mergedRows)
 
     const { data: freshMats } = await supabase.from('materials').select('*')
       .in('id', finalRows.map(r => r.mat_id))
@@ -477,6 +532,27 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
             </div>
           )}
 
+          {/* حجز المواد — إلزامي لعهدة SEC */}
+          {isProjectWh && form.project_id && type !== 'تحويل' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                حجز المواد (Booking) <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              {reservations.length === 0 ? (
+                <div style={{ padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e' }}>
+                  لا توجد حجوزات لهذا المشروع — أنشئ حجزاً من <strong>المخزون → حجوزات SEC</strong>
+                </div>
+              ) : (
+                <select value={form.reservation_id} onChange={e => handleReservationChange(e.target.value)} className="select">
+                  <option value="">— اختر رقم الحجز —</option>
+                  {reservations.map(r => (
+                    <option key={r.id} value={r.id}>{r.reservation_no} ({r.status})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
           {/* نوع الإرجاع */}
           {type === 'إرجاع' && (
             <div>
@@ -531,7 +607,9 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم الحجز</label>
-                  <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)} className="input" placeholder="رقم حجز العميل" />
+                  <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)} className="input"
+                    placeholder="يُملأ تلقائياً من الحجز" readOnly={!!form.reservation_id}
+                    style={form.reservation_id ? { background: '#f8fafc', color: '#6b7280' } : undefined} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>
@@ -669,6 +747,9 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
   const [returnQtys,     setReturnQtys]     = useState<Record<number, string>>({})
   const [date,           setDate]           = useState(new Date().toISOString().split('T')[0])
   const [notes,          setNotes]          = useState('')
+  const [reservationId,  setReservationId]  = useState('')
+  const [bookingNo,      setBookingNo]      = useState('')
+  const [reservations,   setReservations]   = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status'>[]>([])
 
   // ── وضع المودال: مرتجع مصروفات (يرد للعهدة) أو مزال من الموقع (شبكة قديمة/تالف → السكراب) ──
   const [mode,        setMode]        = useState<'مصروفات' | 'مزال'>('مصروفات')
@@ -691,77 +772,67 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
   useEffect(() => { loadIssuedMats() }, [warehouseId, projectId])
 
+  useEffect(() => {
+    if (!projectId) { setReservations([]); setReservationId(''); setBookingNo(''); return }
+    fetchOpenReservations(tenantId, Number(projectId)).then(({ data }) => setReservations(data || []))
+  }, [projectId, tenantId])
+
   async function handleSave() {
     const validRows = Object.entries(returnQtys).filter(([, qty]) => Number(qty) > 0)
     if (validRows.length === 0) { toast.error('أدخل كمية مرتجعة لمادة واحدة على الأقل'); return }
     if (!projectId) { toast.error('اختر المشروع'); return }
+    if (!reservationId) { toast.error('يجب اختيار حجز المواد'); return }
     setSaving(true)
 
-    const wh   = warehouses.find(w => w.id === Number(warehouseId))
-    const printRows: { name: string; unit: string; qty: number; note: string }[] = []
+    const wh = warehouses.find(w => w.id === Number(warehouseId))
 
-    // ── رقم الإذن الموحد لكل سطور المرتجع ──
-    const { data: voucherNo } = await supabase.rpc('generate_txn_number', { p_type: 'استلام' })
-    if (!voucherNo) { toast.error('تعذر توليد رقم الإذن'); setSaving(false); return }
-
+    // تحقق من الحد الأقصى للإرجاع
+    const lines: { material_id: number; qty: number; note?: string }[] = []
     for (const [pmIdStr, qtyStr] of validRows) {
       const qty = Number(qtyStr)
       const pm  = issuedMats.find(m => String(m.id) === pmIdStr)
       if (!pm) continue
-
       const maxReturn = Number(pm.qty_issued)
       if (qty > maxReturn) {
         toast.error(`لا يمكن إرجاع أكثر من ${maxReturn} ${pm.material?.unit} من "${pm.material?.name}"`)
         setSaving(false); return
       }
-
-      // جلب رصيد المادة
-      const { data: mat } = await supabase.from('materials').select('qty, name, unit')
-        .eq('id', pm.material_id).single()
-      if (!mat) continue
-
-      const qtyBefore = Number(mat.qty)
-      const qtyAfter  = qtyBefore + qty
-
-      // تحديث المادة في المستودع
-      const { error: matErr } = await supabase.from('materials').update({ qty: qtyAfter }).eq('id', pm.material_id)
-      if (matErr) { toast.error('خطأ تحديث المادة: ' + matErr.message); setSaving(false); return }
-
-      // project_materials يُحدَّث تلقائياً بـ trigger
-
-      // تسجيل في stock_ledger
-      const { error: ledgerErr } = await supabase.from('stock_ledger').insert({
-        tenant_id:         tenantId,
-        branch_id:         branchId,
-        txn_number:        voucherNo,
-        type:              'استلام',
-        movement_category: 'مرتجع_موقع',
-        mat_name:          mat.name,
-        unit:              mat.unit,
-        qty,
-        qty_before:        qtyBefore,
-        qty_after:         qtyAfter,
-        wh_name:           wh?.name || '',
-        project_id:        Number(projectId),
-        project_name:      projectName,
-        dispatch_note:     notes || 'مرتجع موقع',
-      })
-      if (ledgerErr) { toast.error('خطأ تسجيل الحركة: ' + ledgerErr.message); setSaving(false); return }
-
-      printRows.push({ name: mat.name, unit: mat.unit, qty, note: notes || '' })
+      lines.push({ material_id: pm.material_id, qty, note: notes || 'مرتجع موقع' })
     }
+
+    const { data, error } = await submitSiteReturnVoucher(tenantId, branchId, {
+      warehouseId: Number(warehouseId),
+      whName: wh?.name,
+      projectId: Number(projectId),
+      projectName,
+      reservationId: Number(reservationId),
+      bookingNo: bookingNo || undefined,
+      notes: notes || undefined,
+      lines,
+    })
+
+    if (error) {
+      toast.error(`⛔ فشل الحفظ: ${error.message}`)
+      setSaving(false); return
+    }
+
+    const voucherNo = data?.voucher_no || ''
+    const printRows = lines.map(l => {
+      const pm = issuedMats.find(m => m.material_id === l.material_id)
+      return { name: pm?.material?.name || '', unit: pm?.material?.unit || '', qty: l.qty, note: notes || '' }
+    })
 
     setSaving(false)
     toast.success(`✅ تم تسجيل المرتجع — ${printRows.length} مادة`)
 
-    // طباعة وصل المرتجع — برقم الإذن الموحد
     printOperationReceipt({
       type: 'مرتجع موقع',
       warehouseName: wh?.name || '',
       projectName,
       date,
       rows: printRows,
-      txnNumber: voucherNo || '',
+      bookingNo: bookingNo || '',
+      txnNumber: voucherNo,
     })
 
     onSave(); onClose()
@@ -889,6 +960,26 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
                 {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+              حجز المواد <span style={{ color: '#c81e1e' }}>*</span>
+            </label>
+            {reservations.length === 0 ? (
+              <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
+                لا توجد حجوزات — أنشئ حجزاً من حجوزات SEC
+              </div>
+            ) : (
+              <select value={reservationId} onChange={e => {
+                setReservationId(e.target.value)
+                const r = reservations.find(x => String(x.id) === e.target.value)
+                setBookingNo(r?.reservation_no || '')
+              }} className="select">
+                <option value="">— اختر الحجز —</option>
+                {reservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no}</option>)}
+              </select>
+            )}
           </div>
 
           <div>

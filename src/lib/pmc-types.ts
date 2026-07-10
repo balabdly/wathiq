@@ -97,6 +97,50 @@ export type ReservationReconciliation = {
   qty_net_consumed: number
 }
 
+export type BoqVariationOrder = {
+  id: number
+  tenant_id: string
+  project_id: number
+  variation_no: string
+  adjustment_request_id?: string | null
+  parent_boq_version_id?: number | null
+  new_boq_version_id?: number | null
+  status: 'DRAFT' | 'APPROVED' | 'APPLIED' | 'REJECTED'
+  reason?: string | null
+  sec_reference?: string | null
+  approved_at?: string | null
+  notes?: string | null
+  created_at: string
+  parent_version?: ProjectBoqVersion
+  new_version?: ProjectBoqVersion
+}
+
+export type MaterialReconciliation = {
+  id: number
+  tenant_id: string
+  project_id: number
+  reservation_id: number
+  boq_version_id?: number | null
+  status: 'DRAFT' | 'FINAL' | 'CLOSED'
+  reconciled_at?: string | null
+  notes?: string | null
+  lines?: MaterialReconciliationLine[]
+}
+
+export type MaterialReconciliationLine = {
+  id: number
+  material_id?: number | null
+  material_name: string
+  unit?: string | null
+  qty_boq: number
+  qty_received: number
+  qty_issued: number
+  qty_returned_client: number
+  qty_on_hand: number
+  qty_surplus: number
+  variance: number
+}
+
 export const VOUCHER_TYPE_LABELS: Record<VoucherType, string> = {
   RECEIVE: 'استلام',
   ISSUE: 'صرف',
@@ -116,4 +160,11 @@ export const BOQ_VERSION_TYPE_LABELS: Record<BoqVersionType, string> = {
   INITIAL: 'مقايسة أولية',
   VARIATION: 'أمر تغيير',
   AS_BUILT: 'كما بُني',
+}
+
+export const VARIATION_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'مسودة',
+  APPROVED: 'معتمد',
+  APPLIED: 'مُطبَّق',
+  REJECTED: 'مرفوض',
 }

@@ -5,12 +5,15 @@ import { supabase } from '@/lib/supabase'
 import {
   fetchReservations, createReservation, fetchBoqVersions,
   createBoqVersion, activateBoqVersion, fetchReservationReconciliation,
+  fetchVariationOrders, createVariationOrder, applyVariationOrder, approveVariationOrder,
+  finalizeReservationReconciliation,
 } from '@/lib/pmc-service'
 import {
-  RESERVATION_STATUS_LABELS, BOQ_VERSION_TYPE_LABELS,
+  RESERVATION_STATUS_LABELS, BOQ_VERSION_TYPE_LABELS, VARIATION_STATUS_LABELS,
   type MaterialReservation, type ProjectBoqVersion, type ReservationReconciliation,
+  type BoqVariationOrder,
 } from '@/lib/pmc-types'
-import { Plus, Search, BookOpen, ClipboardList, BarChart3 } from 'lucide-react'
+import { Plus, Search, BookOpen, ClipboardList, BarChart3, GitBranch, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
@@ -29,10 +32,11 @@ type Project = { id: number; name: string }
 
 export default function PmcPage() {
   const { tenant } = useStore()
-  const [tab, setTab] = useState<'reservations' | 'boq' | 'reconcile'>('reservations')
+  const [tab, setTab] = useState<'reservations' | 'boq' | 'variations' | 'reconcile'>('reservations')
   const [projects, setProjects] = useState<Project[]>([])
   const [reservations, setReservations] = useState<MaterialReservation[]>([])
   const [boqVersions, setBoqVersions] = useState<ProjectBoqVersion[]>([])
+  const [variations, setVariations] = useState<BoqVariationOrder[]>([])
   const [reconcile, setReconcile] = useState<ReservationReconciliation[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -42,6 +46,10 @@ export default function PmcPage() {
   const [resForm, setResForm] = useState({ project_id: '', reservation_no: '', client_name: '', notes: '' })
 
   const [showBoqForm, setShowBoqForm] = useState(false)
+  const [showVarForm, setShowVarForm] = useState(false)
+  const [varForm, setVarForm] = useState({ variation_no: '', parent_boq_version_id: '', reason: '', sec_reference: '' })
+  const [closeResId, setCloseResId] = useState<number | ''>('')
+  const [closeBoqId, setCloseBoqId] = useState<number | ''>('')
   const [boqForm, setBoqForm] = useState({
     project_id: '', version_type: 'INITIAL' as const,
     description: '', unit: 'قطعة', qty_planned: '',
@@ -74,10 +82,20 @@ export default function PmcPage() {
     setReconcile(data || [])
   }
 
+  async function loadVariations(projectId: number) {
+    if (!tenant) return
+    const { data } = await fetchVariationOrders(tenant.id, projectId)
+    setVariations(data || [])
+  }
+
   useEffect(() => {
     if (!tenant) return
     if (tab === 'boq' && filterProject) loadBoq(Number(filterProject))
-    if (tab === 'reconcile') loadReconcile(filterProject ? Number(filterProject) : undefined)
+    if (tab === 'variations' && filterProject) loadVariations(Number(filterProject))
+    if (tab === 'reconcile') {
+      loadReconcile(filterProject ? Number(filterProject) : undefined)
+      if (filterProject) loadBoq(Number(filterProject))
+    }
   }, [tab, filterProject, tenant?.id])
 
   async function handleCreateReservation() {
@@ -127,6 +145,48 @@ export default function PmcPage() {
     loadBoq(projectId)
   }
 
+  async function handleCreateVariation() {
+    if (!tenant || !filterProject || !varForm.variation_no || !varForm.parent_boq_version_id) {
+      toast.error('رقم أمر التغيير وإصدار BOQ الأب مطلوبان')
+      return
+    }
+    const { error } = await createVariationOrder({
+      tenant_id: tenant.id,
+      project_id: Number(filterProject),
+      variation_no: varForm.variation_no.trim(),
+      parent_boq_version_id: Number(varForm.parent_boq_version_id),
+      reason: varForm.reason || undefined,
+      sec_reference: varForm.sec_reference || undefined,
+    })
+    if (error) { toast.error(error.message); return }
+    toast.success('تم إنشاء أمر التغيير')
+    setShowVarForm(false)
+    setVarForm({ variation_no: '', parent_boq_version_id: '', reason: '', sec_reference: '' })
+    loadVariations(Number(filterProject))
+  }
+
+  async function handleCloseReservation() {
+    if (!tenant || !closeResId) { toast.error('اختر الحجز للإغلاق'); return }
+    const openBalance = reconcile
+      .filter(r => r.reservation_id === Number(closeResId))
+      .reduce((s, r) => s + Number(r.qty_on_hand), 0)
+    if (openBalance > 0) {
+      toast.error(`لا يمكن الإغلاق — رصيد متبقٍ: ${fmt(openBalance)} (أرجع الفائض للعميل أولاً)`)
+      return
+    }
+    const { error } = await finalizeReservationReconciliation(
+      tenant.id, Number(closeResId), closeBoqId ? Number(closeBoqId) : undefined,
+    )
+    if (error) { toast.error(error.message); return }
+    toast.success('تم إغلاق الحجز والمطابقة النهائية')
+    loadBase()
+    loadReconcile(filterProject ? Number(filterProject) : undefined)
+    setCloseResId('')
+  }
+
+  const activeBoqVersions = boqVersions.filter(v => v.status === 'ACTIVE' || v.status === 'DRAFT')
+  const openReservations = reservations.filter(r => r.status !== 'CLOSED')
+
   const filteredRes = reservations.filter(r => {
     if (filterProject && r.project_id !== Number(filterProject)) return false
     if (!search) return true
@@ -139,6 +199,7 @@ export default function PmcPage() {
   const TABS = [
     { id: 'reservations' as const, label: 'حجوزات المواد', icon: ClipboardList },
     { id: 'boq' as const,          label: 'مقايسات BOQ',   icon: BookOpen },
+    { id: 'variations' as const,  label: 'أوامر التغيير', icon: GitBranch },
     { id: 'reconcile' as const,    label: 'مطابقة العهدة', icon: BarChart3 },
   ]
 
@@ -197,6 +258,16 @@ export default function PmcPage() {
             borderRadius: '8px', fontWeight: 600, cursor: filterProject ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
           }}>
             <Plus style={{ width: '16px', height: '16px' }} /> إصدار BOQ
+          </button>
+        )}
+        {tab === 'variations' && (
+          <button onClick={() => { if (filterProject) loadBoq(Number(filterProject)); setShowVarForm(true) }}
+            disabled={!filterProject} style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
+              background: filterProject ? '#7c3aed' : '#9ca3af', color: 'white', border: 'none',
+              borderRadius: '8px', fontWeight: 600, cursor: filterProject ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
+            }}>
+            <Plus style={{ width: '16px', height: '16px' }} /> أمر تغيير
           </button>
         )}
       </div>
@@ -299,7 +370,86 @@ export default function PmcPage() {
             </div>
           )}
         </div>
+      ) : tab === 'variations' ? (
+        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+          {!filterProject ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)' }}>اختر مشروعاً لعرض أوامر التغيير</div>
+          ) : variations.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)' }}>لا توجد أوامر تغيير</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc' }}>
+                  {['رقم الأمر', 'السبب', 'مرجع SEC', 'الحالة', 'إجراء'].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {variations.map(v => (
+                  <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{v.variation_no}</td>
+                    <td style={{ padding: '11px 14px' }}>{v.reason || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#6b7280' }}>{v.sec_reference || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}>
+                      <span style={{ background: '#f5f3ff', color: '#7c3aed', padding: '3px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700 }}>
+                        {VARIATION_STATUS_LABELS[v.status] || v.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '11px 14px' }}>
+                      {v.status === 'DRAFT' && tenant && (
+                        <button onClick={async () => {
+                          await approveVariationOrder(v.id)
+                          toast.success('تم اعتماد الأمر')
+                          loadVariations(Number(filterProject))
+                        }} style={{ padding: '4px 10px', background: '#0ea77b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', marginLeft: '6px' }}>
+                          اعتماد
+                        </button>
+                      )}
+                      {v.status === 'APPROVED' && tenant && (
+                        <button onClick={async () => {
+                          const { error } = await applyVariationOrder(v.id)
+                          if (error) { toast.error(error.message); return }
+                          toast.success('تم تطبيق الأمر — إصدار BOQ جديد')
+                          loadVariations(Number(filterProject))
+                          loadBoq(Number(filterProject))
+                        }} style={{ padding: '4px 10px', background: '#1a56db', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                          تطبيق
+                        </button>
+                      )}
+                      {v.status === 'APPLIED' && v.new_boq_version_id && (
+                        <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>إصدار #{v.new_boq_version_id}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       ) : (
+        <div>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={closeResId} onChange={e => setCloseResId(e.target.value ? Number(e.target.value) : '')}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+              <option value="">— حجز للإغلاق —</option>
+              {openReservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no} ({RESERVATION_STATUS_LABELS[r.status]})</option>)}
+            </select>
+            <select value={closeBoqId} onChange={e => setCloseBoqId(e.target.value ? Number(e.target.value) : '')}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
+              <option value="">إصدار AS_BUILT (اختياري)</option>
+              {boqVersions.filter(v => v.version_type === 'AS_BUILT' || v.status === 'ACTIVE').map(v => (
+                <option key={v.id} value={v.id}>v{v.version_no} — {BOQ_VERSION_TYPE_LABELS[v.version_type]}</option>
+              ))}
+            </select>
+            <button onClick={handleCloseReservation} disabled={!closeResId} style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+              background: closeResId ? '#374151' : '#9ca3af', color: 'white', border: 'none',
+              borderRadius: '8px', fontWeight: 600, cursor: closeResId ? 'pointer' : 'not-allowed', fontSize: '0.85rem',
+            }}>
+              <Lock style={{ width: '14px', height: '14px' }} /> إغلاق ومطابقة نهائية
+            </button>
+          </div>
         <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
           {reconcile.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text3)' }}>لا توجد بيانات مطابقة بعد</div>
@@ -329,6 +479,7 @@ export default function PmcPage() {
             </table>
           )}
         </div>
+        </div>
       )}
 
       {showResForm && (
@@ -351,6 +502,33 @@ export default function PmcPage() {
             <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowResForm(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: '8px', background: 'white', cursor: 'pointer' }}>إلغاء</button>
               <button onClick={handleCreateReservation} style={{ padding: '8px 16px', background: '#0ea77b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>حفظ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVarForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: 'white', borderRadius: '14px', padding: '24px', width: '420px', maxWidth: '95vw' }}>
+            <h3 style={{ fontWeight: 800, marginBottom: '16px' }}>أمر تغيير BOQ</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input value={varForm.variation_no} onChange={e => setVarForm(f => ({ ...f, variation_no: e.target.value }))}
+                placeholder="رقم أمر التغيير *" style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+              <select value={varForm.parent_boq_version_id} onChange={e => setVarForm(f => ({ ...f, parent_boq_version_id: e.target.value }))}
+                style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <option value="">إصدار BOQ الأب *</option>
+                {activeBoqVersions.map(v => (
+                  <option key={v.id} value={v.id}>v{v.version_no} — {BOQ_VERSION_TYPE_LABELS[v.version_type]} ({v.status})</option>
+                ))}
+              </select>
+              <input value={varForm.sec_reference} onChange={e => setVarForm(f => ({ ...f, sec_reference: e.target.value }))}
+                placeholder="مرجع SEC" style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }} />
+              <textarea value={varForm.reason} onChange={e => setVarForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="سبب التغيير" rows={2} style={{ padding: '10px', borderRadius: '8px', border: '1px solid var(--border)', resize: 'vertical' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowVarForm(false)} style={{ padding: '8px 16px', border: '1px solid var(--border)', borderRadius: '8px', background: 'white', cursor: 'pointer' }}>إلغاء</button>
+              <button onClick={handleCreateVariation} style={{ padding: '8px 16px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}>حفظ</button>
             </div>
           </div>
         </div>
