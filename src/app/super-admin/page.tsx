@@ -14,8 +14,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// ── كلمة مرور الأدمن ─────────────────────────────────────────────
-const SUPER_ADMIN_PASSWORD = 'wathiq@super2024'
+// كلمة مرور super-admin تُتحقق منها الآن بالخادم عبر /api/super-admin/verify — لا نص مكشوف بالمتصفح
 
 // ── الخطط السعرية ─────────────────────────────────────────────────
 const PLANS = {
@@ -271,14 +270,26 @@ export default function SuperAdminPage() {
     if (saved === 'true') { setAuth(true); loadCompanies() }
   }, [])
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
-    if (password === SUPER_ADMIN_PASSWORD) {
-      sessionStorage.setItem('super_admin_auth', 'true')
-      setAuth(true)
-      loadCompanies()
-    } else {
-      toast.error('كلمة المرور غير صحيحة')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/super-admin/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        sessionStorage.setItem('super_admin_auth', 'true')
+        setAuth(true)
+        loadCompanies()
+      } else {
+        toast.error(data.error || 'كلمة المرور غير صحيحة')
+      }
+    } catch {
+      toast.error('تعذر الاتصال بالخادم')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -291,58 +302,32 @@ export default function SuperAdminPage() {
 
   async function handleSave(data: any) {
     try {
-      const tenantData = {
-        name:       data.name,
-        name_en:    data.name_en     || null,
-        phone:      data.phone       || null,
-        email:      data.email       || null,
-        plan:       data.plan,
-        modules:    data.modules,
-        is_active:  data.is_active,
-        expires_at: data.expires_at  || null,
-        max_users:  PLANS[data.plan as keyof typeof PLANS]?.maxUsers || 3,
-      }
-
       if (editCompany) {
-        const { error } = await supabase.from('tenants').update(tenantData).eq('id', editCompany.id)
+        const { error } = await supabase.from('tenants').update({
+          name: data.name, name_en: data.name_en || null,
+          phone: data.phone || null, email: data.email || null,
+          plan: data.plan, modules: data.modules, is_active: data.is_active,
+          expires_at: data.expires_at || null,
+          max_users: PLANS[data.plan as keyof typeof PLANS]?.maxUsers || 3,
+        }).eq('id', editCompany.id)
         if (error) throw error
         toast.success('تم تعديل بيانات الشركة ✅')
       } else {
-        const { data: tenant, error: tenantError } = await supabase
-          .from('tenants').insert({ ...tenantData }).select().single()
-        if (tenantError) throw tenantError
-
-        const { data: branch, error: branchError } = await supabase
-          .from('branches').insert({
-            tenant_id: tenant.id,
-            name: 'الفرع الرئيسي',
-            color: '#1a56db',
-          }).select().single()
-        if (branchError) throw branchError
-
-        const { error: empError } = await supabase.from('employees').insert({
-          tenant_id:   tenant.id,
-          branch_id:   branch.id,
-          name:        data.admin_name,
-          username:    data.admin_username,
-          role:        'مدير عام',
-          is_tenant_owner: true,
-          permissions: [
-            'dashboard', 'projects_view', 'projects_edit',
-            'visits_quality', 'visits_safety', 'visits_electrical', 'visits_field',
-            'inventory', 'purchases', 'employees',
-            'finance', 'reports', 'qhse',
-          ],
-          is_active: true,
-          password:  data.admin_password,
+        // إنشاء كامل بالخادم — تشفير حقيقي للباسورد + جسر Supabase Auth، لا شيء بالمتصفح
+        const res = await fetch('/api/super-admin/create-tenant', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...data,
+            max_users: PLANS[data.plan as keyof typeof PLANS]?.maxUsers || 3,
+          }),
         })
-        if (empError) throw empError
+        const result = await res.json()
+        if (!result.ok) throw new Error(result.error)
 
-        const seedResult = await seedChartOfAccounts(tenant.id)
+        const seedResult = await seedChartOfAccounts(result.tenantId)
         if (seedResult.inserted > 0) {
           toast.success(`تم زرع ${seedResult.inserted} حساب في شجرة الحسابات المعيارية`)
         }
-
         toast.success(`تم إضافة شركة "${data.name}" بنجاح ✅`)
       }
 
@@ -383,8 +368,10 @@ export default function SuperAdminPage() {
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 className="input" placeholder="••••••••" autoFocus required />
             </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-              <Lock style={{ width: '15px', height: '15px' }} /> دخول
+            <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              {loading
+                ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : <Lock style={{ width: '15px', height: '15px' }} />} دخول
             </button>
           </form>
         </div>
