@@ -15,6 +15,8 @@ import {
   canDeleteLoginAccount,
   canDisableLoginAccount,
 } from '@/lib/userAccountKind'
+import { DEFAULT_ROLES_PERMS, PERMISSION_GROUPS } from '@/lib/permissions-config'
+import { UserPermissionsEditor } from '@/components/settings/UserPermissionsEditor'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -139,29 +141,7 @@ function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
   )
 }
 
-// ── ثوابت الصلاحيات ──
-const PERMISSION_GROUPS = [
-  { label: 'عام',                color: '#6b7280', perms: [{ id: 'dashboard', label: 'لوحة التحكم', icon: '📊' }] },
-  { label: 'المشاريع',          color: '#1a56db', perms: [{ id: 'projects_view', label: 'عرض المشاريع', icon: '👁️' }, { id: 'projects_edit', label: 'تعديل المشاريع', icon: '✏️' }, { id: 'pmo', label: 'إدارة PMO', icon: '📋' }] },
-  { label: 'الزيارات',          color: '#0ea77b', perms: [{ id: 'visits', label: 'كل الزيارات', icon: '🔎' }, { id: 'visits_quality', label: 'زيارات الجودة', icon: '✅' }, { id: 'visits_safety', label: 'زيارات السلامة', icon: '🦺' }, { id: 'visits_electrical', label: 'زيارات كهربائية', icon: '⚡' }, { id: 'visits_field', label: 'زيارات ميدانية', icon: '🏗️' }] },
-  { label: 'QHSE',              color: '#e6820a', perms: [{ id: 'qhse', label: 'QHSE', icon: '🛡️' }] },
-  { label: 'المخزون والمشتريات', color: '#7c3aed', perms: [{ id: 'inventory', label: 'المخزون', icon: '📦' }, { id: 'purchases', label: 'المشتريات', icon: '🛒' }] },
-  { label: 'الموارد البشرية',   color: '#9333ea', perms: [{ id: 'hr', label: 'HR', icon: '👥' }, { id: 'employees', label: 'الموظفون', icon: '👤' }, { id: 'hr_self', label: 'الخدمة الذاتية', icon: '🙋' }] },
-  { label: 'المالية',           color: '#0f766e', perms: [{ id: 'finance', label: 'المالية', icon: '💰' }] },
-  { label: 'التقارير',          color: '#64748b', perms: [{ id: 'reports', label: 'التقارير', icon: '📈' }] },
-]
-
-const DEFAULT_ROLES_PERMS: Record<string, string[]> = {
-  'مدير عام':     ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','qhse','employees','reports','finance','pmo','hr'],
-  'مدير مشروع':  ['dashboard','projects_view','projects_edit','visits','visits_quality','visits_safety','visits_electrical','visits_field','inventory','purchases','reports','pmo'],
-  'مهندس جودة':  ['dashboard','projects_view','visits_quality','qhse','reports','hr_self'],
-  'مهندس سلامة': ['dashboard','projects_view','visits_safety','qhse','reports','hr_self'],
-  'مهندس كهرباء':['dashboard','projects_view','visits_electrical','visits_field','inventory','reports','hr_self'],
-  'مهندس ميداني':['dashboard','projects_view','visits_field','reports','hr_self'],
-  'مشرف':        ['dashboard','projects_view','visits_field','reports','hr_self'],
-  'محاسب':       ['dashboard','finance','purchases','reports','hr_self'],
-  'مدير HR':     ['dashboard','hr','employees','reports'],
-}
+// ── DEFAULT_ROLES_PERMS — من @/lib/permissions-config
 
 // ══ مودال تعديل صلاحيات مستخدم موجود ══
 function EditPermissionsModal({ emp, onClose, onSave }: {
@@ -318,9 +298,6 @@ export default function EmployeesSettingsPage() {
     setHrLinkId(emp.hr_employee_id ? String(emp.hr_employee_id) : '')
   }
 
-  function togglePerm2(key: string) {
-    setUserPerms(prev => prev.includes(key) ? prev.filter(p => p !== key) : [...prev, key])
-  }
 
   async function saveSelectedEmp() {
     if (!selectedEmp || !tenant) return
@@ -591,13 +568,24 @@ export default function EmployeesSettingsPage() {
             </div>
           )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '16px', alignItems: 'start' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(280px, 340px) 1fr',
+          gap: '0',
+          minHeight: 'calc(100vh - 280px)',
+          background: 'white',
+          borderRadius: '16px',
+          border: '1px solid #e5e7eb',
+          overflow: 'hidden',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        }}>
 
           {/* قائمة الموظفين */}
-          <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid var(--border)', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text3)' }}>
+          <div style={{ borderLeft: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', background: '#fafbfc' }}>
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid #e5e7eb', fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af' }}>
               {filtered.length} مستخدم
             </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
             {filtered.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '0.82rem' }}>
                 {activeTab === 'external' ? 'لا توجد حسابات بدون ملف HR' : 'لا يوجد مستخدمون'}
@@ -643,75 +631,97 @@ export default function EmployeesSettingsPage() {
                 </div>
               </div>
             )})}
+            </div>
           </div>
 
-          {/* لوحة الصلاحيات */}
+          {/* لوحة الصلاحيات — كاملة */}
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
           {selectedEmp ? (() => {
             const selectedBadge = getAccountBadge(selectedEmp, allHrEmployees)
             const selectedOwner = isTenantOwner(selectedEmp)
             const needsHrLink = userPerms.includes('hr_self') && !hrLinkId && !selectedOwner
             return (
-            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-              {/* Header */}
-              <div style={{ padding: '14px 18px', background: '#eff6ff', borderBottom: '2px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: '#1a56db', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {selectedEmp.name}
-                    {selectedBadge && (
-                      <span style={{ fontSize: '0.65rem', background: selectedBadge.bg, color: selectedBadge.color, borderRadius: '8px', padding: '2px 8px', fontWeight: 700 }}>
-                        {selectedBadge.label}
-                      </span>
+            <>
+              {/* Hero */}
+              <div style={{
+                padding: '18px 24px',
+                background: selectedOwner
+                  ? 'linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%)'
+                  : 'linear-gradient(135deg, #1e3a8a 0%, #1a56db 50%, #3b82f6 100%)',
+                color: 'white', flexShrink: 0,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{
+                      width: '52px', height: '52px', borderRadius: '14px',
+                      background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(8px)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1.3rem', fontWeight: 800, border: '2px solid rgba(255,255,255,0.3)',
+                    }}>
+                      {(selectedEmp.name || '?')[0]}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {selectedEmp.name}
+                        {selectedBadge && (
+                          <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.25)', borderRadius: '8px', padding: '2px 8px', fontWeight: 700 }}>
+                            {selectedBadge.label}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', opacity: 0.88, marginTop: '3px' }}>
+                        {selectedEmp.role} · @{selectedEmp.username || '—'}
+                        {!selectedEmp.is_active && ' · معطّل'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {isAdmin && isExternalLoginUser(selectedEmp, allHrEmployees) && (
+                      <button onClick={() => handleDeleteExternalUser(selectedEmp)} disabled={deleting}
+                        style={{ padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Trash2 style={{ width: '13px', height: '13px' }} />
+                        {deleting ? '...' : 'حذف'}
+                      </button>
                     )}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
-                    {userPerms.length} صلاحية · {selectedEmp.username}
-                    {!selectedEmp.is_active && <span style={{ color: '#c81e1e', marginRight: '6px' }}>· معطّل</span>}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {isAdmin && selectedEmp && isExternalLoginUser(selectedEmp, allHrEmployees) && (
-                    <button onClick={() => handleDeleteExternalUser(selectedEmp)} disabled={deleting}
-                      style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Trash2 style={{ width: '13px', height: '13px' }} />
-                      {deleting ? '...' : 'حذف الحساب'}
+                    {!selectedOwner && (
+                      <button onClick={() => handleToggleActive(selectedEmp)}
+                        style={{ padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: 'white', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                        {selectedEmp.is_active ? 'تعطيل' : 'تفعيل'}
+                      </button>
+                    )}
+                    <button onClick={saveSelectedEmp} disabled={saving}
+                      style={{ padding: '7px 18px', borderRadius: '8px', border: 'none', background: 'white', color: '#1a56db', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Save style={{ width: '14px', height: '14px' }} />
+                      {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
                     </button>
-                  )}
-                  {!selectedOwner && (
-                  <button onClick={() => handleToggleActive(selectedEmp)}
-                    style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${selectedEmp.is_active ? '#fecaca' : '#bbf7d0'}`, background: selectedEmp.is_active ? '#fef2f2' : '#ecfdf5', color: selectedEmp.is_active ? '#c81e1e' : '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
-                    {selectedEmp.is_active ? 'تعطيل' : 'تفعيل'}
-                  </button>
-                  )}
-                  <button onClick={saveSelectedEmp} disabled={saving} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '6px 16px' }}>
-                    <Save style={{ width: '13px', height: '13px' }} />
-                    {saving ? 'جاري الحفظ...' : 'حفظ'}
-                  </button>
+                  </div>
                 </div>
               </div>
 
-              <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' }}>
+              {/* المحتوى */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* بيانات الحساب */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>اسم المستخدم</label>
-                    <input value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" />
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>اسم المستخدم</label>
+                    <input value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} dir="ltr" />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>كلمة مرور جديدة</label>
-                    <input type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} placeholder="اتركه فارغاً للإبقاء" dir="ltr" />
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>كلمة مرور جديدة</label>
+                    <input type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} placeholder="اتركه فارغاً للإبقاء" dir="ltr" />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text3)' }}>الدور الوظيفي</label>
-                    <input value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} className="input" style={{ fontSize: '0.82rem' }} />
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>الدور الوظيفي</label>
+                    <input value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} />
                   </div>
                 </div>
 
-                {/* ربط ملف HR — مطلوب للخدمة الذاتية */}
-                <div style={{ padding: '12px 14px', borderRadius: '10px', border: `1px solid ${needsHrLink ? '#fecaca' : '#bfdbfe'}`, background: needsHrLink ? '#fef2f2' : '#eff6ff' }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: needsHrLink ? '#c81e1e' : '#1a56db' }}>
+                {/* ربط HR */}
+                <div style={{ padding: '14px 16px', borderRadius: '12px', border: `1px solid ${needsHrLink ? '#fecaca' : '#e5e7eb'}`, background: needsHrLink ? '#fef2f2' : '#f8fafc' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px', color: needsHrLink ? '#c81e1e' : '#64748b' }}>
                     ملف الموظف في HR {userPerms.includes('hr_self') && !selectedOwner ? '(مطلوب للخدمة الذاتية)' : '(اختياري)'}
                   </label>
-                  <select value={hrLinkId} onChange={e => setHrLinkId(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
+                  <select value={hrLinkId} onChange={e => setHrLinkId(e.target.value)} className="select" style={{ fontSize: '0.85rem', maxWidth: '400px' }}>
                     <option value="">— غير مربوط —</option>
                     {allHrEmployees.map(h => (
                       <option key={h.id} value={h.id}>{h.name}{h.job_title ? ` — ${h.job_title}` : ''}</option>
@@ -720,60 +730,30 @@ export default function EmployeesSettingsPage() {
                   {needsHrLink && (
                     <p style={{ fontSize: '0.75rem', color: '#c81e1e', marginTop: '8px', lineHeight: 1.5 }}>
                       بدون هذا الربط ستظهر رسالة «غير مصرح» رغم وجود صلاحية الخدمة الذاتية.
-                      إذا لم يظهر اسمك: أضف نفسك أولاً من HR → الموظفون، ثم اربطه هنا.
                     </p>
                   )}
                 </div>
 
-                {/* أدوار جاهزة */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '7px', color: 'var(--text3)' }}>تطبيق دور جاهز:</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {Object.keys(DEFAULT_ROLES_PERMS).map(role => (
-                      <button key={role} type="button" onClick={() => setUserPerms(DEFAULT_ROLES_PERMS[role])}
-                        style={{ padding: '4px 12px', borderRadius: '20px', border: `1px solid ${editForm.role === role ? '#1a56db' : 'var(--border)'}`, background: editForm.role === role ? '#eff6ff' : 'white', color: editForm.role === role ? '#1a56db' : 'var(--text3)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* الصلاحيات */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '12px' }}>
-                    الصلاحيات <span style={{ color: '#6b7280', fontWeight: 400, fontSize: '0.75rem' }}>({userPerms.length} مختارة)</span>
-                  </label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {PERMISSION_GROUPS.map(group => (
-                      <div key={group.label}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: group.color, marginBottom: '7px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: group.color }} /> {group.label}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {group.perms.map(perm => {
-                            const active = userPerms.includes(perm.id)
-                            return (
-                              <button key={perm.id} type="button" onClick={() => togglePerm2(perm.id)}
-                                style={{ padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s', border: `2px solid ${active ? group.color : '#e5e7eb'}`, background: active ? group.color + '18' : 'white', color: active ? group.color : 'var(--text3)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                {active && <span style={{ fontSize: '0.65rem' }}>✓</span>}
-                                {perm.icon} {perm.label}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                {/* محرر الصلاحيات */}
+                <UserPermissionsEditor
+                  userPerms={userPerms}
+                  onChange={setUserPerms}
+                  currentRole={editForm.role}
+                  onApplyRole={(role) => setEditForm(f => ({ ...f, role }))}
+                  readOnly={!isAdmin}
+                />
               </div>
-            </div>
+            </>
           )})() : (
-            <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', padding: '80px', textAlign: 'center', color: 'var(--text3)' }}>
-              <Shield style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 14px' }} />
-              <p style={{ fontWeight: 600 }}>اختر موظفاً من القائمة</p>
-              <p style={{ fontSize: '0.78rem', marginTop: '4px', color: '#9ca3af' }}>لعرض وتعديل صلاحياته وبياناته</p>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', padding: '60px' }}>
+              <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                <Shield style={{ width: '36px', height: '36px', color: '#cbd5e1' }} />
+              </div>
+              <p style={{ fontWeight: 700, fontSize: '1rem', color: '#6b7280' }}>اختر مستخدماً من القائمة</p>
+              <p style={{ fontSize: '0.82rem', marginTop: '6px' }}>ستظهر لوحة الصلاحيات الكاملة هنا</p>
             </div>
           )}
+          </div>
         </div>
         </div>
       )}
