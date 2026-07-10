@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'خطأ في الاتصال بقاعدة البيانات' }, { status: 500 })
     }
     if (!candidates?.length) {
-      return NextResponse.json({ error: 'اسم المستخدم غير موجود' }, { status: 401 })
+      return NextResponse.json({ error: 'رقم الموظف أو اسم المستخدم غير موجود' }, { status: 401 })
     }
 
     let emp: any = null

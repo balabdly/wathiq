@@ -17,6 +17,15 @@ import {
 } from '@/lib/userAccountKind'
 import { DEFAULT_ROLES_PERMS, PERMISSION_GROUPS } from '@/lib/permissions-config'
 import { UserPermissionsEditor } from '@/components/settings/UserPermissionsEditor'
+import {
+  suggestUsernameFromEmployeeNumber,
+  validateLoginUsername,
+  validateLoginPassword,
+  checkUsernameAvailable,
+  shouldSuggestUsernameFromHr,
+  LOGIN_USERNAME_LABEL,
+  LOGIN_USERNAME_PLACEHOLDER,
+} from '@/lib/loginUsername'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -39,6 +48,7 @@ type Emp = {
 type HREmp = {
   id: number; name: string; job_title?: string; phone?: string; email?: string
   employee_id?: number
+  employee_number?: string | null
 }
 
 // isExternalLoginUser — من @/lib/userAccountKind
@@ -47,30 +57,32 @@ type HREmp = {
 function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
   hrEmp: HREmp; onClose: () => void; onSave: (data: any) => Promise<void>; onGoToPermissions: () => void
 }) {
+  const suggestedUsername = suggestUsernameFromEmployeeNumber(hrEmp.employee_number) || ''
   const [saving, setSaving] = useState(false)
+  const [usernameManual, setUsernameManual] = useState(false)
   const [form, setForm] = useState({
-    username:    '',
+    username:    suggestedUsername,
     password:    '',
     role:        hrEmp.job_title || '',
     permissions: [] as string[],
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  function togglePerm(key: string) {
-    setForm(f => ({
-      ...f,
-      permissions: f.permissions.includes(key)
-        ? f.permissions.filter(p => p !== key)
-        : [...f.permissions, key]
-    }))
-  }
+  useEffect(() => {
+    if (!usernameManual) {
+      const next = suggestUsernameFromEmployeeNumber(hrEmp.employee_number)
+      if (next) setForm(f => ({ ...f, username: next }))
+    }
+  }, [hrEmp.id, hrEmp.employee_number, usernameManual])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.username.trim()) { toast.error('أدخل اسم المستخدم'); return }
-    if (!form.password.trim()) { toast.error('أدخل كلمة المرور'); return }
+    const u = validateLoginUsername(form.username)
+    if (!u.ok) { toast.error(u.error); return }
+    const p = validateLoginPassword(form.password)
+    if (!p.ok) { toast.error(p.error); return }
     setSaving(true)
-    await onSave({ hrEmpId: hrEmp.id, name: hrEmp.name, ...form, is_active: true })
+    await onSave({ hrEmpId: hrEmp.id, name: hrEmp.name, ...form, username: u.value, is_active: true })
     setSaving(false)
   }
 
@@ -90,6 +102,7 @@ function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
             {/* معلومات الموظف */}
             <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '12px 14px', border: '1px solid #86efac', fontSize: '0.82rem' }}>
               <div style={{ fontWeight: 700, color: '#0ea77b', marginBottom: '4px' }}>👤 {hrEmp.name}</div>
+              {hrEmp.employee_number && <div style={{ color: '#0f766e', fontWeight: 600 }}>رقم وظيفي: {hrEmp.employee_number}</div>}
               {hrEmp.job_title && <div style={{ color: '#6b7280' }}>{hrEmp.job_title}</div>}
               {hrEmp.phone && <div style={{ color: '#6b7280' }}>📞 {hrEmp.phone}</div>}
             </div>
@@ -97,16 +110,22 @@ function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
             {/* بيانات الدخول */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>اسم المستخدم *</label>
-                <input value={form.username} onChange={e => set('username', e.target.value)}
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>{LOGIN_USERNAME_LABEL} *</label>
+                <input value={form.username}
+                  onChange={e => { setUsernameManual(true); set('username', e.target.value) }}
                   onMouseDown={e => e.stopPropagation()}
-                  className="input" dir="ltr" placeholder="username" />
+                  className="input" dir="ltr" placeholder={LOGIN_USERNAME_PLACEHOLDER} />
+                {suggestedUsername && (
+                  <p style={{ fontSize: '0.72rem', color: '#0f766e', marginTop: '5px' }}>
+                    يُقترح تلقائياً من الرقم الوظيفي — يمكنك تغييره للحالات الخاصة
+                  </p>
+                )}
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }}>كلمة المرور *</label>
                 <input type="password" value={form.password} onChange={e => set('password', e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
-                  className="input" dir="ltr" placeholder="••••••" />
+                  className="input" dir="ltr" placeholder="8+ أحرف، حرف ورقم" />
               </div>
             </div>
 
@@ -269,6 +288,7 @@ export default function EmployeesSettingsPage() {
   const [userPerms,   setUserPerms]   = useState<string[]>([])
   const [editForm,    setEditForm]    = useState({ role: '', username: '', password: '' })
   const [hrLinkId,    setHrLinkId]    = useState<string>('')
+  const [usernameManual, setUsernameManual] = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [deleting,    setDeleting]    = useState(false)
 
@@ -279,7 +299,7 @@ export default function EmployeesSettingsPage() {
     setLoading(true)
     const [empRes, hrRes] = await Promise.all([
       supabase.from('employees').select('id, name, role, username, permissions, is_active, phone, email, hr_employee_id, is_tenant_owner').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('hr_employees').select('id, name, job_title, phone, email, employee_id').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('hr_employees').select('id, name, job_title, phone, email, employee_id, employee_number').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
     const emps = (empRes.data || []) as Emp[]
     setEmployees(emps)
@@ -296,11 +316,32 @@ export default function EmployeesSettingsPage() {
     setUserPerms(emp.permissions || [])
     setEditForm({ role: emp.role || '', username: emp.username || '', password: '' })
     setHrLinkId(emp.hr_employee_id ? String(emp.hr_employee_id) : '')
+    setUsernameManual(false)
   }
 
+  function handleHrLinkChange(id: string) {
+    setHrLinkId(id)
+    const hr = allHrEmployees.find(h => h.id === Number(id))
+    const suggested = suggestUsernameFromEmployeeNumber(hr?.employee_number)
+    if (suggested && shouldSuggestUsernameFromHr(editForm.username, usernameManual)) {
+      setEditForm(f => ({ ...f, username: suggested }))
+    }
+  }
 
   async function saveSelectedEmp() {
     if (!selectedEmp || !tenant) return
+    const u = validateLoginUsername(editForm.username)
+    if (!u.ok) { toast.error(u.error); return }
+    if (editForm.password) {
+      const p = validateLoginPassword(editForm.password)
+      if (!p.ok) { toast.error(p.error); return }
+    }
+    const usernameChanged = u.value.toLowerCase() !== (selectedEmp.username || '').toLowerCase()
+    if (usernameChanged) {
+      const { available, error: availErr } = await checkUsernameAvailable(supabase, tenant.id, u.value, selectedEmp.id)
+      if (availErr) { toast.error('خطأ: ' + availErr); return }
+      if (!available) { toast.error('رقم الموظف / اسم المستخدم مستخدم من قبل موظف آخر'); return }
+    }
     const wantsSelfService = userPerms.some(p => ['hr_self', 'hr', 'employees'].includes(p))
     const linkedHrId = hrLinkId ? Number(hrLinkId) : null
     const owner = isTenantOwner(selectedEmp)
@@ -311,7 +352,7 @@ export default function EmployeesSettingsPage() {
     setSaving(true)
     const payload: any = {
       role: editForm.role,
-      username: editForm.username || null,
+      username: u.value,
       permissions: userPerms,
       hr_employee_id: linkedHrId,
     }
@@ -334,11 +375,19 @@ export default function EmployeesSettingsPage() {
 
   async function handleActivate(data: any) {
     if (!tenant) return
+    const u = validateLoginUsername(data.username)
+    if (!u.ok) { toast.error(u.error); return }
+    const p = validateLoginPassword(data.password)
+    if (!p.ok) { toast.error(p.error); return }
+    const { available, error: availErr } = await checkUsernameAvailable(supabase, tenant.id, u.value)
+    if (availErr) { toast.error('خطأ: ' + availErr); return }
+    if (!available) { toast.error('رقم الموظف / اسم المستخدم مستخدم من قبل موظف آخر'); return }
+
     const payload: any = {
       tenant_id:       tenant.id,
       name:            data.name,
       role:            data.role,
-      username:        data.username,
+      username:        u.value,
       permissions:     Array.from(new Set([...(data.permissions || []), 'dashboard', 'hr_self'])),
       is_active:       true,
       hr_employee_id:  data.hrEmpId,
@@ -703,12 +752,26 @@ export default function EmployeesSettingsPage() {
                 {/* بيانات الحساب */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>اسم المستخدم</label>
-                    <input value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} dir="ltr" />
+                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>{LOGIN_USERNAME_LABEL}</label>
+                    <input value={editForm.username}
+                      onChange={e => { setUsernameManual(true); setEditForm(f => ({ ...f, username: e.target.value })) }}
+                      className="input" style={{ fontSize: '0.85rem' }} dir="ltr"
+                      placeholder={LOGIN_USERNAME_PLACEHOLDER} />
+                    {(() => {
+                      const linkedHr = allHrEmployees.find(h => h.id === Number(hrLinkId))
+                      const suggested = suggestUsernameFromEmployeeNumber(linkedHr?.employee_number)
+                      if (!suggested || editForm.username === suggested) return null
+                      return (
+                        <button type="button" onClick={() => { setUsernameManual(false); setEditForm(f => ({ ...f, username: suggested })) }}
+                          style={{ marginTop: '5px', fontSize: '0.68rem', color: '#1a56db', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 }}>
+                          استخدام الرقم الوظيفي ({suggested})
+                        </button>
+                      )
+                    })()}
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>كلمة مرور جديدة</label>
-                    <input type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} placeholder="اتركه فارغاً للإبقاء" dir="ltr" />
+                    <input type="password" value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} className="input" style={{ fontSize: '0.85rem' }} placeholder="8+ أحرف، حرف ورقم" dir="ltr" />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '5px', color: '#9ca3af' }}>الدور الوظيفي</label>
@@ -721,7 +784,7 @@ export default function EmployeesSettingsPage() {
                   <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, marginBottom: '6px', color: needsHrLink ? '#c81e1e' : '#64748b' }}>
                     ملف الموظف في HR {userPerms.includes('hr_self') && !selectedOwner ? '(مطلوب للخدمة الذاتية)' : '(اختياري)'}
                   </label>
-                  <select value={hrLinkId} onChange={e => setHrLinkId(e.target.value)} className="select" style={{ fontSize: '0.85rem', maxWidth: '400px' }}>
+                  <select value={hrLinkId} onChange={e => handleHrLinkChange(e.target.value)} className="select" style={{ fontSize: '0.85rem', maxWidth: '400px' }}>
                     <option value="">— غير مربوط —</option>
                     {allHrEmployees.map(h => (
                       <option key={h.id} value={h.id}>{h.name}{h.job_title ? ` — ${h.job_title}` : ''}</option>

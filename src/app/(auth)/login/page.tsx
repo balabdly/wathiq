@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useStore } from '@/hooks/useStore'
 import toast from 'react-hot-toast'
 import { syncUserCookie } from '@/lib/authCookie'
+import { LOGIN_USERNAME_LABEL, LOGIN_USERNAME_PLACEHOLDER } from '@/lib/loginUsername'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -86,15 +87,20 @@ export default function LoginPage() {
           <h2 className="text-center mb-6" style={{ fontSize: '1.25rem' }}>تسجيل الدخول</h2>
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label>اسم المستخدم</label>
+              <label>{LOGIN_USERNAME_LABEL}</label>
               <input
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="أدخل اسم المستخدم"
+                placeholder={LOGIN_USERNAME_PLACEHOLDER}
                 autoComplete="username"
                 autoFocus
+                dir="ltr"
+                inputMode="text"
               />
+              <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '6px' }}>
+                للموظفين: أدخل الرقم الوظيفي · للمدير أو الحسابات الخاصة: اسم المستخدم
+              </p>
             </div>
             <div className="form-group">
               <label>كلمة المرور</label>
