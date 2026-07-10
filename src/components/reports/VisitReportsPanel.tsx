@@ -129,11 +129,11 @@ export function VisitReportsPanel({
             </div>
           </div>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            {report.filters.includes('date_range') && (<>
+            {(report.filters as readonly string[]).includes('date_range') && (<>
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>من تاريخ</label><input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} /></div>
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>إلى تاريخ</label><input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)} className="input" style={{ fontSize: '0.82rem' }} /></div>
             </>)}
-            {report.filters.includes('type') && (
+            {(report.filters as readonly string[]).includes('type') && (
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, marginBottom: '4px', color: '#6b7280' }}>نوع الزيارة</label>
                 <select value={fType} onChange={e => setFType(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
                   <option value="">كل الأنواع</option>
