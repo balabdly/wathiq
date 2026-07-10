@@ -42,6 +42,17 @@ export async function deleteEmployeeAccount(
   tenantId: string,
   employeeId: number,
 ): Promise<{ ok: boolean; error?: string }> {
+  const { data: emp } = await supabase
+    .from('employees')
+    .select('is_tenant_owner, role')
+    .eq('id', employeeId)
+    .eq('tenant_id', tenantId)
+    .single()
+
+  if (emp?.is_tenant_owner) {
+    return { ok: false, error: 'لا يمكن حذف مدير النظام — حساب مالك الاشتراك محمي' }
+  }
+
   await unlinkEmployeeReferences(tenantId, employeeId)
 
   const { error } = await supabase

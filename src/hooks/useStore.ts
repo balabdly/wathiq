@@ -131,7 +131,7 @@ export const useStore = create<AppState>()(
         try {
           const { data } = await _sb
             .from('employees')
-            .select('permissions, role, hr_employee_id')
+            .select('permissions, role, hr_employee_id, is_tenant_owner')
             .eq('id', state.currentUser.id)
             .single()
           if (data) {
@@ -140,6 +140,7 @@ export const useStore = create<AppState>()(
               permissions: data.permissions || [],
               role: data.role,
               hr_employee_id: data.hr_employee_id ?? undefined,
+              is_tenant_owner: data.is_tenant_owner ?? undefined,
             })
           }
         } catch {}

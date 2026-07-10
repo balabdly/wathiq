@@ -31,7 +31,7 @@ function useAuthSyncInternal() {
     async function syncFromDb() {
       const { data } = await supabase
         .from('employees')
-        .select('permissions, role, hr_employee_id')
+        .select('permissions, role, hr_employee_id, is_tenant_owner')
         .eq('id', currentUser!.id)
         .single()
 
@@ -42,6 +42,7 @@ function useAuthSyncInternal() {
         permissions: data.permissions || [],
         role: data.role,
         hr_employee_id: data.hr_employee_id ?? undefined,
+        is_tenant_owner: data.is_tenant_owner ?? undefined,
       } as typeof currentUser)
     }
 
@@ -59,12 +60,14 @@ function useAuthSyncInternal() {
           permissions?: string[]
           role?: string
           hr_employee_id?: number | null
+          is_tenant_owner?: boolean | null
         }
         setCurrentUser({
           ...currentUser!,
           permissions: updated.permissions || [],
           role: updated.role || currentUser!.role,
           hr_employee_id: updated.hr_employee_id ?? undefined,
+          is_tenant_owner: updated.is_tenant_owner ?? undefined,
         } as typeof currentUser)
       })
       .subscribe()

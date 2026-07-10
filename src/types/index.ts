@@ -58,6 +58,7 @@ export interface Employee {
   permissions: string[]
   is_active: boolean
   hr_employee_id?: number
+  is_tenant_owner?: boolean
   created_at: string
 }
 

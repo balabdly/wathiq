@@ -338,6 +338,7 @@ export default function SuperAdminPage() {
           name:        data.admin_name,
           username:    data.admin_username,
           role:        'مدير عام',
+          is_tenant_owner: true,
           permissions: [
             'dashboard', 'projects_view', 'projects_edit',
             'visits_quality', 'visits_safety', 'visits_electrical', 'visits_field',

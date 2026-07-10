@@ -8,6 +8,13 @@ import toast from 'react-hot-toast'
 import { hashPassword } from '@/lib/auth'
 import { syncUserCookie } from '@/lib/authCookie'
 import { deleteEmployeeAccount } from '@/lib/deleteEmployeeAccount'
+import {
+  isExternalLoginUser,
+  isTenantOwner,
+  getAccountBadge,
+  canDeleteLoginAccount,
+  canDisableLoginAccount,
+} from '@/lib/userAccountKind'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -25,17 +32,14 @@ type Emp = {
   id: number; name: string; role: string; username?: string
   permissions: string[]; is_active: boolean; phone?: string; email?: string
   hr_employee_id?: number
+  is_tenant_owner?: boolean
 }
 type HREmp = {
   id: number; name: string; job_title?: string; phone?: string; email?: string
   employee_id?: number
 }
 
-/** مستخدم نظام بدون ملف موظف في HR — مناسب للمحترفين/التجربة */
-function isExternalLoginUser(emp: Emp, hrRows: HREmp[]): boolean {
-  if (emp.hr_employee_id) return false
-  return !hrRows.some(h => h.employee_id === emp.id)
-}
+// isExternalLoginUser — من @/lib/userAccountKind
 
 // ══ مودال تنشيط موظف كمستخدم ══
 function ActivateModal({ hrEmp, onClose, onSave, onGoToPermissions }: {
@@ -294,7 +298,7 @@ export default function EmployeesSettingsPage() {
     if (!tenant) return
     setLoading(true)
     const [empRes, hrRes] = await Promise.all([
-      supabase.from('employees').select('id, name, role, username, permissions, is_active, phone, email, hr_employee_id').eq('tenant_id', tenant.id).order('name'),
+      supabase.from('employees').select('id, name, role, username, permissions, is_active, phone, email, hr_employee_id, is_tenant_owner').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id, name, job_title, phone, email, employee_id').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
     const emps = (empRes.data || []) as Emp[]
@@ -322,7 +326,8 @@ export default function EmployeesSettingsPage() {
     if (!selectedEmp || !tenant) return
     const wantsSelfService = userPerms.some(p => ['hr_self', 'hr', 'employees'].includes(p))
     const linkedHrId = hrLinkId ? Number(hrLinkId) : null
-    if (wantsSelfService && !linkedHrId) {
+    const owner = isTenantOwner(selectedEmp)
+    if (wantsSelfService && !linkedHrId && !owner) {
       toast.error('الخدمة الذاتية تتطلب ربط المستخدم بملف موظف HR — اختر الموظف من القائمة أدناه')
       return
     }
@@ -386,6 +391,8 @@ export default function EmployeesSettingsPage() {
   }
 
   async function handleToggleActive(emp: Emp) {
+    const check = canDisableLoginAccount(emp, currentUser?.id)
+    if (!check.allowed) { toast.error(check.reason!); return }
     const newStatus = !emp.is_active
     if (!confirm((newStatus ? 'تفعيل ' : 'تعطيل ') + emp.name + '؟')) return
     await supabase.from('employees').update({ is_active: newStatus }).eq('id', emp.id)
@@ -395,14 +402,8 @@ export default function EmployeesSettingsPage() {
 
   async function handleDeleteExternalUser(emp: Emp) {
     if (!tenant || !isAdmin) return
-    if (emp.id === currentUser?.id) {
-      toast.error('لا يمكنك حذف حسابك أنت')
-      return
-    }
-    if (!isExternalLoginUser(emp, allHrEmployees)) {
-      toast.error('هذا المستخدم مربوط بملف HR — لا يمكن حذفه من هنا. عطّله أو احذف ملف HR أولاً.')
-      return
-    }
+    const check = canDeleteLoginAccount(emp, currentUser?.id, allHrEmployees)
+    if (!check.allowed) { toast.error(check.reason!); return }
     if (!confirm(
       `حذف حساب "${emp.name}" نهائياً؟\n\n` +
       `• اسم المستخدم: ${emp.username || '—'}\n` +
@@ -432,7 +433,7 @@ export default function EmployeesSettingsPage() {
   async function handleDeleteAllExternal() {
     if (!tenant || !isAdmin) return
     const targets = employees.filter(e =>
-      isExternalLoginUser(e, allHrEmployees) && e.id !== currentUser?.id
+      canDeleteLoginAccount(e, currentUser?.id, allHrEmployees).allowed
     )
     if (targets.length === 0) {
       toast.error('لا توجد حسابات بدون ملف HR للحذف')
@@ -580,11 +581,11 @@ export default function EmployeesSettingsPage() {
                 <strong>حسابات بدون ملف HR</strong> — محترفون أو تجربة. بعد انتهاء العمل احذفهم من هنا.
                 لا يظهر في هذه القائمة من لهم ملف في الموارد البشرية.
               </div>
-              {isAdmin && externalUsers.filter(e => e.id !== currentUser?.id).length > 0 && (
+              {isAdmin && externalUsers.filter(e => canDeleteLoginAccount(e, currentUser?.id, allHrEmployees).allowed).length > 0 && (
                 <button onClick={handleDeleteAllExternal} disabled={deleting}
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #fca5a5', background: 'white', color: '#c81e1e', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                   <Trash2 style={{ width: '14px', height: '14px' }} />
-                  {deleting ? 'جاري الحذف...' : `حذف الكل (${externalUsers.filter(e => e.id !== currentUser?.id).length})`}
+                  {deleting ? 'جاري الحذف...' : `حذف الكل (${externalUsers.filter(e => canDeleteLoginAccount(e, currentUser?.id, allHrEmployees).allowed).length})`}
                 </button>
               )}
             </div>
@@ -602,7 +603,9 @@ export default function EmployeesSettingsPage() {
                 {activeTab === 'external' ? 'لا توجد حسابات بدون ملف HR' : 'لا يوجد مستخدمون'}
               </div>
             ) : filtered.map(emp => {
+              const badge = getAccountBadge(emp, allHrEmployees)
               const isExternal = isExternalLoginUser(emp, allHrEmployees)
+              const isOwner = isTenantOwner(emp)
               return (
               <div key={emp.id} onClick={() => isAdmin && selectEmp(emp)}
                 style={{
@@ -613,22 +616,22 @@ export default function EmployeesSettingsPage() {
                   opacity: emp.is_active ? 1 : 0.6, transition: 'background 0.1s',
                 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: isExternal ? '#fef2f2' : emp.is_active ? '#ecfdf5' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isExternal ? '#c81e1e' : emp.is_active ? '#0ea77b' : '#9ca3af', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: isOwner ? '#fef3c7' : isExternal ? '#fef2f2' : emp.is_active ? '#ecfdf5' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isOwner ? '#b45309' : isExternal ? '#c81e1e' : emp.is_active ? '#0ea77b' : '#9ca3af', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
                     {(emp.name||'?')[0]}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
                     <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>{emp.role}</div>
                   </div>
-                  {isExternal && (
-                    <span style={{ fontSize: '0.6rem', background: '#fee2e2', color: '#c81e1e', borderRadius: '8px', padding: '2px 6px', fontWeight: 700, flexShrink: 0 }}>
-                      تجريبي
+                  {badge && (
+                    <span style={{ fontSize: '0.6rem', background: badge.bg, color: badge.color, borderRadius: '8px', padding: '2px 6px', fontWeight: 700, flexShrink: 0 }}>
+                      {badge.label}
                     </span>
                   )}
                   <span style={{ fontSize: '0.65rem', background: '#e0e7ff', color: '#4338ca', borderRadius: '10px', padding: '1px 6px', fontWeight: 700, flexShrink: 0 }}>
                     {emp.permissions?.length || 0}
                   </span>
-                  {isAdmin && isExternal && emp.id !== currentUser?.id && (
+                  {isAdmin && isExternal && (
                     <button
                       onClick={e => { e.stopPropagation(); handleDeleteExternalUser(emp) }}
                       disabled={deleting}
@@ -643,29 +646,42 @@ export default function EmployeesSettingsPage() {
           </div>
 
           {/* لوحة الصلاحيات */}
-          {selectedEmp ? (
+          {selectedEmp ? (() => {
+            const selectedBadge = getAccountBadge(selectedEmp, allHrEmployees)
+            const selectedOwner = isTenantOwner(selectedEmp)
+            const needsHrLink = userPerms.includes('hr_self') && !hrLinkId && !selectedOwner
+            return (
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', overflow: 'hidden' }}>
               {/* Header */}
               <div style={{ padding: '14px 18px', background: '#eff6ff', borderBottom: '2px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: '#1a56db', fontSize: '0.95rem' }}>{selectedEmp.name}</div>
+                  <div style={{ fontWeight: 700, color: '#1a56db', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {selectedEmp.name}
+                    {selectedBadge && (
+                      <span style={{ fontSize: '0.65rem', background: selectedBadge.bg, color: selectedBadge.color, borderRadius: '8px', padding: '2px 8px', fontWeight: 700 }}>
+                        {selectedBadge.label}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px' }}>
                     {userPerms.length} صلاحية · {selectedEmp.username}
                     {!selectedEmp.is_active && <span style={{ color: '#c81e1e', marginRight: '6px' }}>· معطّل</span>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  {isAdmin && selectedEmp && isExternalLoginUser(selectedEmp, allHrEmployees) && selectedEmp.id !== currentUser?.id && (
+                  {isAdmin && selectedEmp && isExternalLoginUser(selectedEmp, allHrEmployees) && (
                     <button onClick={() => handleDeleteExternalUser(selectedEmp)} disabled={deleting}
                       style={{ padding: '6px 12px', borderRadius: '7px', border: '1px solid #fca5a5', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Trash2 style={{ width: '13px', height: '13px' }} />
                       {deleting ? '...' : 'حذف الحساب'}
                     </button>
                   )}
+                  {!selectedOwner && (
                   <button onClick={() => handleToggleActive(selectedEmp)}
                     style={{ padding: '6px 12px', borderRadius: '7px', border: `1px solid ${selectedEmp.is_active ? '#fecaca' : '#bbf7d0'}`, background: selectedEmp.is_active ? '#fef2f2' : '#ecfdf5', color: selectedEmp.is_active ? '#c81e1e' : '#0ea77b', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
                     {selectedEmp.is_active ? 'تعطيل' : 'تفعيل'}
                   </button>
+                  )}
                   <button onClick={saveSelectedEmp} disabled={saving} className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '6px 16px' }}>
                     <Save style={{ width: '13px', height: '13px' }} />
                     {saving ? 'جاري الحفظ...' : 'حفظ'}
@@ -691,9 +707,9 @@ export default function EmployeesSettingsPage() {
                 </div>
 
                 {/* ربط ملف HR — مطلوب للخدمة الذاتية */}
-                <div style={{ padding: '12px 14px', borderRadius: '10px', border: `1px solid ${userPerms.includes('hr_self') && !hrLinkId ? '#fecaca' : '#bfdbfe'}`, background: userPerms.includes('hr_self') && !hrLinkId ? '#fef2f2' : '#eff6ff' }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: userPerms.includes('hr_self') && !hrLinkId ? '#c81e1e' : '#1a56db' }}>
-                    ملف الموظف في HR {userPerms.includes('hr_self') ? '(مطلوب للخدمة الذاتية)' : '(اختياري)'}
+                <div style={{ padding: '12px 14px', borderRadius: '10px', border: `1px solid ${needsHrLink ? '#fecaca' : '#bfdbfe'}`, background: needsHrLink ? '#fef2f2' : '#eff6ff' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, marginBottom: '6px', color: needsHrLink ? '#c81e1e' : '#1a56db' }}>
+                    ملف الموظف في HR {userPerms.includes('hr_self') && !selectedOwner ? '(مطلوب للخدمة الذاتية)' : '(اختياري)'}
                   </label>
                   <select value={hrLinkId} onChange={e => setHrLinkId(e.target.value)} className="select" style={{ fontSize: '0.82rem' }}>
                     <option value="">— غير مربوط —</option>
@@ -701,7 +717,7 @@ export default function EmployeesSettingsPage() {
                       <option key={h.id} value={h.id}>{h.name}{h.job_title ? ` — ${h.job_title}` : ''}</option>
                     ))}
                   </select>
-                  {userPerms.includes('hr_self') && !hrLinkId && (
+                  {needsHrLink && (
                     <p style={{ fontSize: '0.75rem', color: '#c81e1e', marginTop: '8px', lineHeight: 1.5 }}>
                       بدون هذا الربط ستظهر رسالة «غير مصرح» رغم وجود صلاحية الخدمة الذاتية.
                       إذا لم يظهر اسمك: أضف نفسك أولاً من HR → الموظفون، ثم اربطه هنا.
@@ -751,7 +767,7 @@ export default function EmployeesSettingsPage() {
                 </div>
               </div>
             </div>
-          ) : (
+          )})() : (
             <div style={{ background: 'white', borderRadius: '12px', border: '1px solid var(--border)', padding: '80px', textAlign: 'center', color: 'var(--text3)' }}>
               <Shield style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 14px' }} />
               <p style={{ fontWeight: 600 }}>اختر موظفاً من القائمة</p>
