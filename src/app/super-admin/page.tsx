@@ -22,8 +22,7 @@ const PLANS = {
   basic: {
     label: 'أساسي',
     price: 299,
-    color: 'bg-gray-100 text-gray-700',
-    badge: 'badge-gray',
+    color: '#4b5563', bg: '#f3f4f6',
     maxUsers: 3,
     modules: {
       projects: true, inventory: true, purchases: false,
@@ -34,8 +33,7 @@ const PLANS = {
   advanced: {
     label: 'متقدم',
     price: 599,
-    color: 'bg-blue-100 text-blue-700',
-    badge: 'badge-blue',
+    color: '#1a56db', bg: '#eff6ff',
     maxUsers: 10,
     modules: {
       projects: true, inventory: true, purchases: true,
@@ -46,8 +44,7 @@ const PLANS = {
   complete: {
     label: 'متكامل',
     price: 999,
-    color: 'bg-purple-100 text-purple-700',
-    badge: 'badge-purple',
+    color: '#7c3aed', bg: '#f5f3ff',
     maxUsers: 999,
     modules: {
       projects: true, inventory: true, purchases: true,
@@ -68,6 +65,8 @@ const MODULE_LABELS: Record<string, string> = {
   reports:   '📊 التقارير',
 }
 
+const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }
+
 // ── نافذة إضافة / تعديل شركة ─────────────────────────────────────
 function CompanyModal({ company, onClose, onSave }: {
   company: any | null
@@ -83,7 +82,6 @@ function CompanyModal({ company, onClose, onSave }: {
     is_active:   company?.is_active   ?? true,
     phone:       company?.phone       || '',
     email:       company?.email       || '',
-    // بيانات المستخدم الأدمن (للشركات الجديدة فقط)
     admin_username: '',
     admin_password: '',
     admin_name:     '',
@@ -114,103 +112,103 @@ function CompanyModal({ company, onClose, onSave }: {
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '680px' }}>
         <div className="modal-header">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-primary-500" />
+          <h3 style={{ fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Building2 style={{ width: '20px', height: '20px', color: '#1a56db' }} />
             {company ? 'تعديل بيانات الشركة' : 'إضافة شركة جديدة'}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}>
+            <X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} />
           </button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
 
             {/* بيانات الشركة */}
-            <div className="font-semibold text-gray-700 text-sm mb-2">بيانات الشركة</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>بيانات الشركة</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  اسم الشركة (عربي) <span className="text-red-500">*</span>
-                </label>
+                <label style={lbl}>اسم الشركة (عربي) <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={form.name} onChange={e => set('name', e.target.value)} className="input" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (إنجليزي)</label>
+                <label style={lbl}>اسم الشركة (إنجليزي)</label>
                 <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الجوال</label>
+                <label style={lbl}>الجوال</label>
                 <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">البريد الإلكتروني</label>
+                <label style={lbl}>البريد الإلكتروني</label>
                 <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" />
               </div>
             </div>
 
             {/* الخطة */}
-            <div>
-              <div className="font-semibold text-gray-700 text-sm mb-2">الخطة السعرية</div>
-              <div className="grid grid-cols-3 gap-2">
-                {Object.entries(PLANS).map(([key, plan]) => (
-                  <button key={key} type="button" onClick={() => applyPlan(key)}
-                    className={`p-3 rounded-xl border-2 text-center transition-all ${
-                      form.plan === key
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}>
-                    <div className={`inline-block px-2 py-0.5 rounded-lg text-xs font-bold mb-1 ${plan.color}`}>
-                      {plan.label}
-                    </div>
-                    <div className="text-lg font-bold text-gray-800">{plan.price}</div>
-                    <div className="text-xs text-gray-400">ر.س / شهر</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {plan.maxUsers === 999 ? 'غير محدود' : plan.maxUsers} مستخدم
-                    </div>
-                  </button>
-                ))}
+            <div style={{ marginTop: '16px' }}>
+              <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>الخطة السعرية</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {Object.entries(PLANS).map(([key, plan]) => {
+                  const active = form.plan === key
+                  return (
+                    <button key={key} type="button" onClick={() => applyPlan(key)}
+                      style={{
+                        padding: '12px', borderRadius: '12px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s',
+                        border: `2px solid ${active ? '#1a56db' : 'var(--border)'}`,
+                        background: active ? '#eff6ff' : 'transparent',
+                      }}>
+                      <div style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 700, marginBottom: '4px', background: plan.bg, color: plan.color }}>
+                        {plan.label}
+                      </div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text)' }}>{plan.price}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>ر.س / شهر</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>
+                        {plan.maxUsers === 999 ? 'غير محدود' : plan.maxUsers} مستخدم
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
             {/* الوحدات */}
-            <div>
-              <div className="font-semibold text-gray-700 text-sm mb-2">الوحدات المفعّلة</div>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(MODULE_LABELS).map(([key, label]) => (
-                  <button key={key} type="button"
-                    onClick={() => setModules(m => ({ ...m, [key]: !m[key] }))}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm font-medium transition-all ${
-                      modules[key]
-                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                        : 'border-gray-200 text-gray-400'
-                    }`}>
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      modules[key] ? 'bg-emerald-500' : 'bg-gray-200'
-                    }`}>
-                      {modules[key] && <CheckCircle2 className="w-3 h-3 text-white" />}
-                    </div>
-                    {label}
-                  </button>
-                ))}
+            <div style={{ marginTop: '16px' }}>
+              <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>الوحدات المفعّلة</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {Object.entries(MODULE_LABELS).map(([key, label]) => {
+                  const on = modules[key]
+                  return (
+                    <button key={key} type="button"
+                      onClick={() => setModules(m => ({ ...m, [key]: !m[key] }))}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '12px',
+                        fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                        border: `2px solid ${on ? '#6ee7b7' : 'var(--border)'}`,
+                        background: on ? '#ecfdf5' : 'transparent',
+                        color: on ? '#047857' : 'var(--text3)',
+                      }}>
+                      <div style={{ width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: on ? '#10b981' : 'var(--bg2, #e5e7eb)' }}>
+                        {on && <CheckCircle2 style={{ width: '13px', height: '13px', color: 'white' }} />}
+                      </div>
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
             {/* الاشتراك */}
-            <div className="grid grid-cols-2 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ انتهاء الاشتراك</label>
+                <label style={lbl}>تاريخ انتهاء الاشتراك</label>
                 <input type="date" value={form.expires_at} onChange={e => set('expires_at', e.target.value)} className="input" />
               </div>
-              <div className="flex items-center gap-3 pt-6">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingTop: '24px' }}>
                 <button type="button" onClick={() => set('is_active', !form.is_active)}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    form.is_active ? 'bg-emerald-500' : 'bg-gray-300'
-                  }`}>
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                    form.is_active ? 'right-1' : 'left-1'
-                  }`} />
+                  style={{ position: 'relative', width: '48px', height: '24px', borderRadius: '999px', border: 'none', cursor: 'pointer', transition: 'background 0.15s', background: form.is_active ? '#10b981' : '#d1d5db' }}>
+                  <div style={{ position: 'absolute', top: '4px', width: '16px', height: '16px', background: 'white', borderRadius: '50%', boxShadow: '0 1px 2px rgba(0,0,0,0.15)', transition: 'right 0.15s, left 0.15s', right: form.is_active ? '4px' : 'auto', left: form.is_active ? 'auto' : '4px' }} />
                 </button>
-                <span className="text-sm font-medium text-gray-700">
+                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)' }}>
                   {form.is_active ? '✅ نشط' : '⏸ موقوف'}
                 </span>
               </div>
@@ -218,30 +216,24 @@ function CompanyModal({ company, onClose, onSave }: {
 
             {/* بيانات المستخدم الأدمن — للشركات الجديدة فقط */}
             {!company && (
-              <div>
-                <div className="font-semibold text-gray-700 text-sm mb-2 flex items-center gap-2">
-                  <Users className="w-4 h-4" />
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Users style={{ width: '15px', height: '15px' }} />
                   بيانات مستخدم الأدمن للشركة
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      الاسم <span className="text-red-500">*</span>
-                    </label>
+                    <label style={lbl}>الاسم <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.admin_name} onChange={e => set('admin_name', e.target.value)}
                       className="input" placeholder="اسم المدير" required={!company} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      اسم المستخدم <span className="text-red-500">*</span>
-                    </label>
+                    <label style={lbl}>اسم المستخدم <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.admin_username} onChange={e => set('admin_username', e.target.value)}
                       className="input" dir="ltr" placeholder="admin" required={!company} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      كلمة المرور <span className="text-red-500">*</span>
-                    </label>
+                    <label style={lbl}>كلمة المرور <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.admin_password} onChange={e => set('admin_password', e.target.value)}
                       className="input" dir="ltr" placeholder="••••••" required={!company} />
                   </div>
@@ -254,8 +246,8 @@ function CompanyModal({ company, onClose, onSave }: {
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
               {saving
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Save className="w-4 h-4" />}
+                ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : <Save style={{ width: '16px', height: '16px' }} />}
               {company ? 'حفظ التعديلات' : 'إضافة الشركة'}
             </button>
           </div>
@@ -312,17 +304,14 @@ export default function SuperAdminPage() {
       }
 
       if (editCompany) {
-        // تعديل شركة موجودة
         const { error } = await supabase.from('tenants').update(tenantData).eq('id', editCompany.id)
         if (error) throw error
         toast.success('تم تعديل بيانات الشركة ✅')
       } else {
-        // إضافة شركة جديدة
         const { data: tenant, error: tenantError } = await supabase
           .from('tenants').insert({ ...tenantData }).select().single()
         if (tenantError) throw tenantError
 
-        // إنشاء فرع رئيسي
         const { data: branch, error: branchError } = await supabase
           .from('branches').insert({
             tenant_id: tenant.id,
@@ -331,7 +320,6 @@ export default function SuperAdminPage() {
           }).select().single()
         if (branchError) throw branchError
 
-        // إنشاء مستخدم أدمن للشركة
         const { error: empError } = await supabase.from('employees').insert({
           tenant_id:   tenant.id,
           branch_id:   branch.id,
@@ -380,23 +368,23 @@ export default function SuperAdminPage() {
   // ── شاشة تسجيل الدخول ──
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="card p-8 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <Shield className="w-7 h-7 text-white" />
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2, #f8fafc)' }}>
+        <div className="card" style={{ padding: '32px', width: '100%', maxWidth: '380px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <div style={{ width: '56px', height: '56px', background: '#1a56db', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              <Shield style={{ width: '28px', height: '28px', color: 'white' }} />
             </div>
-            <h1 className="text-xl font-bold text-gray-800">لوحة تحكم وثيق</h1>
-            <p className="text-sm text-gray-400 mt-1">Super Admin — للمشغّل فقط</p>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' }}>لوحة تحكم وثيق</h1>
+            <p style={{ fontSize: '0.875rem', color: 'var(--text3)', marginTop: '4px' }}>Super Admin — للمشغّل فقط</p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">كلمة المرور</label>
+              <label style={lbl}>كلمة المرور</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 className="input" placeholder="••••••••" autoFocus required />
             </div>
-            <button type="submit" className="btn btn-primary w-full justify-center">
-              <Lock className="w-4 h-4" /> دخول
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              <Lock style={{ width: '15px', height: '15px' }} /> دخول
             </button>
           </form>
         </div>
@@ -409,60 +397,60 @@ export default function SuperAdminPage() {
   const revenue      = companies.filter(c => c.is_active).reduce((s, c) => s + (PLANS[c.plan as keyof typeof PLANS]?.price || 0), 0)
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div style={{ minHeight: '100vh', background: 'var(--bg2, #f8fafc)', padding: '24px' }}>
+      <div style={{ maxWidth: '1152px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              <Shield className="w-6 h-6 text-primary-500" />
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Shield style={{ width: '24px', height: '24px', color: '#1a56db' }} />
               لوحة تحكم وثيق
             </h1>
-            <p className="text-gray-400 text-sm mt-0.5">إدارة الشركات المشتركة</p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.875rem', marginTop: '2px' }}>إدارة الشركات المشتركة</p>
           </div>
           <button onClick={() => { setEdit(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus className="w-4 h-4" /> إضافة شركة
+            <Plus style={{ width: '15px', height: '15px' }} /> إضافة شركة
           </button>
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           {[
-            { label: 'إجمالي الشركات', value: companies.length,   color: 'text-blue-600',    bg: 'bg-blue-50'    },
-            { label: 'شركات نشطة',     value: activeCount,         color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'تنتهي قريباً',   value: expiringSoon,        color: expiringSoon > 0 ? 'text-amber-600' : 'text-gray-600', bg: expiringSoon > 0 ? 'bg-amber-50' : 'bg-gray-50' },
-            { label: 'الإيراد الشهري', value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { label: 'إجمالي الشركات', value: companies.length,   color: '#2563eb', bg: '#eff6ff' },
+            { label: 'شركات نشطة',     value: activeCount,         color: '#059669', bg: '#ecfdf5' },
+            { label: 'تنتهي قريباً',   value: expiringSoon,        color: expiringSoon > 0 ? '#d97706' : '#4b5563', bg: expiringSoon > 0 ? '#fffbeb' : '#f3f4f6' },
+            { label: 'الإيراد الشهري', value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: '#7c3aed', bg: '#f5f3ff' },
           ].map(k => (
-            <div key={k.label} className="card p-5">
-              <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
-              <div className="text-xs text-gray-400 mt-1">{k.label}</div>
+            <div key={k.label} className="card" style={{ padding: '20px' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>{k.label}</div>
             </div>
           ))}
         </div>
 
         {/* جدول الشركات */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="font-semibold text-gray-700">الشركات المشتركة</h3>
-            {loading && <span className="w-4 h-4 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />}
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontWeight: 600, color: 'var(--text2, #374151)' }}>الشركات المشتركة</h3>
+            {loading && <span style={{ width: '16px', height: '16px', border: '2px solid rgba(26,86,219,0.3)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
+              <thead style={{ background: 'var(--bg2, #f8fafc)', borderBottom: '1px solid var(--border)' }}>
                 <tr>
-                  <th className="text-right px-5 py-3 text-xs font-semibold text-gray-600">الشركة</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">الخطة</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">الوحدات</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">الانتهاء</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600">الحالة</th>
-                  <th className="px-4 py-3"></th>
+                  <th style={{ textAlign: 'right', padding: '10px 20px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الشركة</th>
+                  <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الخطة</th>
+                  <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الوحدات</th>
+                  <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الانتهاء</th>
+                  <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الحالة</th>
+                  <th style={{ padding: '10px 16px' }}></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {companies.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400">لا توجد شركات مضافة</td>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text3)' }}>لا توجد شركات مضافة</td>
                   </tr>
                 ) : companies.map(c => {
                   const plan = PLANS[c.plan as keyof typeof PLANS]
@@ -470,61 +458,59 @@ export default function SuperAdminPage() {
                   const mods = c.modules || {}
                   const activeModules = Object.entries(mods).filter(([, v]) => v).length
                   return (
-                    <tr key={c.id} className={`hover:bg-gray-50/50 ${!c.is_active ? 'opacity-60' : ''}`}>
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-gray-800">{c.name}</div>
-                        {c.name_en && <div className="text-xs text-gray-400" dir="ltr">{c.name_en}</div>}
-                        {c.email && <div className="text-xs text-gray-400">{c.email}</div>}
+                    <tr key={c.id} style={{ borderTop: '1px solid var(--bg2, #f8fafc)', opacity: c.is_active ? 1 : 0.6 }}>
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
+                        {c.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }} dir="ltr">{c.name_en}</div>}
+                        {c.email && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{c.email}</div>}
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold ${plan?.color || 'bg-gray-100 text-gray-600'}`}>
+                      <td style={{ padding: '16px', textAlign: 'center' }}>
+                        <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 700, background: plan?.bg || '#f3f4f6', color: plan?.color || '#4b5563' }}>
                           {plan?.label || c.plan}
                         </span>
-                        <div className="text-xs text-gray-400 mt-1">{plan?.price} ر.س/شهر</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>{plan?.price} ر.س/شهر</div>
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <div className="text-sm font-bold text-gray-700">
+                      <td style={{ padding: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text2, #374151)' }}>
                           {activeModules} / {Object.keys(MODULE_LABELS).length}
                         </div>
-                        <div className="flex gap-0.5 justify-center mt-1 flex-wrap">
+                        <div style={{ display: 'flex', gap: '2px', justifyContent: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
                           {Object.entries(MODULE_LABELS).map(([key, label]) => (
                             <div key={key} title={label}
-                              className={`w-2 h-2 rounded-full ${mods[key] ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+                              style={{ width: '8px', height: '8px', borderRadius: '50%', background: mods[key] ? '#34d399' : 'var(--bg2, #e5e7eb)' }} />
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center">
+                      <td style={{ padding: '16px', textAlign: 'center' }}>
                         {c.expires_at ? (
                           <div>
-                            <div className="text-xs text-gray-600">
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text2, #4b5563)' }}>
                               {new Date(c.expires_at).toLocaleDateString('ar-EG')}
                             </div>
                             {days !== null && (
-                              <div className={`text-xs font-semibold mt-0.5 ${
-                                days <= 0 ? 'text-red-600' : days <= 14 ? 'text-amber-600' : 'text-emerald-600'
-                              }`}>
+                              <div style={{ fontSize: '0.72rem', fontWeight: 600, marginTop: '2px', color: days <= 0 ? '#dc2626' : days <= 14 ? '#d97706' : '#059669' }}>
                                 {days <= 0 ? '⛔ منتهي' : days <= 14 ? `⚠ ${days} يوم` : `✓ ${days} يوم`}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span className="text-gray-400 text-xs">—</span>
+                          <span style={{ color: 'var(--text3)', fontSize: '0.72rem' }}>—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-center">
+                      <td style={{ padding: '16px', textAlign: 'center' }}>
                         <button onClick={() => toggleActive(c)}
-                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                            c.is_active
-                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                              : 'bg-red-100 text-red-600 hover:bg-red-200'
-                          }`}>
+                          style={{
+                            padding: '5px 12px', borderRadius: '8px', fontSize: '0.72rem', fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                            background: c.is_active ? '#d1fae5' : '#fee2e2',
+                            color: c.is_active ? '#047857' : '#dc2626',
+                          }}>
                           {c.is_active ? '✅ نشط' : '⏸ موقوف'}
                         </button>
                       </td>
-                      <td className="px-4 py-4">
+                      <td style={{ padding: '16px' }}>
                         <button onClick={() => { setEdit(c); setShowModal(true) }}
-                          className="btn btn-ghost btn-xs">
-                          <Pencil className="w-3.5 h-3.5" />
+                          className="btn btn-ghost" style={{ padding: '5px 8px', fontSize: '0.72rem' }}>
+                          <Pencil style={{ width: '14px', height: '14px' }} />
                         </button>
                       </td>
                     </tr>
@@ -537,18 +523,18 @@ export default function SuperAdminPage() {
 
         {/* تحذيرات الانتهاء */}
         {expiringSoon > 0 && (
-          <div className="card p-4 border-amber-200 bg-amber-50/50">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              <span className="font-semibold text-amber-700">اشتراكات تنتهي قريباً</span>
+          <div className="card" style={{ padding: '16px', border: '1px solid #fde68a', background: 'rgba(255,251,235,0.5)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
+              <span style={{ fontWeight: 600, color: '#b45309' }}>اشتراكات تنتهي قريباً</span>
             </div>
-            <div className="space-y-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {companies
                 .filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 14 && d > 0 })
                 .map(c => (
-                  <div key={c.id} className="flex items-center justify-between text-sm">
-                    <span className="text-gray-700">{c.name}</span>
-                    <span className="text-amber-600 font-semibold">{daysLeft(c.expires_at)} يوم متبقي</span>
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                    <span style={{ color: 'var(--text2, #374151)' }}>{c.name}</span>
+                    <span style={{ color: '#d97706', fontWeight: 600 }}>{daysLeft(c.expires_at)} يوم متبقي</span>
                   </div>
                 ))}
             </div>
