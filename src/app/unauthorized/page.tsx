@@ -1,4 +1,5 @@
 'use client'
+import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ShieldOff, ArrowRight, UserCog } from 'lucide-react'
 
@@ -15,7 +16,7 @@ const REASONS: Record<string, { title: string; body: string; action?: { label: s
   },
 }
 
-export default function UnauthorizedPage() {
+function UnauthorizedContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const reason = searchParams.get('reason') || ''
@@ -80,5 +81,25 @@ export default function UnauthorizedPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function UnauthorizedFallback() {
+  return (
+    <div style={{
+      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'linear-gradient(135deg, #fef2f2 0%, #fff 60%)',
+      fontFamily: 'var(--font-arabic, system-ui)', direction: 'rtl',
+    }}>
+      <div style={{ color: '#6b7280', fontSize: '0.9rem' }}>جاري التحميل...</div>
+    </div>
+  )
+}
+
+export default function UnauthorizedPage() {
+  return (
+    <Suspense fallback={<UnauthorizedFallback />}>
+      <UnauthorizedContent />
+    </Suspense>
   )
 }
