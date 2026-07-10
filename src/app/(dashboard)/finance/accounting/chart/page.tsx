@@ -7,7 +7,7 @@ import { Plus, X, Save, Pencil, Trash2, ChevronDown, ChevronLeft, BookOpen, Exte
 import toast from 'react-hot-toast'
 import { createJournalEntry } from '@/lib/journal'
 import { suggestChildAccountCode, suggestRootAccountCode } from '@/lib/suggest-account-code'
-import { seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
+import { repairChartOfAccounts, seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
 import type { Account, AccountLedgerLine } from '@/lib/accounting-types'
 import { ACCOUNT_TYPE_COLOR } from '@/lib/accounting-types'
 
@@ -566,6 +566,7 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
   const [search,        setSearch]        = useState('')
   const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null)
   const [seeding,       setSeeding]       = useState(false)
+  const [repairing,     setRepairing]     = useState(false)
 
   useEffect(() => { loadAll() }, [])
 
@@ -642,6 +643,25 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     }
   }
 
+  async function handleRepairHierarchy() {
+    if (!confirm(
+      'إصلاح هرمية شجرة الحسابات؟\n\n' +
+      '• ربط الحسابات اليتيمة (مثل 4110 مبيعات) تحت آبائها\n' +
+      '• إنزال الحسابات الزائدة تحت الأصول/الخصوم/المصروفات الخمسة\n' +
+      '• إصلاح الأسماء المكررة\n\n' +
+      'لن تُحذف أي قيود محاسبية.'
+    )) return
+    setRepairing(true)
+    const result = await repairChartOfAccounts(tenantId)
+    setRepairing(false)
+    if (result.orphansRemaining > 0) {
+      toast.error(`تم الإصلاح (${result.updated} حساب) — بقي ${result.orphansRemaining} حساب يتيم يحتاج مراجعة يدوية`)
+    } else {
+      toast.success(`✅ تم إصلاح الشجرة — ${result.updated} حساب محدّث`)
+    }
+    await loadAll()
+  }
+
   async function handleDelete(account: Account) {
     const hasChildren = accounts.some(a => a.parent_id === account.id)
     if (hasChildren) { toast.error('لا يمكن حذف حساب له فروع'); return }
@@ -674,11 +694,15 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     'إيرادات': '#0ea77b', 'تكلفة': '#e6820a', 'مصروفات': '#6b7280'
   }
 
+  const ROOT_CODES = new Set(['1000', '2000', '3000', '4000', '5000'])
+  const orphans = accounts.filter(a => a.is_active && !a.parent_id && !ROOT_CODES.has(a.code))
+
   const stats = {
     total:   accounts.length,
     active:  accounts.filter(a => a.is_active).length,
     parents: accounts.filter(a => a.is_parent).length,
     leaves:  accounts.filter(a => !a.is_parent).length,
+    orphans: orphans.length,
   }
 
   return (
@@ -736,6 +760,12 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          {stats.orphans > 0 && (
+            <button onClick={handleRepairHierarchy} disabled={repairing} className="btn btn-ghost"
+              style={{ border: '1px solid #fecaca', color: '#c81e1e', fontWeight: 700 }}>
+              {repairing ? 'جاري الإصلاح...' : `🔧 إصلاح الشجرة (${stats.orphans} يتيم)`}
+            </button>
+          )}
           <button onClick={handleSeedStandardChart} disabled={seeding} className="btn btn-ghost"
             style={{ border: '1px solid #bbf7d0', color: '#0ea77b', fontWeight: 600 }}>
             {seeding ? 'جاري الزرع...' : '🌱 زرع الشجرة المعيارية'}
