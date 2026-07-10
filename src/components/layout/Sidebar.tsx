@@ -420,8 +420,10 @@ export default function Sidebar() {
         {hasReports && (
           <NavSection label="التقارير" icon={IC.reports}
             isActive={inReports} isOpen={reportsOpen} onToggle={() => setReportsOpen(o => !o)}>
-            <SubLink href="/reports"              label="مركز التقارير"      icon={IC.reports}    active={pathname === '/reports'} />
-            <SubLink href="/reports/finance"      label="تقارير المالية"     icon={IC.finance}    active={pathname.startsWith('/reports/finance')} />
+            <SubLink href="/reports"                    label="مركز التقارير"      icon={IC.reports}    active={pathname === '/reports'} />
+            <SubLink href="/reports/executive"          label="لوحة تنفيذية"       icon={IC.reports}    active={pathname.startsWith('/reports/executive')} />
+            <SubLink href="/reports/project-profitability" label="ربحية المشاريع" icon={IC.finance}    active={pathname.startsWith('/reports/project-profitability')} />
+            <SubLink href="/reports/finance"            label="تقارير المالية"     icon={IC.finance}    active={pathname.startsWith('/reports/finance')} />
             <SubLink href="/reports/projects"     label="تقارير المشاريع"    icon={IC.projects}   active={pathname.startsWith('/reports/projects')} />
             <SubLink href="/reports/inventory"    label="تقارير المخزون"     icon={IC.inventory}  active={pathname.startsWith('/reports/inventory')} />
             <SubLink href="/reports/visits"       label="تقارير الزيارات"    icon={IC.visits}     active={pathname.startsWith('/reports/visits')} />

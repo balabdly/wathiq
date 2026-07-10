@@ -3,6 +3,7 @@
 // /reports/project-profitability لأنه تقرير تحليلي (إيراد + مصروف) لا إجراء تشغيلي
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { BarChart2 } from 'lucide-react'
 import { useExpenses } from '../ExpensesContext'
@@ -70,6 +71,14 @@ function ProjectAnalysisTab({ tenantId, projects }: { tenantId: string; projects
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <Link href="/reports/project-profitability" style={{ textDecoration: 'none' }}>
+        <div style={{
+          padding: '12px 16px', borderRadius: '10px', border: '1px solid #86efac', background: '#ecfdf5',
+          fontSize: '0.8rem', color: '#0ea77b', fontWeight: 600,
+        }}>
+          ✓ التقرير المحدّث متاح في مركز التقارير: ربحية المشاريع — فتح ←
+        </div>
+      </Link>
       {/* اختيار المشروع */}
       <div className="card" style={{ padding: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>

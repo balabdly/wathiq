@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { BarChart3 } from 'lucide-react'
-import { REPORT_SECTIONS, REPORT_COUNTS } from '@/lib/reports-config'
+import { REPORT_SECTIONS, REPORT_COUNTS, FEATURED_REPORTS } from '@/lib/reports-config'
 
 const AVAILABLE_TOTAL =
   REPORT_COUNTS.finance +
@@ -25,6 +25,36 @@ export default function ReportsPage() {
         <p className="text-gray-400 text-sm mt-0.5">
           {AVAILABLE_TOTAL} تقرير جاهز · {REPORT_COUNTS.qhse} قيد التطوير (QHSE)
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {FEATURED_REPORTS.map(item => {
+          const Icon = item.icon
+          return (
+            <button
+              key={item.id}
+              onClick={() => router.push(item.href)}
+              className="text-right w-full"
+              style={{ outline: 'none' }}
+            >
+              <div
+                className="rounded-2xl p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                style={{ background: item.bg, borderColor: item.border }}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: item.color + '18' }}>
+                    <Icon className="w-5 h-5" style={{ color: item.color }} />
+                  </div>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: item.color + '15', color: item.color }}>
+                    مميز
+                  </span>
+                </div>
+                <h3 className="font-bold text-base mb-1" style={{ color: item.color }}>{item.label}</h3>
+                <p className="text-xs text-gray-500 leading-relaxed">{item.description}</p>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

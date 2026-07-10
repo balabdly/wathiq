@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { BarChart2, FileText, DollarSign, Activity, ChevronDown, Search, X, Download } from 'lucide-react'
@@ -226,6 +227,19 @@ export default function ReportsProjectsPage() {
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>اختر التقرير المطلوب لعرض محددات البحث</p>
       </div>
+
+      <Link href="/reports/project-profitability" style={{ textDecoration: 'none' }}>
+        <div style={{
+          padding: '16px 18px', borderRadius: '12px', border: '2px solid #86efac', background: '#ecfdf5',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px',
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0ea77b', marginBottom: '4px' }}>📈 ربحية المشاريع</div>
+            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>إيراد (فواتير − إشعارات دائن) − تكاليف (موردين + مصروفات) — تقرير مالي متكامل</div>
+          </div>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#0ea77b' }}>فتح ←</span>
+        </div>
+      </Link>
 
       {/* بطاقات التقارير */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>

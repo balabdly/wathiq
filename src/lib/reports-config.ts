@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  DollarSign, Users, FolderOpen, Package, Shield, ClipboardCheck,
+  DollarSign, Users, FolderOpen, Package, Shield, ClipboardCheck, TrendingUp, BarChart3,
 } from 'lucide-react'
 
 export type ReportSectionMeta = {
@@ -21,7 +21,7 @@ export type ReportSectionMeta = {
 export const REPORT_COUNTS = {
   finance: 18,
   hr: 6,
-  projects: 6,
+  projects: 7,
   inventory: 7,
   visits: 5,
   qhse: 3, // مخططة — حوادث، تدقيق، شهادات
@@ -53,7 +53,7 @@ export const REPORT_SECTIONS: ReportSectionMeta[] = [
   {
     id: 'projects',
     label: 'المشاريع',
-    description: 'حسب النوع والحالة، القيمة، التقدم، المتأخرة، المهام',
+    description: 'حسب النوع والحالة، القيمة، التقدم، المتأخرة، المهام، ربحية المشاريع',
     icon: FolderOpen,
     color: '#0891b2',
     bg: '#ecfeff',
@@ -94,6 +94,30 @@ export const REPORT_SECTIONS: ReportSectionMeta[] = [
     count: REPORT_COUNTS.qhse,
     comingSoon: true,
     href: '/reports/qhse',
+  },
+]
+
+/** تقارير مميزة — خارج الأقسام الرئيسية */
+export const FEATURED_REPORTS = [
+  {
+    id: 'executive',
+    label: 'لوحة تنفيذية',
+    description: 'مؤشرات الإدارة: ربحية، مشاريع متأخرة، NCR، مخزون',
+    icon: BarChart3,
+    color: '#1a56db',
+    bg: '#eff6ff',
+    border: '#bfdbfe',
+    href: '/reports/executive',
+  },
+  {
+    id: 'project-profitability',
+    label: 'ربحية المشاريع',
+    description: 'إيراد − تكاليف لكل مشروع مع تفصيل المواد والعمالة',
+    icon: TrendingUp,
+    color: '#0ea77b',
+    bg: '#ecfdf5',
+    border: '#86efac',
+    href: '/reports/project-profitability',
   },
 ]
 
