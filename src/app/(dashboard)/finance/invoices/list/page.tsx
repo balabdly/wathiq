@@ -412,7 +412,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
     if (invoiceId) await saveAttachments(tenantId, 'فاتورة مبيعات', invoiceId, attachments)
 
     if (finalStatus === 'مرسلة' && invoiceId) {
-      await createJournalEntry({
+      const journalResult = await createJournalEntry({
         tenantId, date: payload.invoice_date, description: `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
         referenceType: 'فاتورة مبيعات', referenceId: invoiceId, source: 'آلي',
         lines: [
@@ -421,6 +421,10 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
           ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_OUTPUT, debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
         ]
       })
+      if (!journalResult) {
+        toast.error('⚠️ الفاتورة حُفظت لكن القيد المحاسبي فشل — راجع شجرة الحسابات أو الفترة المحاسبية. الفاتورة الآن في حالة "مرسلة" بلا قيد!', { duration: 10000 })
+        onSave(); setSaving(false); return
+      }
     }
 
     toast.success(asDraft ? '💾 تم الحفظ كمسودة' : '✅ تم إنشاء الفاتورة وإرسالها')
