@@ -342,7 +342,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
 
               {form.candidate_from_system ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اختر الموظف</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اختر الموظف</label>
                   <select value={form.hr_employee_id} onChange={e => fillFromEmployee(e.target.value)} className="select">
                     <option value="">— اختر موظفاً —</option>
                     {hrEmployees.map(e => (
@@ -352,7 +352,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
                 </div>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المرشح <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم المرشح <span style={{ color: '#ef4444' }}>*</span></label>
                   <input value={form.candidate_name} onChange={e => set('candidate_name', e.target.value)} className="input" placeholder="الاسم الكامل للمرشح" />
                 </div>
               )}
@@ -369,29 +369,29 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
               <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text3)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>بيانات الوظيفة</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>المسمى الوظيفي <span style={{ color: '#ef4444' }}>*</span></label>
                   <input value={form.job_title} onChange={e => set('job_title', e.target.value)} className="input" placeholder="مثال: مهندس كهرباء" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>القسم</label>
                   <input value={form.department} onChange={e => set('department', e.target.value)} className="input" placeholder="مثال: قسم المشاريع" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الإدارة</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الإدارة</label>
                   <input value={form.division} onChange={e => set('division', e.target.value)} className="input" placeholder="مثال: إدارة الهندسة" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع العقد</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع العقد</label>
                   <select value={form.contract_type} onChange={e => set('contract_type', e.target.value)} className="select">
                     {['دوام كامل','دوام جزئي','مؤقت','مياومة'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ المباشرة <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ المباشرة <span style={{ color: '#ef4444' }}>*</span></label>
                   <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">صلاحية العرض حتى</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>صلاحية العرض حتى</label>
                   <input type="date" value={form.offer_expiry} onChange={e => set('offer_expiry', e.target.value)} className="input" />
                 </div>
               </div>
@@ -408,7 +408,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
                   { k: 'other_allow',     l: 'بدلات أخرى' },
                 ].map(({ k, l }) => (
                   <div key={k}>
-                    <label className="block text-xs text-gray-500 mb-1">{l}</label>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>{l}</label>
                     <input type="number" min="0" value={(form as any)[k]} onChange={e => set(k, e.target.value)} className="input" placeholder="0" />
                   </div>
                 ))}
@@ -423,7 +423,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
 
             {/* ملاحظات */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات وشروط إضافية</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات وشروط إضافية</label>
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '80px', resize: 'none' }}
                 placeholder="مثال: يشمل العرض تأمين طبي — تجربة 3 أشهر..." />
             </div>
@@ -435,7 +435,7 @@ export default function JobOffersTab({ tenant, hrEmployees }: { tenant: any; hrE
       {mode === 'list' && (
         loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-            <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           </div>
         ) : offers.length === 0 ? (
           <div className="card" style={{ padding: '60px', textAlign: 'center' }}>

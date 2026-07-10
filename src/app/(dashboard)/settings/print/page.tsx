@@ -224,12 +224,12 @@ export default function PrintSettingsPage() {
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
   return (
-    <div className="space-y-6 fade-in" dir="rtl">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="fade-in" dir="rtl">
 
       {/* Header */}
       <div>
@@ -404,7 +404,7 @@ export default function PrintSettingsPage() {
           <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
             <button onClick={handleSave} disabled={saving}
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '11px 28px', borderRadius: '10px', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.95rem', background: settings.primary_color, color: 'white', opacity: saving ? 0.7 : 1 }}>
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '16px', height: '16px' }} />}
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />}
               حفظ الإعدادات
             </button>
           </div>

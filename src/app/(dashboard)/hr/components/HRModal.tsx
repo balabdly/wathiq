@@ -154,7 +154,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
       <div className="modal-box" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{emp ? 'تعديل بيانات الموظف' : 'إضافة موظف جديد'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
 
         {/* تابات النافذة */}
@@ -190,7 +190,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم الأول <span className="text-red-500">*</span></label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الاسم الأول <span style={{ color: '#ef4444' }}>*</span></label>
                       <input
                         value={form.first_name}
                         onChange={e => { set('first_name', e.target.value); set('emp_name', buildFullName(e.target.value, form.father_name, form.grandfather_name, form.family_name)) }}
@@ -198,7 +198,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الأب <span className="text-red-500">*</span></label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم الأب <span style={{ color: '#ef4444' }}>*</span></label>
                       <input
                         value={form.father_name}
                         onChange={e => { set('father_name', e.target.value); set('emp_name', buildFullName(form.first_name, e.target.value, form.grandfather_name, form.family_name)) }}
@@ -206,7 +206,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الجد</label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم الجد</label>
                       <input
                         value={form.grandfather_name}
                         onChange={e => { set('grandfather_name', e.target.value); set('emp_name', buildFullName(form.first_name, form.father_name, e.target.value, form.family_name)) }}
@@ -214,7 +214,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم العائلة <span className="text-red-500">*</span></label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم العائلة <span style={{ color: '#ef4444' }}>*</span></label>
                       <input
                         value={form.family_name}
                         onChange={e => { set('family_name', e.target.value); set('emp_name', buildFullName(form.first_name, form.father_name, form.grandfather_name, e.target.value)) }}
@@ -238,12 +238,12 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">First Name</label>
+                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>First Name</label>
                         <input value={form.first_name_en} onChange={e => set('first_name_en', e.target.value)}
                           className="input" placeholder="Mohammed" dir="ltr" onKeyDown={noEnter} />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Family Name</label>
+                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>Family Name</label>
                         <input value={form.family_name_en} onChange={e => set('family_name_en', e.target.value)}
                           className="input" placeholder="Al-Ghamdi" dir="ltr" onKeyDown={noEnter} />
                       </div>
@@ -253,7 +253,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 {/* القسم أولاً */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>القسم <span style={{ color: '#ef4444' }}>*</span></label>
                   <select value={form.department} onChange={e => handleDeptChange(e.target.value)} className="select">
                     <option value="">— اختر القسم —</option>
                     {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
@@ -262,7 +262,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 {/* المسمى الوظيفي */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">المسمى الوظيفي <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>المسمى الوظيفي <span style={{ color: '#ef4444' }}>*</span></label>
                   <select value={form.job_title} onChange={e => set('job_title', e.target.value)} className="select" disabled={!form.department}>
                     <option value="">{form.department ? '— اختر المسمى —' : '— اختر القسم أولاً —'}</option>
                     {jobTitlesForDept.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
@@ -276,7 +276,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 {/* المدير المباشر */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>
                     المدير المباشر
                     {form.direct_manager && (
                       <span style={{ fontSize: '0.72rem', color: '#0ea77b', marginRight: '6px' }}>
@@ -292,7 +292,7 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 {/* الجنسية */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنسية <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الجنسية <span style={{ color: '#ef4444' }}>*</span></label>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button type="button" onClick={() => { set('nationality', 'سعودي'); set('nationality_text', '') }}
                       style={{
@@ -328,25 +328,25 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الهوية / الإقامة <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم الهوية / الإقامة <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.national_id} onChange={e => set('national_id', e.target.value)} className="input" dir="ltr" placeholder={isSaudi ? '1XXXXXXXXX' : '2XXXXXXXXX'} onKeyDown={noEnter} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الميلاد <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الميلاد <span style={{ color: '#ef4444' }}>*</span></label>
                     <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)} className="input" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الجنس <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الجنس <span style={{ color: '#ef4444' }}>*</span></label>
                     <select value={form.gender} onChange={e => set('gender', e.target.value)} className="select">
                       <option value="ذكر">ذكر</option>
                       <option value="أنثى">أنثى</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة الاجتماعية <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحالة الاجتماعية <span style={{ color: '#ef4444' }}>*</span></label>
                     <select value={form.marital_status} onChange={e => set('marital_status', e.target.value)} className="select">
                       {['أعزب', 'متزوج', 'مطلق', 'أرمل'].map(s => <option key={s}>{s}</option>)}
                     </select>
@@ -355,11 +355,11 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ التعيين <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ التعيين <span style={{ color: '#ef4444' }}>*</span></label>
                     <input type="date" value={form.hire_date} onChange={e => set('hire_date', e.target.value)} className="input" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع العقد <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع العقد <span style={{ color: '#ef4444' }}>*</span></label>
                     <select value={form.contract_type} onChange={e => set('contract_type', e.target.value)} className="select">
                       {['دوام كامل', 'دوام جزئي', 'مؤقت', 'مياومة'].map(s => <option key={s}>{s}</option>)}
                     </select>
@@ -368,8 +368,8 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
 
                 {/* الموقع — إلزامي مع نص تنبؤي */}
                 <div style={{ position: 'relative' }}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    الموقع / المدينة <span className="text-red-500">*</span>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>
+                    الموقع / المدينة <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <input
                     value={form.work_location}
@@ -417,27 +417,27 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">الراتب الأساسي <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الراتب الأساسي <span style={{ color: '#ef4444' }}>*</span></label>
                     <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل السكن</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>بدل السكن</label>
                     <input type="number" value={form.housing_allow} onChange={e => set('housing_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدل النقل</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>بدل النقل</label>
                     <input type="number" value={form.transport_allow} onChange={e => set('transport_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">بدلات أخرى</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>بدلات أخرى</label>
                     <input type="number" value={form.other_allow} onChange={e => set('other_allow', e.target.value)} className="input" min="0" onKeyDown={noEnter} />
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'var(--bg2)', borderRadius: '10px' }}>
-                  <input type="checkbox" checked={form.gosi_enrolled} onChange={e => set('gosi_enrolled', e.target.checked)} className="w-4 h-4" id="gosi" />
+                  <input type="checkbox" checked={form.gosi_enrolled} onChange={e => set('gosi_enrolled', e.target.checked)} style={{ width: '16px', height: '16px' }} id="gosi" />
                   <label htmlFor="gosi" className="text-sm font-medium text-gray-700">مسجل في التأمينات الاجتماعية (GOSI)</label>
                 </div>
 
@@ -495,28 +495,28 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم البنك <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم البنك <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.bank_name} onChange={e => set('bank_name', e.target.value)} className="input" placeholder="مثال: الراجحي، الأهلي" onKeyDown={noEnter} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN <span className="text-red-500">*</span></label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم IBAN <span style={{ color: '#ef4444' }}>*</span></label>
                     <input value={form.iban} onChange={e => set('iban', e.target.value)} className="input" dir="ltr" placeholder="SA..." onKeyDown={noEnter} />
                   </div>
                 </div>
                 {!isSaudi && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الإقامة</label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم الإقامة</label>
                       <input value={form.iqama_number} onChange={e => set('iqama_number', e.target.value)} className="input" dir="ltr" placeholder="2XXXXXXXXX" onKeyDown={noEnter} />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">انتهاء الإقامة</label>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>انتهاء الإقامة</label>
                       <input type="date" value={form.iqama_expiry} onChange={e => set('iqama_expiry', e.target.value)} className="input" />
                     </div>
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات</label>
                   <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '80px', resize: 'none' }} />
                 </div>
               </div>
@@ -527,8 +527,8 @@ const gosiBase = Number(form.basic_salary) + Number(form.housing_allow) + Number
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
               {saving
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Save className="w-4 h-4" />}
+                ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : <Save style={{ width: '16px', height: '16px' }} />}
               حفظ الموظف
             </button>
           </div>

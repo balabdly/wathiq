@@ -24,7 +24,7 @@ export default function VisitDetail({ visit, onClose, onEdit }: {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box max-w-2xl">
+      <div className="modal-box" style={{ maxWidth: '672px' }}>
         <div className="modal-header">
           <div>
             <h3 style={{ fontWeight: 700, color: '#1a1a2e', fontSize: '1rem' }}>تفاصيل الزيارة</h3>

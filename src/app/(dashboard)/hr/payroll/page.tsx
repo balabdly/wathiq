@@ -97,7 +97,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
       <div className="modal-box" style={{ maxWidth: '540px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">تعديل راتب — {payroll.emp_name || '#' + payroll.employee_id}</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -105,7 +105,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
               <div style={{ fontWeight: 700, color: '#0ea77b', marginBottom: '10px', fontSize: '0.875rem' }}>✅ المستحقات</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
                 {[{k:'basic_salary',l:'الراتب الأساسي'},{k:'housing_allow',l:'بدل السكن'},{k:'transport_allow',l:'بدل النقل'},{k:'other_allow',l:'بدلات أخرى'},{k:'overtime_pay',l:'أجر الإضافي'},{k:'bonuses',l:'مكافآت'}].map(({k,l}) => (
-                  <div key={k}><label className="block text-xs text-gray-500 mb-1">{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
+                  <div key={k}><label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
                 ))}
               </div>
             </div>
@@ -113,7 +113,7 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
               <div style={{ fontWeight: 700, color: '#c81e1e', marginBottom: '10px', fontSize: '0.875rem' }}>❌ الخصومات</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                 {[{k:'gosi_deduction',l:'التأمينات'},{k:'absence_deduct',l:'خصم الغياب'},{k:'other_deduct',l:'خصومات أخرى'}].map(({k,l}) => (
-                  <div key={k}><label className="block text-xs text-gray-500 mb-1">{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
+                  <div key={k}><label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '4px' }}>{l}</label><input type="number" value={(form as any)[k]} onChange={e => set(k, Number(e.target.value))} className="input" min="0" /></div>
                 ))}
               </div>
             </div>
@@ -123,10 +123,10 @@ function EditPayrollModal({ payroll, onClose, onSave }: { payroll: Payroll; onCl
               <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px' }}><div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>الصافي</div><div style={{ fontWeight: 700, color: '#0ea77b' }}>{net.toLocaleString()}</div></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">أيام الحضور</label><input type="number" value={form.present_days} onChange={e => set('present_days', Number(e.target.value))} className="input" min="0" max="31" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label><select value={form.status} onChange={e => set('status', e.target.value)} className="select">{['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}</select></div>
+              <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>أيام الحضور</label><input type="number" value={form.present_days} onChange={e => set('present_days', Number(e.target.value))} className="input" min="0" max="31" /></div>
+              <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحالة</label><select value={form.status} onChange={e => set('status', e.target.value)} className="select">{['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}</select></div>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label><input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" /></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات</label><input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" /></div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -215,7 +215,7 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
   }
   const pendingTerminations = terminations.filter(t => !settlements.find(s => s.termination_id === t.id))
   return (
-    <div className="space-y-5">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {pendingTerminations.length > 0 && (
         <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px', padding: '16px' }}>
           <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '12px', fontSize: '0.875rem' }}>⏳ إنهاءات خدمة بانتظار التسوية ({pendingTerminations.length})</div>
@@ -227,7 +227,7 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
           ))}
         </div>
       )}
-      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
       : settlements.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}><FileText style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} /><p style={{ color: 'var(--text3)' }}>لا توجد تسويات بعد</p></div>
       ) : (
@@ -334,7 +334,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
           <div style={{ fontWeight: 700, marginBottom: '16px' }}><Palmtree style={{ width: '18px', height: '18px', color: '#0ea77b', display: 'inline', marginLeft: '8px' }} /> تعويض رصيد إجازة نقداً</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف *</label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select">
                 <option value="">— اختر الموظف —</option>
                 {hrEmployees.filter(e => e.is_active !== false).map(e => (
@@ -342,14 +342,14 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
                 ))}
               </select>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الصرف *</label><input type="date" value={form.compensation_date} onChange={e => set('compensation_date', e.target.value)} className="input" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">عدد الأيام *</label><input type="number" min="1" value={form.leave_days} onChange={e => set('leave_days', e.target.value)} className="input" /></div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">السبب</label>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الصرف *</label><input type="date" value={form.compensation_date} onChange={e => set('compensation_date', e.target.value)} className="input" /></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>عدد الأيام *</label><input type="number" min="1" value={form.leave_days} onChange={e => set('leave_days', e.target.value)} className="input" /></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>السبب</label>
               <select value={form.reason} onChange={e => set('reason', e.target.value)} className="select">
                 <option>صرف رصيد نقدي</option><option>تعويض إجازة لم تُستخدم</option><option>تعويض عند نهاية الخدمة</option><option>أخرى</option>
               </select>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label><select value={form.status} onChange={e => set('status', e.target.value)} className="select">{['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}</select></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحالة</label><select value={form.status} onChange={e => set('status', e.target.value)} className="select">{['مسودة','معتمد','مدفوع'].map(s => <option key={s}>{s}</option>)}</select></div>
             {selectedEmp && Number(form.leave_days) > 0 && (
               <div style={{ gridColumn: '1/-1', background: '#ecfdf5', borderRadius: '12px', padding: '14px' }}>
                 <div style={{ fontWeight: 700, color: '#065f46', marginBottom: '10px', fontSize: '0.875rem' }}>🧮 حساب التعويض</div>
@@ -369,7 +369,7 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
           </div>
         </div>
       )}
-      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+      {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
       : records.length === 0 ? <div className="card" style={{ padding: '60px', textAlign: 'center' }}><Palmtree style={{ width: '48px', height: '48px', color: 'var(--border)', margin: '0 auto 12px' }} /><p style={{ color: 'var(--text3)' }}>لا توجد تعويضات إجازات بعد</p></div>
       : (
         <div className="card" style={{ overflow: 'hidden' }}>
@@ -799,7 +799,7 @@ export default function PayrollPage() {
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Banknote style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> الرواتب والتعويضات
@@ -904,7 +904,7 @@ export default function PayrollPage() {
             </div>
           )}
 
-          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" /></div>
+          {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}><div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} /></div>
           : mode === 'create' ? (
             <div className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af', display: 'flex', gap: '8px', alignItems: 'center' }}>

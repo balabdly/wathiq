@@ -128,12 +128,12 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
       <div className="modal-box" style={{ maxWidth: '560px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{leave ? 'تعديل طلب إجازة' : 'تقديم طلب إجازة'}</h3>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button type="button" onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف <span style={{ color: '#ef4444' }}>*</span></label>
               {lockEmployeeId ? (
                 <input
                   type="text"
@@ -167,7 +167,7 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإجازة <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع الإجازة <span style={{ color: '#ef4444' }}>*</span></label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 {LEAVE_TYPES.map(t => (
                   <button key={t.value} type="button" onClick={() => set('leave_type', t.value)}
@@ -184,11 +184,11 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">من تاريخ <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>من تاريخ <span style={{ color: '#ef4444' }}>*</span></label>
                 <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">إلى تاريخ <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>إلى تاريخ <span style={{ color: '#ef4444' }}>*</span></label>
                 <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input" required />
               </div>
             </div>
@@ -215,20 +215,20 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">السبب / الملاحظات</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>السبب / الملاحظات</label>
               <textarea value={form.reason} onChange={e => set('reason', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
             </div>
 
             {leave && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">حالة الطلب</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>حالة الطلب</label>
                 <span className={`badge ${STATUS_COLOR[leave.status] || 'badge-gray'}`}>{leave.status}</span>
               </div>
             )}
 
             {canChangeStatus && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">تغيير حالة الموافقة (مدير عام)</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تغيير حالة الموافقة (مدير عام)</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   <option value="بانتظار الموافقة">⏳ بانتظار الموافقة</option>
                   <option value="قيد موافقة المدير المباشر">⏳ قيد موافقة المدير المباشر</option>
@@ -243,7 +243,7 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />}
               {leave ? 'حفظ التعديل' : 'تقديم الطلب'}
             </button>
           </div>
@@ -278,8 +278,8 @@ function EmployeeLeaveHistory({ emp, leaves, onClose }: {
           <h3 className="font-bold text-gray-800">
             سجل إجازات — {emp.name}
           </h3>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
+          <button type="button" onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}>
+            <X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} />
           </button>
         </div>
         <div className="modal-body">
@@ -644,7 +644,7 @@ export default function LeavesPage() {
     : []
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Calendar style={{ width: '20px', height: '20px', color: 'var(--primary)' }} />
@@ -684,7 +684,7 @@ export default function LeavesPage() {
 
           {empLoading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+              <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
             </div>
           ) : (
             <div className="card" style={{ overflow: 'hidden' }}>
@@ -800,7 +800,7 @@ export default function LeavesPage() {
 
           {leavesLoading && leaves.length === 0 ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-              <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+              <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
             </div>
           ) : leaves.length === 0 ? (
             <div className="card" style={{ padding: '60px', textAlign: 'center' }}>

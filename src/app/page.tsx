@@ -12,8 +12,8 @@ export default function Home() {
   }, [currentUser, router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-primary-600">
-      <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a56db' }}>
+      <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 }

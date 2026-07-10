@@ -86,7 +86,7 @@ export default function MyAttendancePage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '50px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : rows.length === 0 ? (
         <div className="card" style={{ padding: '50px', textAlign: 'center', color: 'var(--text3)' }}>

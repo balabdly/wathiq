@@ -140,14 +140,14 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
       <div className="modal-box" style={{ maxWidth: '620px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{record ? 'تعديل إنذار' : 'إصدار إنذار جديد'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
             {/* الموظف */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
                 <option value="">— اختر موظف —</option>
                 {employees.map(e => <option key={e.employee_id} value={e.employee_id}>{e.name} — {e.job_title || e.role}</option>)}
@@ -162,7 +162,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
 
             {/* نوع المخالفة */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع المخالفة <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع المخالفة <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.violation_type_id} onChange={e => handleViolationChange(e.target.value)} className="select">
                 <option value="">— اختر من اللائحة —</option>
                 {['خفيفة','متوسطة','جسيمة'].map(cat => (
@@ -186,21 +186,21 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
             <div className="grid grid-cols-2 gap-3">
               {/* الفئة */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">فئة المخالفة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>فئة المخالفة</label>
                 <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
                   {['خفيفة','متوسطة','جسيمة'].map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
               {/* تاريخ الحادثة */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الحادثة <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الحادثة <span style={{ color: '#ef4444' }}>*</span></label>
                 <input type="date" value={form.incident_date} onChange={e => set('incident_date', e.target.value)} className="input" />
               </div>
             </div>
 
             {/* درجة الإنذار */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">درجة الإنذار</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>درجة الإنذار</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[1,2,3].map(deg => (
                   <button key={deg} type="button" onClick={() => handleDegreeChange(deg)}
@@ -219,7 +219,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
 
             {/* العقوبة */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">العقوبة المقررة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>العقوبة المقررة</label>
               <input value={form.penalty_type} onChange={e => set('penalty_type', e.target.value)}
                 className="input" placeholder="مثال: إنذار كتابي + خصم يومين" onKeyDown={noEnter} />
             </div>
@@ -227,13 +227,13 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
             {/* خصم الراتب */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">أيام الخصم من الراتب</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>أيام الخصم من الراتب</label>
                 <input type="number" value={form.salary_deduct_days}
                   onChange={e => set('salary_deduct_days', e.target.value)}
                   className="input" min="0" max="30" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">حالة الإنذار</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>حالة الإنذار</label>
                 <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                   {['نافذ','ملغي','مطعون'].map(s => <option key={s}>{s}</option>)}
                 </select>
@@ -241,7 +241,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات إضافية</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات إضافية</label>
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
                 className="input" style={{ minHeight: '70px', resize: 'none' }} />
             </div>
@@ -249,7 +249,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />}
               إصدار الإنذار
             </button>
           </div>
@@ -293,7 +293,7 @@ function ViolationTypesModal({ tenantId, types, onClose, onRefresh }: {
       <div className="modal-box" style={{ maxWidth: '700px', maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">لائحة المخالفات والعقوبات</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* العرض حسب الفئة */}
@@ -346,11 +346,11 @@ function ViolationTypesModal({ tenantId, types, onClose, onRefresh }: {
             <form onSubmit={handleAdd} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">اسم المخالفة <span className="text-red-500">*</span></label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '4px' }}>اسم المخالفة <span style={{ color: '#ef4444' }}>*</span></label>
                   <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: استخدام الجوال أثناء العمل" onKeyDown={noEnter} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">الفئة</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '4px' }}>الفئة</label>
                   <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
                     {['خفيفة','متوسطة','جسيمة'].map(c => <option key={c}>{c}</option>)}
                   </select>
@@ -358,21 +358,21 @@ function ViolationTypesModal({ tenantId, types, onClose, onRefresh }: {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">عقوبة الإنذار الأول</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '4px' }}>عقوبة الإنذار الأول</label>
                   <input value={form.first_penalty} onChange={e => set('first_penalty', e.target.value)} className="input" placeholder="إنذار كتابي" onKeyDown={noEnter} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">عقوبة الإنذار الثاني</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '4px' }}>عقوبة الإنذار الثاني</label>
                   <input value={form.second_penalty} onChange={e => set('second_penalty', e.target.value)} className="input" placeholder="خصم يوم" onKeyDown={noEnter} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">عقوبة الإنذار الثالث</label>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '4px' }}>عقوبة الإنذار الثالث</label>
                   <input value={form.third_penalty} onChange={e => set('third_penalty', e.target.value)} className="input" placeholder="خصم 3 أيام" onKeyDown={noEnter} />
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="submit" disabled={saving} className="btn btn-primary btn-sm">
-                  {saving ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus style={{ width: '14px', height: '14px' }} />}
+                  {saving ? <span style={{ width: '12px', height: '12px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Plus style={{ width: '14px', height: '14px' }} />}
                   إضافة
                 </button>
               </div>
@@ -577,7 +577,7 @@ export default function DisciplinaryPage() {
   })
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ShieldAlert style={{ width: '20px', height: '20px', color: '#c81e1e' }} /> التأديب والجزاءات
@@ -626,7 +626,7 @@ export default function DisciplinaryPage() {
       {/* الجدول */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>

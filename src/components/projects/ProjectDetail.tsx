@@ -486,7 +486,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       {/* Back + header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         <button onClick={onBack} className="btn btn-ghost btn-sm">

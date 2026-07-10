@@ -145,7 +145,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
             {/* الموظف */}
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.hr_employee_id} onChange={e => set('hr_employee_id', e.target.value)} className="select">
                 <option value="">— اختر الموظف —</option>
                 {hrEmployees.filter(e => e.is_active).map(e => (
@@ -156,7 +156,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
             {/* نوع الإنهاء */}
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الإنهاء <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع الإنهاء <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.termination_type} onChange={e => set('termination_type', e.target.value)} className="select">
                 <optgroup label="✅ مكافأة كاملة">
                   <option value="إنهاء عقد من صاحب العمل">📋 إنهاء عقد من صاحب العمل</option>
@@ -192,11 +192,11 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
             {/* التواريخ */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإنهاء الرسمي <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الإنهاء الرسمي <span style={{ color: '#ef4444' }}>*</span></label>
               <input type="date" value={form.termination_date} onChange={e => set('termination_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">آخر يوم عمل فعلي <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>آخر يوم عمل فعلي <span style={{ color: '#ef4444' }}>*</span></label>
               <input type="date" value={form.last_working_day} onChange={e => set('last_working_day', e.target.value)} className="input" />
             </div>
 
@@ -272,7 +272,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
             {/* ملاحظات */}
             <div style={{ gridColumn: '1/-1' }}>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات / سبب الإنهاء</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات / سبب الإنهاء</label>
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
                 className="input" style={{ minHeight: '70px', resize: 'none' }}
                 placeholder="مثال: قدّم استقالته لأسباب شخصية..." />
@@ -280,7 +280,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
             {/* الحالة */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحالة</label>
               <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
                 <option value="مؤقت">مؤقت (قيد المعالجة)</option>
                 <option value="نهائي">نهائي</option>
@@ -293,7 +293,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
             <button type="button" onClick={resetForm} className="btn btn-ghost">إلغاء</button>
             <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary"
               style={{ background: '#c81e1e' }}>
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <LogOut style={{ width: '15px', height: '15px' }} />}
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <LogOut style={{ width: '15px', height: '15px' }} />}
               تأكيد إنهاء الخدمة
             </button>
           </div>
@@ -303,7 +303,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
       {/* ── جدول السجلات ── */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-          <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : terminations.length === 0 ? (
         <div className="card" style={{ padding: '50px', textAlign: 'center' }}>

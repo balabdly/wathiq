@@ -142,7 +142,7 @@ export default function VendorProfilePage() {
   const INV_BADGE: Record<string, string> = { 'مدفوعة': 'badge-green', 'معتمدة': 'badge-blue', 'مدفوعة جزئياً': 'badge-amber', 'مرتجعة': 'badge-red', 'مسودة': 'badge-gray' }
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>

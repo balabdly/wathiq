@@ -105,14 +105,14 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
       <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{doc ? 'تعديل وثيقة' : 'إضافة وثيقة'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
             {/* الموظف */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
                 <option value="">— اختر موظف —</option>
                 {employees.map(e => (
@@ -125,14 +125,14 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">نوع الوثيقة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>نوع الوثيقة</label>
                 <select value={form.doc_type} onChange={e => set('doc_type', e.target.value)} className="select">
                   {DOC_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
 
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الاسم <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الاسم <span style={{ color: '#ef4444' }}>*</span></label>
                 <input
                   value={form.name}
                   onChange={e => set('name', e.target.value)}
@@ -144,29 +144,29 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الوثيقة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم الوثيقة</label>
                 <input value={form.doc_number} onChange={e => set('doc_number', e.target.value)} className="input" dir="ltr" placeholder="1XXXXXXXXX" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">مكان الإصدار</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>مكان الإصدار</label>
                 <input value={form.place_of_issue} onChange={e => set('place_of_issue', e.target.value)} className="input" placeholder="مثال: الرياض، جدة..." />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الإصدار</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الإصدار</label>
                 <input type="date" value={form.issue_date} onChange={e => set('issue_date', e.target.value)} className="input" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">تاريخ الانتهاء</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>تاريخ الانتهاء</label>
                 <input type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} className="input" />
               </div>
             </div>
 
             {/* مستويات التنبيه المرئية */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>
                 التنبيه قبل الانتهاء
                 <span style={{ fontSize: '0.72rem', color: 'var(--text3)', marginRight: '8px' }}>
                   (التنبيه يظهر تلقائياً عند 60، 30، 10، 3 أيام)
@@ -196,11 +196,11 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
 
             {/* رفع ملف */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رفع ملف (PDF/صورة)</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رفع ملف (PDF/صورة)</label>
               <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFile} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button type="button" onClick={() => fileRef.current?.click()} className="btn btn-ghost btn-sm" style={{ border: '1px solid var(--border)' }}>
-                  <Upload className="w-3.5 h-3.5" /> {fileData ? 'تغيير' : 'رفع ملف'}
+                  <Upload style={{ width: '14px', height: '14px' }} /> {fileData ? 'تغيير' : 'رفع ملف'}
                 </button>
                 {fileData && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#0ea77b' }}>
@@ -215,14 +215,14 @@ function DocumentModal({ doc, employees, defaultEmployeeId, onClose, onSave }: {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات</label>
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '60px', resize: 'none' }} />
             </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />} حفظ
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />} حفظ
             </button>
           </div>
         </form>
@@ -418,7 +418,7 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -590,7 +590,7 @@ export default function DocumentsPage() {
 
       {/* ══ تاب كل الوثائق ══ */}
       {activeTab === 'all' && (
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', flexWrap: 'wrap', alignItems: 'center' }}>
             <select value={filterType} onChange={e => setFilterType(e.target.value)} className="select" style={{ width: 'auto' }}>
               <option value="">كل الأنواع</option>
@@ -605,7 +605,7 @@ export default function DocumentsPage() {
           <div className="card" style={{ overflow: 'hidden' }}>
             {loading ? (
               <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-                <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+                <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
               </div>
             ) : (
               <DocsTable list={allFiltered} showEmp={true} />

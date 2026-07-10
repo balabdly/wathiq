@@ -197,7 +197,7 @@ ${tenant?.footer_text ? `<div class="footer">${tenant.footer_text}</div>` : ''}
       <div className="modal-box" style={{ maxWidth: '580px' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">إصدار خطاب رسمي — {empName}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
@@ -220,7 +220,7 @@ ${tenant?.footer_text ? `<div class="footer">${tenant.footer_text}</div>` : ''}
 
           {/* موجّه إلى */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">موجّه إلى</label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>موجّه إلى</label>
             <input value={addressedTo} onChange={e => setAddressedTo(e.target.value)}
               className="input" placeholder="من يهمه الأمر / السفارة / البنك..." />
           </div>
@@ -229,12 +229,12 @@ ${tenant?.footer_text ? `<div class="footer">${tenant.footer_text}</div>` : ''}
           {type === 'custom' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">عنوان الخطاب <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>عنوان الخطاب <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={customTitle} onChange={e => setCustomTitle(e.target.value)}
                   className="input" placeholder="مثال: خطاب تفويض، خطاب تعريف..." />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">محتوى الخطاب <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>محتوى الخطاب <span style={{ color: '#ef4444' }}>*</span></label>
                 <textarea value={customBody} onChange={e => setCustomBody(e.target.value)}
                   className="input" style={{ minHeight: '120px', resize: 'none' }}
                   placeholder="اكتب محتوى الخطاب هنا..." />
@@ -372,7 +372,7 @@ export default function EmployeeProfilePage() {
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-      <div className="w-10 h-10 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <div style={{ width: '40px', height: '40px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
@@ -396,7 +396,7 @@ export default function EmployeeProfilePage() {
   ]
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
 
       {/* رأس الصفحة */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
@@ -871,8 +871,8 @@ export default function EmployeeProfilePage() {
               <h3 className="font-bold" style={{ color: 'var(--text)' }}>
                 {editEmergency ? 'تعديل جهة الاتصال' : 'إضافة جهة اتصال للطوارئ'}
               </h3>
-              <button onClick={() => setShowEmergencyModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5 text-gray-500" />
+              <button onClick={() => setShowEmergencyModal(false)} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}>
+                <X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} />
               </button>
             </div>
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -976,8 +976,8 @@ export default function EmployeeProfilePage() {
           <div className="modal-box" style={{ maxWidth: '360px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="font-bold" style={{ color: 'var(--text)' }}>تأكيد الحذف</h3>
-              <button onClick={() => setEmergencyDeleteId(null)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5 text-gray-500" />
+              <button onClick={() => setEmergencyDeleteId(null)} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}>
+                <X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} />
               </button>
             </div>
             <div className="modal-body">

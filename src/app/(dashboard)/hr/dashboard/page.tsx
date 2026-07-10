@@ -113,7 +113,7 @@ export default function HRDashboard() {
   )
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Users style={{ width: '22px', height: '22px', color: 'var(--primary)' }} /> لوحة تحكم الموارد البشرية

@@ -15,76 +15,72 @@ export default function ReportsPage() {
   const router = useRouter()
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       <div>
-        <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-          <BarChart3 className="w-5 h-5 text-primary-500" />
+        <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <BarChart3 style={{ width: '20px', height: '20px', color: '#1a56db' }} />
           التقارير
         </h1>
-        <p className="text-gray-400 text-sm mt-0.5">
+        <p style={{ color: 'var(--text3)', fontSize: '0.875rem', marginTop: '2px' }}>
           {AVAILABLE_TOTAL} تقرير جاهز · {REPORT_COUNTS.qhse} قيد التطوير (QHSE)
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
         {FEATURED_REPORTS.map(item => {
           const Icon = item.icon
           return (
             <button
               key={item.id}
               onClick={() => router.push(item.href)}
-              className="text-right w-full"
-              style={{ outline: 'none' }}
+              style={{ textAlign: 'right', width: '100%', outline: 'none', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
             >
               <div
-                className="rounded-2xl p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95 cursor-pointer"
-                style={{ background: item.bg, borderColor: item.border }}
+                style={{ borderRadius: '16px', padding: '20px', border: '1px solid', transition: 'all 0.2s', background: item.bg, borderColor: item.border }}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: item.color + '18' }}>
-                    <Icon className="w-5 h-5" style={{ color: item.color }} />
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: item.color + '18' }}>
+                    <Icon style={{ width: '20px', height: '20px', color: item.color }} />
                   </div>
-                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: item.color + '15', color: item.color }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '4px 10px', borderRadius: '999px', background: item.color + '15', color: item.color }}>
                     مميز
                   </span>
                 </div>
-                <h3 className="font-bold text-base mb-1" style={{ color: item.color }}>{item.label}</h3>
-                <p className="text-xs text-gray-500 leading-relaxed">{item.description}</p>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '4px', color: item.color }}>{item.label}</h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', lineHeight: 1.6 }}>{item.description}</p>
               </div>
             </button>
           )
         })}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px' }}>
         {REPORT_SECTIONS.map(section => {
           const Icon = section.icon
           return (
             <button
               key={section.id}
               onClick={() => router.push(section.href)}
-              className="text-right w-full"
-              style={{ outline: 'none' }}
+              style={{ textAlign: 'right', width: '100%', outline: 'none', border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
             >
               <div
-                className="rounded-2xl p-5 border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 active:scale-95 cursor-pointer"
                 style={{
+                  borderRadius: '16px', padding: '20px', border: '1px solid', transition: 'all 0.2s',
                   background: section.bg,
                   borderColor: section.border,
                   opacity: section.comingSoon ? 0.92 : 1,
                 }}
               >
-                <div className="flex items-start justify-between mb-3">
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center"
-                    style={{ background: section.color + '18' }}
+                    style={{ width: '44px', height: '44px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: section.color + '18' }}
                   >
-                    <Icon className="w-5 h-5" style={{ color: section.color }} />
+                    <Icon style={{ width: '20px', height: '20px', color: section.color }} />
                   </div>
                   <span
-                    className="text-xs font-semibold px-2.5 py-1 rounded-full"
                     style={{
+                      fontSize: '0.72rem', fontWeight: 600, padding: '4px 10px', borderRadius: '999px',
                       background: section.comingSoon ? '#f3f4f6' : section.color + '15',
                       color: section.comingSoon ? '#6b7280' : section.color,
                     }}
@@ -94,21 +90,20 @@ export default function ReportsPage() {
                 </div>
 
                 <h3
-                  className="font-bold text-base mb-1"
-                  style={{ color: section.color }}
+                  style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '4px', color: section.color }}
                 >
                   {section.label}
                 </h3>
 
-                <p className="text-xs text-gray-500 leading-relaxed">
+                <p style={{ fontSize: '0.72rem', color: 'var(--text3)', lineHeight: 1.6 }}>
                   {section.description}
                 </p>
 
-                <div className="mt-3 flex items-center gap-1" style={{ color: section.color }}>
-                  <span className="text-xs font-medium">
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '4px', color: section.color }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>
                     {section.comingSoon ? 'عرض الخطة' : 'عرض التقارير'}
                   </span>
-                  <span className="text-sm">←</span>
+                  <span style={{ fontSize: '0.875rem' }}>←</span>
                 </div>
               </div>
             </button>

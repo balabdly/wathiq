@@ -264,8 +264,8 @@ function ImportModal({
             <Upload style={{ width: '18px', height: '18px', color: 'var(--primary)' }} />
             استيراد سجلات الحضور من Excel
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}>
+            <X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} />
           </button>
         </div>
 
@@ -395,8 +395,8 @@ function ImportModal({
               className="btn btn-primary"
             >
               {importing
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Upload className="w-4 h-4" />
+                ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : <Upload style={{ width: '16px', height: '16px' }} />
               }
               استيراد {validRows.length} سجل صحيح
               {invalidRows.length > 0 && ` (تجاهل ${invalidRows.length} صف بأخطاء)`}
@@ -442,7 +442,7 @@ function CheckoutModal({ record, onClose, onSave }: {
             <Clock style={{ width: '18px', height: '18px', color: '#1a56db' }} />
             تسجيل الانصراف
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -452,7 +452,7 @@ function CheckoutModal({ record, onClose, onSave }: {
               <span><strong>وقت الحضور:</strong> {record.check_in}</span>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الانصراف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>وقت الانصراف <span style={{ color: '#ef4444' }}>*</span></label>
               <input
                 type="time"
                 value={checkOut}
@@ -473,8 +473,8 @@ function CheckoutModal({ record, onClose, onSave }: {
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary" style={{ background: '#1a56db' }}>
               {saving
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <Save className="w-4 h-4" />
+                ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} />
+                : <Save style={{ width: '16px', height: '16px' }} />
               }
               تسجيل الانصراف
             </button>
@@ -537,12 +537,12 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="font-bold text-gray-800">{record ? 'تعديل سجل حضور' : 'تسجيل حضور'}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+          <button onClick={onClose} style={{ padding: '4px', borderRadius: '8px', border: 'none', background: 'none', cursor: 'pointer' }}><X style={{ width: '20px', height: '20px', color: 'var(--text3)' }} /></button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الموظف <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموظف <span style={{ color: '#ef4444' }}>*</span></label>
               <select value={form.employee_id} onChange={e => set('employee_id', e.target.value)} className="select" required>
                 <option value="">— اختر موظف —</option>
                 {employees.map(e => <option key={e.id} value={e.id}>{e.name} — {e.role}</option>)}
@@ -550,11 +550,11 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">التاريخ</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>التاريخ</label>
                 <input type="date" value={form.date} onChange={e => set('date', e.target.value)} className="input" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحالة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحالة</label>
                 <select value={form.status} onChange={e => { set('status', e.target.value); setTimeError('') }} className="select">
                   {['حضور','غياب','إجازة','مأمورية','عطلة'].map(s => <option key={s}>{s}</option>)}
                 </select>
@@ -564,7 +564,7 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
               <>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الحضور</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>وقت الحضور</label>
                     <input
                       type="time"
                       value={form.check_in}
@@ -573,7 +573,7 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">وقت الانصراف</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>وقت الانصراف</label>
                     <input
                       type="time"
                       value={form.check_out}
@@ -590,25 +590,25 @@ function AttendanceModal({ record, employees, onClose, onSave }: {
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات العمل</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ساعات العمل</label>
                     <input type="number" value={form.hours_worked} onChange={e => set('hours_worked', Number(e.target.value))} className="input" min="0" max="24" step="0.5" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">ساعات إضافية</label>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ساعات إضافية</label>
                     <input type="number" value={form.overtime_hours} onChange={e => set('overtime_hours', Number(e.target.value))} className="input" min="0" max="12" step="0.5" />
                   </div>
                 </div>
               </>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">ملاحظات</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>ملاحظات</label>
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)} className="input" style={{ minHeight: '70px', resize: 'none' }} />
             </div>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving} className="btn btn-primary">
-              {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />}
               حفظ
             </button>
           </div>
@@ -694,7 +694,7 @@ export default function AttendancePage() {
   const totalOvertime = records.reduce((s, r) => s + (r.overtime_hours || 0), 0)
 
   return (
-    <div className="space-y-5 fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       <div>
         <h1 className="text-xl font-bold text-gray-800" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Clock style={{ width: '20px', height: '20px', color: 'var(--primary)' }} /> الحضور والغياب
@@ -744,7 +744,7 @@ export default function AttendancePage() {
       {/* Table */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
-          <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+          <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>

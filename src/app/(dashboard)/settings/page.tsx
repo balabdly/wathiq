@@ -174,12 +174,12 @@ export default function SettingsCompanyPage() {
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
-      <div className="w-8 h-8 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+      <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
 
   return (
-    <div className="space-y-5 fade-in" style={{ maxWidth: '700px' }}>
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '700px' }}>
 
       {/* Header */}
       <div>
@@ -226,21 +226,21 @@ export default function SettingsCompanyPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (عربي) <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم الشركة (عربي) <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: شركة النور للمقاولات" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشركة (إنجليزي)</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم الشركة (إنجليزي)</label>
                 <input value={form.name_en} onChange={e => set('name_en', e.target.value)} className="input" dir="ltr" placeholder="Al Noor Electrical" />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم السجل التجاري</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم السجل التجاري</label>
                 <input value={form.cr_number} onChange={e => set('cr_number', e.target.value)} className="input" dir="ltr" placeholder="1010XXXXXX" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>
                   الرقم الضريبي — 15 رقم
                   {form.vat_number && (
                     <span style={{ marginRight: '6px', fontSize: '0.72rem', color: vatValid ? '#0ea77b' : '#c81e1e' }}>
@@ -253,21 +253,21 @@ export default function SettingsCompanyPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم الجوال</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم الجوال</label>
                 <input value={form.phone} onChange={e => set('phone', e.target.value)} className="input" dir="ltr" placeholder="0512345678" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">البريد الإلكتروني</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>البريد الإلكتروني</label>
                 <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className="input" dir="ltr" placeholder="info@company.com" />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم المدير التنفيذي</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم المدير التنفيذي</label>
                 <input value={form.ceo_name} onChange={e => set('ceo_name', e.target.value)} className="input" placeholder="اسم المدير" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الموقع الإلكتروني</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الموقع الإلكتروني</label>
                 <input value={form.website} onChange={e => set('website', e.target.value)} className="input" dir="ltr" placeholder="www.company.com" />
               </div>
             </div>
@@ -285,25 +285,25 @@ export default function SettingsCompanyPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">المدينة <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>المدينة <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={form.city} onChange={e => set('city', e.target.value)} className="input" placeholder="الرياض" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الحي <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الحي <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={form.district} onChange={e => set('district', e.target.value)} className="input" placeholder="حي العليا" />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">اسم الشارع <span className="text-red-500">*</span></label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>اسم الشارع <span style={{ color: '#ef4444' }}>*</span></label>
               <input value={form.street} onChange={e => set('street', e.target.value)} className="input" placeholder="شارع الملك فهد" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الرمز البريدي <span className="text-red-500">*</span></label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الرمز البريدي <span style={{ color: '#ef4444' }}>*</span></label>
                 <input value={form.postal_code} onChange={e => set('postal_code', e.target.value.replace(/\D/g, '').slice(0, 5))} className="input" dir="ltr" placeholder="12345" maxLength={5} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">الدولة</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>الدولة</label>
                 <input value={form.country} onChange={e => set('country', e.target.value)} className="input" />
               </div>
             </div>
@@ -328,7 +328,7 @@ export default function SettingsCompanyPage() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">رقم IBAN</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>رقم IBAN</label>
               <input value={form.iban} onChange={e => set('iban', e.target.value.toUpperCase())} className="input" dir="ltr" placeholder="SA00 0000 0000 0000 0000 0000" />
               <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '4px' }}>يُطبع على الفواتير لتسهيل عملية الدفع</p>
             </div>
@@ -441,7 +441,7 @@ export default function SettingsCompanyPage() {
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={uploadLogo} disabled={uploadingLogo}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px', borderRadius: '10px', border: 'none', cursor: uploadingLogo ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.9rem', background: '#1a56db', color: 'white', opacity: uploadingLogo ? 0.7 : 1 }}>
-                  {uploadingLogo ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Upload style={{ width: '16px', height: '16px' }} />}
+                  {uploadingLogo ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Upload style={{ width: '16px', height: '16px' }} />}
                   {uploadingLogo ? 'جارٍ الرفع...' : 'رفع الشعار'}
                 </button>
                 <button onClick={() => { setLogoPreview(null); setLogoFile(null) }}
@@ -501,7 +501,7 @@ export default function SettingsCompanyPage() {
         <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '20px' }}>
           <button onClick={handleSave} disabled={saving}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 28px', borderRadius: '10px', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.95rem', background: 'var(--primary)', color: 'white', opacity: saving ? 0.7 : 1 }}>
-            {saving ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save style={{ width: '16px', height: '16px' }} />}
+            {saving ? <span style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block' }} /> : <Save style={{ width: '16px', height: '16px' }} />}
             حفظ البيانات
           </button>
         </div>
