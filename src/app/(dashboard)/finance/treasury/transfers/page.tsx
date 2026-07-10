@@ -59,7 +59,7 @@ function TransferModal({ cashAccounts, tenantId, onClose, onSave }: {
         supabase.from('finance_accounts').select('code').eq('id', toAcc.account_id).single(),
       ])
       if (fromCode?.code && toCode?.code) {
-        await journalInternalTransfer({
+        const jr = await journalInternalTransfer({
           tenantId,
           date: form.transfer_date,
           description: `تحويل داخلي ${transferNo} — ${form.description}`,
@@ -67,6 +67,10 @@ function TransferModal({ cashAccounts, tenantId, onClose, onSave }: {
           toAccountCode: toCode.code,
           fromAccountCode: fromCode.code,
         })
+        if (!jr) {
+          toast.error('تحويل حفظ بالخزينة لكن القيد المحاسبي فشل - راجع شجرة الحسابات', { duration: 8000 })
+          onSave(); setSaving(false); return
+        }
       }
     }
 
