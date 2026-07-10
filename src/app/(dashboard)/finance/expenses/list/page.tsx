@@ -180,9 +180,19 @@ function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenan
     if (!form.amount || netAmount <= 0) { toast.error('المبلغ مطلوب'); return }
     if (!form.account_id) { toast.error('الحساب المحاسبي إلزامي'); return }
     // ══ ضابط الرصيد عند الدفع من حساب نقدي (منع للصندوق، تحذير Overdraft للبنك) ══
-    if (!expense?.id && form.cash_account_id && form.cash_account_id.startsWith('cash:')) {
+    // عند الإنشاء: يفحص المبلغ كاملاً. عند التعديل: يفحص فقط إذا تغيّر حساب الدفع (المبلغ كاملاً على الحساب الجديد)
+    // أو زاد المبلغ على نفس الحساب (فرق الزيادة فقط — الأصل محسوب أصلاً بالدفتر)
+    if (form.cash_account_id && form.cash_account_id.startsWith('cash:')) {
       const cid = Number(form.cash_account_id.replace('cash:', ''))
-      if (cid && !(await confirmCashSpendById(tenantId, cid, totalAmount))) return
+      const originalCashId = expense?.id ? Number(expense.cash_account_id || 0) : null
+      const accountChanged = expense?.id ? originalCashId !== cid : true
+      let checkAmount = totalAmount
+      if (expense?.id && !accountChanged) {
+        const delta = totalAmount - Number(expense.amount || 0)
+        if (delta <= 0) checkAmount = 0   // نفس الحساب وبنفس المبلغ أو أقل — لا حاجة لإعادة الفحص
+        else checkAmount = delta
+      }
+      if (cid && checkAmount > 0 && !(await confirmCashSpendById(tenantId, cid, checkAmount))) return
     }
     setSaving(true)
     try {
