@@ -341,8 +341,12 @@ function CreditNotesPage() {
       reverseReferenceType: 'إلغاء إشعار دائن',
       description: `قيد عكسي — إلغاء إشعار ${cn.note_number} — ${cn.client_name}`,
     })
+    if (!result) {
+      toast.error('⚠️ تعذّر إنشاء القيد العكسي — الإشعار لا يزال معتمداً ولم يُلغَ. حاول مجدداً أو راجع شجرة الحسابات', { duration: 8000 })
+      return
+    }
     await supabase.from('finance_credit_notes').update({ status: 'ملغي' }).eq('id', cn.id)
-    toast.success(`✅ أُلغي الإشعار ${cn.note_number}${result ? ' وسُجّل القيد العكسي' : ''}`)
+    toast.success(`✅ أُلغي الإشعار ${cn.note_number} وسُجّل القيد العكسي`)
     loadCreditNotes()
   }
 
