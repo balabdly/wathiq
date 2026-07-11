@@ -132,19 +132,20 @@ function AccountSearch({ accounts, value, onChange, required }: {
 // ════════════════════════════════════════
 // مودال المصروف
 // ════════════════════════════════════════
-function ExpenseModal({ expense, accounts, costCenters, projects, vendors, tenantId, onClose, onSave }: {
-  expense: Expense | null; accounts: Account[]; costCenters: CostCenter[]
+function ExpenseModal({ expense, defaultType, accounts, costCenters, projects, vendors, tenantId, onClose, onSave }: {
+  expense: Expense | null; defaultType?: 'مشاريع' | 'تشغيلي' | 'إداري'; accounts: Account[]; costCenters: CostCenter[]
   projects: Project[]; vendors: Vendor[]; tenantId: string
   onClose: () => void; onSave: () => void
 }) {
   const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' } as const
   const [saving, setSaving] = useState(false)
   const today = new Date().toISOString().split('T')[0]
+  const initialType = expense?.expense_type || defaultType || 'مشاريع'
 
   const [form, setForm] = useState({
     expense_date:    expense?.expense_date    || today,
-    expense_type:    expense?.expense_type    || 'مشاريع',
-    category:        expense?.category        || (CATEGORIES['مشاريع'][0]),
+    expense_type:    initialType,
+    category:        expense?.category        || (CATEGORIES[initialType]?.[0] || CATEGORIES['مشاريع'][0]),
     description:     expense?.description     || '',
     amount:          expense?.amount          ? String(expense.amount) : '',
     vat_rate:        expense?.vat_rate        ? String(expense.vat_rate) : '15',
@@ -599,7 +600,7 @@ export default function ExpensesListPage() {
           {pagination.total > 50 && <div className="card"><pagination.PaginationBar color="#e6820a" /></div>}
 
       {showExpModal && (
-        <ExpenseModal expense={editExpense} accounts={accounts} costCenters={costCenters} projects={projects} vendors={vendors} tenantId={tenantId!}
+        <ExpenseModal expense={editExpense} defaultType={expenseTab} accounts={accounts} costCenters={costCenters} projects={projects} vendors={vendors} tenantId={tenantId!}
           onClose={() => { setShowExpModal(false); setEditExpense(null) }}
           onSave={() => { setShowExpModal(false); setEditExpense(null); loadExpenses(pagination.page, expenseTab, search) }} />
       )}
