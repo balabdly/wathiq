@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber, confirmCashSpend, getCashAccountCode } from '@/lib/journal'
 import { ACC, getPurchaseDebitAccountCode, PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
+import { registerAssetFromVendorInvoice } from '@/lib/asset-coa'
 import { receiveVendorInvoiceToWarehouse } from '@/lib/inventory-purchase-bridge'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
@@ -247,6 +248,22 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
       if (!jr) {
         toast.error('⚠️ الفاتورة حُفظت لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
         onSave(); setSaving(false); return
+      }
+      if (payload.delivery_to === 'أصل ثابت' && invId) {
+        const itemDesc = validItems.map(i => i.description).filter(Boolean).join('، ')
+        const assetId = await registerAssetFromVendorInvoice({
+          tenantId,
+          invoiceId: invId,
+          invoiceNumber: payload.invoice_number,
+          invoiceDate: payload.invoice_date,
+          vendorName: payload.vendor_name,
+          subtotal: payload.subtotal,
+          assetType: form.asset_type,
+          assetAccountCode: debitAccountCode,
+          projectId: payload.project_id,
+          description: itemDesc || `أصل — ${payload.vendor_name}`,
+        })
+        if (assetId) toast.success('📦 تم إنشاء سجل الأصل في سجل الأصول الثابتة')
       }
       if (payload.delivery_to === 'مستودع' && payload.warehouse_id && activeBranch?.id) {
         const stockResult = await receiveVendorInvoiceToWarehouse({
@@ -541,7 +558,7 @@ function VendorInvoicesPage() {
   }
 
   async function approveInvoice(inv: VendorInvoice) {
-    const debitCode = getPurchaseDebitAccountCode(inv.delivery_to || '')
+    const debitCode = getPurchaseDebitAccountCode(inv.delivery_to || '', (inv as { asset_type?: string }).asset_type)
     await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
     const jr = await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
       lines: [
@@ -553,6 +570,20 @@ function VendorInvoicesPage() {
     if (!jr) {
       toast.error('⚠️ اعتُمدت الفاتورة لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
     } else {
+      if (inv.delivery_to === 'أصل ثابت') {
+        const assetId = await registerAssetFromVendorInvoice({
+          tenantId: tenantId!,
+          invoiceId: inv.id,
+          invoiceNumber: inv.invoice_number,
+          invoiceDate: inv.invoice_date,
+          vendorName: inv.vendor_name,
+          subtotal: Number(inv.subtotal),
+          assetAccountCode: debitCode,
+          projectId: inv.project_id,
+          description: `أصل — ${inv.vendor_name}`,
+        })
+        if (assetId) toast.success('📦 تم إنشاء سجل الأصل في سجل الأصول الثابتة')
+      }
       toast.success('تم الاعتماد والقيد المحاسبي')
     }
     loadVendorInvoices(invPagination.page); reloadKpis()

@@ -65,7 +65,7 @@ function DisposalModal({ assets, accounts, cashAccounts, tenantId, onClose, onSa
       }).eq('id', asset.id)
 
       // تسجيل سجل الاستبعاد
-      await supabase.from('finance_asset_disposals').insert({
+      const { data: disposalRow, error: dispErr } = await supabase.from('finance_asset_disposals').insert({
         tenant_id: tenantId, asset_id: asset.id,
         disposal_date: form.disposal_date,
         disposal_type: form.disposal_type,
@@ -73,7 +73,8 @@ function DisposalModal({ assets, accounts, cashAccounts, tenantId, onClose, onSa
         book_value_at_disposal: bookValue,
         gain_loss: gainLossAmt,
         notes: form.notes || null,
-      })
+      }).select('id').single()
+      if (dispErr) throw dispErr
 
       // القيد المحاسبي
       if (asset.asset_account_id && asset.accum_account_id) {
@@ -99,6 +100,7 @@ function DisposalModal({ assets, accounts, cashAccounts, tenantId, onClose, onSa
             tenantId,
             date: form.disposal_date,
             description: `استبعاد أصل — ${form.disposal_type} — ${asset.name}`,
+            referenceId: disposalRow?.id,
             assetAccountCode: assetAcc.code,
             accumAccountCode: accumAcc.code,
             totalCost,

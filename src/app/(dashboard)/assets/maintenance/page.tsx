@@ -6,6 +6,7 @@ import { Plus, X, Save, Wrench, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { journalAssetMaintenance } from '@/lib/journal'
 import { ACC } from '@/lib/account-codes'
+import { filterMaintenanceExpenseAccounts } from '@/lib/asset-coa'
 
 type Asset       = { id: number; asset_no: string; name: string; category: string }
 type Maintenance = {
@@ -43,7 +44,7 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
 
   // تعيين حساب المصروف تلقائياً
   useEffect(() => {
-    const acc = accounts.find(a => a.code === '5420')
+    const acc = accounts.find(a => a.code === ACC.EQUIPMENT_MAINTENANCE)
     if (acc) set('expense_account_id', String(acc.id))
   }, [accounts])
 
@@ -52,6 +53,7 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
     if (!form.description)    { toast.error('الوصف مطلوب'); return }
     if (!form.cost || Number(form.cost) <= 0) { toast.error('التكلفة مطلوبة'); return }
     if (!form.expense_account_id) { toast.error('الحساب المحاسبي مطلوب'); return }
+    if (!form.cash_account_id) { toast.error('اختر حساب الدفع لتسجيل القيد المحاسبي'); return }
     setSaving(true)
     try {
       const payload: Record<string, any> = {
@@ -68,26 +70,24 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
       const { error } = await supabase.from('finance_asset_maintenance').insert(payload)
       if (error) throw error
 
-      // القيد المحاسبي: مدين مصروف الصيانة / دائن البنك أو الصندوق
-      if (form.cash_account_id) {
-        const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-        if (cashAcc?.account_id) {
-          const [{ data: cashCode }, { data: expAccRow }] = await Promise.all([
-            supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single(),
-            supabase.from('finance_accounts').select('code').eq('id', Number(form.expense_account_id)).single(),
-          ])
-          const expenseCode = expAccRow?.code || ACC.MAINTENANCE_EXPENSE
-          if (cashCode?.code) {
-            const asset = assets.find(a => a.id === Number(form.asset_id))
-            await journalAssetMaintenance({
-              tenantId,
-              date: form.maintenance_date,
-              description: `صيانة — ${asset?.name} — ${form.description}`,
-              amount: Number(form.cost),
-              expenseAccountCode: expenseCode,
-              cashAccountCode: cashCode.code,
-            })
-          }
+      const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+      if (cashAcc?.account_id) {
+        const [{ data: cashCode }, { data: expAccRow }] = await Promise.all([
+          supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single(),
+          supabase.from('finance_accounts').select('code').eq('id', Number(form.expense_account_id)).single(),
+        ])
+        const expenseCode = expAccRow?.code || ACC.EQUIPMENT_MAINTENANCE
+        if (cashCode?.code) {
+          const asset = assets.find(a => a.id === Number(form.asset_id))
+          const jr = await journalAssetMaintenance({
+            tenantId,
+            date: form.maintenance_date,
+            description: `صيانة — ${asset?.name} — ${form.description}`,
+            amount: Number(form.cost),
+            expenseAccountCode: expenseCode,
+            cashAccountCode: cashCode.code,
+          })
+          if (!jr) toast.error('⚠️ سُجِّلت الصيانة لكن القيد فشل — راجع شجرة الحسابات', { duration: 8000 })
         }
       }
 
@@ -98,7 +98,7 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
     } finally { setSaving(false) }
   }
 
-  const expenseAccounts = accounts.filter(a => !a.is_parent && (a.code?.startsWith('54') || a.code?.startsWith('53')))
+  const expenseAccounts = filterMaintenanceExpenseAccounts(accounts)
   const banks  = cashAccounts.filter(a => a.account_type === 'بنك')
   const boxes  = cashAccounts.filter(a => a.account_type === 'صندوق')
 
@@ -153,9 +153,9 @@ function MaintenanceModal({ assets, accounts, cashAccounts, tenantId, onClose, o
               </select>
             </div>
             <div>
-              <label style={lbl}>الدفع من</label>
+              <label style={lbl}>الدفع من *</label>
               <select value={form.cash_account_id} onChange={e => set('cash_account_id', e.target.value)} className="select">
-                <option value="">— اختياري —</option>
+                <option value="">— اختر —</option>
                 {banks.length > 0 && <optgroup label="🏦 بنوك">{banks.map(a => <option key={a.id} value={a.id}>🏦 {a.name}</option>)}</optgroup>}
                 {boxes.length > 0 && <optgroup label="💰 صناديق">{boxes.map(a => <option key={a.id} value={a.id}>💰 {a.name}</option>)}</optgroup>}
               </select>

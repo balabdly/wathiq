@@ -656,12 +656,13 @@ export async function journalDepreciation(params: {
   tenantId:    string
   date:        string
   monthLabel:  string
-  lines:       { expenseCode: string; accumCode: string; amount: number; description: string }[]
+  lines:       { expenseCode: string; accumCode: string; amount: number; description: string; costCenterId?: number }[]
 }): Promise<JournalResult> {
   const journalLines: JournalLine[] = []
   for (const l of params.lines) {
     if (l.amount <= 0) continue
-    journalLines.push({ accountCode: l.expenseCode, debit: l.amount, credit: 0, description: l.description })
+    const cc = l.costCenterId
+    journalLines.push({ accountCode: l.expenseCode, debit: l.amount, credit: 0, description: l.description, costCenterId: cc })
     journalLines.push({ accountCode: l.accumCode,   debit: 0, credit: l.amount, description: `مجمع — ${l.description}` })
   }
   const total = params.lines.reduce((s, l) => s + l.amount, 0)
@@ -867,7 +868,7 @@ export async function journalCustodyIssue(params: {
   })
 }
 
-/** شراء أصل ثابت */
+/** شراء أصل ثابت — دائن: نقد/بنك أو ذمم موردين */
 export async function journalAssetPurchase(params: {
   tenantId: string
   date: string
@@ -875,7 +876,7 @@ export async function journalAssetPurchase(params: {
   referenceId: number
   amount: number
   assetAccountCode: string
-  cashAccountCode: string
+  creditAccountCode: string
   paymentLabel?: string
 }): Promise<JournalResult> {
   return createJournalEntry({
@@ -885,8 +886,8 @@ export async function journalAssetPurchase(params: {
     referenceType: 'أصل',
     referenceId:   params.referenceId,
     lines: [
-      { accountCode: params.assetAccountCode, debit: params.amount, credit: 0,              description: params.description },
-      { accountCode: params.cashAccountCode,  debit: 0,             credit: params.amount, description: params.paymentLabel || params.description },
+      { accountCode: params.assetAccountCode, debit: params.amount, credit: 0,               description: params.description },
+      { accountCode: params.creditAccountCode,  debit: 0,             credit: params.amount,  description: params.paymentLabel || params.description },
     ],
     source: 'آلي',
   })
@@ -897,6 +898,7 @@ export async function journalAssetDisposal(params: {
   tenantId: string
   date: string
   description: string
+  referenceId?: number
   assetAccountCode: string
   accumAccountCode: string
   totalCost: number
@@ -925,8 +927,40 @@ export async function journalAssetDisposal(params: {
     date:          params.date,
     description:   params.description,
     referenceType: 'استبعاد',
+    referenceId:   params.referenceId,
     lines,
     source:        'آلي',
+  })
+}
+
+/** تعديل قيمة أصل — فرق التكلفة */
+export async function journalAssetCostAdjustment(params: {
+  tenantId: string
+  date: string
+  assetId: number
+  description: string
+  assetAccountCode: string
+  delta: number
+}): Promise<JournalResult> {
+  const amt = Math.abs(params.delta)
+  if (amt < 0.01) return null
+  const isIncrease = params.delta > 0
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'تعديل أصل',
+    referenceId:   params.assetId,
+    lines: isIncrease
+      ? [
+          { accountCode: params.assetAccountCode, debit: amt, credit: 0, description: params.description },
+          { accountCode: ACC.PAID_IN_CAPITAL,     debit: 0,   credit: amt, description: 'تسوية تعديل أصل' },
+        ]
+      : [
+          { accountCode: ACC.PAID_IN_CAPITAL,     debit: amt, credit: 0, description: 'تسوية تعديل أصل' },
+          { accountCode: params.assetAccountCode, debit: 0,   credit: amt, description: params.description },
+        ],
+    source: 'آلي',
   })
 }
 

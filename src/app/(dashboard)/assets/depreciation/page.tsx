@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { TrendingDown, Play, CheckCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { journalDepreciation } from '@/lib/journal'
+import { getCostCenterIdForProject } from '@/lib/asset-coa'
 
 type Asset = {
   id: number; asset_no: string; name: string; category: string
@@ -82,14 +83,19 @@ export default function DepreciationPage() {
     const { data: accRows } = await supabase.from('finance_accounts').select('id, code').in('id', accountIds)
     const codeMap = Object.fromEntries((accRows || []).map((a: any) => [a.id, a.code]))
 
-    const depLines = pending
-      .filter(p => p.asset.expense_account_id && p.asset.accum_account_id && codeMap[p.asset.expense_account_id] && codeMap[p.asset.accum_account_id])
-      .map(p => ({
-        expenseCode: codeMap[p.asset.expense_account_id!],
-        accumCode:   codeMap[p.asset.accum_account_id!],
-        amount:      p.amount,
-        description: `إهلاك: ${p.asset.name}`,
-      }))
+    const depLines = (
+      await Promise.all(
+        pending
+          .filter(p => p.asset.expense_account_id && p.asset.accum_account_id && codeMap[p.asset.expense_account_id] && codeMap[p.asset.accum_account_id])
+          .map(async p => ({
+            expenseCode: codeMap[p.asset.expense_account_id!],
+            accumCode:   codeMap[p.asset.accum_account_id!],
+            amount:      p.amount,
+            description: `إهلاك: ${p.asset.name}`,
+            costCenterId: await getCostCenterIdForProject(tenant.id, p.asset.project_id),
+          }))
+      )
+    )
 
     if (depLines.length > 0) {
       const result = await journalDepreciation({

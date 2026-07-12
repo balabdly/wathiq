@@ -4,7 +4,16 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Pencil, Trash2, Search, Package, TrendingDown, Wrench, LogOut } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { journalAssetPurchase } from '@/lib/journal'
+import { journalAssetPurchase, journalAssetCostAdjustment } from '@/lib/journal'
+import { ACC } from '@/lib/account-codes'
+import {
+  ASSET_CATEGORIES,
+  getCategoryCoaCodes,
+  resolveAccountIds,
+  filterAssetLeafAccounts,
+  filterAccumAccounts,
+  filterDepreciationExpenseAccounts,
+} from '@/lib/asset-coa'
 
 // ════════════════════════════════════════
 // Types
@@ -29,15 +38,7 @@ type Account    = { id: number; code: string; name: string; is_parent?: boolean 
 type Project    = { id: number; name: string }
 type CashAccount = { id: number; name: string; account_type: string; account_id?: number }
 
-const CATEGORIES = ['سيارات ومركبات', 'معدات وآلات', 'أجهزة وحاسبات', 'أثاث ومفروشات', 'أصول أخرى']
-
-const CATEGORY_ACCOUNTS: Record<string, { asset: string; accum: string }> = {
-  'سيارات ومركبات': { asset: '1540', accum: '1630' },
-  'معدات وآلات':    { asset: '1530', accum: '1620' },
-  'أجهزة وحاسبات':  { asset: '1530', accum: '1620' },
-  'أثاث ومفروشات':  { asset: '1550', accum: '1640' },
-  'أصول أخرى':      { asset: '1550', accum: '1640' },
-}
+const CATEGORIES = [...ASSET_CATEGORIES]
 
 const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
   'نشط':         { bg: '#ecfdf5', color: '#0ea77b' },
@@ -81,18 +82,23 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  // تعيين الحسابات تلقائياً عند تغيير الفئة
+  // تعيين الحسابات تلقائياً حسب الفئة والشجرة الخماسية (12x / 125 / 526|5142)
+  function applyCategoryAccounts(cat: string, projectId?: string) {
+    const linked = Boolean(projectId)
+    const ids = resolveAccountIds(accounts, cat, linked)
+    if (ids.assetAccountId)   set('asset_account_id',   String(ids.assetAccountId))
+    if (ids.accumAccountId)   set('accum_account_id',   String(ids.accumAccountId))
+    if (ids.expenseAccountId) set('expense_account_id', String(ids.expenseAccountId))
+  }
+
   function handleCategoryChange(cat: string) {
     set('category', cat)
-    const cats = CATEGORY_ACCOUNTS[cat]
-    if (cats) {
-      const assetAcc  = accounts.find(a => a.code === cats.asset)
-      const accumAcc  = accounts.find(a => a.code === cats.accum)
-      const expAcc    = accounts.find(a => a.code === '5410')
-      if (assetAcc) set('asset_account_id',   String(assetAcc.id))
-      if (accumAcc) set('accum_account_id',    String(accumAcc.id))
-      if (expAcc)   set('expense_account_id',  String(expAcc.id))
-    }
+    applyCategoryAccounts(cat, form.project_id)
+  }
+
+  function handleProjectChange(projectId: string) {
+    set('project_id', projectId)
+    applyCategoryAccounts(form.category, projectId)
   }
 
   // حساب الإهلاك الشهري
@@ -124,6 +130,7 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
         description: form.description || null, serial_no: form.serial_no || null,
         purchase_date: form.purchase_date,
         purchase_value: purchaseVal, installation_cost: installCost,
+        total_cost: totalCost,
         salvage_value: salvageVal, useful_life_years: usefulLife,
         depreciation_method: form.depreciation_method,
         monthly_depreciation: Math.round(monthlyDep * 100) / 100,
@@ -140,34 +147,64 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
       if (form.cash_account_id) payload.cash_account_id = Number(form.cash_account_id)
 
       let savedId: number | null = null
+      const oldTotal = asset ? Number(asset.total_cost) : 0
+
       if (asset?.id) {
         const { error } = await supabase.from('finance_assets').update(payload).eq('id', asset.id)
         if (error) throw error
         savedId = asset.id
+
+        const delta = totalCost - oldTotal
+        if (Math.abs(delta) > 0.01) {
+          const assetAcc = accounts.find(a => a.id === Number(form.asset_account_id))
+          if (assetAcc?.code) {
+            const adj = await journalAssetCostAdjustment({
+              tenantId,
+              date: form.purchase_date,
+              assetId: savedId,
+              description: `تعديل تكلفة أصل — ${form.name.trim()} (${asset.asset_no})`,
+              assetAccountCode: assetAcc.code,
+              delta,
+            })
+            if (!adj) toast.error('⚠️ حُفظ الأصل لكن قيد التعديل فشل — راجع شجرة الحسابات', { duration: 8000 })
+          }
+        }
       } else {
         const { data, error } = await supabase.from('finance_assets').insert(payload).select('id').single()
         if (error) throw error
         savedId = data?.id
 
-        // قيد تسجيل الأصل: مدين الأصل / دائن البنك أو الصندوق
-        if (savedId && form.cash_account_id) {
-          const assetAcc = accounts.find(a => a.id === Number(form.asset_account_id))
-          const cashAcc  = cashAccounts.find(a => a.id === Number(form.cash_account_id))
-          if (assetAcc?.code && cashAcc?.account_id) {
+        const assetAcc = accounts.find(a => a.id === Number(form.asset_account_id))
+        let creditCode: string | null = null
+        let creditLabel = form.payment_method
+
+        if (form.payment_method === 'آجل') {
+          creditCode = ACC.SUPPLIER_PAYABLE
+          creditLabel = 'ذمم موردين — شراء أصل'
+        } else if (form.cash_account_id) {
+          const cashAcc = cashAccounts.find(a => a.id === Number(form.cash_account_id))
+          if (cashAcc?.account_id) {
             const { data: cashFAcc } = await supabase.from('finance_accounts').select('code').eq('id', cashAcc.account_id).single()
-            if (cashFAcc?.code) {
-              await journalAssetPurchase({
-                tenantId,
-                date: form.purchase_date,
-                description: `شراء أصل — ${form.name.trim()} (${assetNo})`,
-                referenceId: savedId,
-                amount: totalCost,
-                assetAccountCode: assetAcc.code,
-                cashAccountCode: cashFAcc.code,
-                paymentLabel: form.payment_method,
-              })
-            }
+            creditCode = cashFAcc?.code || null
           }
+        }
+
+        if (savedId && assetAcc?.code && creditCode) {
+          const jr = await journalAssetPurchase({
+            tenantId,
+            date: form.purchase_date,
+            description: `شراء أصل — ${form.name.trim()} (${assetNo})`,
+            referenceId: savedId,
+            amount: totalCost,
+            assetAccountCode: assetAcc.code,
+            creditAccountCode: creditCode,
+            paymentLabel: creditLabel,
+          })
+          if (!jr) {
+            toast.error('⚠️ سُجِّل الأصل لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
+          }
+        } else if (savedId && form.payment_method !== 'آجل' && !form.cash_account_id) {
+          toast.error('⚠️ سُجِّل الأصل بدون قيد — اختر حساب الدفع أو «آجل»', { duration: 7000 })
         }
       }
 
@@ -180,11 +217,12 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
 
   // تعيين الحسابات تلقائياً عند فتح المودال لأول مرة
   useEffect(() => {
-    if (!asset) handleCategoryChange(form.category)
-  }, [])
+    if (!asset && accounts.length) applyCategoryAccounts(form.category, form.project_id)
+  }, [accounts.length])
 
-  const expenseAccounts = accounts.filter(a => !a.is_parent && a.code?.startsWith('54'))
-  const assetAccounts   = accounts.filter(a => !a.is_parent && (a.code?.startsWith('15')))
+  const expenseAccounts = filterDepreciationExpenseAccounts(accounts)
+  const assetAccounts   = filterAssetLeafAccounts(accounts)
+  const accumAccounts   = filterAccumAccounts(accounts)
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -298,29 +336,34 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
 
           {/* الحسابات المحاسبية */}
           <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid var(--border)' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '12px', color: '#374151' }}>📋 الحسابات المحاسبية (تُعبَّأ تلقائياً حسب الفئة)</div>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '12px', color: '#374151' }}>
+              📋 الحسابات المحاسبية (شجرة 12x — تُعبَّأ تلقائياً)
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div>
-                <label style={lbl}>حساب الأصل *</label>
+                <label style={lbl}>حساب الأصل * <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>(121–124)</span></label>
                 <select value={form.asset_account_id} onChange={e => set('asset_account_id', e.target.value)} className="select">
                   <option value="">— اختر —</option>
                   {assetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={lbl}>مجمع الإهلاك *</label>
+                <label style={lbl}>مجمع الإهلاك * <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>(125)</span></label>
                 <select value={form.accum_account_id} onChange={e => set('accum_account_id', e.target.value)} className="select">
                   <option value="">— اختر —</option>
-                  {assetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                  {accumAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
                 </select>
               </div>
               <div>
-                <label style={lbl}>مصروف الإهلاك *</label>
+                <label style={lbl}>مصروف الإهلاك * <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>(526 / 5142)</span></label>
                 <select value={form.expense_account_id} onChange={e => set('expense_account_id', e.target.value)} className="select">
                   <option value="">— اختر —</option>
                   {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
                 </select>
               </div>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: '8px' }}>
+              الفئة الحالية: {getCategoryCoaCodes(form.category, Boolean(form.project_id)).asset} / {ACC.ACCUM_DEPRECIATION} / {getCategoryCoaCodes(form.category, Boolean(form.project_id)).expense}
             </div>
           </div>
 
@@ -328,7 +371,7 @@ function AssetModal({ asset, accounts, projects, cashAccounts, tenantId, onClose
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>المشروع (اختياري)</label>
-              <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
+              <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
                 <option value="">— بدون مشروع —</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -381,7 +424,7 @@ export default function AssetsPage() {
         .eq('tenant_id', tenant.id).order('asset_no'),
       supabase.from('finance_accounts').select('id,code,name,is_parent').eq('tenant_id', tenant.id).eq('is_active', true).order('code'),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
-      supabase.from('finance_cash_accounts').select('id,name,account_type').eq('tenant_id', tenant.id).eq('is_active', true),
+      supabase.from('finance_cash_accounts').select('id,name,account_type,account_id').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
     setAssets(assetsRes.data || [])
     setAccounts(accRes.data || [])
