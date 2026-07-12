@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
-import { Users, Search, Eye, Pencil, Trash2, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Users, Search, Eye, Pencil, Lock, ChevronRight, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { HREmployee } from '../hr_types'
 import { calcGOSI } from '../hr_utils'
@@ -68,11 +68,15 @@ export default function EmployeesList({
     setLoading(false)
   }
 
-  // ── حذف ──
+  // ── تعليق الدخول للنظام فقط — لا يمس سجل الموارد البشرية إطلاقاً ──
+  // إنهاء الخدمة الفعلي حصراً عبر شاشة "إنهاء الخدمة" — موظف على رأس العمل يبقى ظاهراً هنا دائماً
+  // حتى لو بلا أي صلاحية دخول
   async function handleDelete(emp: HREmployee) {
-    if (!confirm(`حذف الموظف "${getEmpName(emp)}"؟`)) return
-    await supabase.from('hr_employees').update({ is_active: false }).eq('id', emp.id)
-    toast.success('تم حذف الموظف')
+    if (!confirm(`تعليق دخول "${getEmpName(emp)}" للنظام؟\nملاحظة: يبقى ظاهراً بملفات الموظفين — لإنهاء خدمته فعلياً استخدم شاشة "إنهاء الخدمة".`)) return
+    if (emp.employee_id) {
+      await supabase.from('employees').update({ is_active: false }).eq('id', emp.employee_id)
+    }
+    toast.success('تم تعليق دخوله للنظام (لا يزال موظفاً نشطاً بالسجلات)')
     loadAll(page)
   }
 
@@ -242,9 +246,9 @@ export default function EmployeesList({
                                   style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: 'var(--text3)' }}>
                                   <Pencil style={{ width: '13px', height: '13px' }} />
                                 </button>
-                                <button onClick={() => handleDelete(emp)}
+                                <button onClick={() => handleDelete(emp)} title="تعليق دخول النظام (لا يُنهي الخدمة)"
                                   style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e' }}>
-                                  <Trash2 style={{ width: '13px', height: '13px' }} />
+                                  <Lock style={{ width: '13px', height: '13px' }} />
                                 </button>
                               </>
                             )}
