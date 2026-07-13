@@ -21,6 +21,28 @@ export function calcWorkOrderTotal(wo: {
   )
 }
 
+/** مبلغ القيد الداخلي — يستثني قطع الغيار المُفوترة عبر المشتريات لتجنب التكرار */
+export function calcInternalJournalAmount(wo: {
+  labor_hours?: number
+  parts_cost?: number
+  external_cost?: number
+  vendor_invoice_id?: number | null
+}): number {
+  let total = calcWorkOrderTotal(wo)
+  if (wo.vendor_invoice_id) {
+    total -= Number(wo.external_cost || 0)
+  }
+  return Math.max(0, total)
+}
+
+export function workOrderNeedsPartsPo(wo: { source: string; po_id?: number | null; status: string }): boolean {
+  return !wo.po_id && wo.status !== 'مكتمل' && wo.status !== 'ملغي'
+}
+
+export function workOrderNeedsServiceConfirm(wo: { source: string; po_id?: number | null; service_confirmed_at?: string | null }): boolean {
+  return wo.source === 'خارجي' && !!wo.po_id && !wo.service_confirmed_at
+}
+
 export async function fetchActiveVendors(tenantId: string): Promise<Vendor[]> {
   const { data } = await supabase
     .from('finance_vendors')
@@ -89,6 +111,13 @@ export async function createDraftPOFromWorkOrder(params: {
   })
 
   await supabase.from('fleet_work_orders').update({ po_id: po.id }).eq('id', params.workOrderId)
+
+  if (params.vendorId) {
+    await supabase.from('fleet_work_orders').update({
+      vendor_id: params.vendorId,
+      vendor_name: params.vendorName,
+    }).eq('id', params.workOrderId)
+  }
 
   return { poId: po.id, poNumber: po.po_number }
 }

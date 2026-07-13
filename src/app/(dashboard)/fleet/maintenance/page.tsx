@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Wrench, ShoppingCart, CheckCircle, FileText, ExternalLink } from 'lucide-react'
+import { Plus, X, Save, Wrench, ShoppingCart, CheckCircle, FileText, ExternalLink, Pencil, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { nextWorkOrderNo, fmt } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
@@ -14,6 +14,9 @@ import {
   confirmWorkOrderService,
   postInternalWorkOrderJournal,
   calcWorkOrderTotal,
+  calcInternalJournalAmount,
+  workOrderNeedsPartsPo,
+  workOrderNeedsServiceConfirm,
   FLEET_INTERNAL_LABOR_RATE,
 } from '@/lib/fleet-procurement'
 
@@ -90,7 +93,13 @@ function WOModal({ units, vendors, tenantId, createdBy, onClose, onSave }: {
             <div><label style={lbl}>المسار</label>
               <select value={form.source} onChange={e => set('source', e.target.value)} className="select">
                 <option>داخلي</option><option>خارجي</option>
-              </select></div>
+              </select>
+              {form.source === 'داخلي' && (
+                <p style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: '4px' }}>
+                  يمكن طلب شراء قطع غيار من مورد لاحقاً دون تغيير المسار
+                </p>
+              )}
+            </div>
             <div><label style={lbl}>الأولوية</label>
               <select value={form.priority} onChange={e => set('priority', e.target.value)} className="select">
                 <option>عادي</option><option>عاجل</option>
@@ -115,19 +124,194 @@ function WOModal({ units, vendors, tenantId, createdBy, onClose, onSave }: {
   )
 }
 
+function PartsPOModal({ wo, vendors, tenantId, createdBy, onClose, onDone }: {
+  wo: WorkOrder; vendors: Vendor[]; tenantId: string; createdBy?: string
+  onClose: () => void; onDone: () => void
+}) {
+  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
+  const [saving, setSaving] = useState(false)
+  const [vendorId, setVendorId] = useState(String(wo.vendor_id || ''))
+  const [amount, setAmount] = useState(String(wo.external_cost || ''))
+
+  async function handleCreate() {
+    if (!vendorId) { toast.error('اختر مورد قطع الغيار'); return }
+    const vendor = vendors.find(v => v.id === Number(vendorId))
+    if (!vendor) return
+    setSaving(true)
+    const result = await createDraftPOFromWorkOrder({
+      tenantId,
+      workOrderId: wo.id,
+      woNo: wo.wo_no,
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+      description: wo.source === 'داخلي' ? `قطع غيار — ${wo.description}` : wo.description,
+      unitLabel: `${wo.unit?.fleet_no} ${wo.unit?.name}`,
+      projectId: wo.project_id,
+      estimatedAmount: Number(amount) || 0,
+      createdBy,
+    })
+    setSaving(false)
+    if (!result) { toast.error('فشل إنشاء طلب الشراء'); return }
+    toast.success(`طلب شراء ${result.poNumber} — اعتمده في المشتريات`)
+    onDone()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '420px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700 }}>طلب شراء قطع — {wo.wo_no}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <p style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+            {wo.source === 'داخلي'
+              ? 'صيانة داخلية مع قطع من مورد — يُعتمد PO ثم تُسجَّل الفاتورة في المشتريات'
+              : 'طلب شراء خدمة/قطع من المورد'}
+          </p>
+          <div><label style={lbl}>المورد *</label>
+            <select value={vendorId} onChange={e => setVendorId(e.target.value)} className="select">
+              <option value="">— اختر —</option>
+              {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select></div>
+          <div><label style={lbl}>التكلفة التقديرية (ر.س)</label>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="input" dir="ltr" min="0" /></div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleCreate} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
+            <ShoppingCart style={{ width: '14px' }} /> إنشاء طلب شراء
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function EditWOModal({ wo, onClose, onDone }: {
+  wo: WorkOrder; onClose: () => void; onDone: () => void
+}) {
+  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
+  const [saving, setSaving] = useState(false)
+  const isClosed = wo.status === 'مكتمل'
+  const [form, setForm] = useState({
+    description: wo.description,
+    priority: wo.priority,
+    labor_hours: String(wo.labor_hours || 0),
+    parts_cost: String(wo.parts_cost || 0),
+    external_cost: String(wo.external_cost || 0),
+  })
+
+  async function handleSave() {
+    if (!form.description.trim()) { toast.error('الوصف مطلوب'); return }
+    setSaving(true)
+    try {
+      const labor = Number(form.labor_hours) || 0
+      const parts = Number(form.parts_cost) || 0
+      const external = Number(form.external_cost) || 0
+      const total = labor * FLEET_INTERNAL_LABOR_RATE + parts + external
+      const { error } = await supabase.from('fleet_work_orders').update({
+        description: form.description.trim(),
+        priority: form.priority,
+        labor_hours: labor,
+        parts_cost: parts,
+        external_cost: external,
+        total_cost: total,
+      }).eq('id', wo.id)
+      if (error) throw error
+      toast.success('تم حفظ التعديلات')
+      onDone()
+    } catch (err: unknown) {
+      toast.error('خطأ: ' + (err as Error).message)
+    } finally { setSaving(false) }
+  }
+
+  async function handleReopen() {
+    if (!confirm('إعادة فتح أمر العمل للتعديل؟')) return
+    if (wo.journal_posted_at) {
+      toast('⚠️ يوجد قيد محاسبي — راجع المحاسبة إن لزم عكس أو تعديل', { icon: '⚠️', duration: 6000 })
+    }
+    setSaving(true)
+    try {
+      const { error } = await supabase.from('fleet_work_orders').update({
+        status: 'قيد التنفيذ',
+        completed_at: null,
+      }).eq('id', wo.id)
+      if (error) throw error
+      if (wo.wo_type === 'CM') {
+        await supabase.from('fleet_units').update({ operational_status: 'صيانة' }).eq('id', wo.unit_id)
+      }
+      toast.success('تمت إعادة فتح أمر العمل')
+      onDone()
+    } catch (err: unknown) {
+      toast.error('خطأ: ' + (err as Error).message)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Pencil style={{ width: '16px' }} /> تعديل — {wo.wo_no}
+          </h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {isClosed && (
+            <p style={{ fontSize: '0.78rem', color: '#0369a1', background: '#f0f9ff', padding: '8px 10px', borderRadius: '8px' }}>
+              أمر مغلق — عدّل البيانات أو أعد الفتح للمتابعة
+            </p>
+          )}
+          <div><label style={lbl}>الوصف *</label>
+            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input" rows={3} /></div>
+          <div><label style={lbl}>الأولوية</label>
+            <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="select">
+              <option>عادي</option><option>عاجل</option>
+            </select></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            <div><label style={lbl}>ساعات عمالة</label>
+              <input type="number" value={form.labor_hours} onChange={e => setForm(f => ({ ...f, labor_hours: e.target.value }))} className="input" dir="ltr" /></div>
+            <div><label style={lbl}>قطع (مخزون/يدوي)</label>
+              <input type="number" value={form.parts_cost} onChange={e => setForm(f => ({ ...f, parts_cost: e.target.value }))} className="input" dir="ltr" /></div>
+            <div><label style={lbl}>قطع من مورد (PO)</label>
+              <input type="number" value={form.external_cost} onChange={e => setForm(f => ({ ...f, external_cost: e.target.value }))} className="input" dir="ltr" /></div>
+          </div>
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
+          <div>
+            {isClosed && (
+              <button onClick={handleReopen} disabled={saving} className="btn btn-ghost" style={{ color: '#1a56db' }}>
+                <RotateCcw style={{ width: '14px' }} /> إعادة فتح
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+            <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0d9488' }}>
+              <Save style={{ width: '14px' }} /> حفظ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CompleteInternalModal({ wo, cashAccounts, tenantId, onClose, onDone }: {
   wo: WorkOrder; cashAccounts: CashAccount[]; tenantId: string
   onClose: () => void; onDone: () => void
 }) {
   const [saving, setSaving] = useState(false)
   const [cashId, setCashId] = useState('')
-  const total = calcWorkOrderTotal(wo)
+  const journalAmount = calcInternalJournalAmount(wo)
+  const displayTotal = calcWorkOrderTotal(wo)
 
   async function handleComplete() {
-    if (total > 0 && !cashId) { toast.error('اختر حساب الدفع للقيد المحاسبي'); return }
+    if (journalAmount > 0 && !cashId) { toast.error('اختر حساب الدفع للقيد المحاسبي'); return }
     setSaving(true)
     try {
-      if (total > 0) {
+      if (journalAmount > 0) {
         const cash = cashAccounts.find(a => a.id === Number(cashId))
         if (!cash?.account_id) { toast.error('حساب الدفع غير مربوط بشجرة الحسابات'); setSaving(false); return }
         const { data: accRow } = await supabase.from('finance_accounts').select('code').eq('id', cash.account_id).single()
@@ -138,7 +322,7 @@ function CompleteInternalModal({ wo, cashAccounts, tenantId, onClose, onDone }: 
           woNo: wo.wo_no,
           unitName: wo.unit?.name || '',
           description: wo.description,
-          amount: total,
+          amount: journalAmount,
           cashAccountId: Number(cashId),
           cashAccountCode: accRow.code,
         })
@@ -147,10 +331,10 @@ function CompleteInternalModal({ wo, cashAccounts, tenantId, onClose, onDone }: 
       await supabase.from('fleet_work_orders').update({
         status: 'مكتمل',
         completed_at: new Date().toISOString(),
-        total_cost: total,
+        total_cost: displayTotal,
       }).eq('id', wo.id)
       await supabase.from('fleet_units').update({ operational_status: 'متاح' }).eq('id', wo.unit_id)
-      toast.success(total > 0 ? '✅ أُغلق أمر العمل مع القيد المحاسبي' : '✅ أُغلق أمر العمل')
+      toast.success(journalAmount > 0 ? '✅ أُغلق أمر العمل مع القيد المحاسبي' : '✅ أُغلق أمر العمل')
       onDone()
     } catch (err: unknown) {
       toast.error('خطأ: ' + (err as Error).message)
@@ -166,9 +350,19 @@ function CompleteInternalModal({ wo, cashAccounts, tenantId, onClose, onDone }: 
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-            الإجمالي: <strong>{fmt(total)} ر.س</strong> (ساعات × {FLEET_INTERNAL_LABOR_RATE} + قطع + خارجي)
+            الإجمالي: <strong>{fmt(displayTotal)} ر.س</strong>
+            {wo.vendor_invoice_id && (
+              <span style={{ display: 'block', fontSize: '0.75rem', color: '#0ea77b', marginTop: '4px' }}>
+                القيد الداخلي: {fmt(journalAmount)} ر.س (قطع المورد مُفوترة عبر المشتريات)
+              </span>
+            )}
+            {!wo.vendor_invoice_id && (
+              <span style={{ display: 'block', fontSize: '0.75rem', marginTop: '4px' }}>
+                ساعات × {FLEET_INTERNAL_LABOR_RATE} + قطع + مورد
+              </span>
+            )}
           </p>
-          {total > 0 && (
+          {journalAmount > 0 && (
             <>
               <div><label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>حساب الدفع *</label>
                 <select value={cashId} onChange={e => setCashId(e.target.value)} className="select">
@@ -198,6 +392,8 @@ export default function FleetMaintenancePage() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [completeWo, setCompleteWo] = useState<WorkOrder | null>(null)
+  const [partsPoWo, setPartsPoWo] = useState<WorkOrder | null>(null)
+  const [editWo, setEditWo] = useState<WorkOrder | null>(null)
   const [filter, setFilter] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
 
@@ -294,8 +490,11 @@ export default function FleetMaintenancePage() {
   }
 
   async function handleCreatePO(wo: WorkOrder) {
-    if (!tenant || !wo.vendor_id) { toast.error('المورد مطلوب'); return }
-    if (wo.po_id) { toast.error('يوجد أمر شراء مرتبط'); return }
+    if (!tenant || wo.po_id) { toast.error('يوجد أمر شراء مرتبط'); return }
+    if (wo.source === 'داخلي' || !wo.vendor_id) {
+      setPartsPoWo(wo)
+      return
+    }
     setBusyId(wo.id)
     const result = await createDraftPOFromWorkOrder({
       tenantId: tenant.id,
@@ -315,6 +514,12 @@ export default function FleetMaintenancePage() {
     load()
   }
 
+  function canCreateInvoice(wo: WorkOrder): boolean {
+    if (!wo.po || wo.po.status === 'مسودة' || wo.vendor_invoice_id) return false
+    if (wo.source === 'خارجي') return !!wo.service_confirmed_at
+    return true
+  }
+
   async function handleConfirmService(wo: WorkOrder) {
     setBusyId(wo.id)
     const ok = await confirmWorkOrderService(wo.id)
@@ -329,7 +534,7 @@ export default function FleetMaintenancePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <FleetPageHeader title="صيانة الأسطول" description="أوامر عمل — داخلي (قيد مباشر) | خارجي (طلب شراء → فاتورة)" />
+      <FleetPageHeader title="صيانة الأسطول" description="داخلي (ورشة + قطع من مورد) | خارجي (مورد كامل) — تعديل وإعادة فتح متاح" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{openCount} أمر مفتوح</span>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -358,6 +563,9 @@ export default function FleetMaintenancePage() {
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0d9488' }}>{wo.wo_no}</span>
                     <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: wo.wo_type === 'CM' ? '#fef2f2' : '#fffbeb', color: wo.wo_type === 'CM' ? '#c81e1e' : '#e6820a', fontWeight: 700 }}>{wo.wo_type}</span>
                     <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: wo.source === 'خارجي' ? '#eff6ff' : '#f3f4f6', color: wo.source === 'خارجي' ? '#1a56db' : '#6b7280', fontWeight: 600 }}>{wo.source}</span>
+                    {wo.po_id && wo.source === 'داخلي' && (
+                      <span style={{ fontSize: '0.68rem', color: '#e6820a', fontWeight: 600 }}>+ قطع مورد</span>
+                    )}
                     {wo.journal_posted_at && <span style={{ fontSize: '0.68rem', color: '#0ea77b', fontWeight: 600 }}>✓ مُرحّل محاسبياً</span>}
                   </div>
                   <div style={{ fontWeight: 600, marginTop: '4px' }}>{wo.unit?.name} — {wo.description}</div>
@@ -382,20 +590,23 @@ export default function FleetMaintenancePage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '8px', marginTop: '12px' }}>
                   <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>ساعات عمالة</label>
                     <input type="number" defaultValue={wo.labor_hours} onBlur={e => updateCosts(wo, 'labor_hours', Number(e.target.value))} className="input" dir="ltr" style={{ padding: '6px' }} /></div>
-                  <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>قطع غيار</label>
+                  <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>قطع (مخزون/يدوي)</label>
                     <input type="number" defaultValue={wo.parts_cost} onBlur={e => updateCosts(wo, 'parts_cost', Number(e.target.value))} className="input" dir="ltr" style={{ padding: '6px' }} /></div>
-                  <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>تكلفة خارجي (تقدير PO)</label>
-                    <input type="number" defaultValue={wo.external_cost} onBlur={e => updateCosts(wo, 'external_cost', Number(e.target.value))} className="input" dir="ltr" style={{ padding: '6px' }} disabled={wo.source === 'داخلي'} /></div>
+                  <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>قطع من مورد (PO)</label>
+                    <input type="number" defaultValue={wo.external_cost} onBlur={e => updateCosts(wo, 'external_cost', Number(e.target.value))} className="input" dir="ltr" style={{ padding: '6px' }} /></div>
                 </div>
               )}
 
               <div style={{ display: 'flex', gap: '8px', marginTop: '10px', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>الإجمالي: {fmt(calcWorkOrderTotal(wo))} ر.س</span>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {wo.source === 'خارجي' && !wo.po_id && wo.status !== 'مكتمل' && (
+                  <button onClick={() => setEditWo(wo)} className="btn btn-ghost" style={{ fontSize: '0.75rem' }}>
+                    <Pencil style={{ width: '13px' }} /> تعديل
+                  </button>
+                  {workOrderNeedsPartsPo(wo) && (
                     <button onClick={() => handleCreatePO(wo)} disabled={busyId === wo.id}
                       className="btn btn-ghost" style={{ fontSize: '0.75rem', border: '1px solid #fde68a', color: '#e6820a' }}>
-                      <ShoppingCart style={{ width: '13px' }} /> طلب شراء
+                      <ShoppingCart style={{ width: '13px' }} /> {wo.source === 'داخلي' ? 'طلب قطع' : 'طلب شراء'}
                     </button>
                   )}
                   {wo.po && (
@@ -404,16 +615,16 @@ export default function FleetMaintenancePage() {
                       <ExternalLink style={{ width: '13px' }} /> المشتريات
                     </button>
                   )}
-                  {wo.source === 'خارجي' && wo.po && !wo.service_confirmed_at && wo.status === 'قيد التنفيذ' && (
+                  {workOrderNeedsServiceConfirm(wo) && wo.status === 'قيد التنفيذ' && (
                     <button onClick={() => handleConfirmService(wo)} disabled={busyId === wo.id}
                       className="btn btn-primary" style={{ fontSize: '0.75rem', background: '#1a56db' }}>
                       <CheckCircle style={{ width: '13px' }} /> تأكيد استلام الخدمة
                     </button>
                   )}
-                  {wo.source === 'خارجي' && wo.po && wo.service_confirmed_at && wo.po.status !== 'مسودة' && !wo.vendor_invoice_id && (
+                  {canCreateInvoice(wo) && (
                     <button onClick={() => router.push(`/finance/purchases/invoices?convertPoId=${wo.po!.id}`)}
                       className="btn btn-ghost" style={{ fontSize: '0.75rem', border: '1px solid #fecaca', color: '#c81e1e' }}>
-                      <FileText style={{ width: '13px' }} /> إنشاء فاتورة
+                      <FileText style={{ width: '13px' }} /> {wo.source === 'داخلي' ? 'فاتورة قطع' : 'إنشاء فاتورة'}
                     </button>
                   )}
                   {wo.status === 'مفتوح' && (
@@ -438,6 +649,13 @@ export default function FleetMaintenancePage() {
       {completeWo && tenant && (
         <CompleteInternalModal wo={completeWo} cashAccounts={cashAccounts} tenantId={tenant.id}
           onClose={() => setCompleteWo(null)} onDone={() => { setCompleteWo(null); load() }} />
+      )}
+      {partsPoWo && tenant && (
+        <PartsPOModal wo={partsPoWo} vendors={vendors} tenantId={tenant.id} createdBy={currentUser?.name}
+          onClose={() => setPartsPoWo(null)} onDone={() => { setPartsPoWo(null); load() }} />
+      )}
+      {editWo && (
+        <EditWOModal wo={editWo} onClose={() => setEditWo(null)} onDone={() => { setEditWo(null); load() }} />
       )}
     </div>
   )
