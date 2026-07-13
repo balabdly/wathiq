@@ -964,6 +964,31 @@ export async function journalAssetCostAdjustment(params: {
   })
 }
 
+/** صيانة أسطول (داخلي): مدين 5142 / دائن نقدية */
+export async function journalFleetMaintenance(params: {
+  tenantId: string
+  workOrderId: number
+  date: string
+  description: string
+  amount: number
+  cashAccountCode: string
+  expenseAccountCode?: string
+}): Promise<JournalResult> {
+  const expenseCode = params.expenseAccountCode || ACC.EQUIPMENT_MAINTENANCE
+  return createJournalEntry({
+    tenantId:      params.tenantId,
+    date:          params.date,
+    description:   params.description,
+    referenceType: 'صيانة أسطول',
+    referenceId:   params.workOrderId,
+    lines: [
+      { accountCode: expenseCode, debit: params.amount, credit: 0,              description: params.description },
+      { accountCode: params.cashAccountCode, debit: 0, credit: params.amount, description: params.description },
+    ],
+    source: 'آلي',
+  })
+}
+
 /** صيانة أصل: مدين مصروف / دائن نقدية */
 export async function journalAssetMaintenance(params: {
   tenantId: string

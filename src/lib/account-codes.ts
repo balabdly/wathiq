@@ -115,6 +115,7 @@ export const PURCHASE_ASSET_OPTIONS = [
  * كود حساب المدين لفاتورة مشتريات حسب وجهة التسليم
  */
 export function getPurchaseDebitAccountCode(deliveryTo: string, assetType?: string): string {
+  if (deliveryTo === 'صيانة أسطول') return ACC.EQUIPMENT_MAINTENANCE
   if (deliveryTo === 'مستودع') return ACC.RAW_MATERIALS
   if (deliveryTo === 'أصل ثابت') {
     if (assetType === 'مركبات') return ACC.FIXED_ASSET_VEHICLE

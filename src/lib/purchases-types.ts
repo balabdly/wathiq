@@ -20,7 +20,9 @@ export type PurchaseOrder = {
   project_id?: number; delivery_to: string; warehouse_id?: number
   subtotal: number; vat_amount: number; total_amount: number; vat_rate: number
   status: string; notes?: string; has_invoice?: boolean; created_by?: string
+  source_module?: string; fleet_work_order_id?: number
   vendor?: Vendor; project?: { name: string }
+  fleet_wo?: { wo_no: string; service_confirmed_at?: string | null }
 }
 
 export type VendorInvoice = {
@@ -57,8 +59,8 @@ export type CashAccount = {
 }
 
 export const PO_STATUS_COLOR: Record<string, string> = {
-  'مسودة': 'badge-gray', 'مرسل': 'badge-blue', 'مستلم جزئياً': 'badge-amber',
-  'مستلم': 'badge-green', 'ملغي': 'badge-red'
+  'مسودة': 'badge-gray', 'مرسل': 'badge-blue', 'مفتوحة': 'badge-blue',
+  'مستلم جزئياً': 'badge-amber', 'مستلم': 'badge-green', 'ملغي': 'badge-red'
 }
 export const INV_STATUS_COLOR: Record<string, string> = {
   'مسودة': 'badge-gray', 'معتمدة': 'badge-blue', 'مدفوعة': 'badge-green',

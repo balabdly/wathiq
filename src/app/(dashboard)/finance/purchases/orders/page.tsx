@@ -12,6 +12,7 @@ import { useStore } from '@/hooks/useStore'
 import { usePurchases } from '../PurchasesContext'
 import type { PurchaseOrder, POItem, Vendor, Project, Warehouse } from '@/lib/purchases-types'
 import { PO_STATUS_COLOR } from '@/lib/purchases-types'
+import { getFleetWorkOrderForPo } from '@/lib/fleet-procurement'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
 
@@ -291,6 +292,9 @@ function POViewModal({ po, items, onClose, onPrint }: { po: PurchaseOrder; items
               <div><span style={{ color: 'var(--text3)' }}>تاريخ الطلب:</span> <strong>{po.po_date}</strong></div>
               {po.expected_date && <div><span style={{ color: 'var(--text3)' }}>التسليم المتوقع:</span> <strong>{po.expected_date}</strong></div>}
               <div><span style={{ color: 'var(--text3)' }}>وجهة التسليم:</span> <strong>{po.delivery_to}</strong></div>
+              {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo?.wo_no && (
+                <div><span style={{ color: 'var(--text3)' }}>أمر عمل أسطول:</span> <strong style={{ color: '#0d9488' }}>{(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo!.wo_no}</strong></div>
+              )}
               <div><span style={{ color: 'var(--text3)' }}>الحالة:</span> <span className={'badge ' + (PO_STATUS_COLOR[po.status] || 'badge-gray')}>{po.status}</span></div>
             </div>
             {items.length > 0 && (
@@ -331,7 +335,7 @@ export default function PurchaseOrdersPage() {
     if (!tenantId) return
     setLoading(true)
     const from = (page - 1) * 50
-    let query = supabase.from('finance_purchase_orders').select('*, vendor:finance_vendors(name,phone), project:projects(name)', { count: 'exact' }).eq('tenant_id', tenantId).order('po_date', { ascending: false }).range(from, from + 49)
+    let query = supabase.from('finance_purchase_orders').select('*, vendor:finance_vendors(name,phone), project:projects(name), fleet_wo:fleet_work_orders(wo_no,service_confirmed_at)', { count: 'exact' }).eq('tenant_id', tenantId).order('po_date', { ascending: false }).range(from, from + 49)
     if (q) query = query.or(`po_number.ilike.%${q}%,vendor_name.ilike.%${q}%`)
     const { data, count } = await query
     const ids = (data || []).map((p: any) => p.id)
@@ -365,6 +369,26 @@ export default function PurchaseOrdersPage() {
     setPurchaseOrders(p => p.filter(x => x.id !== id)); toast.success('تم الحذف')
   }
 
+  async function approvePO(po: PurchaseOrder) {
+    if (po.status !== 'مسودة') { toast.error('الطلب معتمد مسبقاً'); return }
+    await supabase.from('finance_purchase_orders').update({ status: 'مرسل' }).eq('id', po.id)
+    toast.success(`تم اعتماد ${po.po_number}`)
+    loadPurchaseOrders(poPagination.page)
+    reloadKpis()
+  }
+
+  async function handleConvertToInvoice(po: PurchaseOrder) {
+    if (po.status === 'مسودة') { toast.error('يجب اعتماد أمر الشراء أولاً'); return }
+    if (po.fleet_work_order_id) {
+      const wo = await getFleetWorkOrderForPo(po.id)
+      if (wo && !wo.service_confirmed_at) {
+        toast.error('يجب تأكيد استلام الخدمة من قسم الأسطول أولاً')
+        return
+      }
+    }
+    router.push(`/finance/purchases/invoices?convertPoId=${po.id}`)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -389,6 +413,9 @@ export default function PurchaseOrdersPage() {
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#e6820a' }}>{po.po_number}</div>
                       {po.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {po.created_by}</div>}
+                      {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo?.wo_no && (
+                        <div style={{ fontSize: '0.62rem', color: '#0d9488', marginTop: '1px' }}>🚛 {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo!.wo_no}</div>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px' }}>{po.vendor_name}</td>
                     <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>{po.po_date}</td>
@@ -400,10 +427,13 @@ export default function PurchaseOrdersPage() {
                         <button onClick={() => handlePrintPO(po)} style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #fde68a', background: '#fffbeb', color: '#e6820a', cursor: 'pointer' }}><Printer style={{ width: '12px', height: '12px' }} /></button>
                         <button onClick={() => { setEditPO(po); setShowPOModal(true) }} style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}><Pencil style={{ width: '12px', height: '12px' }} /></button>
                         {!po.has_invoice && (
-                          <button onClick={() => router.push(`/finance/purchases/invoices?convertPoId=${po.id}`)} title="تحويل لفاتورة مورد"
+                          <button onClick={() => handleConvertToInvoice(po)} title="تحويل لفاتورة مورد"
                             style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '3px' }}>
                             <FileText style={{ width: '11px', height: '11px' }} /> تحويل لفاتورة
                           </button>
+                        )}
+                        {po.status === 'مسودة' && (
+                          <button onClick={() => approvePO(po)} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap' }}>اعتماد</button>
                         )}
                         {po.status === 'مسودة' && <button onClick={() => deletePO(po.id, po.status)} style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}><Trash2 style={{ width: '12px', height: '12px' }} /></button>}
                       </div>

@@ -9,6 +9,7 @@ import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber, confirmCashSpend, getCashAccountCode } from '@/lib/journal'
 import { ACC, getPurchaseDebitAccountCode, PURCHASE_ASSET_OPTIONS } from '@/lib/account-codes'
 import { registerAssetFromVendorInvoice } from '@/lib/asset-coa'
+import { syncFleetWorkOrderFromApprovedInvoice, getFleetWorkOrderForPo } from '@/lib/fleet-procurement'
 import { receiveVendorInvoiceToWarehouse } from '@/lib/inventory-purchase-bridge'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
@@ -210,6 +211,11 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
       delivery_to: form.delivery_to, warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
       subtotal, vat_amount: vatAmount, total_amount: total, vat_rate: Number(form.vat_rate),
       status: invStatusRef.current || form.status, notes: form.notes || null,
+      fleet_work_order_id: null as number | null,
+    }
+    if (form.po_id) {
+      const { data: poRow } = await supabase.from('finance_purchase_orders').select('fleet_work_order_id').eq('id', Number(form.po_id)).maybeSingle()
+      payload.fleet_work_order_id = poRow?.fleet_work_order_id ?? null
     }
     let invId = invoice?.id
     if (invoice) {
@@ -277,6 +283,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
         })
         if (!stockResult.ok) toast.error(`⚠️ القيد سُجّل لكن المخزون: ${stockResult.error}`, { duration: 7000 })
       }
+      await syncFleetWorkOrderFromApprovedInvoice({ poId: payload.po_id, invoiceId: invId! })
     }
     toast.success(invoice ? (wasApproved ? 'تم التعديل مع قيد تصحيحي' : 'تم التعديل') : 'تم حفظ فاتورة المورد')
     onSave(); setSaving(false)
@@ -516,7 +523,19 @@ function VendorInvoicesPage() {
     const convertPoId = searchParams.get('convertPoId')
     if (convertPoId && purchaseOrders.length > 0) {
       const po = purchaseOrders.find(p => p.id === Number(convertPoId))
-      if (po) { setConvertPO(po); setEditInv(null); setShowInvModal(true) }
+      if (po) {
+        if (po.fleet_work_order_id) {
+          getFleetWorkOrderForPo(po.id).then(wo => {
+            if (wo && !wo.service_confirmed_at) {
+              toast.error('يجب تأكيد استلام الخدمة من قسم الأسطول أولاً')
+              return
+            }
+            setConvertPO(po); setEditInv(null); setShowInvModal(true)
+          })
+        } else {
+          setConvertPO(po); setEditInv(null); setShowInvModal(true)
+        }
+      }
     }
   }, [searchParams, purchaseOrders])
 
@@ -584,6 +603,7 @@ function VendorInvoicesPage() {
         })
         if (assetId) toast.success('📦 تم إنشاء سجل الأصل في سجل الأصول الثابتة')
       }
+      await syncFleetWorkOrderFromApprovedInvoice({ poId: inv.po_id, invoiceId: inv.id })
       toast.success('تم الاعتماد والقيد المحاسبي')
     }
     loadVendorInvoices(invPagination.page); reloadKpis()
