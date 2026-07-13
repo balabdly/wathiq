@@ -211,7 +211,7 @@ export default function FleetMaintenancePage() {
         *,
         unit:fleet_units(fleet_no,name),
         vendor:finance_vendors(id,name),
-        po:finance_purchase_orders(id,po_number,status),
+        po:finance_purchase_orders!fleet_work_orders_po_id_fkey(id,po_number,status),
         vendor_invoice:finance_vendor_invoices(id,invoice_number,status)
       `).eq('tenant_id', tenant.id).order('opened_at', { ascending: false }).limit(100),
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),

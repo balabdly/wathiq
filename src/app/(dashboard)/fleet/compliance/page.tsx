@@ -301,19 +301,33 @@ export default function FleetCompliancePage() {
   async function load() {
     if (!tenant) return
     setLoading(true)
-    let q = supabase.from('fleet_compliance_docs').select(`
-      *,
-      unit:fleet_units(fleet_no,name),
-      po:finance_purchase_orders(po_number,status)
-    `).eq('tenant_id', tenant.id).order('expiry_date', { ascending: true })
 
-    if (!showArchived) q = q.eq('is_active', true)
+    const baseSelect = (withPo: boolean) => {
+      const select = withPo
+        ? `*, unit:fleet_units(fleet_no,name), po:finance_purchase_orders!fleet_compliance_docs_po_id_fkey(po_number,status)`
+        : `*, unit:fleet_units(fleet_no,name)`
+      let q = supabase.from('fleet_compliance_docs').select(select)
+        .eq('tenant_id', tenant.id)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+      if (!showArchived) q = q.eq('is_active', true)
+      return q
+    }
 
-    const [dRes, uRes, vRes] = await Promise.all([
-      q,
+    let dRes = await baseSelect(true)
+    if (dRes.error) {
+      console.warn('compliance load with PO join failed, retrying:', dRes.error.message)
+      dRes = await baseSelect(false)
+    }
+    if (dRes.error) {
+      console.error('fleet_compliance_docs load:', dRes.error)
+      toast.error('تعذّر تحميل الوثائق: ' + dRes.error.message)
+    }
+
+    const [uRes, vRes] = await Promise.all([
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
       fetchActiveVendors(tenant.id),
     ])
+
     const list = (dRes.data || []).map(d => {
       const row = d as Doc & { unit?: Unit | Unit[]; po?: Doc['po'] | Doc['po'][] }
       const liveStatus = row.is_active === false
@@ -395,6 +409,9 @@ export default function FleetCompliancePage() {
               </tr>
             </thead>
             <tbody>
+              {filtered.length === 0 && (
+                <tr><td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد وثائق — أضف وثيقة جديدة</td></tr>
+              )}
               {filtered.map(d => {
                 const st = STATUS_COLORS[d.status] || STATUS_COLORS['ساري']
                 return (
