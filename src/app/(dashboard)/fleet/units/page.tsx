@@ -2,12 +2,14 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Pencil, Search } from 'lucide-react'
+import { Plus, X, Save, Pencil, Search, Download, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   FLEET_CATEGORIES, FLEET_SUB_CATEGORIES, FLEET_STATUSES,
   fmt, STATUS_STYLE, nextFleetNo, ensureDvirTemplates,
 } from '@/lib/fleet-types'
+import { downloadFleetImportTemplate } from '@/lib/fleet-import'
+import { FleetImportModal } from './FleetImportModal'
 
 type Unit = {
   id: number; fleet_no: string; name: string; category: string; sub_category?: string
@@ -154,6 +156,7 @@ export default function FleetUnitsPage() {
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [editUnit, setEditUnit] = useState<Unit | null>(null)
 
   useEffect(() => { if (tenant) load() }, [tenant?.id])
@@ -182,10 +185,18 @@ export default function FleetUnitsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>{units.length} وحدة مسجّلة — الهدف ~55</p>
-        <button onClick={() => { setEditUnit(null); setShowModal(true) }} className="btn btn-primary" style={{ background: '#0d9488' }}>
-          <Plus style={{ width: '16px', height: '16px' }} /> إضافة معدة
-        </button>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>{units.length} وحدة مسجّلة</p>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button type="button" onClick={() => downloadFleetImportTemplate()} className="btn btn-ghost" title="تحميل نموذج Excel">
+            <Download style={{ width: '16px', height: '16px' }} /> نموذج Excel
+          </button>
+          <button type="button" onClick={() => setShowImport(true)} className="btn btn-ghost" title="استيراد من Excel">
+            <Upload style={{ width: '16px', height: '16px' }} /> استيراد Excel
+          </button>
+          <button onClick={() => { setEditUnit(null); setShowModal(true) }} className="btn btn-primary" style={{ background: '#0d9488' }}>
+            <Plus style={{ width: '16px', height: '16px' }} /> إضافة معدة
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -245,6 +256,15 @@ export default function FleetUnitsPage() {
       {showModal && tenant && (
         <UnitModal unit={editUnit} assets={assets} tenantId={tenant.id}
           onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); load() }} />
+      )}
+
+      {showImport && tenant && (
+        <FleetImportModal
+          tenantId={tenant.id}
+          assets={assets}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); load() }}
+        />
       )}
     </div>
   )
