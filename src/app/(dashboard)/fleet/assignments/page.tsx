@@ -6,8 +6,9 @@ import { Plus, X, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { STATUS_STYLE, unwrapJoin } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
+import { checkUnitCompliance, loadActiveComplianceForUnits, type ComplianceDocRow } from '@/lib/fleet-compliance'
 
-type Unit = { id: number; fleet_no: string; name: string; category: string; operational_status: string; hour_meter: number; km_reading: number }
+type Unit = { id: number; fleet_no: string; name: string; category: string; sub_category?: string; operational_status: string; hour_meter: number; km_reading: number }
 type Project = { id: number; name: string }
 type Employee = { id: number; name: string; job_title?: string }
 type Assignment = {
@@ -17,8 +18,9 @@ type Assignment = {
   unit?: Unit; project?: Project; operator?: Employee
 }
 
-function AssignModal({ units, projects, employees, tenantId, onClose, onSave }: {
+function AssignModal({ units, projects, employees, complianceMap, tenantId, onClose, onSave }: {
   units: Unit[]; projects: Project[]; employees: Employee[]
+  complianceMap: Map<number, ComplianceDocRow[]>
   tenantId: string; onClose: () => void; onSave: () => void
 }) {
   const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
@@ -37,6 +39,13 @@ function AssignModal({ units, projects, employees, tenantId, onClose, onSave }: 
       const unit = selectedUnit!
       if (unit.operational_status === 'معطل' || unit.operational_status === 'صيانة') {
         toast.error('المعدة غير متاحة للتخصيص'); setSaving(false); return
+      }
+
+      const comp = checkUnitCompliance(unit.category, unit.sub_category, complianceMap.get(unit.id) || [])
+      if (!comp.ok) {
+        toast.error(`⛔ امتثال: ${comp.message}`, { duration: 8000 })
+        setSaving(false)
+        return
       }
 
       await supabase.from('fleet_units').update({ operational_status: 'مخصص' }).eq('id', unit.id)
@@ -72,7 +81,10 @@ function AssignModal({ units, projects, employees, tenantId, onClose, onSave }: 
             <label style={lbl}>المعدة *</label>
             <select value={form.unit_id} onChange={e => set('unit_id', e.target.value)} className="select">
               <option value="">— اختر —</option>
-              {units.filter(u => u.operational_status === 'متاح').map(u => (
+              {units.filter(u => {
+                if (u.operational_status !== 'متاح') return false
+                return checkUnitCompliance(u.category, u.sub_category, complianceMap.get(u.id) || []).ok
+              }).map(u => (
                 <option key={u.id} value={u.id}>{u.fleet_no} — {u.name}</option>
               ))}
             </select>
@@ -95,11 +107,21 @@ function AssignModal({ units, projects, employees, tenantId, onClose, onSave }: 
             <label style={lbl}>تاريخ البداية</label>
             <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input" />
           </div>
-          {selectedUnit && (
-            <div style={{ padding: '10px', background: '#f0fdfa', borderRadius: '8px', fontSize: '0.82rem' }}>
-              قراءة العداد عند التخصيص: {selectedUnit.hour_meter} ساعة / {selectedUnit.km_reading} كم
-            </div>
-          )}
+          {selectedUnit && (() => {
+            const comp = checkUnitCompliance(selectedUnit.category, selectedUnit.sub_category, complianceMap.get(selectedUnit.id) || [])
+            return (
+              <>
+                <div style={{ padding: '10px', background: '#f0fdfa', borderRadius: '8px', fontSize: '0.82rem' }}>
+                  قراءة العداد: {selectedUnit.hour_meter} ساعة / {selectedUnit.km_reading} كم
+                </div>
+                {!comp.ok && (
+                  <div style={{ padding: '10px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.78rem', color: '#c81e1e' }}>
+                    ⛔ {comp.message}
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -118,6 +140,7 @@ export default function FleetAssignmentsPage() {
   const [units, setUnits] = useState<Unit[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
+  const [complianceMap, setComplianceMap] = useState<Map<number, ComplianceDocRow[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
 
@@ -129,7 +152,7 @@ export default function FleetAssignmentsPage() {
     const [aRes, uRes, pRes, eRes] = await Promise.all([
       supabase.from('fleet_assignments').select('*, unit:fleet_units(id,fleet_no,name,category,operational_status,hour_meter,km_reading), project:projects(id,name), operator:hr_employees(id,name,job_title)')
         .eq('tenant_id', tenant.id).order('start_date', { ascending: false }).limit(100),
-      supabase.from('fleet_units').select('id,fleet_no,name,category,operational_status,hour_meter,km_reading')
+      supabase.from('fleet_units').select('id,fleet_no,name,category,sub_category,operational_status,hour_meter,km_reading')
         .eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id,name,job_title').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
@@ -143,6 +166,9 @@ export default function FleetAssignmentsPage() {
     setUnits(uRes.data || [])
     setProjects(pRes.data || [])
     setEmployees(eRes.data || [])
+    const unitIds = (uRes.data || []).map((u: Unit) => u.id)
+    const compMap = await loadActiveComplianceForUnits(tenant.id, unitIds)
+    setComplianceMap(compMap)
     setLoading(false)
   }
 
@@ -162,7 +188,7 @@ export default function FleetAssignmentsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <FleetPageHeader title="تخصيص الأسطول" description="ربط الوحدات بالمشاريع والمشغّلين" />
+      <FleetPageHeader title="تخصيص الأسطول" description="ربط الوحدات بالمشاريع — يُمنع التخصيص عند انتهاء وثائق الامتثال" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{active.length} تخصيص نشط</span>
         <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ background: '#0d9488' }}>
@@ -210,7 +236,7 @@ export default function FleetAssignmentsPage() {
       )}
 
       {showModal && tenant && (
-        <AssignModal units={units} projects={projects} employees={employees} tenantId={tenant.id}
+        <AssignModal units={units} projects={projects} employees={employees} complianceMap={complianceMap} tenantId={tenant.id}
           onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); load() }} />
       )}
     </div>

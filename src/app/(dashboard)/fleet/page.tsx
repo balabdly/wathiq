@@ -31,7 +31,7 @@ export default function FleetDashboardPage() {
         .eq('tenant_id', tenant.id).eq('is_active', true).order('fleet_no'),
       supabase.from('fleet_work_orders').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).in('status', ['مفتوح', 'قيد التنفيذ']),
-      supabase.from('fleet_compliance_docs').select('expiry_date').eq('tenant_id', tenant.id),
+      supabase.from('fleet_compliance_docs').select('expiry_date, doc_type, is_active').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('fleet_dvir_logs').select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenant.id).eq('check_date', today).eq('result', 'موقوف'),
       supabase.from('fleet_fuel_logs').select('cost').eq('tenant_id', tenant.id).gte('fill_date', monthStart),
@@ -44,7 +44,7 @@ export default function FleetDashboardPage() {
 
     const docs = docRes.data || []
     setExpiringDocs(docs.filter(d => {
-      const st = complianceStatusFromExpiry(d.expiry_date)
+      const st = complianceStatusFromExpiry(d.expiry_date, d.doc_type)
       return st === 'منتهي' || st === 'قريب الانتهاء'
     }).length)
 

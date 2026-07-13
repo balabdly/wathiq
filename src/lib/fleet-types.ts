@@ -15,7 +15,9 @@ export const WO_TYPES = ['PM', 'CM'] as const
 export const WO_SOURCES = ['داخلي', 'خارجي'] as const
 export const WO_STATUSES = ['مفتوح', 'قيد التنفيذ', 'مكتمل', 'ملغي'] as const
 
-export const COMPLIANCE_TYPES = ['استمارة', 'تأمين', 'فحص دوري', 'شهادة رفع', 'أخرى'] as const
+export const COMPLIANCE_TYPES = ['استمارة', 'تأمين', 'فحص دوري', 'شهادة فحص طرف ثالث', 'شهادة رفع', 'أخرى'] as const
+
+export const COMPLIANCE_STATUSES = ['ساري', 'قريب الانتهاء', 'منتهي', 'قيد التجديد', 'مُجدَّد'] as const
 
 export type DvirCheckItem = { id: string; label: string; critical?: boolean }
 
@@ -148,14 +150,15 @@ export async function createQhseDraftFromDvir(params: {
   return data.id
 }
 
-/** تحديث حالة الامتثال حسب تاريخ الانتهاء */
-export function complianceStatusFromExpiry(expiryDate?: string | null): string {
+/** @deprecated استخدم complianceStatusFromExpiry من fleet-compliance.ts */
+export function complianceStatusFromExpiry(expiryDate?: string | null, docType?: string): string {
   if (!expiryDate) return 'ساري'
   const exp = new Date(expiryDate)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diff = (exp.getTime() - today.getTime()) / 86400000
   if (diff < 0) return 'منتهي'
-  if (diff <= 30) return 'قريب الانتهاء'
+  const alertDays = docType === 'شهادة فحص طرف ثالث' ? 60 : docType === 'شهادة رفع' ? 45 : 30
+  if (diff <= alertDays) return 'قريب الانتهاء'
   return 'ساري'
 }
