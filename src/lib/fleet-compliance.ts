@@ -244,6 +244,38 @@ export async function completeCompliancePurchaseRenewal(params: {
   })
 }
 
+export async function hasActiveComplianceDoc(
+  tenantId: string,
+  unitId: number,
+  docType: string,
+): Promise<boolean> {
+  const { count } = await supabase
+    .from('fleet_compliance_docs')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('unit_id', unitId)
+    .eq('doc_type', docType)
+    .eq('is_active', true)
+  return (count || 0) > 0
+}
+
+export async function deleteComplianceDoc(doc: ComplianceDocRow): Promise<{ ok: boolean; error?: string }> {
+  if (doc.status === 'قيد التجديد') {
+    return { ok: false, error: 'لا يمكن الحذف — الوثيقة قيد التجديد عبر المشتريات. أكمل التجديد أو ألغِ طلب الشراء أولاً.' }
+  }
+
+  const { error } = await supabase.from('fleet_compliance_docs').delete().eq('id', doc.id)
+  if (error) return { ok: false, error: error.message }
+
+  if (doc.replaces_id) {
+    await supabase.from('fleet_compliance_docs')
+      .update({ replaced_by_id: null, is_active: true, status: 'ساري' })
+      .eq('id', doc.replaces_id)
+  }
+
+  return { ok: true }
+}
+
 export async function loadActiveComplianceForUnit(
   tenantId: string,
   unitId: number,

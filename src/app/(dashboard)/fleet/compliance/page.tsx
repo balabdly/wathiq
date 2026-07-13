@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, FileWarning, RefreshCw, ShoppingCart, CheckCircle, ExternalLink } from 'lucide-react'
+import { Plus, X, Save, FileWarning, RefreshCw, ShoppingCart, CheckCircle, ExternalLink, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { COMPLIANCE_TYPES } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
@@ -16,6 +16,8 @@ import {
   startCompliancePurchaseRenewal,
   completeCompliancePurchaseRenewal,
   fetchActiveVendors,
+  hasActiveComplianceDoc,
+  deleteComplianceDoc,
   type ComplianceDocRow,
 } from '@/lib/fleet-compliance'
 import type { Vendor } from '@/lib/purchases-types'
@@ -45,8 +47,14 @@ function DocModal({ units, tenantId, onClose, onSave }: {
   async function handleSave() {
     if (!form.unit_id || !form.doc_type) { toast.error('المعدة ونوع الوثيقة مطلوبان'); return }
     setSaving(true)
-    const status = complianceStatusFromExpiry(form.expiry_date || null, form.doc_type)
     try {
+      const exists = await hasActiveComplianceDoc(tenantId, Number(form.unit_id), form.doc_type)
+      if (exists) {
+        toast.error('توجد وثيقة نشطة من نفس النوع لهذه المعدة — احذف المكررة أو استخدم «تجديد»')
+        setSaving(false)
+        return
+      }
+      const status = complianceStatusFromExpiry(form.expiry_date || null, form.doc_type)
       const { error } = await supabase.from('fleet_compliance_docs').insert({
         tenant_id: tenantId, unit_id: Number(form.unit_id),
         doc_type: form.doc_type, doc_number: form.doc_number || null,
@@ -363,6 +371,14 @@ export default function FleetCompliancePage() {
       && (d.status === 'منتهي' || d.status === 'قريب الانتهاء')
   }
 
+  async function handleDelete(d: Doc) {
+    if (!confirm(`حذف وثيقة «${d.doc_type}» — ${d.unit?.name || 'المعدة'}؟`)) return
+    const result = await deleteComplianceDoc(d)
+    if (!result.ok) { toast.error(result.error || 'فشل الحذف'); return }
+    toast.success('تم الحذف')
+    load()
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <FleetPageHeader title="امتثال الأسطول" description="رخص، تأمين، TPI، فحص دوري — تنبيهات وتجديد مع أرشفة" />
@@ -450,6 +466,12 @@ export default function FleetCompliancePage() {
                               إتمام
                             </button>
                           </>
+                        )}
+                        {d.status !== 'قيد التجديد' && (
+                          <button onClick={() => handleDelete(d)} title="حذف"
+                            style={{ padding: '4px 7px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fef2f2', color: '#c81e1e', cursor: 'pointer' }}>
+                            <Trash2 style={{ width: '12px', height: '12px' }} />
+                          </button>
                         )}
                       </div>
                     </td>
