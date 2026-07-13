@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, FileWarning } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { COMPLIANCE_TYPES, complianceStatusFromExpiry, unwrapJoin } from '@/lib/fleet-types'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Unit = { id: number; fleet_no: string; name: string }
 type Doc = {
@@ -121,6 +122,7 @@ export default function FleetCompliancePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader title="امتثال الأسطول" description="رخص، تأمين، فحص دوري، وتواريخ انتهاء الوثائق" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
         <div className="card" style={{ padding: '14px', background: '#fef2f2' }}>
           <FileWarning style={{ width: '18px', color: '#c81e1e' }} />

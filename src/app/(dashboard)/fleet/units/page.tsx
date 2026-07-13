@@ -10,6 +10,7 @@ import {
 } from '@/lib/fleet-types'
 import { downloadFleetImportTemplate } from '@/lib/fleet-import'
 import { FleetImportModal } from './FleetImportModal'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Unit = {
   id: number; fleet_no: string; name: string; category: string; sub_category?: string
@@ -184,6 +185,7 @@ export default function FleetUnitsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader title="سجل الأسطول" description="تسجيل وإدارة المعدات والشاحنات والسيارات" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>{units.length} وحدة مسجّلة</p>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

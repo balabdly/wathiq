@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { STATUS_STYLE, unwrapJoin } from '@/lib/fleet-types'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Unit = { id: number; fleet_no: string; name: string; category: string; operational_status: string; hour_meter: number; km_reading: number }
 type Project = { id: number; name: string }
@@ -161,6 +162,7 @@ export default function FleetAssignmentsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader title="تخصيص الأسطول" description="ربط الوحدات بالمشاريع والمشغّلين" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{active.length} تخصيص نشط</span>
         <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ background: '#0d9488' }}>

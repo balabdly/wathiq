@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { nextWorkOrderNo, fmt, unwrapJoin } from '@/lib/fleet-types'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Unit = { id: number; fleet_no: string; name: string }
 type WorkOrder = {
@@ -144,6 +145,7 @@ export default function FleetMaintenancePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader title="صيانة الأسطول" description="أوامر عمل وقائية وتصحيحية — ورشة داخلية وموردون" />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{openCount} أمر مفتوح — ورشة مركزية + موردون</span>
         <div style={{ display: 'flex', gap: '8px' }}>

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Fuel } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { fmt, unwrapJoin } from '@/lib/fleet-types'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Unit = { id: number; fleet_no: string; name: string; category: string }
 type FuelLog = {
@@ -122,6 +123,7 @@ export default function FleetFuelPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader title="وقود الأسطول" description="تسجيل تعبئة الوقود والتكلفة لكل وحدة" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div className="card" style={{ padding: '14px', background: '#eff6ff' }}>
           <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>إجمالي اللترات (آخر 100 سجل)</div>

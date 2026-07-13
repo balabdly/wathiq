@@ -9,6 +9,7 @@ import {
   DVIR_TEMPLATES, WORK_TYPES, FleetCategory,
   createQhseDraftFromDvir, nextWorkOrderNo, fmt, unwrapJoin,
 } from '@/lib/fleet-types'
+import { FleetPageHeader } from '../FleetPageHeader'
 
 type Assignment = {
   id: number; unit_id: number; project_id?: number
@@ -259,6 +260,7 @@ export default function FleetOperatorPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '560px' }}>
+      <FleetPageHeader title="التشغيل اليومي" description="فحص DVIR وتسجيل ساعات التشغيل والأعمال" />
       <div style={{ display: 'flex', gap: '8px' }}>
         {(['dvir', 'log'] as const).map(s => (
           <button key={s} type="button" onClick={() => s === 'log' && dvirDone && dvirResult !== 'موقوف' && setStep(s)}

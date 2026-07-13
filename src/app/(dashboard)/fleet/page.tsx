@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { Truck, Wrench, AlertTriangle, Fuel, FileWarning, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { fmt, STATUS_STYLE, complianceStatusFromExpiry } from '@/lib/fleet-types'
+import { FleetPageHeader } from './FleetPageHeader'
 
 type Unit = { id: number; fleet_no: string; name: string; category: string; operational_status: string }
 
@@ -63,6 +64,10 @@ export default function FleetDashboardPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <FleetPageHeader
+        title="لوحة قيادة الأسطول"
+        description="متابعة المعدات والشاحنات والسيارات — تشغيل، صيانة، وقود، امتثال"
+      />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
           { label: 'إجمالي الأسطول', value: String(units.length), icon: Truck, color: '#0d9488', bg: '#f0fdfa' },
