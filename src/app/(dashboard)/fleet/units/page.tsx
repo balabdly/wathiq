@@ -9,6 +9,7 @@ import {
   fmt, STATUS_STYLE, nextFleetNo, ensureDvirTemplates,
 } from '@/lib/fleet-types'
 import { downloadFleetImportTemplate } from '@/lib/fleet-import'
+import { loadFleetFuelSettings, isDreesFuelEnabled } from '@/lib/fleet-fuel'
 import { FleetImportModal } from './FleetImportModal'
 import { FleetPageHeader } from '../FleetPageHeader'
 
@@ -17,13 +18,14 @@ type Unit = {
   plate_no?: string; chassis_no?: string; make?: string; model?: string; model_year?: number
   primary_meter: string; hour_meter: number; km_reading: number
   operational_status: string; asset_id?: number; notes?: string
+  drees_card_no?: string | null; fuel_type?: string | null
   asset?: { asset_no: string; name: string }
 }
 
 type FinanceAsset = { id: number; asset_no: string; name: string; category: string }
 
-function UnitModal({ unit, assets, tenantId, onClose, onSave }: {
-  unit: Unit | null; assets: FinanceAsset[]; tenantId: string
+function UnitModal({ unit, assets, tenantId, showDreesFields, onClose, onSave }: {
+  unit: Unit | null; assets: FinanceAsset[]; tenantId: string; showDreesFields: boolean
   onClose: () => void; onSave: () => void
 }) {
   const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' } as const
@@ -43,6 +45,8 @@ function UnitModal({ unit, assets, tenantId, onClose, onSave }: {
     km_reading: unit?.km_reading != null ? String(unit.km_reading) : '0',
     operational_status: unit?.operational_status || 'متاح',
     notes: unit?.notes || '',
+    drees_card_no: unit?.drees_card_no || '',
+    fuel_type: unit?.fuel_type || 'ديزل',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -66,6 +70,10 @@ function UnitModal({ unit, assets, tenantId, onClose, onSave }: {
         operational_status: form.operational_status,
         notes: form.notes || null,
         is_active: true,
+      }
+      if (showDreesFields) {
+        payload.drees_card_no = form.drees_card_no?.trim() || null
+        payload.fuel_type = form.fuel_type || 'ديزل'
       }
       if (form.asset_id) payload.asset_id = Number(form.asset_id)
 
@@ -137,6 +145,16 @@ function UnitModal({ unit, assets, tenantId, onClose, onSave }: {
             </select>
           </div>
           <div><label style={lbl}>ملاحظات</label><input value={form.notes} onChange={e => set('notes', e.target.value)} className="input" /></div>
+          {showDreesFields && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '10px', background: '#fffbeb', borderRadius: '8px' }}>
+              <div><label style={lbl}>شريحة الدريس</label>
+                <input value={form.drees_card_no} onChange={e => set('drees_card_no', e.target.value)} className="input" dir="ltr" placeholder="رقم الشريحة / البطاقة" /></div>
+              <div><label style={lbl}>نوع الوقود</label>
+                <select value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)} className="select">
+                  <option>ديزل</option><option>بنزين 91</option><option>بنزين 95</option>
+                </select></div>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -159,12 +177,15 @@ export default function FleetUnitsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [editUnit, setEditUnit] = useState<Unit | null>(null)
+  const [dreesEnabled, setDreesEnabled] = useState(false)
 
   useEffect(() => { if (tenant) load() }, [tenant?.id])
 
   async function load() {
     if (!tenant) return
     setLoading(true)
+    const settings = await loadFleetFuelSettings(tenant.id)
+    setDreesEnabled(isDreesFuelEnabled(settings))
     await ensureDvirTemplates(tenant.id)
     const [uRes, aRes] = await Promise.all([
       supabase.from('fleet_units').select('*, asset:finance_assets(asset_no,name)')
@@ -222,7 +243,7 @@ export default function FleetUnitsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['الرقم', 'الاسم', 'الفئة', 'اللوحة', 'ساعات', 'كم', 'الحالة', ''].map(h => (
+                  {['الرقم', 'الاسم', 'الفئة', 'اللوحة', ...(dreesEnabled ? ['شريحة الدريس'] : []), 'ساعات', 'كم', 'الحالة', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.72rem', color: 'var(--text3)' }}>{h}</th>
                   ))}
                 </tr>
@@ -236,6 +257,11 @@ export default function FleetUnitsPage() {
                       <td style={{ padding: '10px 12px', fontWeight: 600 }}>{u.name}</td>
                       <td style={{ padding: '10px 12px', fontSize: '0.78rem' }}>{u.category}<br /><span style={{ color: '#9ca3af' }}>{u.sub_category}</span></td>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.8rem' }}>{u.plate_no || '—'}</td>
+                      {dreesEnabled && (
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem', color: u.drees_card_no ? '#e6820a' : '#c81e1e' }}>
+                          {u.drees_card_no || '—'}
+                        </td>
+                      )}
                       <td style={{ padding: '10px 12px' }}>{fmt(Number(u.hour_meter))}</td>
                       <td style={{ padding: '10px 12px' }}>{fmt(Number(u.km_reading))}</td>
                       <td style={{ padding: '10px 12px' }}>
@@ -256,7 +282,7 @@ export default function FleetUnitsPage() {
       )}
 
       {showModal && tenant && (
-        <UnitModal unit={editUnit} assets={assets} tenantId={tenant.id}
+        <UnitModal unit={editUnit} assets={assets} tenantId={tenant.id} showDreesFields={dreesEnabled}
           onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); load() }} />
       )}
 
