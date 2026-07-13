@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, FileWarning } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { COMPLIANCE_TYPES, complianceStatusFromExpiry } from '@/lib/fleet-types'
+import { COMPLIANCE_TYPES, complianceStatusFromExpiry, unwrapJoin } from '@/lib/fleet-types'
 
 type Unit = { id: number; fleet_no: string; name: string }
 type Doc = {
@@ -107,6 +107,7 @@ export default function FleetCompliancePage() {
     ])
     const list = (dRes.data || []).map(d => ({
       ...d,
+      unit: unwrapJoin((d as { unit?: Unit | Unit[] }).unit),
       status: complianceStatusFromExpiry(d.expiry_date),
     }))
     setDocs(list)

@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { STATUS_STYLE } from '@/lib/fleet-types'
+import { STATUS_STYLE, unwrapJoin } from '@/lib/fleet-types'
 
 type Unit = { id: number; fleet_no: string; name: string; category: string; operational_status: string; hour_meter: number; km_reading: number }
 type Project = { id: number; name: string }
@@ -133,7 +133,12 @@ export default function FleetAssignmentsPage() {
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('hr_employees').select('id,name,job_title').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
     ])
-    setAssignments(aRes.data || [])
+    setAssignments((aRes.data || []).map(row => ({
+      ...row,
+      unit: unwrapJoin((row as { unit?: Unit | Unit[] }).unit),
+      project: unwrapJoin((row as { project?: Project | Project[] }).project),
+      operator: unwrapJoin((row as { operator?: Employee | Employee[] }).operator),
+    })) as Assignment[])
     setUnits(uRes.data || [])
     setProjects(pRes.data || [])
     setEmployees(eRes.data || [])
@@ -147,7 +152,7 @@ export default function FleetAssignmentsPage() {
       status: 'مكتمل', end_date: new Date().toISOString().split('T')[0],
       end_hour_meter: unit?.hour_meter, end_km: unit?.km_reading,
     }).eq('id', a.id)
-    if (unit) await supabase.from('fleet_units').update({ operational_status: 'متاح' }).eq('id', unit.id)
+    if (unit) await supabase.from('fleet_units').update({ operational_status: 'متاح' }).eq('id', a.unit_id)
     toast.success('تم إنهاء التخصيص')
     load()
   }
@@ -182,9 +187,9 @@ export default function FleetAssignmentsPage() {
                 const st = STATUS_STYLE[a.status === 'نشط' ? 'مخصص' : 'متاح'] || STATUS_STYLE['متاح']
                 return (
                   <tr key={a.id} style={{ borderBottom: '1px solid var(--bg2)' }}>
-                    <td style={{ padding: '10px 12px', fontWeight: 600 }}>{(a as Assignment).unit?.fleet_no} — {(a as Assignment).unit?.name}</td>
-                    <td style={{ padding: '10px 12px' }}>{(a as Assignment).project?.name || '—'}</td>
-                    <td style={{ padding: '10px 12px' }}>{(a as Assignment).operator?.name || '—'}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 600 }}>{a.unit?.fleet_no} — {a.unit?.name}</td>
+                    <td style={{ padding: '10px 12px' }}>{a.project?.name || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>{a.operator?.name || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.82rem' }}>{a.start_date}</td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: st.bg, color: st.color, fontWeight: 700 }}>{a.status}</span>

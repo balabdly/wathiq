@@ -66,6 +66,12 @@ export const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
 
 export const fmt = (n: number) => Number(n).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
 
+/** Supabase أحياناً يُرجع العلاقة كمصفوفة — نأخذ العنصر الأول */
+export function unwrapJoin<T>(value: T | T[] | null | undefined): T | undefined {
+  if (value == null) return undefined
+  return Array.isArray(value) ? value[0] : value
+}
+
 /** تهيئة قوالب DVIR لـ tenant */
 export async function ensureDvirTemplates(tenantId: string) {
   const { data: existing } = await supabase

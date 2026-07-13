@@ -33,7 +33,7 @@ export function purchaseAssetTypeToCategory(assetType?: string): AssetCategory {
   return 'أصول أخرى'
 }
 
-const FIXED_ASSET_CODES = new Set([
+const FIXED_ASSET_CODES: Set<string> = new Set([
   ACC.FIXED_ASSET_MACHINERY,
   ACC.FIXED_ASSET_VEHICLE,
   ACC.FIXED_ASSET_TOOLS,

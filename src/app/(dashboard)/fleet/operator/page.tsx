@@ -6,14 +6,29 @@ import { resolveHrEmployeeId } from '@/lib/hrSelfService'
 import toast from 'react-hot-toast'
 import { CheckCircle, AlertTriangle, XCircle, Save, ClipboardCheck } from 'lucide-react'
 import {
-  DVIR_TEMPLATES, DVIR_RESULTS, WORK_TYPES, FleetCategory,
-  createQhseDraftFromDvir, nextWorkOrderNo, fmt,
+  DVIR_TEMPLATES, WORK_TYPES, FleetCategory,
+  createQhseDraftFromDvir, nextWorkOrderNo, fmt, unwrapJoin,
 } from '@/lib/fleet-types'
 
 type Assignment = {
   id: number; unit_id: number; project_id?: number
   unit: { id: number; fleet_no: string; name: string; category: string; hour_meter: number; km_reading: number; operational_status: string }
   project?: { name: string }
+}
+
+type UnitRef = Assignment['unit']
+type ProjectRef = NonNullable<Assignment['project']>
+
+function normalizeAssignment(row: Record<string, unknown>): Assignment | null {
+  const unit = unwrapJoin(row.unit as UnitRef | UnitRef[] | null)
+  if (!unit || typeof row.id !== 'number') return null
+  return {
+    id: row.id,
+    unit_id: row.unit_id as number,
+    project_id: row.project_id as number | undefined,
+    unit,
+    project: unwrapJoin(row.project as ProjectRef | ProjectRef[] | null),
+  }
 }
 
 type CheckResponse = { id: string; ok: boolean; note?: string }
@@ -77,7 +92,9 @@ export default function FleetOperatorPage() {
     const { data } = await supabase.from('fleet_assignments')
       .select('id, unit_id, project_id, unit:fleet_units(id,fleet_no,name,category,hour_meter,km_reading,operational_status), project:projects(name)')
       .eq('tenant_id', tenant.id).eq('operator_id', hrId).eq('status', 'نشط')
-    const list = (data || []) as Assignment[]
+    const list = (data || [])
+      .map(row => normalizeAssignment(row as Record<string, unknown>))
+      .filter((a): a is Assignment => a !== null)
     setAssignments(list)
     if (list.length === 1) setSelAssignId(String(list[0].id))
   }

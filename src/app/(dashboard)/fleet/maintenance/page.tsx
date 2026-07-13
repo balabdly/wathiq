@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextWorkOrderNo, fmt } from '@/lib/fleet-types'
+import { nextWorkOrderNo, fmt, unwrapJoin } from '@/lib/fleet-types'
 
 type Unit = { id: number; fleet_no: string; name: string }
 type WorkOrder = {
@@ -109,7 +109,10 @@ export default function FleetMaintenancePage() {
         .eq('tenant_id', tenant.id).order('opened_at', { ascending: false }).limit(100),
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
-    setOrders(woRes.data || [])
+    setOrders((woRes.data || []).map(row => ({
+      ...row,
+      unit: unwrapJoin((row as { unit?: Unit | Unit[] }).unit),
+    })) as WorkOrder[])
     setUnits(uRes.data || [])
     setLoading(false)
   }

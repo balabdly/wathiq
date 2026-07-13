@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Fuel } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { fmt } from '@/lib/fleet-types'
+import { fmt, unwrapJoin } from '@/lib/fleet-types'
 
 type Unit = { id: number; fleet_no: string; name: string; category: string }
 type FuelLog = {
@@ -107,7 +107,11 @@ export default function FleetFuelPage() {
       supabase.from('fleet_units').select('id,fleet_no,name,category').eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('projects').select('id,name').eq('tenant_id', tenant.id),
     ])
-    setLogs(fRes.data || [])
+    setLogs((fRes.data || []).map(row => ({
+      ...row,
+      unit: unwrapJoin((row as { unit?: Unit | Unit[] }).unit),
+      project: unwrapJoin((row as { project?: { name: string } | { name: string }[] }).project),
+    })) as FuelLog[])
     setUnits(uRes.data || [])
     setProjects(pRes.data || [])
     setLoading(false)
