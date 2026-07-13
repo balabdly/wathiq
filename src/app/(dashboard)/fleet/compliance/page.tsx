@@ -5,7 +5,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, FileWarning, RefreshCw, ShoppingCart, CheckCircle, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { COMPLIANCE_TYPES, unwrapJoin } from '@/lib/fleet-types'
+import { COMPLIANCE_TYPES } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
 import {
   complianceStatusFromExpiry,
@@ -302,34 +302,38 @@ export default function FleetCompliancePage() {
     if (!tenant) return
     setLoading(true)
 
-    const baseSelect = (withPo: boolean) => {
-      const select = withPo
-        ? `*, unit:fleet_units(fleet_no,name), po:finance_purchase_orders!fleet_compliance_docs_po_id_fkey(po_number,status)`
-        : `*, unit:fleet_units(fleet_no,name)`
-      let q = supabase.from('fleet_compliance_docs').select(select)
-        .eq('tenant_id', tenant.id)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-      if (!showArchived) q = q.eq('is_active', true)
-      return q
-    }
+    let q = supabase.from('fleet_compliance_docs')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .order('expiry_date', { ascending: true })
 
-    let dRes = await baseSelect(true)
-    if (dRes.error) {
-      console.warn('compliance load with PO join failed, retrying:', dRes.error.message)
-      dRes = await baseSelect(false)
-    }
+    if (!showArchived) q = q.eq('is_active', true)
+
+    const dRes = await q
+
     if (dRes.error) {
       console.error('fleet_compliance_docs load:', dRes.error)
       toast.error('تعذّر تحميل الوثائق: ' + dRes.error.message)
+      setDocs([])
+      setLoading(false)
+      return
     }
 
-    const [uRes, vRes] = await Promise.all([
+    const rows = (dRes.data || []) as ComplianceDocRow[]
+    const poIds = [...new Set(rows.map(r => r.po_id).filter((id): id is number => id != null))]
+
+    const [uRes, vRes, poRes] = await Promise.all([
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
       fetchActiveVendors(tenant.id),
+      poIds.length > 0
+        ? supabase.from('finance_purchase_orders').select('id,po_number,status').in('id', poIds)
+        : Promise.resolve({ data: [] as { id: number; po_number: string; status: string }[], error: null }),
     ])
 
-    const list = (dRes.data || []).map(d => {
-      const row = d as Doc & { unit?: Unit | Unit[]; po?: Doc['po'] | Doc['po'][] }
+    const unitMap = new Map((uRes.data || []).map(u => [u.id, u as Unit]))
+    const poMap = new Map((poRes.data || []).map(p => [p.id, { po_number: p.po_number, status: p.status }]))
+
+    const list: Doc[] = rows.map(row => {
       const liveStatus = row.is_active === false
         ? 'مُجدَّد'
         : row.status === 'قيد التجديد'
@@ -337,11 +341,12 @@ export default function FleetCompliancePage() {
           : complianceStatusFromExpiry(row.expiry_date, row.doc_type)
       return {
         ...row,
-        unit: unwrapJoin(row.unit),
-        po: unwrapJoin(row.po),
+        unit: unitMap.get(row.unit_id),
+        po: row.po_id ? poMap.get(row.po_id) : undefined,
         status: liveStatus,
       }
     })
+
     setDocs(list)
     setUnits(uRes.data || [])
     setVendors(vRes)
@@ -457,7 +462,7 @@ export default function FleetCompliancePage() {
       )}
 
       {showModal && tenant && (
-        <DocModal units={units} tenantId={tenant.id} onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); load() }} />
+        <DocModal units={units} tenantId={tenant.id} onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); void load() }} />
       )}
       {renewDoc && tenant && (
         <RenewDirectModal doc={renewDoc} tenantId={tenant.id} onClose={() => setRenewDoc(null)} onDone={() => { setRenewDoc(null); load() }} />
