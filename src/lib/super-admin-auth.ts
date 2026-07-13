@@ -69,13 +69,9 @@ export function clearSuperAdminCookie(): void {
   })
 }
 
-export function getSuperAdminCookieFromRequest(request: Request): string | undefined {
-  return request.cookies.get(SUPER_ADMIN_COOKIE)?.value
-}
-
 /** يُرجع NextResponse 401 إذا غير مصرح، وإلا null */
-export function requireSuperAdmin(request: Request): NextResponse | null {
-  const token = getSuperAdminCookieFromRequest(request)
+export function requireSuperAdmin(_request?: Request): NextResponse | null {
+  const token = cookies().get(SUPER_ADMIN_COOKIE)?.value
   if (!verifySuperAdminSessionToken(token)) {
     return NextResponse.json({ ok: false, error: 'غير مصرح — سجّل الدخول كـ Super Admin' }, { status: 401 })
   }
