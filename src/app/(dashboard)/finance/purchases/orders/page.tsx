@@ -292,8 +292,8 @@ function POViewModal({ po, items, onClose, onPrint }: { po: PurchaseOrder; items
               <div><span style={{ color: 'var(--text3)' }}>تاريخ الطلب:</span> <strong>{po.po_date}</strong></div>
               {po.expected_date && <div><span style={{ color: 'var(--text3)' }}>التسليم المتوقع:</span> <strong>{po.expected_date}</strong></div>}
               <div><span style={{ color: 'var(--text3)' }}>وجهة التسليم:</span> <strong>{po.delivery_to}</strong></div>
-              {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo?.wo_no && (
-                <div><span style={{ color: 'var(--text3)' }}>أمر عمل أسطول:</span> <strong style={{ color: '#0d9488' }}>{(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo!.wo_no}</strong></div>
+              {po.fleet_wo?.wo_no && (
+                <div><span style={{ color: 'var(--text3)' }}>أمر عمل أسطول:</span> <strong style={{ color: '#0d9488' }}>{po.fleet_wo.wo_no}</strong></div>
               )}
               <div><span style={{ color: 'var(--text3)' }}>الحالة:</span> <span className={'badge ' + (PO_STATUS_COLOR[po.status] || 'badge-gray')}>{po.status}</span></div>
             </div>
@@ -335,16 +335,46 @@ export default function PurchaseOrdersPage() {
     if (!tenantId) return
     setLoading(true)
     const from = (page - 1) * 50
-    let query = supabase.from('finance_purchase_orders').select('*, vendor:finance_vendors(name,phone), project:projects(name), fleet_wo:fleet_work_orders(wo_no,service_confirmed_at)', { count: 'exact' }).eq('tenant_id', tenantId).order('po_date', { ascending: false }).range(from, from + 49)
+    let query = supabase.from('finance_purchase_orders')
+      .select('*, vendor:finance_vendors(name,phone), project:projects(name)', { count: 'exact' })
+      .eq('tenant_id', tenantId)
+      .order('po_date', { ascending: false })
+      .range(from, from + 49)
     if (q) query = query.or(`po_number.ilike.%${q}%,vendor_name.ilike.%${q}%`)
-    const { data, count } = await query
-    const ids = (data || []).map((p: any) => p.id)
+    const { data, count, error } = await query
+
+    if (error) {
+      console.error('finance_purchase_orders load:', error)
+      toast.error('تعذّر تحميل أوامر الشراء: ' + error.message)
+      setPurchaseOrders([])
+      poPagination.setTotal(0)
+      setLoading(false)
+      return
+    }
+
+    const rows = (data || []) as PurchaseOrder[]
+    const woIds = Array.from(new Set(rows.map(p => p.fleet_work_order_id).filter((id): id is number => id != null)))
+
+    let woMap = new Map<number, { wo_no: string; service_confirmed_at: string | null }>()
+    if (woIds.length > 0) {
+      const { data: wos } = await supabase.from('fleet_work_orders')
+        .select('id, wo_no, service_confirmed_at')
+        .in('id', woIds)
+      woMap = new Map((wos || []).map(w => [w.id, { wo_no: w.wo_no, service_confirmed_at: w.service_confirmed_at }]))
+    }
+
+    const ids = rows.map(p => p.id)
     let invPoIds = new Set<number>()
     if (ids.length > 0) {
       const { data: invs } = await supabase.from('finance_vendor_invoices').select('po_id').in('po_id', ids)
-      invPoIds = new Set((invs || []).map((i: any) => i.po_id).filter(Boolean))
+      invPoIds = new Set((invs || []).map(i => i.po_id).filter(Boolean))
     }
-    setPurchaseOrders((data || []).map((po: any) => ({ ...po, has_invoice: invPoIds.has(po.id) })))
+
+    setPurchaseOrders(rows.map(po => ({
+      ...po,
+      fleet_wo: po.fleet_work_order_id ? woMap.get(po.fleet_work_order_id) : undefined,
+      has_invoice: invPoIds.has(po.id),
+    })))
     poPagination.setTotal(count || 0)
     setLoading(false)
   }
@@ -413,8 +443,8 @@ export default function PurchaseOrdersPage() {
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#e6820a' }}>{po.po_number}</div>
                       {po.created_by && <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '1px' }}>👤 {po.created_by}</div>}
-                      {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo?.wo_no && (
-                        <div style={{ fontSize: '0.62rem', color: '#0d9488', marginTop: '1px' }}>🚛 {(po as PurchaseOrder & { fleet_wo?: { wo_no: string } }).fleet_wo!.wo_no}</div>
+                      {po.fleet_wo?.wo_no && (
+                        <div style={{ fontSize: '0.62rem', color: '#0d9488', marginTop: '1px' }}>🚛 {po.fleet_wo.wo_no}</div>
                       )}
                     </td>
                     <td style={{ padding: '10px 14px' }}>{po.vendor_name}</td>
