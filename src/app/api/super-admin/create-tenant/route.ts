@@ -6,7 +6,7 @@ import { defaultModulesForPlan, mergeTenantModules, normalizePlan, planMaxUsers 
 import { seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
 
 export async function POST(request: Request) {
-  const denied = requireSuperAdmin(request)
+  const denied = await requireSuperAdmin(request)
   if (denied) return denied
 
   try {

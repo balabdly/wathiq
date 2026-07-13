@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { mergeTenantModules, normalizePlan, planMaxUsers } from '@/lib/tenant-plans'
 
 export async function PATCH(request: Request) {
-  const denied = requireSuperAdmin(request)
+  const denied = await requireSuperAdmin(request)
   if (denied) return denied
 
   try {
