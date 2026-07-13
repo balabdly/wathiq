@@ -5,7 +5,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, X, Save, Wrench, ShoppingCart, CheckCircle, FileText, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { nextWorkOrderNo, fmt, unwrapJoin } from '@/lib/fleet-types'
+import { nextWorkOrderNo, fmt } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
 import type { Vendor } from '@/lib/purchases-types'
 import {
@@ -206,26 +206,60 @@ export default function FleetMaintenancePage() {
   async function load() {
     if (!tenant) return
     setLoading(true)
-    const [woRes, uRes, vRes, cRes] = await Promise.all([
-      supabase.from('fleet_work_orders').select(`
-        *,
-        unit:fleet_units(fleet_no,name),
-        vendor:finance_vendors(id,name),
-        po:finance_purchase_orders!fleet_work_orders_po_id_fkey(id,po_number,status),
-        vendor_invoice:finance_vendor_invoices(id,invoice_number,status)
-      `).eq('tenant_id', tenant.id).order('opened_at', { ascending: false }).limit(100),
+
+    const woRes = await supabase.from('fleet_work_orders')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .order('opened_at', { ascending: false })
+      .limit(100)
+
+    if (woRes.error) {
+      console.error('fleet_work_orders load:', woRes.error)
+      toast.error('تعذّر تحميل أوامر العمل: ' + woRes.error.message)
+      setOrders([])
+      setLoading(false)
+      return
+    }
+
+    const rows = woRes.data || []
+    const unitIds = Array.from(new Set(rows.map(r => r.unit_id).filter(Boolean)))
+    const vendorIds = Array.from(new Set(rows.map(r => r.vendor_id).filter((id): id is number => id != null)))
+    const poIds = Array.from(new Set(rows.map(r => r.po_id).filter((id): id is number => id != null)))
+    const invoiceIds = Array.from(new Set(rows.map(r => r.vendor_invoice_id).filter((id): id is number => id != null)))
+
+    const [uRes, vRes, cRes, unitsRes, vendorsRes, posRes, invRes] = await Promise.all([
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
       fetchActiveVendors(tenant.id),
       supabase.from('finance_cash_accounts').select('id,name,account_type,account_id')
         .eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      unitIds.length > 0
+        ? supabase.from('fleet_units').select('id,fleet_no,name').in('id', unitIds)
+        : Promise.resolve({ data: [] as Unit[], error: null }),
+      vendorIds.length > 0
+        ? supabase.from('finance_vendors').select('id,name').in('id', vendorIds)
+        : Promise.resolve({ data: [] as { id: number; name: string }[], error: null }),
+      poIds.length > 0
+        ? supabase.from('finance_purchase_orders').select('id,po_number,status').in('id', poIds)
+        : Promise.resolve({ data: [] as { id: number; po_number: string; status: string }[], error: null }),
+      invoiceIds.length > 0
+        ? supabase.from('finance_vendor_invoices').select('id,invoice_number,status').in('id', invoiceIds)
+        : Promise.resolve({ data: [] as { id: number; invoice_number: string; status: string }[], error: null }),
     ])
-    setOrders((woRes.data || []).map(row => ({
+
+    const unitMap = new Map((unitsRes.data || []).map(u => [u.id, u as Unit]))
+    const vendorMap = new Map((vendorsRes.data || []).map(v => [v.id, v]))
+    const poMap = new Map((posRes.data || []).map(p => [p.id, { id: p.id, po_number: p.po_number, status: p.status }]))
+    const invMap = new Map((invRes.data || []).map(i => [i.id, { id: i.id, invoice_number: i.invoice_number, status: i.status }]))
+
+    const list: WorkOrder[] = rows.map(row => ({
       ...row,
-      unit: unwrapJoin((row as { unit?: Unit | Unit[] }).unit),
-      vendor: unwrapJoin((row as { vendor?: { id: number; name: string } | { id: number; name: string }[] }).vendor),
-      po: unwrapJoin((row as { po?: WorkOrder['po'] | WorkOrder['po'][] }).po),
-      vendor_invoice: unwrapJoin((row as { vendor_invoice?: WorkOrder['vendor_invoice'] | WorkOrder['vendor_invoice'][] }).vendor_invoice),
-    })) as WorkOrder[])
+      unit: unitMap.get(row.unit_id),
+      vendor: row.vendor_id ? vendorMap.get(row.vendor_id) : undefined,
+      po: row.po_id ? poMap.get(row.po_id) : undefined,
+      vendor_invoice: row.vendor_invoice_id ? invMap.get(row.vendor_invoice_id) : undefined,
+    })) as WorkOrder[]
+
+    setOrders(list)
     setUnits(uRes.data || [])
     setVendors(vRes)
     setCashAccounts(cRes.data || [])
