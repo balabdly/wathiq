@@ -5,14 +5,13 @@ import type { Vendor } from '@/lib/purchases-types'
 
 export { fetchActiveVendors }
 
+export type RenewalPath = 'مشتريات' | 'مصروفات'
+
 /** وجهة التسليم لطلبات تجديد الامتثال — تُرحّل على 5142 */
 export const FLEET_COMPLIANCE_PO_DELIVERY = 'امتثال أسطول'
 
-/** أنواع الوثائق التي يُحفظ فيها رقم الوثيقة والجهة عند التجديد */
+/** أنواع الوثائق التي يُحفظ فيها رقم الوثيقة والجهة عند إتمام التجديد */
 export const COMPLIANCE_STATIC_RENEWAL_TYPES = ['استمارة'] as const
-
-/** أنواع تمر تجديدها عبر المشتريات (TPI) */
-export const COMPLIANCE_PURCHASE_RENEWAL_TYPES = ['شهادة فحص طرف ثالث'] as const
 
 /** أيام التنبيه قبل الانتهاء حسب النوع */
 export const COMPLIANCE_ALERT_DAYS: Record<string, number> = {
@@ -36,6 +35,8 @@ export type ComplianceDocRow = {
   is_active?: boolean
   replaces_id?: number | null
   po_id?: number | null
+  expense_id?: number | null
+  renewal_path?: string | null
   vendor_id?: number | null
   notes?: string | null
 }
@@ -56,6 +57,16 @@ export function complianceStatusFromExpiry(expiryDate?: string | null, docType?:
   return 'ساري'
 }
 
+/** المسار المقترح حسب نوع الوثيقة */
+export function suggestedRenewalPath(docType: string): RenewalPath {
+  if (['شهادة فحص طرف ثالث', 'تأمين', 'شهادة رفع'].includes(docType)) return 'مشتريات'
+  return 'مصروفات'
+}
+
+export function keepsStaticDataOnRenewal(docType: string): boolean {
+  return (COMPLIANCE_STATIC_RENEWAL_TYPES as readonly string[]).includes(docType)
+}
+
 /** الوثائق المطلوبة حسب فئة المعدة */
 export function requiredComplianceTypes(category: string, subCategory?: string | null): string[] {
   const base: Record<string, string[]> = {
@@ -68,14 +79,6 @@ export function requiredComplianceTypes(category: string, subCategory?: string |
   return req
 }
 
-export function needsPurchaseRenewal(docType: string): boolean {
-  return (COMPLIANCE_PURCHASE_RENEWAL_TYPES as readonly string[]).includes(docType)
-}
-
-export function keepsStaticDataOnRenewal(docType: string): boolean {
-  return (COMPLIANCE_STATIC_RENEWAL_TYPES as readonly string[]).includes(docType)
-}
-
 export type ComplianceCheckResult = {
   ok: boolean
   missing: string[]
@@ -83,7 +86,6 @@ export type ComplianceCheckResult = {
   message?: string
 }
 
-/** التحقق من جاهزية المعدة للتخصيص */
 export function checkUnitCompliance(
   category: string,
   subCategory: string | null | undefined,
@@ -113,7 +115,38 @@ export function checkUnitCompliance(
   return { ok: false, missing, expired, message: parts.join(' — ') }
 }
 
-/** تجديد مباشر (استمارة، تأمين، …) — سجل جديد + أرشفة */
+export function resolveRenewalPath(doc: ComplianceDocRow): RenewalPath | null {
+  if (doc.renewal_path === 'مشتريات' || doc.renewal_path === 'مصروفات') return doc.renewal_path
+  if (doc.po_id) return 'مشتريات'
+  if (doc.expense_id) return 'مصروفات'
+  return null
+}
+
+export function canCompleteComplianceRenewal(
+  doc: ComplianceDocRow,
+  po?: { status: string } | null,
+  expense?: { status: string } | null,
+): { ok: boolean; message?: string } {
+  if (doc.status !== 'قيد التجديد') {
+    return { ok: false, message: 'الوثيقة ليست قيد التجديد' }
+  }
+  const path = resolveRenewalPath(doc)
+  if (path === 'مشتريات') {
+    if (!po || po.status === 'مسودة') {
+      return { ok: false, message: 'يجب اعتماد طلب الشراء في المشتريات أولاً' }
+    }
+    return { ok: true }
+  }
+  if (path === 'مصروفات') {
+    if (!expense || expense.status !== 'مدفوع') {
+      return { ok: false, message: 'يجب اعتماد ودفع المصروف في قسم المصروفات (الحالة: مدفوع)' }
+    }
+    return { ok: true }
+  }
+  return { ok: false, message: 'مسار التجديد غير محدد' }
+}
+
+/** إتمام التجديد — سجل جديد + أرشفة (بعد المشتريات/المصروفات) */
 export async function renewComplianceDocDirect(params: {
   tenantId: string
   oldDoc: ComplianceDocRow
@@ -163,7 +196,31 @@ export async function renewComplianceDocDirect(params: {
   return { ok: true }
 }
 
-/** بدء تجديد TPI عبر المشتريات */
+export async function completeComplianceRenewal(params: {
+  tenantId: string
+  oldDoc: ComplianceDocRow
+  po?: { status: string } | null
+  expense?: { status: string } | null
+  issueDate?: string | null
+  expiryDate?: string | null
+  docNumber?: string | null
+  issuer?: string | null
+}): Promise<{ ok: boolean; error?: string }> {
+  const gate = canCompleteComplianceRenewal(params.oldDoc, params.po, params.expense)
+  if (!gate.ok) return { ok: false, error: gate.message }
+
+  return renewComplianceDocDirect({
+    tenantId: params.tenantId,
+    oldDoc: params.oldDoc,
+    issueDate: params.issueDate,
+    expiryDate: params.expiryDate,
+    docNumber: params.docNumber,
+    issuer: params.issuer ?? params.oldDoc.issuer,
+    notes: params.oldDoc.notes,
+  })
+}
+
+/** طلب تجديد عبر المشتريات (PO مسودة) */
 export async function startCompliancePurchaseRenewal(params: {
   tenantId: string
   doc: ComplianceDocRow
@@ -217,6 +274,7 @@ export async function startCompliancePurchaseRenewal(params: {
 
   await supabase.from('fleet_compliance_docs').update({
     status: 'قيد التجديد',
+    renewal_path: 'مشتريات',
     po_id: po.id,
     vendor_id: params.vendorId,
   }).eq('id', params.doc.id)
@@ -224,24 +282,98 @@ export async function startCompliancePurchaseRenewal(params: {
   return { poId: po.id, poNumber: po.po_number }
 }
 
-/** إتمام تجديد TPI بعد المشتريات — سجل جديد + أرشفة */
-export async function completeCompliancePurchaseRenewal(params: {
+/** طلب تجديد عبر المصروفات (مصروف معلّق) */
+export async function startComplianceExpenseRenewal(params: {
   tenantId: string
-  oldDoc: ComplianceDocRow
-  issueDate?: string | null
-  expiryDate?: string | null
-  docNumber?: string | null
-  issuer?: string | null
-}): Promise<{ ok: boolean; error?: string }> {
-  return renewComplianceDocDirect({
+  doc: ComplianceDocRow
+  unitLabel: string
+  payeeName?: string
+  estimatedAmount?: number
+  createdBy?: string | null
+}): Promise<{ expenseId: number; expenseNumber: string } | null> {
+  const today = new Date().toISOString().split('T')[0]
+  const expenseNumber = (await nextDocNumber(params.tenantId, 'EXP', 'EXP')) ||
+    `EXP-${new Date().getFullYear()}-0001`
+
+  const amount = params.estimatedAmount ?? 0
+  const vatRate = 15
+  const vatAmount = Math.round(amount * (vatRate / 100) * 100) / 100
+  const total = amount + vatAmount
+  const payee = params.payeeName?.trim() || 'رسوم حكومية / مرور'
+
+  const { data: exp, error } = await supabase
+    .from('finance_expenses')
+    .insert({
+      tenant_id: params.tenantId,
+      expense_number: expenseNumber,
+      expense_date: today,
+      category: 'امتثال أسطول',
+      expense_type: 'تشغيلي',
+      description: `تجديد ${params.doc.doc_type} — ${params.unitLabel}`,
+      amount,
+      vat_rate: vatRate,
+      vat_amount: vatAmount,
+      total_amount: total,
+      vendor_name: payee,
+      status: 'معلق',
+      payment_method: 'تحويل بنكي',
+      source_module: 'fleet_compliance',
+      fleet_compliance_doc_id: params.doc.id,
+      notes: `طلب تجديد وثيقة امتثال #${params.doc.id} — ${params.doc.doc_type}${params.createdBy ? ` — طلب: ${params.createdBy}` : ''}`,
+    })
+    .select('id, expense_number')
+    .single()
+
+  if (error || !exp) return null
+
+  await supabase.from('fleet_compliance_docs').update({
+    status: 'قيد التجديد',
+    renewal_path: 'مصروفات',
+    expense_id: exp.id,
+  }).eq('id', params.doc.id)
+
+  return { expenseId: exp.id, expenseNumber: exp.expense_number }
+}
+
+/** بدء طلب تجديد (مسار واحد) */
+export async function startComplianceRenewalRequest(params: {
+  tenantId: string
+  doc: ComplianceDocRow
+  path: RenewalPath
+  unitLabel: string
+  createdBy?: string | null
+  vendorId?: number
+  vendorName?: string
+  payeeName?: string
+  estimatedAmount?: number
+}): Promise<{ ok: boolean; refNumber?: string; error?: string }> {
+  if (params.path === 'مشتريات') {
+    if (!params.vendorId || !params.vendorName) {
+      return { ok: false, error: 'اختر المورد' }
+    }
+    const r = await startCompliancePurchaseRenewal({
+      tenantId: params.tenantId,
+      doc: params.doc,
+      vendorId: params.vendorId,
+      vendorName: params.vendorName,
+      unitLabel: params.unitLabel,
+      estimatedAmount: params.estimatedAmount,
+      createdBy: params.createdBy,
+    })
+    if (!r) return { ok: false, error: 'فشل إنشاء طلب الشراء' }
+    return { ok: true, refNumber: r.poNumber }
+  }
+
+  const r = await startComplianceExpenseRenewal({
     tenantId: params.tenantId,
-    oldDoc: params.oldDoc,
-    issueDate: params.issueDate,
-    expiryDate: params.expiryDate,
-    docNumber: params.docNumber,
-    issuer: params.issuer ?? params.oldDoc.issuer,
-    notes: params.oldDoc.notes,
+    doc: params.doc,
+    unitLabel: params.unitLabel,
+    payeeName: params.payeeName,
+    estimatedAmount: params.estimatedAmount,
+    createdBy: params.createdBy,
   })
+  if (!r) return { ok: false, error: 'فشل إنشاء طلب المصروف' }
+  return { ok: true, refNumber: r.expenseNumber }
 }
 
 export async function hasActiveComplianceDoc(
@@ -261,7 +393,10 @@ export async function hasActiveComplianceDoc(
 
 export async function deleteComplianceDoc(doc: ComplianceDocRow): Promise<{ ok: boolean; error?: string }> {
   if (doc.status === 'قيد التجديد') {
-    return { ok: false, error: 'لا يمكن الحذف — الوثيقة قيد التجديد عبر المشتريات. أكمل التجديد أو ألغِ طلب الشراء أولاً.' }
+    return {
+      ok: false,
+      error: 'لا يمكن الحذف — الوثيقة قيد التجديد. ألغِ طلب الشراء أو المصروف في المالية أولاً.',
+    }
   }
 
   const { error } = await supabase.from('fleet_compliance_docs').delete().eq('id', doc.id)

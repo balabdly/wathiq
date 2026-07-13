@@ -3,27 +3,33 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, FileWarning, RefreshCw, ShoppingCart, CheckCircle, ExternalLink, Trash2 } from 'lucide-react'
+import { Plus, X, Save, FileWarning, ShoppingCart, CheckCircle, ExternalLink, Trash2, Receipt, ClipboardList } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { COMPLIANCE_TYPES } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
 import {
   complianceStatusFromExpiry,
   complianceAlertDays,
-  needsPurchaseRenewal,
+  suggestedRenewalPath,
   keepsStaticDataOnRenewal,
-  renewComplianceDocDirect,
-  startCompliancePurchaseRenewal,
-  completeCompliancePurchaseRenewal,
+  startComplianceRenewalRequest,
+  completeComplianceRenewal,
+  canCompleteComplianceRenewal,
+  resolveRenewalPath,
   fetchActiveVendors,
   hasActiveComplianceDoc,
   deleteComplianceDoc,
   type ComplianceDocRow,
+  type RenewalPath,
 } from '@/lib/fleet-compliance'
 import type { Vendor } from '@/lib/purchases-types'
 
 type Unit = { id: number; fleet_no: string; name: string }
-type Doc = ComplianceDocRow & { unit?: Unit; po?: { po_number: string; status: string } }
+type Doc = ComplianceDocRow & {
+  unit?: Unit
+  po?: { po_number: string; status: string }
+  expense?: { expense_number: string; status: string }
+}
 
 const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   'ساري': { bg: '#ecfdf5', color: '#0ea77b' },
@@ -110,123 +116,91 @@ function DocModal({ units, tenantId, onClose, onSave }: {
   )
 }
 
-function RenewDirectModal({ doc, tenantId, onClose, onDone }: {
-  doc: Doc; tenantId: string; onClose: () => void; onDone: () => void
-}) {
-  const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
-  const staticData = keepsStaticDataOnRenewal(doc.doc_type)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    doc_number: doc.doc_number || '',
-    issuer: doc.issuer || '',
-    issue_date: '',
-    expiry_date: '',
-  })
-
-  async function handleSave() {
-    if (!form.expiry_date) { toast.error('تاريخ الانتهاء الجديد مطلوب'); return }
-    setSaving(true)
-    const result = await renewComplianceDocDirect({
-      tenantId,
-      oldDoc: doc,
-      issueDate: form.issue_date || null,
-      expiryDate: form.expiry_date,
-      docNumber: form.doc_number || null,
-      issuer: form.issuer || null,
-    })
-    setSaving(false)
-    if (!result.ok) { toast.error(result.error || 'فشل التجديد'); return }
-    toast.success('✅ تم التجديد — الوثيقة القديمة مُؤرشفة')
-    onDone()
-  }
-
-  return (
-    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '440px' }} onMouseDown={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontWeight: 700 }}>تجديد — {doc.doc_type}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px' }} /></button>
-        </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {staticData && (
-            <p style={{ fontSize: '0.78rem', color: '#0369a1', background: '#f0f9ff', padding: '8px 10px', borderRadius: '8px' }}>
-              استمارة المعدة: يُحفظ رقم الوثيقة والجهة — يُحدَّث تاريخ الانتهاء فقط
-            </p>
-          )}
-          <div><label style={lbl}>رقم الوثيقة</label>
-            <input value={form.doc_number} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))}
-              className="input" readOnly={staticData} style={staticData ? { background: '#f3f4f6' } : undefined} /></div>
-          <div><label style={lbl}>الجهة المصدرة</label>
-            <input value={form.issuer} onChange={e => setForm(f => ({ ...f, issuer: e.target.value }))}
-              className="input" readOnly={staticData} style={staticData ? { background: '#f3f4f6' } : undefined} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div><label style={lbl}>تاريخ الإصدار الجديد</label>
-              <input type="date" value={form.issue_date} onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))} className="input" /></div>
-            <div><label style={lbl}>تاريخ الانتهاء الجديد *</label>
-              <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input" /></div>
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}><RefreshCw style={{ width: '14px' }} /> تأكيد التجديد</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function RenewPurchaseModal({ doc, vendors, unitLabel, tenantId, createdBy, onClose, onDone }: {
+function RequestRenewModal({ doc, vendors, unitLabel, tenantId, createdBy, onClose, onDone }: {
   doc: Doc; vendors: Vendor[]; unitLabel: string; tenantId: string; createdBy?: string
   onClose: () => void; onDone: () => void
 }) {
   const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
   const [saving, setSaving] = useState(false)
+  const [path, setPath] = useState<RenewalPath>(suggestedRenewalPath(doc.doc_type))
   const [vendorId, setVendorId] = useState(String(doc.vendor_id || ''))
+  const [payeeName, setPayeeName] = useState(doc.issuer || 'رسوم حكومية / مرور')
   const [amount, setAmount] = useState('')
 
   async function handleStart() {
-    if (!vendorId) { toast.error('اختر جهة الفحص (مورد)'); return }
     const vendor = vendors.find(v => v.id === Number(vendorId))
-    if (!vendor) return
     setSaving(true)
-    const result = await startCompliancePurchaseRenewal({
+    const result = await startComplianceRenewalRequest({
       tenantId,
       doc,
-      vendorId: vendor.id,
-      vendorName: vendor.name,
+      path,
       unitLabel,
-      estimatedAmount: Number(amount) || 0,
       createdBy,
+      vendorId: vendor?.id,
+      vendorName: vendor?.name,
+      payeeName,
+      estimatedAmount: Number(amount) || 0,
     })
     setSaving(false)
-    if (!result) { toast.error('فشل إنشاء طلب الشراء'); return }
-    toast.success(`طلب شراء ${result.poNumber} — اعتمده في المشتريات ثم أتمّ التجديد`)
+    if (!result.ok) { toast.error(result.error || 'فشل الطلب'); return }
+    const dest = path === 'مشتريات' ? 'المشتريات' : 'المصروفات'
+    toast.success(`تم إنشاء ${result.refNumber} — راجع ${dest} ثم أتمّ التجديد`)
     onDone()
   }
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '440px' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: '460px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 style={{ fontWeight: 700 }}>تجديد عبر المشتريات — TPI</h3>
+          <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ClipboardList style={{ width: '18px', color: '#1a56db' }} /> طلب تجديد — {doc.doc_type}
+          </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <p style={{ fontSize: '0.82rem', color: '#6b7280' }}>
-            شهادة فحص طرف ثالث تمر عبر: طلب شراء → اعتماد → فاتورة → إتمام التجديد
+          <p style={{ fontSize: '0.82rem', color: '#6b7280', lineHeight: 1.5 }}>
+            طلب تجديد → اعتماد مالي (مشتريات أو مصروفات) → إتمام التجديد من الأسطول
           </p>
-          <div><label style={lbl}>جهة الفحص (مورد) *</label>
-            <select value={vendorId} onChange={e => setVendorId(e.target.value)} className="select">
-              <option value="">— اختر —</option>
-              {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </select></div>
+          <div><label style={lbl}>مسار التجديد *</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {(['مصروفات', 'مشتريات'] as RenewalPath[]).map(p => (
+                <button key={p} type="button" onClick={() => setPath(p)}
+                  style={{
+                    flex: 1, padding: '10px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem',
+                    border: path === p ? '2px solid #1a56db' : '1px solid var(--border)',
+                    background: path === p ? '#eff6ff' : 'white',
+                    color: path === p ? '#1a56db' : '#374151',
+                  }}>
+                  {p === 'مشتريات' ? <ShoppingCart style={{ width: '14px', display: 'inline', marginLeft: '4px' }} /> : <Receipt style={{ width: '14px', display: 'inline', marginLeft: '4px' }} />}
+                  {p}
+                  {suggestedRenewalPath(doc.doc_type) === p && <span style={{ fontSize: '0.65rem', display: 'block', color: '#6b7280', fontWeight: 400 }}>مقترح</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          {path === 'مشتريات' ? (
+            <>
+              <div><label style={lbl}>المورد *</label>
+                <select value={vendorId} onChange={e => setVendorId(e.target.value)} className="select">
+                  <option value="">— اختر —</option>
+                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select></div>
+              <p style={{ fontSize: '0.72rem', color: '#9ca3af' }}>يُنشأ طلب شراء مسودة — يُعتمد في المشتريات ثم تُسجَّل الفاتورة</p>
+            </>
+          ) : (
+            <>
+              <div><label style={lbl}>الجهة / المستفيد</label>
+                <input value={payeeName} onChange={e => setPayeeName(e.target.value)} className="input" placeholder="مرور / تأمينات / رسوم حكومية" /></div>
+              <p style={{ fontSize: '0.72rem', color: '#9ca3af' }}>يُنشأ مصروف معلّق — يُعتمد ويُدفع في قسم المصروفات</p>
+            </>
+          )}
           <div><label style={lbl}>التكلفة التقديرية (ر.س)</label>
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)} className="input" dir="ltr" min="0" /></div>
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleStart} disabled={saving} className="btn btn-primary" style={{ background: '#e6820a' }}>
-            <ShoppingCart style={{ width: '14px' }} /> إنشاء طلب شراء
+          <button onClick={handleStart} disabled={saving} className="btn btn-primary" style={{ background: '#1a56db' }}>
+            <ClipboardList style={{ width: '14px' }} /> إرسال الطلب
           </button>
         </div>
       </div>
@@ -234,30 +208,38 @@ function RenewPurchaseModal({ doc, vendors, unitLabel, tenantId, createdBy, onCl
   )
 }
 
-function CompletePurchaseRenewModal({ doc, tenantId, onClose, onDone }: {
+function CompleteRenewModal({ doc, tenantId, onClose, onDone }: {
   doc: Doc; tenantId: string; onClose: () => void; onDone: () => void
 }) {
   const lbl = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' } as const
+  const staticData = keepsStaticDataOnRenewal(doc.doc_type)
+  const gate = canCompleteComplianceRenewal(doc, doc.po, doc.expense)
+  const path = resolveRenewalPath(doc)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ doc_number: '', issuer: doc.issuer || '', issue_date: '', expiry_date: '' })
+  const [form, setForm] = useState({
+    doc_number: staticData ? (doc.doc_number || '') : '',
+    issuer: doc.issuer || '',
+    issue_date: '',
+    expiry_date: '',
+  })
 
   async function handleSave() {
-    if (!form.expiry_date || !form.doc_number) {
-      toast.error('رقم الشهادة الجديد وتاريخ الانتهاء مطلوبان')
-      return
-    }
+    if (!form.expiry_date) { toast.error('تاريخ الانتهاء الجديد مطلوب'); return }
+    if (!staticData && !form.doc_number) { toast.error('رقم الوثيقة الجديد مطلوب'); return }
     setSaving(true)
-    const result = await completeCompliancePurchaseRenewal({
+    const result = await completeComplianceRenewal({
       tenantId,
       oldDoc: doc,
+      po: doc.po,
+      expense: doc.expense,
       issueDate: form.issue_date || null,
       expiryDate: form.expiry_date,
-      docNumber: form.doc_number,
+      docNumber: form.doc_number || null,
       issuer: form.issuer || null,
     })
     setSaving(false)
     if (!result.ok) { toast.error(result.error || 'فشل'); return }
-    toast.success('✅ تم تجديد الشهادة')
+    toast.success('✅ تم التجديد — الوثيقة القديمة مُؤرشفة')
     onDone()
   }
 
@@ -269,11 +251,30 @@ function CompletePurchaseRenewModal({ doc, tenantId, onClose, onDone }: {
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px' }} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <p style={{ fontSize: '0.78rem', color: '#0ea77b' }}>بعد اعتماد طلب الشراء والفاتورة — أدخل بيانات الشهادة الجديدة</p>
-          <div><label style={lbl}>رقم الشهادة الجديد *</label>
-            <input value={form.doc_number} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} className="input" /></div>
-          <div><label style={lbl}>الجهة المصدرة</label>
-            <input value={form.issuer} onChange={e => setForm(f => ({ ...f, issuer: e.target.value }))} className="input" /></div>
+          {!gate.ok ? (
+            <p style={{ fontSize: '0.78rem', color: '#c81e1e', background: '#fef2f2', padding: '10px', borderRadius: '8px' }}>
+              {gate.message}
+            </p>
+          ) : (
+            <p style={{ fontSize: '0.78rem', color: '#0ea77b', background: '#ecfdf5', padding: '10px', borderRadius: '8px' }}>
+              {path === 'مشتريات'
+                ? `طلب الشراء ${doc.po?.po_number} معتمد — أدخل بيانات الوثيقة الجديدة`
+                : `المصروف ${doc.expense?.expense_number} مدفوع — أدخل بيانات الوثيقة الجديدة`}
+            </p>
+          )}
+          {staticData && (
+            <p style={{ fontSize: '0.78rem', color: '#0369a1', background: '#f0f9ff', padding: '8px 10px', borderRadius: '8px' }}>
+              استمارة المعدة: يُحفظ رقم الوثيقة والجهة — يُحدَّث تاريخ الانتهاء فقط
+            </p>
+          )}
+          {!staticData && (
+            <div><label style={lbl}>رقم الوثيقة الجديد *</label>
+              <input value={form.doc_number} onChange={e => setForm(f => ({ ...f, doc_number: e.target.value }))} className="input" /></div>
+          )}
+          {!staticData && (
+            <div><label style={lbl}>الجهة المصدرة</label>
+              <input value={form.issuer} onChange={e => setForm(f => ({ ...f, issuer: e.target.value }))} className="input" /></div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <div><label style={lbl}>تاريخ الإصدار</label>
               <input type="date" value={form.issue_date} onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))} className="input" /></div>
@@ -283,7 +284,9 @@ function CompletePurchaseRenewModal({ doc, tenantId, onClose, onDone }: {
         </div>
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}><CheckCircle style={{ width: '14px' }} /> إتمام التجديد</button>
+          <button onClick={handleSave} disabled={saving || !gate.ok} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+            <CheckCircle style={{ width: '14px' }} /> إتمام التجديد
+          </button>
         </div>
       </div>
     </div>
@@ -301,7 +304,6 @@ export default function FleetCompliancePage() {
   const [filter, setFilter] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [renewDoc, setRenewDoc] = useState<Doc | null>(null)
-  const [purchaseRenewDoc, setPurchaseRenewDoc] = useState<Doc | null>(null)
   const [completeDoc, setCompleteDoc] = useState<Doc | null>(null)
 
   useEffect(() => { if (tenant) load() }, [tenant?.id, showArchived])
@@ -329,17 +331,22 @@ export default function FleetCompliancePage() {
 
     const rows = (dRes.data || []) as ComplianceDocRow[]
     const poIds = Array.from(new Set(rows.map(r => r.po_id).filter((id): id is number => id != null)))
+    const expenseIds = Array.from(new Set(rows.map(r => r.expense_id).filter((id): id is number => id != null)))
 
-    const [uRes, vRes, poRes] = await Promise.all([
+    const [uRes, vRes, poRes, expRes] = await Promise.all([
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
       fetchActiveVendors(tenant.id),
       poIds.length > 0
         ? supabase.from('finance_purchase_orders').select('id,po_number,status').in('id', poIds)
         : Promise.resolve({ data: [] as { id: number; po_number: string; status: string }[], error: null }),
+      expenseIds.length > 0
+        ? supabase.from('finance_expenses').select('id,expense_number,status').in('id', expenseIds)
+        : Promise.resolve({ data: [] as { id: number; expense_number: string; status: string }[], error: null }),
     ])
 
     const unitMap = new Map((uRes.data || []).map(u => [u.id, u as Unit]))
     const poMap = new Map((poRes.data || []).map(p => [p.id, { po_number: p.po_number, status: p.status }]))
+    const expMap = new Map((expRes.data || []).map(e => [e.id, { expense_number: e.expense_number, status: e.status }]))
 
     const list: Doc[] = rows.map(row => {
       const liveStatus = row.is_active === false
@@ -351,6 +358,7 @@ export default function FleetCompliancePage() {
         ...row,
         unit: unitMap.get(row.unit_id),
         po: row.po_id ? poMap.get(row.po_id) : undefined,
+        expense: row.expense_id ? expMap.get(row.expense_id) : undefined,
         status: liveStatus,
       }
     })
@@ -381,7 +389,7 @@ export default function FleetCompliancePage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <FleetPageHeader title="امتثال الأسطول" description="رخص، تأمين، TPI، فحص دوري — تنبيهات وتجديد مع أرشفة" />
+      <FleetPageHeader title="امتثال الأسطول" description="طلب تجديد → اعتماد مالي (مشتريات/مصروفات) → إتمام من الأسطول" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
         <div className="card" style={{ padding: '14px', background: '#fef2f2' }}>
           <FileWarning style={{ width: '18px', color: '#c81e1e' }} />
@@ -447,21 +455,25 @@ export default function FleetCompliancePage() {
                     </td>
                     <td style={{ padding: '10px 8px' }}>
                       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                        {canRenew(d) && !needsPurchaseRenewal(d.doc_type) && (
-                          <button onClick={() => setRenewDoc(d)} className="btn btn-ghost" style={{ fontSize: '0.7rem', padding: '4px 8px' }}>
-                            <RefreshCw style={{ width: '12px' }} /> تجديد
-                          </button>
-                        )}
-                        {canRenew(d) && needsPurchaseRenewal(d.doc_type) && (
-                          <button onClick={() => setPurchaseRenewDoc(d)} className="btn btn-ghost" style={{ fontSize: '0.7rem', padding: '4px 8px', color: '#e6820a' }}>
-                            <ShoppingCart style={{ width: '12px' }} /> تجديد (مشتريات)
+                        {canRenew(d) && (
+                          <button onClick={() => setRenewDoc(d)} className="btn btn-ghost" style={{ fontSize: '0.7rem', padding: '4px 8px', color: '#1a56db' }}>
+                            <ClipboardList style={{ width: '12px' }} /> طلب تجديد
                           </button>
                         )}
                         {d.status === 'قيد التجديد' && (
                           <>
-                            <button onClick={() => router.push('/finance/purchases/orders')} style={{ fontSize: '0.7rem', padding: '4px 8px', border: '1px solid #fde68a', borderRadius: '6px', background: '#fffbeb', cursor: 'pointer' }}>
-                              <ExternalLink style={{ width: '11px', display: 'inline' }} /> PO {d.po?.po_number}
-                            </button>
+                            {d.po_id && d.po && (
+                              <button onClick={() => router.push('/finance/purchases/orders')} style={{ fontSize: '0.7rem', padding: '4px 8px', border: '1px solid #fde68a', borderRadius: '6px', background: '#fffbeb', cursor: 'pointer' }}>
+                                <ExternalLink style={{ width: '11px', display: 'inline' }} /> PO {d.po.po_number}
+                                {d.po.status === 'مسودة' && <span style={{ color: '#e6820a' }}> (مسودة)</span>}
+                              </button>
+                            )}
+                            {d.expense_id && d.expense && (
+                              <button onClick={() => router.push('/finance/expenses/list')} style={{ fontSize: '0.7rem', padding: '4px 8px', border: '1px solid #bfdbfe', borderRadius: '6px', background: '#eff6ff', cursor: 'pointer' }}>
+                                <ExternalLink style={{ width: '11px', display: 'inline' }} /> {d.expense.expense_number}
+                                {d.expense.status === 'معلق' && <span style={{ color: '#e6820a' }}> (معلق)</span>}
+                              </button>
+                            )}
                             <button onClick={() => setCompleteDoc(d)} className="btn btn-primary" style={{ fontSize: '0.7rem', padding: '4px 8px', background: '#0ea77b' }}>
                               إتمام
                             </button>
@@ -487,14 +499,11 @@ export default function FleetCompliancePage() {
         <DocModal units={units} tenantId={tenant.id} onClose={() => setShowModal(false)} onSave={() => { setShowModal(false); void load() }} />
       )}
       {renewDoc && tenant && (
-        <RenewDirectModal doc={renewDoc} tenantId={tenant.id} onClose={() => setRenewDoc(null)} onDone={() => { setRenewDoc(null); load() }} />
-      )}
-      {purchaseRenewDoc && tenant && (
-        <RenewPurchaseModal doc={purchaseRenewDoc} vendors={vendors} unitLabel={`${purchaseRenewDoc.unit?.fleet_no} ${purchaseRenewDoc.unit?.name}`}
-          tenantId={tenant.id} createdBy={currentUser?.name} onClose={() => setPurchaseRenewDoc(null)} onDone={() => { setPurchaseRenewDoc(null); load() }} />
+        <RequestRenewModal doc={renewDoc} vendors={vendors} unitLabel={`${renewDoc.unit?.fleet_no} ${renewDoc.unit?.name}`}
+          tenantId={tenant.id} createdBy={currentUser?.name} onClose={() => setRenewDoc(null)} onDone={() => { setRenewDoc(null); load() }} />
       )}
       {completeDoc && tenant && (
-        <CompletePurchaseRenewModal doc={completeDoc} tenantId={tenant.id} onClose={() => setCompleteDoc(null)} onDone={() => { setCompleteDoc(null); load() }} />
+        <CompleteRenewModal doc={completeDoc} tenantId={tenant.id} onClose={() => setCompleteDoc(null)} onDone={() => { setCompleteDoc(null); load() }} />
       )}
     </div>
   )
