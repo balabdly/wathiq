@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Save, Wrench, ShoppingCart, CheckCircle, FileText, ExternalLink, Pencil, RotateCcw } from 'lucide-react'
+import { Plus, X, Save, Wrench, ShoppingCart, CheckCircle, FileText, ExternalLink, Pencil, RotateCcw, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { nextWorkOrderNo, fmt } from '@/lib/fleet-types'
 import { FleetPageHeader } from '../FleetPageHeader'
@@ -20,11 +20,20 @@ import {
   FLEET_INTERNAL_LABOR_RATE,
 } from '@/lib/fleet-procurement'
 
+type MaintenanceTab = 'active' | 'completed'
+
+const ACTIVE_STATUSES = ['مفتوح', 'قيد التنفيذ'] as const
+
+function formatDate(d?: string | null): string {
+  if (!d) return '—'
+  return d.split('T')[0]
+}
+
 type Unit = { id: number; fleet_no: string; name: string }
 type CashAccount = { id: number; name: string; account_type: string; account_id?: number }
 type WorkOrder = {
   id: number; unit_id: number; wo_no: string; wo_type: string; source: string; status: string
-  priority: string; description: string; opened_at: string; project_id?: number
+  priority: string; description: string; opened_at: string; completed_at?: string | null; project_id?: number
   labor_hours: number; parts_cost: number; external_cost: number; total_cost: number
   vendor_id?: number; vendor_name?: string; po_id?: number; vendor_invoice_id?: number
   service_confirmed_at?: string | null; journal_posted_at?: string | null
@@ -394,7 +403,10 @@ export default function FleetMaintenancePage() {
   const [completeWo, setCompleteWo] = useState<WorkOrder | null>(null)
   const [partsPoWo, setPartsPoWo] = useState<WorkOrder | null>(null)
   const [editWo, setEditWo] = useState<WorkOrder | null>(null)
-  const [filter, setFilter] = useState('')
+  const [tab, setTab] = useState<MaintenanceTab>('active')
+  const [activeStatusFilter, setActiveStatusFilter] = useState('')
+  const [completedUnitFilter, setCompletedUnitFilter] = useState('')
+  const [completedSearch, setCompletedSearch] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
 
   useEffect(() => { if (tenant) load() }, [tenant?.id])
@@ -529,32 +541,147 @@ export default function FleetMaintenancePage() {
     load()
   }
 
-  const filtered = orders.filter(o => !filter || o.status === filter)
-  const openCount = orders.filter(o => ['مفتوح', 'قيد التنفيذ'].includes(o.status)).length
+  const activeOrders = useMemo(() => {
+    return orders
+      .filter(o => (ACTIVE_STATUSES as readonly string[]).includes(o.status))
+      .filter(o => {
+        if (activeStatusFilter === '__urgent') return o.priority === 'عاجل'
+        if (!activeStatusFilter) return true
+        return o.status === activeStatusFilter
+      })
+      .sort((a, b) => {
+        if (a.priority === 'عاجل' && b.priority !== 'عاجل') return -1
+        if (b.priority === 'عاجل' && a.priority !== 'عاجل') return 1
+        return new Date(b.opened_at).getTime() - new Date(a.opened_at).getTime()
+      })
+  }, [orders, activeStatusFilter])
+
+  const completedOrders = useMemo(() => {
+    const q = completedSearch.trim().toLowerCase()
+    return orders
+      .filter(o => o.status === 'مكتمل')
+      .filter(o => !completedUnitFilter || o.unit_id === Number(completedUnitFilter))
+      .filter(o => {
+        if (!q) return true
+        const hay = `${o.wo_no} ${o.description} ${o.unit?.fleet_no || ''} ${o.unit?.name || ''}`.toLowerCase()
+        return hay.includes(q)
+      })
+      .sort((a, b) => new Date(b.completed_at || b.opened_at).getTime() - new Date(a.completed_at || a.opened_at).getTime())
+  }, [orders, completedUnitFilter, completedSearch])
+
+  const filterUnits = useMemo(() => {
+    const map = new Map<number, Unit>()
+    units.forEach(u => map.set(u.id, u))
+    orders.filter(o => o.status === 'مكتمل' && o.unit).forEach(o => {
+      if (o.unit) map.set(o.unit_id, o.unit)
+    })
+    return Array.from(map.values()).sort((a, b) => a.fleet_no.localeCompare(b.fleet_no, 'ar'))
+  }, [units, orders])
+
+  const openCount = orders.filter(o => o.status === 'مفتوح').length
+  const inProgressCount = orders.filter(o => o.status === 'قيد التنفيذ').length
+  const completedCount = orders.filter(o => o.status === 'مكتمل').length
+  const urgentCount = orders.filter(o => (ACTIVE_STATUSES as readonly string[]).includes(o.status) && o.priority === 'عاجل').length
+
+  const tabBtn = (id: MaintenanceTab, label: string, count: number) => (
+    <button
+      type="button"
+      onClick={() => setTab(id)}
+      style={{
+        padding: '10px 16px', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
+        borderBottom: tab === id ? '2px solid #0d9488' : '2px solid transparent',
+        color: tab === id ? '#0d9488' : '#6b7280',
+        background: tab === id ? '#f0fdfa' : 'transparent',
+        borderRadius: '8px 8px 0 0',
+      }}
+    >
+      {label}
+      <span style={{
+        marginRight: '6px', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '10px',
+        background: tab === id ? '#0d9488' : '#e5e7eb', color: tab === id ? 'white' : '#6b7280',
+      }}>{count}</span>
+    </button>
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <FleetPageHeader title="صيانة الأسطول" description="داخلي (ورشة + قطع من مورد) | خارجي (مورد كامل) — تعديل وإعادة فتح متاح" />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-        <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>{openCount} أمر مفتوح</span>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <select value={filter} onChange={e => setFilter(e.target.value)} className="select" style={{ width: '140px' }}>
-            <option value="">الكل</option>
-            <option>مفتوح</option><option>قيد التنفيذ</option><option>مكتمل</option>
-          </select>
+      <FleetPageHeader title="صيانة الأسطول" description="أوامر نشطة ومتابعة — أرشيف الصيانات المنجزة" />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+        <div className="card" style={{ padding: '12px 14px', background: '#fffbeb' }}>
+          <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>مفتوحة</div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#e6820a' }}>{openCount}</div>
+        </div>
+        <div className="card" style={{ padding: '12px 14px', background: '#eff6ff' }}>
+          <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>قيد التنفيذ</div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#1a56db' }}>{inProgressCount}</div>
+        </div>
+        <div className="card" style={{ padding: '12px 14px', background: '#fef2f2' }}>
+          <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>عاجلة</div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#c81e1e' }}>{urgentCount}</div>
+        </div>
+        <div className="card" style={{ padding: '12px 14px', background: '#ecfdf5' }}>
+          <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>منجزة</div>
+          <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0ea77b' }}>{completedCount}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          {tabBtn('active', 'نشطة / معلقة', openCount + inProgressCount)}
+          {tabBtn('completed', 'منجزة', completedCount)}
+        </div>
+        {tab === 'active' && (
           <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ background: '#0d9488' }}>
             <Plus style={{ width: '16px' }} /> أمر عمل
           </button>
-        </div>
+        )}
       </div>
+
+      {tab === 'active' && (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {[{ v: '', l: 'الكل' }, { v: 'مفتوح', l: 'مفتوحة' }, { v: 'قيد التنفيذ', l: 'قيد التنفيذ' }, { v: '__urgent', l: 'عاجل فقط' }].map(p => (
+            <button key={p.v || 'all'} type="button"
+              onClick={() => setActiveStatusFilter(p.v === '__urgent' ? '__urgent' : p.v)}
+              style={{
+                padding: '5px 12px', borderRadius: '20px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer',
+                border: (p.v === '__urgent' ? activeStatusFilter === '__urgent' : activeStatusFilter === p.v) ? '1px solid #0d9488' : '1px solid var(--border)',
+                background: (p.v === '__urgent' ? activeStatusFilter === '__urgent' : activeStatusFilter === p.v) ? '#f0fdfa' : 'white',
+                color: (p.v === '__urgent' ? activeStatusFilter === '__urgent' : activeStatusFilter === p.v) ? '#0d9488' : '#6b7280',
+              }}>{p.l}</button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'completed' && (
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={completedUnitFilter} onChange={e => setCompletedUnitFilter(e.target.value)} className="select" style={{ minWidth: '200px' }}>
+            <option value="">كل المعدات</option>
+            {filterUnits.map(u => (
+              <option key={u.id} value={u.id}>{u.fleet_no} — {u.name}</option>
+            ))}
+          </select>
+          <div style={{ position: 'relative', flex: 1, minWidth: '220px', maxWidth: '360px' }}>
+            <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', color: '#9ca3af' }} />
+            <input
+              value={completedSearch}
+              onChange={e => setCompletedSearch(e.target.value)}
+              placeholder="بحث برقم الأمر أو الوصف..."
+              className="input"
+              style={{ paddingRight: '32px', width: '100%' }}
+            />
+          </div>
+          <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>{completedOrders.length} سجل</span>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
           <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#0d9488', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
         </div>
-      ) : (
+      ) : tab === 'active' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {filtered.map(wo => (
+          {activeOrders.map(wo => (
             <div key={wo.id} className="card" style={{ padding: '14px 16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
                 <div>
@@ -563,12 +690,15 @@ export default function FleetMaintenancePage() {
                     <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#0d9488' }}>{wo.wo_no}</span>
                     <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: wo.wo_type === 'CM' ? '#fef2f2' : '#fffbeb', color: wo.wo_type === 'CM' ? '#c81e1e' : '#e6820a', fontWeight: 700 }}>{wo.wo_type}</span>
                     <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '20px', background: wo.source === 'خارجي' ? '#eff6ff' : '#f3f4f6', color: wo.source === 'خارجي' ? '#1a56db' : '#6b7280', fontWeight: 600 }}>{wo.source}</span>
+                    {wo.priority === 'عاجل' && (
+                      <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '20px', background: '#fef2f2', color: '#c81e1e', fontWeight: 700 }}>عاجل</span>
+                    )}
                     {wo.po_id && wo.source === 'داخلي' && (
                       <span style={{ fontSize: '0.68rem', color: '#e6820a', fontWeight: 600 }}>+ قطع مورد</span>
                     )}
                     {wo.journal_posted_at && <span style={{ fontSize: '0.68rem', color: '#0ea77b', fontWeight: 600 }}>✓ مُرحّل محاسبياً</span>}
                   </div>
-                  <div style={{ fontWeight: 600, marginTop: '4px' }}>{wo.unit?.name} — {wo.description}</div>
+                  <div style={{ fontWeight: 600, marginTop: '4px' }}>{wo.unit?.fleet_no} {wo.unit?.name} — {wo.description}</div>
                   {(wo.vendor?.name || wo.vendor_name) && (
                     <div style={{ fontSize: '0.78rem', color: '#9ca3af' }}>مورد: {wo.vendor?.name || wo.vendor_name}</div>
                   )}
@@ -586,7 +716,7 @@ export default function FleetMaintenancePage() {
                 <span style={{ fontSize: '0.78rem', fontWeight: 700, color: wo.status === 'مكتمل' ? '#0ea77b' : '#1a56db' }}>{wo.status}</span>
               </div>
 
-              {wo.status !== 'مكتمل' && wo.status !== 'ملغي' && (
+              {wo.status !== 'ملغي' && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '8px', marginTop: '12px' }}>
                   <div><label style={{ fontSize: '0.68rem', color: '#9ca3af' }}>ساعات عمالة</label>
                     <input type="number" defaultValue={wo.labor_hours} onBlur={e => updateCosts(wo, 'labor_hours', Number(e.target.value))} className="input" dir="ltr" style={{ padding: '6px' }} /></div>
@@ -638,7 +768,42 @@ export default function FleetMaintenancePage() {
               </div>
             </div>
           ))}
-          {filtered.length === 0 && <p style={{ textAlign: 'center', color: '#9ca3af', padding: '40px' }}>لا توجد أوامر عمل</p>}
+          {activeOrders.length === 0 && (
+            <p style={{ textAlign: 'center', color: '#9ca3af', padding: '40px' }}>لا توجد أوامر نشطة — أنشئ أمر عمل جديد</p>
+          )}
+        </div>
+      ) : (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg2)' }}>
+                {['رقم الأمر', 'المعدة', 'النوع', 'المسار', 'الوصف', 'الإغلاق', 'الإجمالي', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: '0.72rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {completedOrders.length === 0 && (
+                <tr><td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>لا توجد صيانات منجزة</td></tr>
+              )}
+              {completedOrders.map(wo => (
+                <tr key={wo.id} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: '#0d9488' }}>{wo.wo_no}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{wo.unit?.fleet_no}<br /><span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{wo.unit?.name}</span></td>
+                  <td style={{ padding: '10px 12px' }}>{wo.wo_type}</td>
+                  <td style={{ padding: '10px 12px', fontSize: '0.78rem' }}>{wo.source}</td>
+                  <td style={{ padding: '10px 12px', maxWidth: '220px' }}>{wo.description}</td>
+                  <td style={{ padding: '10px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{formatDate(wo.completed_at)}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 700, direction: 'ltr', textAlign: 'right' }}>{fmt(wo.total_cost || calcWorkOrderTotal(wo))} ر.س</td>
+                  <td style={{ padding: '10px 8px' }}>
+                    <button onClick={() => setEditWo(wo)} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}>
+                      <Pencil style={{ width: '12px' }} /> تعديل
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
