@@ -320,7 +320,7 @@ export default function FleetCompliancePage() {
     }
 
     const rows = (dRes.data || []) as ComplianceDocRow[]
-    const poIds = [...new Set(rows.map(r => r.po_id).filter((id): id is number => id != null))]
+    const poIds = Array.from(new Set(rows.map(r => r.po_id).filter((id): id is number => id != null)))
 
     const [uRes, vRes, poRes] = await Promise.all([
       supabase.from('fleet_units').select('id,fleet_no,name').eq('tenant_id', tenant.id).eq('is_active', true),
