@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { CHART_OF_ACCOUNTS_SEED, coaAccountClass } from '@/data/chart-of-accounts-seed'
 import { buildCoaRepairRules, COA_NAME_FIXES } from '@/data/coa-repair-rules'
@@ -17,8 +18,12 @@ export type RepairCoaResult = {
 /**
  * زرع شجرة الحسابات المعيارية لشركة — يتخطى الأكواد الموجودة مسبقاً
  */
-export async function seedChartOfAccounts(tenantId: string): Promise<SeedCoaResult> {
-  const { data: existing } = await supabase
+export async function seedChartOfAccounts(
+  tenantId: string,
+  client?: SupabaseClient,
+): Promise<SeedCoaResult> {
+  const db = client ?? supabase
+  const { data: existing } = await db
     .from('finance_accounts')
     .select('code')
     .eq('tenant_id', tenantId)
@@ -27,7 +32,7 @@ export async function seedChartOfAccounts(tenantId: string): Promise<SeedCoaResu
   const codeToId = new Map<string, number>()
 
   if (existingCodes.size > 0) {
-    const { data: existingRows } = await supabase
+    const { data: existingRows } = await db
       .from('finance_accounts')
       .select('id, code')
       .eq('tenant_id', tenantId)
@@ -47,7 +52,7 @@ export async function seedChartOfAccounts(tenantId: string): Promise<SeedCoaResu
 
     const parentId = acc.parent_code ? codeToId.get(acc.parent_code) ?? null : null
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('finance_accounts')
       .insert({
         tenant_id:      tenantId,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
 import {
   authEmailForEmployee,
   hashPasswordServer,
@@ -89,6 +90,21 @@ export async function POST(request: Request) {
     }
     if (!emp.is_active) {
       return NextResponse.json({ error: 'هذا الحساب معطّل' }, { status: 403 })
+    }
+
+    const { data: tenantRow, error: tenantError } = await admin
+      .from('tenants')
+      .select('is_active, expires_at')
+      .eq('id', emp.tenant_id)
+      .single()
+
+    if (tenantError || !tenantRow) {
+      return NextResponse.json({ error: 'تعذّر التحقق من بيانات الشركة' }, { status: 500 })
+    }
+
+    const tenantCheck = assertTenantLoginAllowed(tenantRow)
+    if (!tenantCheck.ok) {
+      return NextResponse.json({ error: tenantCheck.error }, { status: tenantCheck.status })
     }
 
     if (needsUpgrade) {

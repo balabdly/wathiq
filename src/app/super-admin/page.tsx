@@ -1,82 +1,38 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import {
   Building2, Plus, Pencil, X, Save, Shield, CheckCircle2,
-  AlertTriangle, Users, Calendar, Power, ChevronDown, Lock
+  AlertTriangle, Users, Lock, LogOut,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { seedChartOfAccounts } from '@/lib/seed-chart-of-accounts'
+import {
+  PLANS,
+  MODULE_LABELS,
+  ALL_MODULE_KEYS,
+  defaultModulesForPlan,
+  mergeTenantModules,
+  normalizePlan,
+  type TenantPlanKey,
+} from '@/lib/tenant-plans'
 
-// Supabase client مباشر (بدون useStore)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-// كلمة مرور super-admin تُتحقق منها الآن بالخادم عبر /api/super-admin/verify — لا نص مكشوف بالمتصفح
-
-// ── الخطط السعرية ─────────────────────────────────────────────────
-const PLANS = {
-  basic: {
-    label: 'أساسي',
-    price: 299,
-    color: '#4b5563', bg: '#f3f4f6',
-    maxUsers: 3,
-    modules: {
-      projects: true, inventory: true, purchases: false,
-      employees: false, visits: false, qhse: false,
-      finance: false, reports: false,
-    },
-  },
-  advanced: {
-    label: 'متقدم',
-    price: 599,
-    color: '#1a56db', bg: '#eff6ff',
-    maxUsers: 10,
-    modules: {
-      projects: true, inventory: true, purchases: true,
-      employees: true, visits: false, qhse: false,
-      finance: true, reports: true,
-    },
-  },
-  complete: {
-    label: 'متكامل',
-    price: 999,
-    color: '#7c3aed', bg: '#f5f3ff',
-    maxUsers: 999,
-    modules: {
-      projects: true, inventory: true, purchases: true,
-      employees: true, visits: true, qhse: true,
-      finance: true, reports: true,
-    },
-  },
+const lbl: React.CSSProperties = {
+  display: 'block', fontSize: '0.875rem', fontWeight: 600,
+  color: 'var(--text2, #374151)', marginBottom: '6px',
 }
 
-const MODULE_LABELS: Record<string, string> = {
-  projects:  '📁 المشاريع',
-  inventory: '📦 المخزون',
-  purchases: '🛒 المشتريات',
-  employees: '👥 الموظفون',
-  visits:    '✅ الزيارات',
-  qhse:      '🛡️ السلامة والجودة',
-  finance:   '💰 المالية والمحاسبة',
-  reports:   '📊 التقارير',
-}
+const fetchOpts = { credentials: 'include' as RequestCredentials }
 
-const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }
-
-// ── نافذة إضافة / تعديل شركة ─────────────────────────────────────
 function CompanyModal({ company, onClose, onSave }: {
   company: any | null
   onClose: () => void
   onSave: (data: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
+  const initialPlan = normalizePlan(company?.plan)
   const [form, setForm] = useState({
     name:        company?.name        || '',
     name_en:     company?.name_en     || '',
-    plan:        company?.plan        || 'basic',
+    plan:        initialPlan,
     expires_at:  company?.expires_at  || '',
     is_active:   company?.is_active   ?? true,
     phone:       company?.phone       || '',
@@ -86,13 +42,15 @@ function CompanyModal({ company, onClose, onSave }: {
     admin_name:     '',
   })
   const [modules, setModules] = useState<Record<string, boolean>>(
-    company?.modules || { ...PLANS.basic.modules }
+    company?.modules
+      ? mergeTenantModules(company.modules, initialPlan)
+      : defaultModulesForPlan('basic'),
   )
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
 
-  function applyPlan(planKey: string) {
+  function applyPlan(planKey: TenantPlanKey) {
     set('plan', planKey)
-    setModules({ ...PLANS[planKey as keyof typeof PLANS].modules })
+    setModules({ ...defaultModulesForPlan(planKey) })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -121,8 +79,6 @@ function CompanyModal({ company, onClose, onSave }: {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-
-            {/* بيانات الشركة */}
             <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>بيانات الشركة</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
@@ -143,11 +99,10 @@ function CompanyModal({ company, onClose, onSave }: {
               </div>
             </div>
 
-            {/* الخطة */}
             <div style={{ marginTop: '16px' }}>
               <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>الخطة السعرية</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                {Object.entries(PLANS).map(([key, plan]) => {
+                {(Object.entries(PLANS) as [TenantPlanKey, typeof PLANS.basic][]).map(([key, plan]) => {
                   const active = form.plan === key
                   return (
                     <button key={key} type="button" onClick={() => applyPlan(key)}
@@ -170,11 +125,11 @@ function CompanyModal({ company, onClose, onSave }: {
               </div>
             </div>
 
-            {/* الوحدات */}
             <div style={{ marginTop: '16px' }}>
               <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>الوحدات المفعّلة</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {Object.entries(MODULE_LABELS).map(([key, label]) => {
+                {ALL_MODULE_KEYS.map(key => {
+                  const label = MODULE_LABELS[key]
                   const on = modules[key]
                   return (
                     <button key={key} type="button"
@@ -196,7 +151,6 @@ function CompanyModal({ company, onClose, onSave }: {
               </div>
             </div>
 
-            {/* الاشتراك */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '16px' }}>
               <div>
                 <label style={lbl}>تاريخ انتهاء الاشتراك</label>
@@ -213,7 +167,6 @@ function CompanyModal({ company, onClose, onSave }: {
               </div>
             </div>
 
-            {/* بيانات المستخدم الأدمن — للشركات الجديدة فقط */}
             {!company && (
               <div style={{ marginTop: '16px' }}>
                 <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -239,7 +192,6 @@ function CompanyModal({ company, onClose, onSave }: {
                 </div>
               </div>
             )}
-
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -256,9 +208,9 @@ function CompanyModal({ company, onClose, onSave }: {
   )
 }
 
-// ── الصفحة الرئيسية ───────────────────────────────────────────────
 export default function SuperAdminPage() {
   const [authenticated, setAuth] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
   const [password, setPassword]  = useState('')
   const [loading, setLoading]    = useState(false)
   const [companies, setCompanies] = useState<any[]>([])
@@ -266,8 +218,15 @@ export default function SuperAdminPage() {
   const [editCompany, setEdit]    = useState<any | null>(null)
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('super_admin_auth')
-    if (saved === 'true') { setAuth(true); loadCompanies() }
+    fetch('/api/super-admin/session', fetchOpts)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          setAuth(true)
+          loadCompanies()
+        }
+      })
+      .finally(() => setCheckingSession(false))
   }, [])
 
   async function handleLogin(e: React.FormEvent) {
@@ -275,13 +234,15 @@ export default function SuperAdminPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/super-admin/verify', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ password }),
       })
       const data = await res.json()
       if (data.ok) {
-        sessionStorage.setItem('super_admin_auth', 'true')
         setAuth(true)
+        setPassword('')
         loadCompanies()
       } else {
         toast.error(data.error || 'كلمة المرور غير صحيحة')
@@ -293,40 +254,60 @@ export default function SuperAdminPage() {
     }
   }
 
+  async function handleLogout() {
+    await fetch('/api/super-admin/logout', { method: 'POST', ...fetchOpts })
+    setAuth(false)
+    setCompanies([])
+  }
+
   async function loadCompanies() {
     setLoading(true)
-    const { data } = await supabase.from('tenants').select('*').order('created_at', { ascending: false })
-    setCompanies(data || [])
-    setLoading(false)
+    try {
+      const res = await fetch('/api/super-admin/tenants', fetchOpts)
+      const data = await res.json()
+      if (!data.ok) {
+        if (res.status === 401) setAuth(false)
+        toast.error(data.error || 'تعذّر تحميل الشركات')
+        return
+      }
+      setCompanies(data.tenants || [])
+    } catch {
+      toast.error('تعذّر تحميل الشركات')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleSave(data: any) {
     try {
+      const planKey = normalizePlan(data.plan)
+      const payload = {
+        ...data,
+        plan: planKey,
+        max_users: PLANS[planKey].maxUsers,
+      }
+
       if (editCompany) {
-        const { error } = await supabase.from('tenants').update({
-          name: data.name, name_en: data.name_en || null,
-          phone: data.phone || null, email: data.email || null,
-          plan: data.plan, modules: data.modules, is_active: data.is_active,
-          expires_at: data.expires_at || null,
-          max_users: PLANS[data.plan as keyof typeof PLANS]?.maxUsers || 3,
-        }).eq('id', editCompany.id)
-        if (error) throw error
-        toast.success('تم تعديل بيانات الشركة ✅')
-      } else {
-        // إنشاء كامل بالخادم — تشفير حقيقي للباسورد + جسر Supabase Auth، لا شيء بالمتصفح
-        const res = await fetch('/api/super-admin/create-tenant', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...data,
-            max_users: PLANS[data.plan as keyof typeof PLANS]?.maxUsers || 3,
-          }),
+        const res = await fetch('/api/super-admin/update-tenant', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id: editCompany.id, ...payload }),
         })
         const result = await res.json()
         if (!result.ok) throw new Error(result.error)
-
-        const seedResult = await seedChartOfAccounts(result.tenantId)
-        if (seedResult.inserted > 0) {
-          toast.success(`تم زرع ${seedResult.inserted} حساب في شجرة الحسابات المعيارية`)
+        toast.success('تم تعديل بيانات الشركة ✅')
+      } else {
+        const res = await fetch('/api/super-admin/create-tenant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        })
+        const result = await res.json()
+        if (!result.ok) throw new Error(result.error)
+        if (result.seedInserted > 0) {
+          toast.success(`تم زرع ${result.seedInserted} حساب في شجرة الحسابات المعيارية`)
         }
         toast.success(`تم إضافة شركة "${data.name}" بنجاح ✅`)
       }
@@ -334,15 +315,28 @@ export default function SuperAdminPage() {
       await loadCompanies()
       setShowModal(false)
       setEdit(null)
-    } catch (err: any) {
-      toast.error(`خطأ: ${err.message}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
+      toast.error(`خطأ: ${message}`)
     }
   }
 
   async function toggleActive(company: any) {
-    await supabase.from('tenants').update({ is_active: !company.is_active }).eq('id', company.id)
-    await loadCompanies()
-    toast.success(company.is_active ? 'تم تعطيل الشركة' : 'تم تفعيل الشركة ✅')
+    try {
+      const res = await fetch('/api/super-admin/toggle-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ id: company.id }),
+      })
+      const result = await res.json()
+      if (!result.ok) throw new Error(result.error)
+      await loadCompanies()
+      toast.success(result.is_active ? 'تم تفعيل الشركة ✅' : 'تم تعطيل الشركة')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
+      toast.error(message)
+    }
   }
 
   function daysLeft(expiresAt: string | null) {
@@ -350,7 +344,14 @@ export default function SuperAdminPage() {
     return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000)
   }
 
-  // ── شاشة تسجيل الدخول ──
+  if (checkingSession) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2, #f8fafc)' }}>
+        <span style={{ width: '24px', height: '24px', border: '2px solid rgba(26,86,219,0.3)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
+
   if (!authenticated) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg2, #f8fafc)' }}>
@@ -381,13 +382,14 @@ export default function SuperAdminPage() {
 
   const activeCount  = companies.filter(c => c.is_active).length
   const expiringSoon = companies.filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 14 && d > 0 }).length
-  const revenue      = companies.filter(c => c.is_active).reduce((s, c) => s + (PLANS[c.plan as keyof typeof PLANS]?.price || 0), 0)
+  const revenue      = companies.filter(c => c.is_active).reduce((s, c) => {
+    const plan = PLANS[normalizePlan(c.plan)]
+    return s + (plan?.price || 0)
+  }, 0)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg2, #f8fafc)', padding: '24px' }}>
       <div style={{ maxWidth: '1152px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
-        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -396,12 +398,16 @@ export default function SuperAdminPage() {
             </h1>
             <p style={{ color: 'var(--text3)', fontSize: '0.875rem', marginTop: '2px' }}>إدارة الشركات المشتركة</p>
           </div>
-          <button onClick={() => { setEdit(null); setShowModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '15px', height: '15px' }} /> إضافة شركة
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={handleLogout} className="btn btn-ghost">
+              <LogOut style={{ width: '15px', height: '15px' }} /> خروج
+            </button>
+            <button onClick={() => { setEdit(null); setShowModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '15px', height: '15px' }} /> إضافة شركة
+            </button>
+          </div>
         </div>
 
-        {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
           {[
             { label: 'إجمالي الشركات', value: companies.length,   color: '#2563eb', bg: '#eff6ff' },
@@ -416,7 +422,6 @@ export default function SuperAdminPage() {
           ))}
         </div>
 
-        {/* جدول الشركات */}
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h3 style={{ fontWeight: 600, color: 'var(--text2, #374151)' }}>الشركات المشتركة</h3>
@@ -440,10 +445,10 @@ export default function SuperAdminPage() {
                     <td colSpan={6} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text3)' }}>لا توجد شركات مضافة</td>
                   </tr>
                 ) : companies.map(c => {
-                  const plan = PLANS[c.plan as keyof typeof PLANS]
+                  const plan = PLANS[normalizePlan(c.plan)]
                   const days = daysLeft(c.expires_at)
-                  const mods = c.modules || {}
-                  const activeModules = Object.entries(mods).filter(([, v]) => v).length
+                  const mods = mergeTenantModules(c.modules, c.plan)
+                  const activeModules = ALL_MODULE_KEYS.filter(k => mods[k]).length
                   return (
                     <tr key={c.id} style={{ borderTop: '1px solid var(--bg2, #f8fafc)', opacity: c.is_active ? 1 : 0.6 }}>
                       <td style={{ padding: '16px 20px' }}>
@@ -459,11 +464,11 @@ export default function SuperAdminPage() {
                       </td>
                       <td style={{ padding: '16px', textAlign: 'center' }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text2, #374151)' }}>
-                          {activeModules} / {Object.keys(MODULE_LABELS).length}
+                          {activeModules} / {ALL_MODULE_KEYS.length}
                         </div>
                         <div style={{ display: 'flex', gap: '2px', justifyContent: 'center', marginTop: '4px', flexWrap: 'wrap' }}>
-                          {Object.entries(MODULE_LABELS).map(([key, label]) => (
-                            <div key={key} title={label}
+                          {ALL_MODULE_KEYS.map(key => (
+                            <div key={key} title={MODULE_LABELS[key]}
                               style={{ width: '8px', height: '8px', borderRadius: '50%', background: mods[key] ? '#34d399' : 'var(--bg2, #e5e7eb)' }} />
                           ))}
                         </div>
@@ -508,7 +513,6 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
-        {/* تحذيرات الانتهاء */}
         {expiringSoon > 0 && (
           <div className="card" style={{ padding: '16px', border: '1px solid #fde68a', background: 'rgba(255,251,235,0.5)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -527,7 +531,6 @@ export default function SuperAdminPage() {
             </div>
           </div>
         )}
-
       </div>
 
       {showModal && (
