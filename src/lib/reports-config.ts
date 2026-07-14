@@ -21,7 +21,7 @@ export type ReportSectionMeta = {
 export const REPORT_COUNTS = {
   finance: 18,
   hr: 6,
-  projects: 7,
+  projects: 8,
   inventory: 7,
   visits: 5,
   qhse: 3, // مخططة — حوادث، تدقيق، شهادات
@@ -108,6 +108,16 @@ export const FEATURED_REPORTS = [
     bg: '#eff6ff',
     border: '#bfdbfe',
     href: '/reports/executive',
+  },
+  {
+    id: 'team-workload',
+    label: 'حمولة فرق العمل',
+    description: 'مشاريع نشطة، مهام مفتوحة، وNCR لكل فريق',
+    icon: Users,
+    color: '#7c3aed',
+    bg: '#f5f3ff',
+    border: '#ddd6fe',
+    href: '/reports/team-workload',
   },
   {
     id: 'project-profitability',

@@ -2,14 +2,13 @@
 /**
  * QuickQhseModal — يفتح مودال زيارة السلامة أو الجودة أو البيئة
  * مباشرةً من أي مكان (مثلاً من صفحة المشاريع) دون الانتقال لصفحة QHSE.
- * يجلب المهندسين والمشاريع داخلياً بـ lazy loading.
  */
 import { useState, useEffect } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { fetchAssigneeOptions } from '@/lib/project-teams'
 import dynamic from 'next/dynamic'
 
-// تحميل مودالات QHSE بشكل كسول
 const InspectionVisitModal  = dynamic(() => import('@/app/(dashboard)/qhse/safety/InspectionVisitModal'),  { ssr: false })
 const SafetyObservationModal= dynamic(() => import('@/app/(dashboard)/qhse/safety/SafetyObservationModal'),{ ssr: false })
 const QualityInspectionModal= dynamic(() => import('@/app/(dashboard)/qhse/quality/QualityInspectionModal'),{ ssr: false })
@@ -25,37 +24,53 @@ export type QhseVisitType =
 
 interface Props {
   type:      QhseVisitType
-  projectId?: number   // يُعبَّأ تلقائياً في المودال
+  projectId?: number
   onClose:   () => void
   onSave?:   () => void
 }
 
 export default function QuickQhseModal({ type, projectId, onClose, onSave }: Props) {
-  const { tenant, activeBranch } = useStore()
-  const [projects,  setProjects]  = useState<any[]>([])
-  const [employees, setEmployees] = useState<any[]>([])
-  const [loading,   setLoading]   = useState(true)
+  const { tenant } = useStore()
+  const [projects,        setProjects]        = useState<{ id: number; name: string }[]>([])
+  const [employees,       setEmployees]       = useState<{ id: number; name: string; job_title?: string }[]>([])
+  const [defaultEngineer, setDefaultEngineer] = useState<string | undefined>()
+  const [loading,         setLoading]         = useState(true)
 
   useEffect(() => {
     if (!tenant) return
-    Promise.all([
-      supabase.from('projects')
-        .select('id, name')
-        .eq('tenant_id', tenant.id)
-        .order('name'),
-      supabase.from('hr_employees')
-        .select('id, name, job_title')
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .order('name'),
-    ]).then(([pRes, eRes]) => {
-      setProjects(pRes.data  || [])
-      setEmployees(eRes.data || [])
-      setLoading(false)
-    })
-  }, [tenant?.id])
+    async function load() {
+      const pQuery = supabase.from('projects')
+        .select('id, name, team_id, engineer')
+        .eq('tenant_id', tenant!.id)
+        .order('name')
 
-  // Spinner بسيط أثناء الجلب
+      const { data: projData } = await pQuery
+      setProjects(projData || [])
+
+      if (projectId) {
+        const proj = (projData || []).find(p => p.id === projectId)
+        if (proj) {
+          const members = await fetchAssigneeOptions(supabase, tenant!.id, proj.team_id)
+          setEmployees(members.map(m => ({ id: m.id, name: m.name, job_title: m.job_title })))
+          const lead = members.find(m => m.role_in_team === 'قائد')
+          setDefaultEngineer(proj.engineer || lead?.name)
+        } else {
+          const { data: single } = await supabase.from('projects')
+            .select('team_id, engineer').eq('id', projectId).single()
+          const members = await fetchAssigneeOptions(supabase, tenant!.id, single?.team_id)
+          setEmployees(members.map(m => ({ id: m.id, name: m.name, job_title: m.job_title })))
+          setDefaultEngineer(single?.engineer || members.find(m => m.role_in_team === 'قائد')?.name)
+        }
+      } else {
+        const { data: allEmp } = await supabase.from('hr_employees')
+          .select('id, name, job_title').eq('tenant_id', tenant!.id).eq('is_active', true).order('name')
+        setEmployees(allEmp || [])
+      }
+      setLoading(false)
+    }
+    load()
+  }, [tenant?.id, projectId])
+
   if (loading) return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 400, padding: 40, textAlign: 'center' }}>
@@ -70,11 +85,11 @@ export default function QuickQhseModal({ type, projectId, onClose, onSave }: Pro
   const shared = {
     projects,
     employees,
+    defaultEngineer,
     onClose,
     onSave: () => { onSave?.(); onClose() },
   }
 
-  // إذا مُرِّر projectId، أضف المشروع للقائمة إن لم يكن موجوداً
   const projectsWithCurrent = projectId && !projects.find(p => p.id === projectId)
     ? [{ id: projectId, name: `مشروع #${projectId}` }, ...projects]
     : projects

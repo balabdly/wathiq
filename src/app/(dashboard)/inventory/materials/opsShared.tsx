@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { fetchOpenReservations } from '@/lib/pmc-service'
+import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
 import type { MaterialReservation } from '@/lib/pmc-types'
 
@@ -150,9 +151,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     vendor_name: '', doc_code: '', booking_no: '',
     client_name_recv: '', exit_permit_no: '',
     reservation_id: '',
+    requested_by: '',
     date: new Date().toISOString().split('T')[0], return_type: '',
   })
   const [reservations, setReservations] = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[]>([])
+  const [teamMembers, setTeamMembers] = useState<AssigneeOption[]>([])
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   // قائمة العملاء المحفوظة محلياً
@@ -185,8 +188,10 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   }, [form.project_id, form.warehouse_id, type])
 
   useEffect(() => {
-    if (!form.project_id) { setReservations([]); return }
+    if (!form.project_id) { setReservations([]); setTeamMembers([]); return }
     fetchOpenReservations(tenantId, Number(form.project_id)).then(({ data }) => setReservations(data || []))
+    supabase.from('projects').select('team_id').eq('id', Number(form.project_id)).single()
+      .then(({ data: proj }) => fetchAssigneeOptions(supabase, tenantId, proj?.team_id).then(setTeamMembers))
   }, [form.project_id, tenantId])
 
   async function loadMats() {
@@ -210,9 +215,15 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   }
 
   function handleProjectChange(projectId: string) {
-    const proj = projects.find((p: any) => p.id === Number(projectId))
+    const proj = projects.find((p: { id: number; name: string }) => p.id === Number(projectId))
     set('project_id', projectId); set('project_name', proj?.name || '')
-    set('reservation_id', ''); set('booking_no', '')
+    set('reservation_id', ''); set('booking_no', ''); set('requested_by', '')
+  }
+
+  function noteWithRequester(note: string): string {
+    if (!form.requested_by) return note
+    const prefix = `طلب: ${form.requested_by}`
+    return note ? `${prefix} — ${note}` : prefix
   }
 
   function handleReservationChange(reservationId: string) {
@@ -408,7 +419,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
         doc_code:      form.doc_code || null,
         booking_no:    form.booking_no || null,
         return_type:   type === 'إرجاع' ? (form.return_type || null) : null,
-        dispatch_note: row.note || null,
+        dispatch_note: noteWithRequester(row.note || ''),
         attachment_url: attachmentUrl,
       })
       if (ledErr) {
@@ -528,6 +539,23 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               <select value={form.project_id} onChange={e => handleProjectChange(e.target.value)} className="select">
                 <option value="">— اختر المشروع —</option>
                 {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* طالب الصرف — من فريق المشروع */}
+          {isProjectWh && form.project_id && (type === 'صرف' || type === 'استلام') && teamMembers.length > 0 && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
+                طالب العملية <span style={{ fontSize: '0.72rem', fontWeight: 400, color: 'var(--text3)' }}>(من الفريق)</span>
+              </label>
+              <select value={form.requested_by} onChange={e => set('requested_by', e.target.value)} className="select">
+                <option value="">— اختياري —</option>
+                {teamMembers.map(m => (
+                  <option key={m.id} value={m.name}>
+                    {m.name}{m.role_in_team ? ` (${m.role_in_team})` : ''}
+                  </option>
+                ))}
               </select>
             </div>
           )}

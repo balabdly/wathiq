@@ -6,9 +6,10 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import {
   FolderOpen, Search, Package, AlertTriangle, RotateCcw,
-  ChevronDown, ChevronUp, Download, ArrowLeftRight
+  ChevronDown, ChevronUp, Download, ArrowLeftRight, Users
 } from 'lucide-react'
 
 // ══════════════════════════════════════════
@@ -23,7 +24,7 @@ const MOVEMENT_COLORS = {
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
 
-type Project     = { id: number; name: string; status?: string; location?: string }
+type Project     = { id: number; name: string; status?: string; location?: string; team_id?: number | null; engineer?: string }
 type ProjectMat  = {
   id: number; project_id: number; material_id: number; warehouse_id: number
   qty_received: number; qty_issued: number; qty_returned: number; qty_balance: number
@@ -40,47 +41,66 @@ type Loan = {
 // الصفحة الرئيسية
 // ══════════════════════════════════════════
 export default function InventoryProjectsPage() {
-  const { tenant } = useStore()
+  const { tenant, activeBranch } = useStore()
 
   const [projects,    setProjects]    = useState<Project[]>([])
   const [projNames,   setProjNames]   = useState<Record<number, string>>({})
+  const [teamNames,   setTeamNames]   = useState<Record<number, string>>({})
+  const [teamTypes,   setTeamTypes]   = useState<Record<number, string>>({})
+  const [teamsList,   setTeamsList]   = useState<{ id: number; name: string }[]>([])
   const [materials,   setMaterials]   = useState<Record<number, ProjectMat[]>>({})
   const [loans,       setLoans]       = useState<Record<number, Loan[]>>({})
   const [loading,     setLoading]     = useState(true)
   const [search,      setSearch]      = useState('')
+  const [teamFilter,  setTeamFilter]  = useState('')
   const [expanded,    setExpanded]    = useState<Set<number>>(new Set())
   const [loadingProj, setLoadingProj] = useState<Set<number>>(new Set())
-  const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, zeroBalance: 0, openLoans: 0 })
+  const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, zeroBalance: 0, openLoans: 0, noTeam: 0 })
 
-  useEffect(() => { if (tenant) loadBase() }, [tenant?.id])
+  useEffect(() => { if (tenant && activeBranch) loadBase() }, [tenant?.id, activeBranch?.id])
 
   async function loadBase() {
-    if (!tenant) return
+    if (!tenant || !activeBranch) return
     setLoading(true)
     const { data: pmData } = await supabase.from('project_materials')
       .select('project_id').eq('tenant_id', tenant.id)
-    const projectIds = Array.from(new Set((pmData || []).map((p: any) => p.project_id)))
-    if (projectIds.length === 0) { setLoading(false); return }
+    const projectIds = Array.from(new Set((pmData || []).map((p: { project_id: number }) => p.project_id)))
+    if (projectIds.length === 0) { setLoading(false); setProjects([]); return }
 
-    const [projRes, allProjRes, allPM, loansRes] = await Promise.all([
-      supabase.from('projects').select('id, name, status, location')
+    const [projRes, allProjRes, allPM, loansRes, teamsRes] = await Promise.all([
+      supabase.from('projects').select('id, name, status, location, team_id, engineer')
         .in('id', projectIds)
-        .neq('status', 'مكتمل')  // إخفاء المكتملة
+        .eq('tenant_id', tenant.id)
+        .eq('branch_id', activeBranch.id)
+        .neq('status', 'مكتمل')
         .order('name'),
-      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id),
+      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
       supabase.from('project_materials').select('qty_balance').eq('tenant_id', tenant.id),
       supabase.from('project_material_loans').select('status').eq('tenant_id', tenant.id),
+      supabase.from('teams').select('id, name, team_type')
+        .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id).eq('is_active', true),
     ])
 
     const zeroBalance = (allPM.data || []).filter(m => Number(m.qty_balance) === 0).length
     const openLoans   = (loansRes.data || []).filter(l => l.status !== 'مُعاد كلياً').length
+    const projList = projRes.data || []
+    const noTeam = projList.filter((p: Project) => !p.team_id).length
 
     const nameMap: Record<number, string> = {}
-    ;(allProjRes.data || []).forEach((p: any) => { nameMap[p.id] = p.name })
+    ;(allProjRes.data || []).forEach((p: { id: number; name: string }) => { nameMap[p.id] = p.name })
+    const tMap: Record<number, string> = {}
+    const tTypeMap: Record<number, string> = {}
+    ;(teamsRes.data || []).forEach((t: { id: number; name: string; team_type: string }) => {
+      tMap[t.id] = t.name
+      tTypeMap[t.id] = t.team_type
+    })
 
-    setProjects(projRes.data || [])
+    setProjects(projList)
     setProjNames(nameMap)
-    setKpis({ totalProjects: projectIds.length, totalMaterials: allPM.data?.length || 0, zeroBalance, openLoans })
+    setTeamNames(tMap)
+    setTeamTypes(tTypeMap)
+    setTeamsList((teamsRes.data || []).map((t: { id: number; name: string }) => ({ id: t.id, name: t.name })))
+    setKpis({ totalProjects: projectIds.length, totalMaterials: allPM.data?.length || 0, zeroBalance, openLoans, noTeam })
     setLoading(false)
   }
 
@@ -138,7 +158,12 @@ export default function InventoryProjectsPage() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `مواد_${proj.name}.xls`; a.click()
   }
 
-  const filtered = projects.filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = projects.filter(p => {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (teamFilter === 'none') return !p.team_id
+    if (teamFilter && String(p.team_id) !== teamFilter) return false
+    return true
+  })
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
@@ -166,6 +191,7 @@ export default function InventoryProjectsPage() {
           { label: 'إجمالي الأصناف',    value: kpis.totalMaterials, color: '#1a56db', bg: '#eff6ff', icon: Package        },
           { label: 'أصناف رصيدها صفر', value: kpis.zeroBalance,    color: '#c81e1e', bg: '#fef2f2', icon: AlertTriangle  },
           { label: 'ذمم استعارة مفتوحة', value: kpis.openLoans,    color: '#7c3aed', bg: '#f5f3ff', icon: ArrowLeftRight, alert: kpis.openLoans > 0 },
+          { label: 'بدون فريق',           value: kpis.noTeam,       color: kpis.noTeam > 0 ? '#c81e1e' : '#6b7280', bg: kpis.noTeam > 0 ? '#fef2f2' : '#f3f4f6', icon: Users, alert: kpis.noTeam > 0 },
         ].map(kpi => (
           <div key={kpi.label} style={{ background: kpi.bg, border: `1px solid ${kpi.color}22`, borderRadius: '12px', padding: '14px', position: 'relative' }}>
             {(kpi as any).alert && <div style={{ position: 'absolute', top: '10px', left: '10px', width: '8px', height: '8px', borderRadius: '50%', background: '#c81e1e' }} className="pulse-dot" />}
@@ -186,11 +212,18 @@ export default function InventoryProjectsPage() {
         ))}
       </div>
 
-      {/* البحث */}
-      <div style={{ position: 'relative', maxWidth: '300px' }}>
-        <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="بحث باسم المشروع..." className="input" style={{ paddingRight: '32px', fontSize: '0.82rem' }} />
+      {/* البحث والفلترة */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', maxWidth: '300px' }}>
+          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="بحث باسم المشروع..." className="input" style={{ paddingRight: '32px', fontSize: '0.82rem', width: '100%' }} />
+        </div>
+        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
+          <option value="">كل الفرق</option>
+          <option value="none">⚠️ بدون فريق</option>
+          {teamsList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
       </div>
 
       {/* قائمة المشاريع */}
@@ -227,6 +260,18 @@ export default function InventoryProjectsPage() {
                       <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {proj.status && <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '10px', padding: '1px 7px', fontWeight: 600 }}>{proj.status}</span>}
+                        {proj.team_id && teamNames[proj.team_id] ? (
+                          <span style={{
+                            background: TEAM_TYPE_STYLE[teamTypes[proj.team_id]]?.bg || '#f5f3ff',
+                            color: TEAM_TYPE_STYLE[teamTypes[proj.team_id]]?.color || '#7c3aed',
+                            borderRadius: '10px', padding: '1px 7px', fontWeight: 600,
+                          }}>
+                            👥 {teamNames[proj.team_id]}
+                          </span>
+                        ) : (
+                          <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '10px', padding: '1px 7px', fontWeight: 600, fontSize: '0.68rem' }}>بدون فريق</span>
+                        )}
+                        {proj.engineer && <span>👤 {proj.engineer}</span>}
                         {proj.location && <span>📍 {proj.location}</span>}
                         {projLoans.length > 0 && (
                           <span style={{ background: '#f5f3ff', color: '#7c3aed', borderRadius: '10px', padding: '1px 7px', fontWeight: 700 }}>

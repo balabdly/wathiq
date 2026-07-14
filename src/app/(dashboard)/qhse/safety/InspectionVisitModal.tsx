@@ -39,10 +39,11 @@ const lbl: React.CSSProperties = {
   fontWeight: 600, color: 'var(--text)', marginBottom: '5px'
 }
 
-export default function InspectionVisitModal({ projects, employees, onClose, onSave, defaultProjectId }: {
+export default function InspectionVisitModal({ projects, employees, onClose, onSave, defaultProjectId, defaultEngineer }: {
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
   defaultProjectId?: number
+  defaultEngineer?: string
 }) {
   const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
@@ -87,7 +88,7 @@ export default function InspectionVisitModal({ projects, employees, onClose, onS
     location:             '',
     project_id:           defaultProjectId ? String(defaultProjectId) : '',
     location_name:        '',
-    engineer:             currentUser?.name || '',
+    engineer:             defaultEngineer || currentUser?.name || '',
     supervisor_name:      '',
     work_order_source:    '',
     work_order_receiver:  '',

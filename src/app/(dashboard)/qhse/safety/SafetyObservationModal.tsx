@@ -13,10 +13,11 @@ const lbl: React.CSSProperties = {
   fontWeight: 600, color: 'var(--text)', marginBottom: '6px'
 }
 
-export default function SafetyObservationModal({ projects, employees, onClose, onSave, defaultProjectId }: {
+export default function SafetyObservationModal({ projects, employees, onClose, onSave, defaultProjectId, defaultEngineer }: {
   projects: Project[]; employees: Employee[]
   onClose: () => void; onSave: () => void
   defaultProjectId?: number
+  defaultEngineer?: string
 }) {
   const { tenant, currentUser, activeBranch } = useStore()
   const [saving, setSaving] = useState(false)
@@ -50,7 +51,7 @@ export default function SafetyObservationModal({ projects, employees, onClose, o
     location:         '',
     project_id:       defaultProjectId ? String(defaultProjectId) : '',
     location_name:    '',
-    engineer:         currentUser?.name || '',
+    engineer:         defaultEngineer || currentUser?.name || '',
     description:      '',
     severity:         'متوسط',
     corrective:       '',
