@@ -37,6 +37,7 @@ const ALL_PERMISSIONS = [
   { key: 'employees',      label: 'الموارد البشرية' },
   { key: 'reports',        label: 'التقارير' },
   { key: 'finance',        label: 'المالية والمحاسبة' },
+  { key: 'fleet',          label: 'الأسطول' },
 ]
 
 type Emp = {
