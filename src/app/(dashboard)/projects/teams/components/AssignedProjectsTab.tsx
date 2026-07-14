@@ -8,7 +8,7 @@ import type { TeamsPageData, ProjectRow } from './types'
 import { fmtDateTime } from './types'
 
 export default function AssignedProjectsTab({ data }: { data: TeamsPageData }) {
-  const { teams, projects, tenantId, canEdit, currentUserName, currentUserEmployeeId, reload } = data
+  const { teams, members, projects, tenantId, canEdit, currentUserName, currentUserEmployeeId } = data
   const [teamFilter, setTeamFilter] = useState<number | ''>('')
   const [selectedProject, setSelectedProject] = useState<ProjectRow | null>(null)
   const [logs, setLogs] = useState<TeamProjectLog[]>([])
@@ -16,6 +16,14 @@ export default function AssignedProjectsTab({ data }: { data: TeamsPageData }) {
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
+
+  const canLogOnProject = useMemo(() => {
+    if (canEdit) return true
+    if (!selectedProject?.team_id || !currentUserEmployeeId) return false
+    const team = teams.find(t => t.id === selectedProject.team_id)
+    if (team?.lead_id === currentUserEmployeeId) return true
+    return (members[selectedProject.team_id] || []).some(m => m.employee_id === currentUserEmployeeId)
+  }, [canEdit, selectedProject, currentUserEmployeeId, teams, members])
 
   const assignedProjects = useMemo(() => {
     let list = projects.filter(p => p.team_id)
@@ -154,7 +162,7 @@ export default function AssignedProjectsTab({ data }: { data: TeamsPageData }) {
             </div>
           </div>
 
-          {canEdit && (
+          {canLogOnProject && (
             <div className="card" style={{ padding: '18px' }}>
               <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px' }}>📝 تحديث يومي جديد</div>
               <textarea

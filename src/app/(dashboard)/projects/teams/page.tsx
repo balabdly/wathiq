@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Users } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
@@ -10,16 +10,21 @@ import { TAB_STYLE } from './components/types'
 import ActiveTeamsTab from './components/ActiveTeamsTab'
 import FormationTab from './components/FormationTab'
 import AssignedProjectsTab from './components/AssignedProjectsTab'
+import WorkloadTab from './components/WorkloadTab'
 
-type TabId = 'active' | 'formation' | 'projects'
+type TabId = 'active' | 'formation' | 'projects' | 'workload'
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: 'active',     label: 'الفرق النشطة',           icon: '⚡' },
-  { id: 'formation',  label: 'تكوين الفرق',           icon: '🏗️' },
-  { id: 'projects',   label: 'المشاريع المسندة',       icon: '📋' },
+  { id: 'active',     label: 'الفرق النشطة',     icon: '⚡' },
+  { id: 'formation',  label: 'تكوين الفرق',     icon: '🏗️' },
+  { id: 'projects',   label: 'المشاريع المسندة', icon: '📋' },
+  { id: 'workload',   label: 'حمولة الفرق',     icon: '📊' },
 ]
 
+const VALID_TABS = new Set<TabId>(['active', 'formation', 'projects', 'workload'])
+
 export default function ProjectTeamsPage() {
+  const searchParams = useSearchParams()
   const { tenant, activeBranch, currentUser } = useStore()
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
@@ -29,6 +34,11 @@ export default function ProjectTeamsPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [employees, setEmployees] = useState<HrEmployee[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const t = searchParams.get('tab') as TabId | null
+    if (t && VALID_TABS.has(t)) setTab(t)
+  }, [searchParams])
 
   const loadAll = useCallback(async () => {
     if (!tenant || !activeBranch) return
@@ -90,23 +100,16 @@ export default function ProjectTeamsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-            <Users style={{ width: '24px', height: '24px', color: '#1a56db' }} />
-            إدارة الفرق
-          </h1>
-          <p style={{ color: 'var(--text3)', fontSize: '0.875rem', marginTop: '4px' }}>
-            {activeBranch.name} · {stats.activeTeams} فريق نشط · {stats.assigned} مشروع مسند
-          </p>
-        </div>
-        <Link href="/reports/team-workload" className="btn btn-ghost" style={{ textDecoration: 'none', fontSize: '0.82rem' }}>
-          📊 تقرير الحمولة
-        </Link>
+      <div>
+        <h1 style={{ fontSize: '1.35rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+          <Users style={{ width: '24px', height: '24px', color: '#1a56db' }} />
+          إدارة الفرق
+        </h1>
+        <p style={{ color: 'var(--text3)', fontSize: '0.875rem', marginTop: '4px' }}>
+          {activeBranch.name} · {stats.activeTeams} فريق نشط · {stats.assigned} مشروع مسند
+        </p>
       </div>
 
-      {/* KPIs مختصرة */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', maxWidth: '540px' }}>
         {[
           { label: 'فرق نشطة', value: stats.activeTeams, color: '#0ea77b' },
@@ -120,7 +123,6 @@ export default function ProjectTeamsPage() {
         ))}
       </div>
 
-      {/* Tabs */}
       <div style={TAB_STYLE.bar}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={TAB_STYLE.btn(tab === t.id)}>
@@ -129,14 +131,14 @@ export default function ProjectTeamsPage() {
         ))}
       </div>
 
-      {/* Content */}
-      {loading ? (
+      {loading && tab !== 'workload' ? (
         <div style={{ textAlign: 'center', padding: '64px', color: 'var(--text3)' }}>جاري التحميل...</div>
       ) : (
         <>
           {tab === 'active' && <ActiveTeamsTab data={pageData} />}
           {tab === 'formation' && <FormationTab data={pageData} />}
           {tab === 'projects' && <AssignedProjectsTab data={pageData} />}
+          {tab === 'workload' && <WorkloadTab />}
         </>
       )}
     </div>

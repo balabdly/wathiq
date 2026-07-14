@@ -1,16 +1,16 @@
 'use client'
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { Plus, UserMinus, Users } from 'lucide-react'
+import { Link2, Plus, UserMinus, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import type { TeamsPageData, ProjectRow } from './types'
-import { AssignProjectModal } from './modals'
+import { AssignProjectModal, NewAssignModal } from './modals'
 
 export default function ActiveTeamsTab({ data }: { data: TeamsPageData }) {
   const { teams, projects, employees, canEdit, reload } = data
   const [assignTeamId, setAssignTeamId] = useState<number | null>(null)
+  const [showNewAssign, setShowNewAssign] = useState(false)
 
   const activeTeams = useMemo(() => teams.filter(t => t.is_active), [teams])
   const unassigned = useMemo(
@@ -46,6 +46,20 @@ export default function ActiveTeamsTab({ data }: { data: TeamsPageData }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {canEdit && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowNewAssign(true)}
+            disabled={unassigned.length === 0 || activeTeams.length === 0}
+            className="btn btn-primary"
+            style={{ fontSize: '0.875rem', gap: '6px' }}
+            title={unassigned.length === 0 ? 'لا مشاريع بانتظار الإسناد' : undefined}
+          >
+            <Link2 style={{ width: '16px', height: '16px' }} /> إسناد جديد
+          </button>
+        </div>
+      )}
+
       {unassigned.length > 0 && (
         <div className="card" style={{ padding: '16px 20px', border: '1px solid #fde68a', background: '#fffbeb' }}>
           <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#b45309', marginBottom: '10px' }}>
@@ -144,9 +158,14 @@ export default function ActiveTeamsTab({ data }: { data: TeamsPageData }) {
         </div>
       )}
 
-      <div style={{ fontSize: '0.78rem', color: 'var(--text3)', textAlign: 'center' }}>
-        <Link href="/reports/team-workload" style={{ color: '#1a56db' }}>📊 عرض تقرير حمولة الفرق</Link>
-      </div>
+      {showNewAssign && (
+        <NewAssignModal
+          unassigned={unassigned}
+          activeTeams={activeTeams.map(t => ({ id: t.id, name: t.name, team_type: t.team_type }))}
+          onClose={() => setShowNewAssign(false)}
+          onAssign={(teamId, projectId) => assignProject(teamId, projectId)}
+        />
+      )}
 
       {assignTeamId && assignTeam && (
         <AssignProjectModal

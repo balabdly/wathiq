@@ -117,7 +117,7 @@ export const FEATURED_REPORTS = [
     color: '#7c3aed',
     bg: '#f5f3ff',
     border: '#ddd6fe',
-    href: '/reports/team-workload',
+    href: '/projects/teams?tab=workload',
   },
   {
     id: 'project-profitability',
