@@ -11,10 +11,14 @@ export type TeamWorkloadRow = {
   active_projects: number
   open_tasks: number
   open_ncr: number
-  projects_without_team?: number
 }
 
-const ACTIVE_STATUSES = new Set(['تحت التخطيط', 'قيد التنفيذ', 'قيد الإغلاق', 'متأخر', 'موقوف'])
+const CLOSED_STATUSES = new Set(['مكتمل', 'ملغي'])
+
+function isActiveProject(status: string | undefined): boolean {
+  if (!status) return true
+  return !CLOSED_STATUSES.has(status)
+}
 
 export async function fetchTeamWorkload(
   supabase: { from: (t: string) => any },
@@ -33,10 +37,10 @@ export async function fetchTeamWorkload(
       .eq('tenant_id', tenantId)
       .eq('branch_id', branchId),
     supabase.from('project_tasks')
-      .select('project_id, status, project:projects(branch_id)')
+      .select('project_id, status')
       .eq('tenant_id', tenantId),
     supabase.from('visits')
-      .select('project_id, project:projects(branch_id)')
+      .select('project_id')
       .eq('tenant_id', tenantId)
       .eq('specs', 'غير مطابق')
       .is('resolved_report', null),
@@ -48,34 +52,32 @@ export async function fetchTeamWorkload(
 
   const teams = teamsRes.data || []
   const projects = (projectsRes.data || []) as { id: number; team_id?: number | null; status: string }[]
-  const activeProjects = projects.filter(p => ACTIVE_STATUSES.has(p.status) || (!p.status || p.status !== 'مكتمل'))
+  const branchProjectIds = new Set(projects.map(p => p.id))
+  const projectTeamMap = Object.fromEntries(projects.map(p => [p.id, p.team_id]))
 
   const memberCount: Record<number, number> = {}
   ;(membersRes.data || []).forEach((m: { team_id: number }) => {
     memberCount[m.team_id] = (memberCount[m.team_id] || 0) + 1
   })
 
-  const projectTeamMap = Object.fromEntries(projects.map(p => [p.id, p.team_id]))
-
   const tasksByTeam: Record<number, number> = {}
-  ;(tasksRes.data || []).forEach((t: { project_id: number; status: string; project?: { branch_id: number } }) => {
-    if (t.project?.branch_id !== branchId) return
-    if (!isTaskOpen(t.status)) return
+  ;(tasksRes.data || []).forEach((t: { project_id: number; status: string }) => {
+    if (!branchProjectIds.has(t.project_id) || !isTaskOpen(t.status)) return
     const tid = projectTeamMap[t.project_id]
     if (!tid) return
     tasksByTeam[tid] = (tasksByTeam[tid] || 0) + 1
   })
 
   const ncrByTeam: Record<number, number> = {}
-  ;(ncrRes.data || []).forEach((v: { project_id: number; project?: { branch_id: number } }) => {
-    if (v.project?.branch_id !== branchId) return
+  ;(ncrRes.data || []).forEach((v: { project_id: number }) => {
+    if (!branchProjectIds.has(v.project_id)) return
     const tid = projectTeamMap[v.project_id]
     if (!tid) return
     ncrByTeam[tid] = (ncrByTeam[tid] || 0) + 1
   })
 
   const activeByTeam: Record<number, number> = {}
-  activeProjects.forEach(p => {
+  projects.filter(p => isActiveProject(p.status)).forEach(p => {
     if (!p.team_id) return
     activeByTeam[p.team_id] = (activeByTeam[p.team_id] || 0) + 1
   })
@@ -95,7 +97,5 @@ export async function fetchTeamWorkload(
 export function countUnassignedActiveProjects(
   projects: { team_id?: number | null; status: string }[],
 ): number {
-  return projects.filter(p =>
-    !p.team_id && ACTIVE_STATUSES.has(p.status) && p.status !== 'مكتمل',
-  ).length
+  return projects.filter(p => !p.team_id && isActiveProject(p.status)).length
 }

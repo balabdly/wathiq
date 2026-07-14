@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
+import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import {
@@ -346,9 +347,14 @@ export default function ProjectTeamsPage() {
           </p>
         </div>
         {canEdit && (
-          <button onClick={() => { setEditTeam(null); setShowTeamModal(true) }} className="btn btn-primary">
-            <Plus style={{ width: '15px', height: '15px' }} /> فريق جديد
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <Link href="/reports/team-workload" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+              📊 تقرير الحمولة
+            </Link>
+            <button onClick={() => { setEditTeam(null); setShowTeamModal(true) }} className="btn btn-primary">
+              <Plus style={{ width: '15px', height: '15px' }} /> فريق جديد
+            </button>
+          </div>
         )}
       </div>
 

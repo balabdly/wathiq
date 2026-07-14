@@ -61,6 +61,17 @@ const REPORTS = [
     filters: ['type'],
   },
   {
+    id: 'team_workload',
+    title: 'تقرير حمولة الفرق',
+    icon: '👥',
+    color: '#7c3aed',
+    bg: '#f5f3ff',
+    border: '#ddd6fe',
+    desc: 'مشاريع نشطة، مهام مفتوحة، وNCR لكل فريق',
+    href: '/reports/team-workload',
+    filters: [],
+  },
+  {
     id: 'tasks',
     title: 'تقرير مهام المشاريع',
     icon: '✅',

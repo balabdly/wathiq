@@ -719,7 +719,9 @@ export default function ProjectsPage() {
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
-  const [clientFilter, setClient] = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
+  const [myTeamOnly, setMyTeamOnly] = useState(false)
+  const [myTeamIds,  setMyTeamIds]  = useState<number[]>([])
   const { displayPrefs, updateDisplayPref } = useStore()
   const [viewMode, setViewMode] = useState<'kanban' | 'grid' | 'list'>(
     (displayPrefs.projects as any) || 'kanban'
@@ -776,6 +778,16 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => { loadProjects() }, [tenant?.id, activeBranch?.id])
+
+  useEffect(() => {
+    if (!tenant || !currentUser?.hr_employee_id) { setMyTeamIds([]); return }
+    supabase.from('team_members')
+      .select('team_id')
+      .eq('tenant_id', tenant.id)
+      .eq('employee_id', currentUser.hr_employee_id)
+      .eq('is_active', true)
+      .then(({ data }) => setMyTeamIds((data || []).map((m: { team_id: number }) => m.team_id)))
+  }, [tenant?.id, currentUser?.hr_employee_id])
 
 
   async function loadProjects() {
@@ -957,7 +969,9 @@ export default function ProjectsPage() {
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
       (!statusFilter || p.status === statusFilter) &&
       (!typeFilter   || p.type   === typeFilter)  &&
-      (!clientFilter || (p as any).client_name === clientFilter || (p as any).client === clientFilter)
+      (!clientFilter || (p as any).client_name === clientFilter || (p as any).client === clientFilter) &&
+      (!teamFilter || String((p as any).team_id) === teamFilter) &&
+      (!myTeamOnly || (myTeamIds.length > 0 && myTeamIds.includes((p as any).team_id)))
     )
   })
 
@@ -1042,8 +1056,28 @@ export default function ProjectsPage() {
           {existingClients.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
-        {(search || statusFilter || typeFilter || clientFilter) && (
-          <button onClick={() => { setSearch(''); setStatus(''); setType(''); setClient('') }}
+        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '160px' }}>
+          <option value="">كل الفرق</option>
+          {Object.entries(teamNames).map(([id, name]) => (
+            <option key={id} value={id}>{name}</option>
+          ))}
+        </select>
+
+        {myTeamIds.length > 0 && (
+          <button type="button" onClick={() => setMyTeamOnly(v => !v)}
+            style={{
+              padding: '7px 14px', borderRadius: '8px', border: '2px solid', cursor: 'pointer',
+              fontSize: '0.82rem', fontWeight: 600,
+              borderColor: myTeamOnly ? '#7c3aed' : 'var(--border)',
+              background: myTeamOnly ? '#f5f3ff' : 'white',
+              color: myTeamOnly ? '#7c3aed' : 'var(--text3)',
+            }}>
+            👥 مشاريع فريقي
+          </button>
+        )}
+
+        {(search || statusFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
+          <button onClick={() => { setSearch(''); setStatus(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
             className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>مسح الفلاتر</button>
         )}
 
