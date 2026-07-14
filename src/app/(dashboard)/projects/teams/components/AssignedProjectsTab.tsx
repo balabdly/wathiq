@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { Eye } from 'lucide-react'
-import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
+import { formatTeamTypeLabel, TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import type { TeamsPageData, ProjectRow } from './types'
 import ProjectDetailsModal from './ProjectDetailsModal'
 
@@ -46,7 +46,7 @@ export default function AssignedProjectsTab({ data }: { data: TeamsPageData }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['المشروع', 'الكود', 'الفريق', 'المهندس', 'الحالة', 'الإنجاز', ''].map(h => (
+                {['المشروع', 'الكود', 'الفريق', 'النوع / التخصص', 'المهندس', 'الحالة', 'الإنجاز', ''].map(h => (
                   <th key={h} style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>
                     {h}
                   </th>
@@ -75,6 +75,9 @@ export default function AssignedProjectsTab({ data }: { data: TeamsPageData }) {
                       }}>
                         {teamName(p.team_id!)}
                       </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', fontSize: '0.78rem', color: 'var(--text3)' }}>
+                      {team ? formatTeamTypeLabel(team) : '—'}
                     </td>
                     <td style={{ padding: '12px 14px', fontSize: '0.82rem', color: 'var(--text3)' }}>
                       {p.engineer || '—'}

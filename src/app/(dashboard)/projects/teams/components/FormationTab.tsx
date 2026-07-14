@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Pencil, Plus, Trash2, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { TEAM_TYPE_STYLE, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
+import { formatTeamTypeLabel, TEAM_TYPE_STYLE, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
 import type { TeamsPageData } from './types'
 import { TeamModal, MemberModal } from './modals'
 
@@ -74,7 +74,7 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
                 }}
               >
                 <div style={{ fontWeight: 600, fontSize: '0.875rem', color: t.is_active ? '#1a1a2e' : '#9ca3af' }}>{t.name}</div>
-                <div style={{ fontSize: '0.68rem', color: style.color, marginTop: '2px' }}>{t.team_type}{!t.is_active ? ' · موقوف' : ''}</div>
+                <div style={{ fontSize: '0.68rem', color: style.color, marginTop: '2px' }}>{formatTeamTypeLabel(t)}{!t.is_active ? ' · موقوف' : ''}</div>
               </button>
             )
           })}

@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil } from '@/lib/utils'
-import { fetchAssigneeOptions, fetchTeamWithMembers, TEAM_TYPE_STYLE, type AssigneeOption, type TeamMember } from '@/lib/project-teams'
+import { fetchAssigneeOptions, fetchTeamWithMembers, formatTeamTypeLabel, TEAM_TYPE_STYLE, type AssigneeOption, type TeamMember } from '@/lib/project-teams'
 import { isTaskOpen } from '@/lib/project-tasks'
 import {
   ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle,
@@ -336,7 +336,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [loadingInv, setLoadingInv]   = useState(false)
   const [visitsData,  setVisitsData]  = useState<any[]>([])
   const [loadingVis,  setLoadingVis]  = useState(false)
-  const [teamData,    setTeamData]    = useState<{ name: string; team_type: string; description?: string | null; members: TeamMember[] } | null>(null)
+  const [teamData,    setTeamData]    = useState<{ name: string; team_type: string; specialization?: string | null; description?: string | null; members: TeamMember[] } | null>(null)
   const [loadingTeam, setLoadingTeam] = useState(false)
   const canEdit = currentUser?.permissions?.includes('projects_edit')
   const days    = daysUntil(project.end_date)
@@ -424,7 +424,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     setLoadingTeam(true)
     const { team, members } = await fetchTeamWithMembers(supabase, tenant.id, project.team_id)
     if (team) {
-      setTeamData({ name: team.name, team_type: team.team_type, description: team.description, members })
+      setTeamData({ name: team.name, team_type: team.team_type, specialization: team.specialization, description: team.description, members })
     } else {
       setTeamData(null)
     }
@@ -628,7 +628,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                     color: TEAM_TYPE_STYLE[teamData.team_type]?.color || '#4b5563',
                     background: TEAM_TYPE_STYLE[teamData.team_type]?.bg || '#f3f4f6',
                   }}>
-                    {teamData.team_type}
+                    {formatTeamTypeLabel(teamData)}
                   </span>
                 </div>
                 <div style={{ marginTop: '12px', fontSize: '0.82rem', color: 'var(--text3)' }}>

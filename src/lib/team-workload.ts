@@ -1,11 +1,13 @@
 /** حمولة الفرق — مشاريع نشطة، مهام، NCR */
 
 import { isTaskOpen } from '@/lib/project-tasks'
+import { formatTeamTypeLabel } from '@/lib/project-teams'
 
 export type TeamWorkloadRow = {
   team_id: number
   team_name: string
   team_type: string
+  specialization?: string | null
   lead_name?: string
   member_count: number
   active_projects: number
@@ -27,7 +29,7 @@ export async function fetchTeamWorkload(
 ): Promise<TeamWorkloadRow[]> {
   const [teamsRes, projectsRes, tasksRes, ncrRes, membersRes] = await Promise.all([
     supabase.from('teams')
-      .select('id, name, team_type, lead_id, lead:hr_employees(name)')
+      .select('id, name, team_type, specialization, lead_id, lead:hr_employees(name)')
       .eq('tenant_id', tenantId)
       .eq('branch_id', branchId)
       .eq('is_active', true)
@@ -82,10 +84,11 @@ export async function fetchTeamWorkload(
     activeByTeam[p.team_id] = (activeByTeam[p.team_id] || 0) + 1
   })
 
-  return teams.map((t: { id: number; name: string; team_type: string; lead?: { name: string } | null }) => ({
+  return teams.map((t: { id: number; name: string; team_type: string; specialization?: string | null; lead?: { name: string } | null }) => ({
     team_id: t.id,
     team_name: t.name,
-    team_type: t.team_type,
+    team_type: formatTeamTypeLabel(t),
+    specialization: t.specialization,
     lead_name: t.lead?.name,
     member_count: memberCount[t.id] || 0,
     active_projects: activeByTeam[t.id] || 0,

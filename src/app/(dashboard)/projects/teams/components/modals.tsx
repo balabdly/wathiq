@@ -1,9 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X, Save, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { TEAM_TYPES, TEAM_ROLES, type ProjectTeam } from '@/lib/project-teams'
+import { TEAM_TYPES, TEAM_ROLES, getTeamSpecializations, type ProjectTeam } from '@/lib/project-teams'
 import type { HrEmployee, ProjectRow } from './types'
 
 const lbl: React.CSSProperties = {
@@ -20,23 +20,51 @@ export function TeamModal({ team, employees, branchId, tenantId, onClose, onSave
   onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
+  const initialType = team?.team_type && (TEAM_TYPES as readonly string[]).includes(team.team_type)
+    ? team.team_type
+    : 'ميداني'
   const [form, setForm] = useState({
-    name:        team?.name        || '',
-    team_type:   team?.team_type   || 'ميداني',
-    lead_id:     team?.lead_id ? String(team.lead_id) : '',
-    description: team?.description || '',
-    is_active:   team?.is_active ?? true,
+    name:            team?.name            || '',
+    team_type:       initialType,
+    specialization:  team?.specialization || getTeamSpecializations(initialType)[0] || '',
+    lead_id:         team?.lead_id ? String(team.lead_id) : '',
+    description:     team?.description     || '',
+    is_active:       team?.is_active ?? true,
   })
-  const set = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
+
+  const specOptions = useMemo(() => getTeamSpecializations(form.team_type), [form.team_type])
+
+  const typeOptions = useMemo(() => {
+    const base = [...TEAM_TYPES]
+    if (team?.team_type && !(TEAM_TYPES as readonly string[]).includes(team.team_type)) {
+      return [team.team_type, ...base]
+    }
+    return base
+  }, [team?.team_type])
+
+  function setField(k: string, v: unknown) {
+    setForm(f => {
+      if (k === 'team_type') {
+        const specs = getTeamSpecializations(String(v))
+        return { ...f, team_type: String(v), specialization: specs[0] || '' }
+      }
+      return { ...f, [k]: v }
+    })
+  }
 
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم الفريق مطلوب'); return }
+    if (specOptions.length > 0 && !form.specialization) {
+      toast.error('اختر التخصص')
+      return
+    }
     setSaving(true)
     const payload = {
       tenant_id: tenantId,
       branch_id: branchId,
       name: form.name.trim(),
       team_type: form.team_type,
+      specialization: form.specialization.trim() || null,
       lead_id: form.lead_id ? Number(form.lead_id) : null,
       description: form.description.trim() || null,
       is_active: form.is_active,
@@ -82,31 +110,47 @@ export function TeamModal({ team, employees, branchId, tenantId, onClose, onSave
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <label style={lbl}>اسم الفريق *</label>
-            <input value={form.name} onChange={e => set('name', e.target.value)} className="input" placeholder="مثال: الرياض — ميداني 1" />
+            <input value={form.name} onChange={e => setField('name', e.target.value)} className="input" placeholder="مثال: الرياض — ميداني شبكات" />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={lbl}>نوع الفريق</label>
-              <select value={form.team_type} onChange={e => set('team_type', e.target.value)} className="select">
-                {TEAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              <label style={lbl}>نوع الفريق *</label>
+              <select value={form.team_type} onChange={e => setField('team_type', e.target.value)} className="select">
+                {typeOptions.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
-              <label style={lbl}>المشرف / قائد الفريق</label>
-              <select value={form.lead_id} onChange={e => set('lead_id', e.target.value)} className="select">
-                <option value="">— اختر —</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>
-                ))}
-              </select>
+              <label style={lbl}>التخصص *</label>
+              {specOptions.length > 0 ? (
+                <select value={form.specialization} onChange={e => setField('specialization', e.target.value)} className="select">
+                  <option value="">— اختر التخصص —</option>
+                  {specOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={form.specialization}
+                  onChange={e => setField('specialization', e.target.value)}
+                  className="input"
+                  placeholder="اكتب التخصص..."
+                />
+              )}
             </div>
           </div>
           <div>
+            <label style={lbl}>المشرف / قائد الفريق</label>
+            <select value={form.lead_id} onChange={e => setField('lead_id', e.target.value)} className="select">
+              <option value="">— اختر —</option>
+              {employees.map(e => (
+                <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label style={lbl}>وصف</label>
-            <textarea value={form.description} onChange={e => set('description', e.target.value)} className="input" rows={2} />
+            <textarea value={form.description} onChange={e => setField('description', e.target.value)} className="input" rows={2} />
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} />
+            <input type="checkbox" checked={form.is_active} onChange={e => setField('is_active', e.target.checked)} />
             فريق نشط
           </label>
         </div>

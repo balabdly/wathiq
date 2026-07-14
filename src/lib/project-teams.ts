@@ -1,7 +1,36 @@
 /** إدارة فرق المشاريع — أنواع وأدوار مشتركة */
 
-export const TEAM_TYPES = ['ميداني', 'تصميم', 'EPC', 'O&M', 'مختلط'] as const
+export const TEAM_TYPES = ['ميداني', 'كهربائي', 'سلامة', 'جودة'] as const
 export type TeamType = typeof TEAM_TYPES[number]
+
+/** تخصصات فرعية لكل نوع فريق */
+export const TEAM_SPECIALIZATIONS: Record<TeamType, readonly string[]> = {
+  'ميداني': [
+    'شبكات', 'طرق', 'حفر', 'بنية تحتية', 'صيانة', 'عام',
+  ],
+  'كهربائي': [
+    'عدادات', 'خطوط هوائية', 'محطات', 'كابلات', 'إنارة', 'صيانة', 'عام',
+  ],
+  'سلامة': [
+    'HSE ميداني', 'تفتيش', 'تدريب', 'مراقبة', 'عام',
+  ],
+  'جودة': [
+    'QC ميداني', 'مختبر', 'تفتيش', 'توثيق', 'عام',
+  ],
+}
+
+export function getTeamSpecializations(teamType: string): readonly string[] {
+  if ((TEAM_TYPES as readonly string[]).includes(teamType)) {
+    return TEAM_SPECIALIZATIONS[teamType as TeamType]
+  }
+  return []
+}
+
+export function formatTeamTypeLabel(team: { team_type: string; specialization?: string | null }): string {
+  const spec = team.specialization?.trim()
+  if (spec) return `${team.team_type} · ${spec}`
+  return team.team_type
+}
 
 export const TEAM_ROLES = ['قائد', 'مهندس', 'مشرف', 'فني', 'عضو'] as const
 export type TeamRole = typeof TEAM_ROLES[number]
@@ -12,6 +41,7 @@ export type ProjectTeam = {
   branch_id: number
   name: string
   team_type: string
+  specialization?: string | null
   lead_id?: number | null
   description?: string | null
   is_active: boolean
@@ -55,11 +85,15 @@ export type TeamProjectLogFile = {
 }
 
 export const TEAM_TYPE_STYLE: Record<string, { color: string; bg: string }> = {
-  'ميداني': { color: '#1a56db', bg: '#eff6ff' },
-  'تصميم':  { color: '#7c3aed', bg: '#f5f3ff' },
-  'EPC':    { color: '#0ea77b', bg: '#ecfdf5' },
-  'O&M':    { color: '#e6820a', bg: '#fffbeb' },
-  'مختلط':  { color: '#4b5563', bg: '#f3f4f6' },
+  'ميداني':   { color: '#1a56db', bg: '#eff6ff' },
+  'كهربائي':  { color: '#e6820a', bg: '#fffbeb' },
+  'سلامة':    { color: '#c81e1e', bg: '#fef2f2' },
+  'جودة':     { color: '#0ea77b', bg: '#ecfdf5' },
+  /* أنواع قديمة — للبيانات السابقة */
+  'تصميم':    { color: '#7c3aed', bg: '#f5f3ff' },
+  'EPC':      { color: '#0ea77b', bg: '#ecfdf5' },
+  'O&M':      { color: '#e6820a', bg: '#fffbeb' },
+  'مختلط':    { color: '#4b5563', bg: '#f3f4f6' },
 }
 
 export type AssigneeOption = {

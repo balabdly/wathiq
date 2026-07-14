@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link2, Plus, UserMinus, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
+import { formatTeamTypeLabel, TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import type { TeamsPageData, ProjectRow } from './types'
 import { AssignProjectModal, NewAssignModal } from './modals'
 
@@ -92,7 +92,7 @@ export default function ActiveTeamsTab({ data }: { data: TeamsPageData }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#1a1a2e' }}>{team.name}</div>
-                      <div style={{ fontSize: '0.72rem', fontWeight: 600, color: style.color, marginTop: '4px' }}>{team.team_type}</div>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 600, color: style.color, marginTop: '4px' }}>{formatTeamTypeLabel(team)}</div>
                     </div>
                     <div style={{ textAlign: 'center', minWidth: '52px' }}>
                       <div style={{ fontSize: '1.6rem', fontWeight: 800, color: style.color, lineHeight: 1 }}>{teamProjects.length}</div>
@@ -161,7 +161,7 @@ export default function ActiveTeamsTab({ data }: { data: TeamsPageData }) {
       {showNewAssign && (
         <NewAssignModal
           unassigned={unassigned}
-          activeTeams={activeTeams.map(t => ({ id: t.id, name: t.name, team_type: t.team_type }))}
+          activeTeams={activeTeams.map(t => ({ id: t.id, name: t.name, team_type: formatTeamTypeLabel(t) }))}
           onClose={() => setShowNewAssign(false)}
           onAssign={(teamId, projectId) => assignProject(teamId, projectId)}
         />
