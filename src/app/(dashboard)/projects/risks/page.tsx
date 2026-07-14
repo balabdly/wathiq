@@ -278,7 +278,7 @@ export default function ProjectRisksPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🛡️ سجل المخاطر
+            🛡️ مخاطر المشروع
           </h1>
           <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '4px' }}>
             تحديد وتقييم ومتابعة مخاطر المشاريع
