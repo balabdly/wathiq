@@ -84,6 +84,8 @@ export interface Project {
   status: ProjectStatus
   progress: number
   engineer?: string
+  team_id?: number | null
+  lead_id?: number | null
   client_id?: number        // ربط بـ finance_clients
   client_name?: string      // اسم العميل (cached)
   value?: number

@@ -251,7 +251,8 @@ export default function Sidebar() {
   const hasAssets    = perms.includes('assets')                         && tenantModules.assets    !== false
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
 
-  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks'].some(p => pathname === p || pathname.startsWith(p+'/'))
+  const hasTeams     = hasProjects
+  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inMyHR     = pathname.startsWith('/my-hr')
@@ -339,7 +340,8 @@ export default function Sidebar() {
         {(hasProjects || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
-            {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname.startsWith('/projects')} />}
+            {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname === '/projects' || (pathname.startsWith('/projects/') && !['/projects/tasks','/projects/lessons','/projects/risks','/projects/teams'].some(p => pathname.startsWith(p)))} />}
+            {hasTeams      && <SubLink href="/projects/teams"    label="إدارة الفرق"       icon={IC.employees}  active={pathname.startsWith('/projects/teams')} />}
             {hasTasks      && <SubLink href="/projects/tasks"    label="المهام"            icon={IC.tasks}      active={pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}

@@ -28,11 +28,12 @@ const lbl: React.CSSProperties = {
 const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مهندس مشروع', 'مهندس كهرباء', 'مهندس ميداني', 'مشرف', 'مشرف مشروع']
 
 export default function ProjectModal({ project, onClose, onSave }: Props) {
-  const { tenant } = useStore()
+  const { tenant, activeBranch } = useStore()
   const [saving,    setSaving]   = useState(false)
   const [clients,   setClients]  = useState<{ id: number; name: string; vat_number?: string }[]>([])
   const [types,     setTypes]    = useState<{ code: string; name: string }[]>([])
   const [engineers, setEngineers]= useState<{ id: number; name: string; job_title?: string }[]>([])
+  const [teams,     setTeams]    = useState<{ id: number; name: string; lead_id?: number | null }[]>([])
 
   const [form, setForm] = useState({
     code:            project?.code                                    || '',
@@ -40,6 +41,7 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
     client_id:       (project as any)?.client_id ? String((project as any).client_id) : '',
     type:            project?.type                                    || '',
     status:          project?.status                                  || 'تحت التخطيط',
+    team_id:         (project as any)?.team_id ? String((project as any).team_id) : '',
     engineer:        project?.engineer                                || '',
     estimated_value: (project as any)?.estimated_value?.toString()   || (project as any)?.value?.toString() || '',
     actual_value:    (project as any)?.actual_value?.toString()      || '',
@@ -56,7 +58,6 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
   useEffect(() => {
     if (!tenant) return
 
-    // جلب الموظفين الهندسيين
     supabase.from('hr_employees')
       .select('id, name, job_title')
       .eq('tenant_id', tenant.id)
@@ -68,7 +69,16 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
         setEngineers(eng.length > 0 ? eng : all)
       })
 
-    // جلب العملاء
+    if (activeBranch) {
+      supabase.from('teams')
+        .select('id, name, lead_id')
+        .eq('tenant_id', tenant.id)
+        .eq('branch_id', activeBranch.id)
+        .eq('is_active', true)
+        .order('name')
+        .then(({ data }) => setTeams(data || []))
+    }
+
     supabase.from('finance_clients')
       .select('id, name, vat_number')
       .eq('tenant_id', tenant.id)
@@ -83,9 +93,20 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
       .eq('is_active', true)
       .order('name')
       .then(({ data }) => setTypes(data && data.length > 0 ? data : DEFAULT_TYPES))
-  }, [tenant?.id])
+  }, [tenant?.id, activeBranch?.id])
+
+  function handleTeamChange(teamId: string) {
+    set('team_id', teamId)
+    if (!teamId) return
+    const team = teams.find(t => t.id === Number(teamId))
+    if (team?.lead_id) {
+      const lead = engineers.find(e => e.id === team.lead_id)
+      if (lead) set('engineer', lead.name)
+    }
+  }
 
   const selectedClient = clients.find(c => c.id === Number(form.client_id))
+  const selectedTeam = teams.find(t => t.id === Number(form.team_id))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -103,6 +124,8 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
       client_name:     selectedClient?.name,
       type:            form.type            || undefined,
       status:          form.status,
+      team_id:         form.team_id ? Number(form.team_id) : null,
+      lead_id:         selectedTeam?.lead_id || null,
       engineer:        form.engineer        || undefined,
       estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : undefined,
       actual_value:    form.actual_value    ? parseFloat(form.actual_value)    : undefined,
@@ -188,25 +211,30 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               )}
             </div>
 
-            {/* الحالة + المهندس */}
+            {/* الفريق + المهندس */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label style={lbl}>حالة المشروع</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
-                  {['تحت التخطيط', 'قيد التنفيذ', 'قيد الإغلاق', 'مكتمل', 'متأخر', 'موقوف', 'ملغي'].map(s => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
+                <label style={lbl}>فريق العمل</label>
+                {teams.length === 0 ? (
+                  <div style={{ padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', fontSize: '0.8rem', color: '#1a56db', border: '1px solid #bfdbfe' }}>
+                    أنشئ فرقاً من <strong>إدارة الفرق</strong>
+                  </div>
+                ) : (
+                  <select value={form.team_id} onChange={e => handleTeamChange(e.target.value)} className="select">
+                    <option value="">— بدون فريق —</option>
+                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                )}
               </div>
               <div>
-                <label style={lbl}>مدير / مهندس المشروع</label>
+                <label style={lbl}>قائد / مهندس المشروع</label>
                 {engineers.length === 0 ? (
                   <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e', border: '1px solid #fde68a' }}>
-                    ⚠️ لا يوجد موظفون هندسيون — أضفهم من <strong>الموارد البشرية</strong>
+                    ⚠️ لا يوجد موظفون — أضفهم من HR
                   </div>
                 ) : (
                   <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select">
-                    <option value="">— اختر المهندس —</option>
+                    <option value="">— اختر —</option>
                     {engineers.map(m => (
                       <option key={m.id} value={m.name}>
                         {m.name}{m.job_title ? ` — ${m.job_title}` : ''}
@@ -215,6 +243,16 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
                   </select>
                 )}
               </div>
+            </div>
+
+            {/* الحالة */}
+            <div>
+              <label style={lbl}>حالة المشروع</label>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className="select">
+                {['تحت التخطيط', 'قيد التنفيذ', 'قيد الإغلاق', 'مكتمل', 'متأخر', 'موقوف', 'ملغي'].map(s => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
             </div>
 
             {/* القيمة التقديرية + الفعلية (أو الموقع) */}

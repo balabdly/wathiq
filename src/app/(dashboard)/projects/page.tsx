@@ -576,8 +576,8 @@ function ManageTypesModal({ tenantId, onClose }: {
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
-  p: Project; canEdit: boolean; blockers?: { tasks: number; ncr: number }
+function KanbanCard({ p, teamName, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
+  p: Project; teamName?: string; canEdit: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
   onQhse: (type: string) => void; onTask: () => void
@@ -625,6 +625,10 @@ function KanbanCard({ p, canEdit, blockers, onView, onEdit, onDelete, onMove, on
         <div style={{ fontSize: '0.72rem', color: '#1a56db', marginBottom: '6px', fontWeight: 600 }}>
           🏢 {(p as any).client_name || (p as any).client}
         </div>
+      )}
+
+      {teamName && (
+        <div style={{ fontSize: '0.68rem', color: '#1a56db', marginBottom: '4px', fontWeight: 600 }}>👥 {teamName}</div>
       )}
 
       {/* Progress */}
@@ -730,6 +734,7 @@ export default function ProjectsPage() {
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
   const [projectBlockers, setProjectBlockers] = useState<Record<number, { tasks: number; ncr: number }>>({})
+  const [teamNames, setTeamNames] = useState<Record<number, string>>({})
 
   async function loadProjectBlockers(projectIds: number[]) {
     if (!tenant || projectIds.length === 0) return
@@ -756,8 +761,14 @@ export default function ProjectsPage() {
   async function loadProjects() {
     if (!tenant || !activeBranch) return
     if (projects.length === 0) setLoading(true)
-    const { data } = await projectsApi.getAll(tenant.id, activeBranch.id)
+    const [{ data }, { data: teamsData }] = await Promise.all([
+      projectsApi.getAll(tenant.id, activeBranch.id),
+      supabase.from('teams').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
+    ])
     const loaded = data || []
+    const tMap: Record<number, string> = {}
+    ;(teamsData || []).forEach((t: { id: number; name: string }) => { tMap[t.id] = t.name })
+    setTeamNames(tMap)
     setProjects(loaded)
     setLoading(false)
     // تحميل موانع الإغلاق للمشاريع النشطة
@@ -1071,7 +1082,7 @@ export default function ProjectsPage() {
                     <div style={{ padding: '24px', textAlign: 'center', color: '#d1d5db', fontSize: '0.8rem' }}>لا توجد مشاريع</div>
                   ) : (
                     colProjects.map(p => (
-                      <KanbanCard key={p.id} p={p} canEdit={!!canEdit} blockers={projectBlockers[p.id]}
+                      <KanbanCard key={p.id} p={p} teamName={(p as any).team_id ? teamNames[(p as any).team_id] : undefined} canEdit={!!canEdit} blockers={projectBlockers[p.id]}
                         onView={() => setDetail(p)}
                         onEdit={() => { setEditProject(p); setShowModal(true) }}
                         onDelete={() => handleDelete(p)}
@@ -1134,6 +1145,9 @@ export default function ProjectsPage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: '#9ca3af', flexWrap: 'wrap' }}>
+                  {(p as any).team_id && teamNames[(p as any).team_id] && (
+                    <span style={{ color: '#1a56db', fontWeight: 600 }}>👥 {teamNames[(p as any).team_id]}</span>
+                  )}
                   {p.engineer && <span>👷 {p.engineer}</span>}
                   {p.end_date && <span>📅 {formatDate(p.end_date)}</span>}
                   {(p as any).estimated_value   && <span>💰 {formatCurrency((p as any).estimated_value)}</span>}
