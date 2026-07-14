@@ -3,11 +3,10 @@ import { useState, useEffect } from 'react'
 import { X, Save, ExternalLink } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { useRouter } from 'next/navigation'
 import type { Visit, Project } from '@/types'
 import PhotoUploader from './PhotoUploader'
-
-const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مهندس مشروع', 'مهندس كهرباء', 'مهندس ميداني', 'مشرف', 'مشرف مشروع']
 
 // أنواع المتابعة البسيطة — لا تحتاج checklist أو دورة حياة
 const FOLLOWUP_TYPES = ['كهربائية', 'ميدانية', 'متابعة']
@@ -34,7 +33,7 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
   const router = useRouter()
   const { tenant } = useStore()
   const [saving,    setSaving]    = useState(false)
-  const [engineers, setEngineers] = useState<{ id: number; name: string; job_title?: string }[]>([])
+  const [engineers, setEngineers] = useState<AssigneeOption[]>([])
   const [photos,    setPhotos]    = useState<{ name: string; data: string }[]>(
     visit?.attachments?.map(a => ({ name: a.name, data: a.data || a.url || '' })) || []
   )
@@ -63,17 +62,27 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
 
   useEffect(() => {
     if (!tenant) return
-    supabase.from('hr_employees')
-      .select('id, name, job_title')
-      .eq('tenant_id', tenant.id)
-      .eq('is_active', true)
-      .order('name')
-      .then(({ data }) => {
-        const all = data || []
-        const eng = all.filter(e => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
-        setEngineers(eng.length > 0 ? eng : all)
-      })
-  }, [tenant?.id])
+    const pid = form.project_id ? Number(form.project_id) : null
+    if (pid) {
+      supabase.from('projects')
+        .select('team_id, engineer, lead_id')
+        .eq('id', pid)
+        .eq('tenant_id', tenant.id)
+        .single()
+        .then(async ({ data: proj }) => {
+          const opts = await fetchAssigneeOptions(supabase, tenant.id, proj?.team_id)
+          setEngineers(opts)
+          if (!visit && proj?.engineer && !form.engineer) {
+            set('engineer', proj.engineer)
+          } else if (!visit && !form.engineer && proj?.team_id) {
+            const lead = opts.find(o => o.role_in_team === 'قائد')
+            if (lead) set('engineer', lead.name)
+          }
+        })
+    } else {
+      fetchAssigneeOptions(supabase, tenant.id, null).then(setEngineers)
+    }
+  }, [tenant?.id, form.project_id])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -181,7 +190,9 @@ export default function VisitModal({ visit, projects, allowedTypes, onClose, onS
                     <select value={form.engineer} onChange={e => set('engineer', e.target.value)} className="select" required>
                       <option value="">— اختر المهندس —</option>
                       {engineers.map(m => (
-                        <option key={m.id} value={m.name}>{m.name}{m.job_title ? ` — ${m.job_title}` : ''}</option>
+                        <option key={m.id} value={m.name}>
+                          {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` — ${m.job_title}` : ''}
+                        </option>
                       ))}
                     </select>
                   )}

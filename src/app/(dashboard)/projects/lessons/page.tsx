@@ -170,7 +170,7 @@ function LessonModal({ lesson, projects, tenantId, onClose, onSave }: {
 }
 
 export default function ProjectLessonsPage() {
-  const { tenant, currentUser } = useStore()
+  const { tenant, activeBranch, currentUser } = useStore()
   const [lessons,  setLessons]  = useState<Lesson[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading,  setLoading]  = useState(true)
@@ -183,17 +183,29 @@ export default function ProjectLessonsPage() {
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
-  useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
+  useEffect(() => { if (tenant && activeBranch) loadAll() }, [tenant?.id, activeBranch?.id])
 
   async function loadAll() {
-    if (!tenant) return
+    if (!tenant || !activeBranch) return
     setLoading(true)
-    const [lRes, pRes] = await Promise.all([
-      supabase.from('project_lessons').select('*, project:projects(name, code)').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
-      supabase.from('projects').select('id, name, code').eq('tenant_id', tenant.id).order('name'),
-    ])
-    setLessons(lRes.data || [])
-    setProjects(pRes.data || [])
+    const pRes = await supabase.from('projects')
+      .select('id, name, code')
+      .eq('tenant_id', tenant.id)
+      .eq('branch_id', activeBranch.id)
+      .order('name')
+    const projList = pRes.data || []
+    const projectIds = projList.map(p => p.id)
+    let lessonsData: Lesson[] = []
+    if (projectIds.length > 0) {
+      const lRes = await supabase.from('project_lessons')
+        .select('*, project:projects(name, code)')
+        .eq('tenant_id', tenant.id)
+        .in('project_id', projectIds)
+        .order('created_at', { ascending: false })
+      lessonsData = lRes.data || []
+    }
+    setLessons(lessonsData)
+    setProjects(projList)
     setLoading(false)
   }
 

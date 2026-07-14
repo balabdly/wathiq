@@ -9,6 +9,8 @@ import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
+import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
+import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
 
 import {
@@ -26,9 +28,6 @@ type Task = {
   completed_at?: string; notes?: string
 }
 import toast from 'react-hot-toast'
-
-
-const REQUIRED_DOC_CATEGORIES = ['مخططات', 'رخصة بلدية', 'إخلاء بلدية', 'مستخلصات', 'فواتير']
 
 const PROJECT_TYPES: { code: string; name: string }[] = [
   { code: '801',   name: 'مشاريع الربط الكهربائي 801' },
@@ -284,6 +283,7 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
   defaultProjectId?: number
 }) {
   const [saving, setSaving] = useState(false)
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([])
   const [form, setForm] = useState({
     project_id: task?.project_id ? String(task.project_id) : defaultProjectId ? String(defaultProjectId) : '',
     title:       task?.title       || '',
@@ -298,6 +298,12 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
     notes:       task?.notes       || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    if (!tenantId) return
+    const proj = projects.find(p => String(p.id) === form.project_id)
+    fetchAssigneeOptions(supabase, tenantId, proj?.team_id).then(setAssignees)
+  }, [tenantId, form.project_id, projects])
 
   async function handleSave() {
     if (!form.title.trim())    { toast.error('عنوان المهمة مطلوب'); return }
@@ -356,7 +362,18 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>المسؤول</label>
-              <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المهندس أو الفريق" />
+              {assignees.length === 0 ? (
+                <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المهندس" />
+              ) : (
+                <select value={form.assignee} onChange={e => set('assignee', e.target.value)} className="select">
+                  <option value="">— اختر من الفريق —</option>
+                  {assignees.map(m => (
+                    <option key={m.id} value={m.name}>
+                      {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` — ${m.job_title}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label style={lbl}>التصنيف</label>
@@ -739,10 +756,9 @@ export default function ProjectsPage() {
   async function loadProjectBlockers(projectIds: number[]) {
     if (!tenant || projectIds.length === 0) return
     const [tasksRes, ncrRes] = await Promise.all([
-      supabase.from('project_tasks').select('project_id')
+      supabase.from('project_tasks').select('project_id, status')
         .eq('tenant_id', tenant.id)
-        .in('project_id', projectIds)
-        .neq('status', 'مغلقة').neq('status', 'مكتملة'),
+        .in('project_id', projectIds),
       supabase.from('visits').select('project_id')
         .eq('tenant_id', tenant.id)
         .in('project_id', projectIds)
@@ -750,8 +766,12 @@ export default function ProjectsPage() {
         .is('resolved_report', null),
     ])
     const map: Record<number, { tasks: number; ncr: number }> = {}
-    ;(tasksRes.data || []).forEach((t: any) => { if (!map[t.project_id]) map[t.project_id] = { tasks: 0, ncr: 0 }; map[t.project_id].tasks++ })
-    ;(ncrRes.data || []).forEach((v: any) => { if (!map[v.project_id]) map[v.project_id] = { tasks: 0, ncr: 0 }; map[v.project_id].ncr++ })
+    ;(tasksRes.data || []).forEach((t: { project_id: number; status: string }) => {
+      if (!isTaskOpen(t.status)) return
+      if (!map[t.project_id]) map[t.project_id] = { tasks: 0, ncr: 0 }
+      map[t.project_id].tasks++
+    })
+    ;(ncrRes.data || []).forEach((v: { project_id: number }) => { if (!map[v.project_id]) map[v.project_id] = { tasks: 0, ncr: 0 }; map[v.project_id].ncr++ })
     setProjectBlockers(map)
   }
 
@@ -794,12 +814,20 @@ export default function ProjectsPage() {
     if (data.status === 'مكتمل' && existingProject?.status !== 'مكتمل') {
       const blockers: string[] = []
 
-      const { data: openTasks } = await supabase
-        .from('project_tasks').select('id')
+      const { data: attachments } = await supabase
+        .from('project_attachments').select('category')
         .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
-        .neq('status', 'مغلقة').neq('status', 'مكتملة')
-      if ((openTasks?.length || 0) > 0)
-        blockers.push(`${openTasks!.length} مهمة مفتوحة لم تُغلق`)
+      const uploadedCategories = (attachments || []).map((a: { category: string }) => a.category)
+      const missingDocs = getMissingClosureDocs(uploadedCategories)
+      if (missingDocs.length > 0)
+        blockers.push(`مرفقات ناقصة: ${formatMissingClosureDocs(missingDocs)}`)
+
+      const { data: allTasks } = await supabase
+        .from('project_tasks').select('status')
+        .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
+      const openCount = (allTasks || []).filter(t => isTaskOpen(t.status)).length
+      if (openCount > 0)
+        blockers.push(`${openCount} مهمة مفتوحة لم تُغلق`)
 
       const { data: openNCR } = await supabase
         .from('visits').select('id')
@@ -873,22 +901,17 @@ export default function ProjectsPage() {
       const { data: attachments } = await supabase
         .from('project_attachments').select('category')
         .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-      const uploadedCategories = (attachments || []).map((a: any) => a.category)
-      const missing = REQUIRED_DOC_CATEGORIES.filter(c => !uploadedCategories.includes(c))
-      if (missing.length > 0) {
-        const labels: Record<string, string> = {
-          'مخططات': '📐 مخططات', 'رخصة بلدية': '📋 رخصة بلدية',
-          'إخلاء بلدية': '📋 إخلاء بلدية', 'مستخلصات': '📄 مستخلص', 'فواتير': '🧾 فاتورة',
-        }
-        blockers.push(`مرفقات ناقصة: ${missing.map(c => labels[c] || c).join('، ')}`)
+      const uploadedCategories = (attachments || []).map((a: { category: string }) => a.category)
+      const missingDocs = getMissingClosureDocs(uploadedCategories)
+      if (missingDocs.length > 0) {
+        blockers.push(`مرفقات ناقصة: ${formatMissingClosureDocs(missingDocs)}`)
       }
 
       // 2. فحص المهام المفتوحة
-      const { data: openTasks } = await supabase
-        .from('project_tasks').select('id', { count: 'exact' })
+      const { data: allTasks } = await supabase
+        .from('project_tasks').select('status')
         .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-        .neq('status', 'مغلقة').neq('status', 'مكتملة')
-      const openTasksCount = openTasks?.length || 0
+      const openTasksCount = (allTasks || []).filter(t => isTaskOpen(t.status)).length
       if (openTasksCount > 0) {
         blockers.push(`${openTasksCount} مهمة مفتوحة لم تُغلق`)
       }

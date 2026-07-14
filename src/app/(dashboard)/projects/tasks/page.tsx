@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
+import { TASK_STATUS_STEPS } from '@/lib/project-tasks'
 import { Plus, X, Save, Pencil, Trash2, Search, CheckCircle2, Clock, AlertTriangle, Circle, ChevronDown, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -12,7 +14,7 @@ type Task = {
   notes?: string; created_by?: string; created_at: string
   project?: { name: string; code?: string }
 }
-type Project = { id: number; name: string; code?: string }
+type Project = { id: number; name: string; code?: string; team_id?: number | null }
 
 const PRIORITY_COLOR: Record<string, { bg: string; color: string; label: string }> = {
   'عالي':    { bg: '#fef2f2', color: '#c81e1e', label: '🔴 عالي' },
@@ -26,7 +28,7 @@ const STATUS_STEPS = [
   { id: 'معلقة',       icon: <AlertTriangle style={{ width: '14px', height: '14px' }} />,  color: '#e6820a', bg: '#fffbeb' },
   { id: 'مكتملة',     icon: <CheckCircle2 style={{ width: '14px', height: '14px' }} />,   color: '#0ea77b', bg: '#ecfdf5' },
   { id: 'ملغاة',       icon: <X style={{ width: '14px', height: '14px' }} />,              color: '#6b7280', bg: '#f3f4f6' },
-]
+].filter(s => (TASK_STATUS_STEPS as readonly string[]).includes(s.id))
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }
 
@@ -38,6 +40,7 @@ function TaskModal({ task, projects, tenantId, onClose, onSave }: {
   onClose: () => void; onSave: () => void
 }) {
   const [saving, setSaving] = useState(false)
+  const [assignees, setAssignees] = useState<AssigneeOption[]>([])
   const [form, setForm] = useState({
     project_id: task?.project_id ? String(task.project_id) : '',
     title:       task?.title       || '',
@@ -52,6 +55,12 @@ function TaskModal({ task, projects, tenantId, onClose, onSave }: {
     notes:       task?.notes       || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  useEffect(() => {
+    if (!tenantId) return
+    const proj = projects.find(p => String(p.id) === form.project_id)
+    fetchAssigneeOptions(supabase, tenantId, proj?.team_id).then(setAssignees)
+  }, [tenantId, form.project_id, projects])
 
   async function handleSave() {
     if (!form.title.trim())    { toast.error('عنوان المهمة مطلوب'); return }
@@ -110,7 +119,18 @@ function TaskModal({ task, projects, tenantId, onClose, onSave }: {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={lbl}>المسؤول</label>
-              <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المهندس أو الفريق" />
+              {assignees.length === 0 ? (
+                <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المهندس" />
+              ) : (
+                <select value={form.assignee} onChange={e => set('assignee', e.target.value)} className="select">
+                  <option value="">— اختر من الفريق —</option>
+                  {assignees.map(m => (
+                    <option key={m.id} value={m.name}>
+                      {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` — ${m.job_title}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label style={lbl}>التصنيف</label>
@@ -194,7 +214,7 @@ function TaskModal({ task, projects, tenantId, onClose, onSave }: {
 // الصفحة الرئيسية
 // ══════════════════════════════════════
 export default function ProjectTasksPage() {
-  const { tenant, currentUser } = useStore()
+  const { tenant, activeBranch, currentUser } = useStore()
   const [tasks,    setTasks]    = useState<Task[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [loading,  setLoading]  = useState(true)
@@ -209,20 +229,29 @@ export default function ProjectTasksPage() {
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
 
-  useEffect(() => { if (tenant) loadAll() }, [tenant?.id])
+  useEffect(() => { if (tenant && activeBranch) loadAll() }, [tenant?.id, activeBranch?.id])
 
   async function loadAll() {
-    if (!tenant) return
+    if (!tenant || !activeBranch) return
     setLoading(true)
-    const [tRes, pRes] = await Promise.all([
-      supabase.from('project_tasks')
+    const pRes = await supabase.from('projects')
+      .select('id, name, code, team_id')
+      .eq('tenant_id', tenant.id)
+      .eq('branch_id', activeBranch.id)
+      .order('name')
+    const projList = pRes.data || []
+    const projectIds = projList.map(p => p.id)
+    let tasksData: Task[] = []
+    if (projectIds.length > 0) {
+      const tRes = await supabase.from('project_tasks')
         .select('*, project:projects(name, code)')
         .eq('tenant_id', tenant.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('projects').select('id, name, code').eq('tenant_id', tenant.id).order('name'),
-    ])
-    setTasks(tRes.data || [])
-    setProjects(pRes.data || [])
+        .in('project_id', projectIds)
+        .order('created_at', { ascending: false })
+      tasksData = tRes.data || []
+    }
+    setTasks(tasksData)
+    setProjects(projList)
     setLoading(false)
   }
 

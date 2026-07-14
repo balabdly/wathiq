@@ -4,10 +4,12 @@ import { useStore } from '@/hooks/useStore'
 import { projectsApi } from '@/lib/db'
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil } from '@/lib/utils'
+import { fetchAssigneeOptions, fetchTeamWithMembers, TEAM_TYPE_STYLE, type AssigneeOption, type TeamMember } from '@/lib/project-teams'
+import { isTaskOpen } from '@/lib/project-tasks'
 import {
   ArrowRight, Pencil, Upload, CheckCircle2, Clock, AlertTriangle,
   Package, TrendingDown, TrendingUp, ArrowLeftRight,
-  Paperclip, Trash2, Download, FileText, Image, File, X
+  Paperclip, Trash2, Download, FileText, Image, File, X, Users
 } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
@@ -40,6 +42,7 @@ const PHASE_DOCS: Record<string, { category: string; example: string; icon: stri
     { category: 'أعمال البلدية',         example: 'شهادة إتمام الأعمال البلدية',              icon: '🏛️' },
     { category: 'إخلاء طرف البلدية',    example: 'وثيقة إخلاء الطرف الصادرة من البلدية',    icon: '✅' },
     { category: 'المستخلص',             example: 'المستخلص النهائي المعتمد',                 icon: '📄' },
+    { category: 'فواتير',               example: 'فواتير المشروع النهائية',                  icon: '🧾' },
   ],
 }
 
@@ -322,9 +325,9 @@ function ProgressUpdater({ project, tenant, onRefresh }: { project: Project; ten
 // ══════════════════════════════════════
 export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Props) {
   const { currentUser, tenant } = useStore()
-  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'history'>('info')
+  const [activeTab, setActiveTab]     = useState<'info'|'attachments'|'visits'|'inventory'|'tasks'|'team'|'history'>('info')
   const [tasks,        setTasks]        = useState<any[]>([])
-  const [engineers,    setEngineers]    = useState<{ id: number; name: string; job_title?: string }[]>([])
+  const [assignees,    setAssignees]    = useState<AssigneeOption[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [showTaskForm, setShowTaskForm] = useState(false)
   const [editTask,     setEditTask]     = useState<any | null>(null)
@@ -333,6 +336,8 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   const [loadingInv, setLoadingInv]   = useState(false)
   const [visitsData,  setVisitsData]  = useState<any[]>([])
   const [loadingVis,  setLoadingVis]  = useState(false)
+  const [teamData,    setTeamData]    = useState<{ name: string; team_type: string; description?: string | null; members: TeamMember[] } | null>(null)
+  const [loadingTeam, setLoadingTeam] = useState(false)
   const canEdit = currentUser?.permissions?.includes('projects_edit')
   const days    = daysUntil(project.end_date)
   const isLate  = days !== null && days < 0 && project.progress < 100
@@ -409,33 +414,33 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
 
   useEffect(() => {
     if (!tenant) return
-    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف']
-    supabase.from('hr_employees')
-      .select('id, name, job_title')
-      .eq('tenant_id', tenant.id)
-      .eq('is_active', true)
-      .order('name')
-      .then(({ data }) => {
-        const all = data || []
-        const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
-        setEngineers(eng.length > 0 ? eng : all)
-      })
-  }, [tenant?.id])
+    fetchAssigneeOptions(supabase, tenant.id, project.team_id).then(setAssignees)
+    if (project.team_id) loadTeam()
+  }, [tenant?.id, project.team_id])
+
+  async function loadTeam() {
+    if (!tenant || loadingTeam) return
+    if (!project.team_id) { setTeamData(null); return }
+    setLoadingTeam(true)
+    const { team, members } = await fetchTeamWithMembers(supabase, tenant.id, project.team_id)
+    if (team) {
+      setTeamData({ name: team.name, team_type: team.team_type, description: team.description, members })
+    } else {
+      setTeamData(null)
+    }
+    setLoadingTeam(false)
+  }
 
   async function loadTasks() {
     if (!tenant || loadingTasks) return
     setLoadingTasks(true)
-
-    // جلب الموظفين مع المهام في نفس الوقت
-    const ENGINEERING_TITLES = ['مهندس', 'مدير مشروع', 'مشرف', 'مشرف مشروع', 'مهندس ميداني', 'مهندس كهرباء']
-    const [tasksRes, empRes] = await Promise.all([
-      supabase.from('project_tasks').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('created_at', { ascending: false }),
-      supabase.from('hr_employees').select('id, name, job_title').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-    ])
-    setTasks(tasksRes.data || [])
-    const all = empRes.data || []
-    const eng = all.filter((e: any) => ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
-    setEngineers(eng.length > 0 ? eng : all)
+    const { data } = await supabase.from('project_tasks')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .eq('project_id', project.id)
+      .order('created_at', { ascending: false })
+    setTasks(data || [])
+    fetchAssigneeOptions(supabase, tenant.id, project.team_id).then(setAssignees)
     setLoadingTasks(false)
   }
 
@@ -449,7 +454,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       priority:   taskForm.priority,
       due_date:   taskForm.due_date || null,
       notes:      taskForm.notes || null,
-      status:     editTask?.status || 'مفتوحة',
+      status:     editTask?.status || 'لم تبدأ',
     }
     if (editTask) {
       await supabase.from('project_tasks').update(payload).eq('id', editTask.id)
@@ -463,7 +468,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
   }
 
   async function closeTask(id: number) {
-    await supabase.from('project_tasks').update({ status: 'مغلقة', completed_at: new Date().toISOString() }).eq('id', id)
+    await supabase.from('project_tasks').update({ status: 'مكتملة', completed_at: new Date().toISOString(), progress: 100 }).eq('id', id)
     loadTasks()
   }
 
@@ -473,11 +478,12 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
     loadTasks()
   }
 
-  const openTasks   = tasks.filter(t => t.status !== 'مغلقة' && t.status !== 'مكتملة')
-  const closedTasks = tasks.filter(t => t.status === 'مغلقة' || t.status === 'مكتملة')
+  const openTasks   = tasks.filter(t => isTaskOpen(t.status))
+  const closedTasks = tasks.filter(t => !isTaskOpen(t.status))
 
   const TABS = [
     { id: 'info',        label: '📋 المعلومات'  },
+    { id: 'team',        label: '👥 الفريق'     },
     { id: 'attachments', label: '📎 المرفقات'   },
     { id: 'visits',      label: '🔍 الزيارات'   },
     { id: 'inventory',   label: '📦 المخزون'    },
@@ -538,7 +544,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
       <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid var(--border)', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button key={t.id}
-            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory(); if (t.id === 'visits') loadVisits(); if (t.id === 'tasks') loadTasks() }}
+            onClick={() => { setActiveTab(t.id as any); if (t.id === 'inventory') loadInventory(); if (t.id === 'visits') loadVisits(); if (t.id === 'tasks') loadTasks(); if (t.id === 'team') loadTeam() }}
             style={{
               padding: '10px 18px', fontSize: '0.875rem', fontWeight: 600,
               border: 'none', background: 'none', cursor: 'pointer',
@@ -562,6 +568,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 { label: 'الجهة المنفذة',    value: (project as any).client_name || (project as any).client },
                 { label: 'الحالة',            value: project.status },
                 { label: 'المهندس المسؤول',  value: project.engineer },
+                { label: 'فريق العمل',       value: project.team_id ? (teamData?.name || '—') : 'غير مسند' },
                 { label: 'موقع المشروع',     value: (project as any).location },
                 { label: 'قيمة المشروع',     value: project.value ? formatCurrency(project.value) : null },
                 { label: 'تاريخ البداية',    value: formatDate(project.start_date) },
@@ -589,6 +596,80 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
               </div>
               <ProgressUpdater project={project} tenant={tenant} onRefresh={onRefresh} />
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: الفريق */}
+      {activeTab === 'team' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {loadingTeam ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+              <div style={{ width: '24px', height: '24px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          ) : !project.team_id || !teamData ? (
+            <div className="card" style={{ padding: '50px', textAlign: 'center', color: '#9ca3af' }}>
+              <Users style={{ width: '32px', height: '32px', margin: '0 auto 10px', opacity: 0.3 }} />
+              <div style={{ fontWeight: 600, marginBottom: '6px' }}>لا يوجد فريق مسند لهذا المشروع</div>
+              <div style={{ fontSize: '0.8rem' }}>يمكن إسناد فريق من صفحة إدارة الفرق أو عند تعديل المشروع</div>
+            </div>
+          ) : (
+            <>
+              <div className="card" style={{ padding: '18px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: '#1a1a2e' }}>{teamData.name}</div>
+                    {teamData.description && (
+                      <div style={{ fontSize: '0.82rem', color: 'var(--text3)', marginTop: '4px' }}>{teamData.description}</div>
+                    )}
+                  </div>
+                  <span style={{
+                    padding: '4px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700,
+                    color: TEAM_TYPE_STYLE[teamData.team_type]?.color || '#4b5563',
+                    background: TEAM_TYPE_STYLE[teamData.team_type]?.bg || '#f3f4f6',
+                  }}>
+                    {teamData.team_type}
+                  </span>
+                </div>
+                <div style={{ marginTop: '12px', fontSize: '0.82rem', color: 'var(--text3)' }}>
+                  👤 قائد المشروع: <strong style={{ color: 'var(--text)' }}>{project.engineer || '—'}</strong>
+                  {' · '}الأعضاء: <strong style={{ color: 'var(--text)' }}>{teamData.members.length}</strong>
+                </div>
+              </div>
+
+              <div className="card" style={{ overflow: 'hidden' }}>
+                <div style={{ padding: '12px 16px', background: 'var(--bg2)', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.875rem' }}>
+                  أعضاء الفريق
+                </div>
+                {teamData.members.length === 0 ? (
+                  <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.82rem' }}>لا يوجد أعضاء</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <thead>
+                      <tr style={{ background: '#fafafa', borderBottom: '1px solid var(--border)' }}>
+                        {['الاسم', 'المسمى', 'الدور في الفريق', 'القسم'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamData.members.map(m => (
+                        <tr key={m.id} style={{ borderBottom: '1px solid var(--bg2)' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 600 }}>{m.employee?.name || '—'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: '0.82rem' }}>{m.employee?.job_title || '—'}</td>
+                          <td style={{ padding: '10px 14px' }}>
+                            <span style={{ padding: '2px 9px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 600, background: '#eff6ff', color: '#1a56db' }}>
+                              {m.role_in_team}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: '0.82rem' }}>{m.employee?.department || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -827,14 +908,16 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>المسؤول</label>
-                  {engineers.length === 0 ? (
+                  {assignees.length === 0 ? (
                     <input value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
                       className="input" placeholder="اسم المسؤول" />
                   ) : (
                     <select value={taskForm.assignee} onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))} className="select">
-                      <option value="">— اختر المسؤول —</option>
-                      {engineers.map(m => (
-                        <option key={m.id} value={m.name}>{m.name}{m.job_title ? ` — ${m.job_title}` : ''}</option>
+                      <option value="">— اختر من الفريق —</option>
+                      {assignees.map(m => (
+                        <option key={m.id} value={m.name}>
+                          {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` — ${m.job_title}` : ''}
+                        </option>
                       ))}
                     </select>
                   )}
@@ -842,7 +925,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>الأولوية</label>
                   <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="select">
-                    {['عالية', 'متوسط', 'منخفضة'].map(p => <option key={p}>{p}</option>)}
+                    {['عالي', 'متوسط', 'منخفض'].map(p => <option key={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
@@ -883,7 +966,7 @@ export default function ProjectDetail({ project, onBack, onEdit, onRefresh }: Pr
                   <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#c81e1e', padding: '4px 0' }}>مهام مفتوحة ({openTasks.length})</div>
                   {openTasks.map(t => {
                     const isOverdue = t.due_date && new Date(t.due_date) < new Date()
-                    const PRIORITY_COLOR: Record<string, string> = { 'عالية': '#c81e1e', 'متوسط': '#e6820a', 'منخفضة': '#6b7280' }
+                    const PRIORITY_COLOR: Record<string, string> = { 'عالي': '#c81e1e', 'متوسط': '#e6820a', 'منخفض': '#6b7280', 'عالية': '#c81e1e', 'منخفضة': '#6b7280' }
                     return (
                       <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px', borderRadius: '10px', background: 'white', border: `1px solid ${isOverdue ? '#fca5a5' : '#e5e7eb'}` }}>
                         <div style={{ flex: 1 }}>
