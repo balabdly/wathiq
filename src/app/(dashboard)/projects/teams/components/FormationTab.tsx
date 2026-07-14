@@ -75,6 +75,9 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
               >
                 <div style={{ fontWeight: 600, fontSize: '0.875rem', color: t.is_active ? '#1a1a2e' : '#9ca3af' }}>{t.name}</div>
                 <div style={{ fontSize: '0.68rem', color: style.color, marginTop: '2px' }}>{formatTeamTypeLabel(t)}{!t.is_active ? ' · موقوف' : ''}</div>
+                <div style={{ fontSize: '0.65rem', color: (members[t.id]?.length || 0) >= 2 ? 'var(--text3)' : '#e6820a', marginTop: '2px' }}>
+                  👥 {members[t.id]?.length || 0} عضو
+                </div>
               </button>
             )
           })}
@@ -92,7 +95,16 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <h2 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>{selected.name}</h2>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginTop: '4px' }}>{selected.description || 'بدون وصف'}</p>
+                <div style={{ marginTop: '6px' }}>
+                  <span style={{
+                    padding: '3px 10px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: 600,
+                    background: (TEAM_TYPE_STYLE[selected.team_type] || TEAM_TYPE_STYLE['ميداني']).bg,
+                    color: (TEAM_TYPE_STYLE[selected.team_type] || TEAM_TYPE_STYLE['ميداني']).color,
+                  }}>
+                    {formatTeamTypeLabel(selected)}
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginTop: '6px' }}>{selected.description || 'بدون وصف'}</p>
               </div>
               {canEdit && (
                 <button onClick={() => { setEditTeam(selected); setShowTeamModal(true) }} className="btn btn-ghost">
@@ -121,8 +133,11 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
               </thead>
               <tbody>
                 {teamMembers.length === 0 ? (
-                  <tr><td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text3)' }}>أضف المشرف والموظفين</td></tr>
-                ) : teamMembers.map((m: TeamMember) => (
+                  <tr><td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: '#e6820a' }}>⚠️ لم يُحدَّد أعضاء — عدّل الفريق واختر الموظفين من الموارد البشرية</td></tr>
+                ) : teamMembers.length === 1 ? (
+                  <tr><td colSpan={4} style={{ padding: '16px', textAlign: 'center', color: '#e6820a', fontSize: '0.82rem' }}>⚠️ يُفضَّل إضافة عضو واحد على الأقل بجانب القائد</td></tr>
+                ) : null}
+                {teamMembers.map((m: TeamMember) => (
                   <tr key={m.id} style={{ borderBottom: '1px solid var(--bg2)' }}>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{m.employee?.name || '—'}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: '0.82rem' }}>{m.employee?.job_title || '—'}</td>
@@ -163,6 +178,7 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
         <TeamModal
           team={editTeam}
           employees={employees}
+          existingMembers={editTeam ? (members[editTeam.id] || []) : []}
           branchId={data.branchId}
           tenantId={tenantId}
           onClose={() => { setShowTeamModal(false); setEditTeam(null) }}
