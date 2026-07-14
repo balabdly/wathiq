@@ -228,7 +228,7 @@ export default function ReportsProjectsPage() {
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>اختر التقرير المطلوب لعرض محددات البحث</p>
       </div>
 
-      <Link href="/reports/team-workload" style={{ textDecoration: 'none' }}>
+      <Link href="/projects/teams?tab=workload" style={{ textDecoration: 'none' }}>
         <div style={{
           padding: '16px 18px', borderRadius: '12px', border: '2px solid #ddd6fe', background: '#f5f3ff',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '4px',
