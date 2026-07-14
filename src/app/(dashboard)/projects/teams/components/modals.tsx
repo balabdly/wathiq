@@ -79,9 +79,9 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
         const leadId = Number(v)
         setSelectedMembers(prev => {
           const next = new Map(prev)
-          for (const [id, role] of next) {
+          Array.from(next.entries()).forEach(([id, role]) => {
             if (role === 'قائد') next.set(id, 'عضو')
-          }
+          })
           if (v) next.set(leadId, 'قائد')
           return next
         })
@@ -141,7 +141,7 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
       return
     }
     const leadId = Number(form.lead_id)
-    const memberCount = new Set([...selectedMembers.keys(), leadId]).size
+    const memberCount = new Set([...Array.from(selectedMembers.keys()), leadId]).size
     if (memberCount < 2) {
       toast.error('اختر قائد الفريق وعضواً واحداً على الأقل')
       return
