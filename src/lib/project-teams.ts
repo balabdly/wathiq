@@ -33,6 +33,27 @@ export type TeamMember = {
   employee?: { id: number; name: string; job_title?: string; department?: string }
 }
 
+export type TeamProjectLog = {
+  id: number
+  tenant_id: string
+  team_id: number
+  project_id: number
+  author_id?: number | null
+  author_name: string
+  notes?: string | null
+  created_at: string
+  files?: TeamProjectLogFile[]
+}
+
+export type TeamProjectLogFile = {
+  id: number
+  log_id: number
+  file_name: string
+  file_path: string
+  file_type?: string
+  file_size?: number
+}
+
 export const TEAM_TYPE_STYLE: Record<string, { color: string; bg: string }> = {
   'ميداني': { color: '#1a56db', bg: '#eff6ff' },
   'تصميم':  { color: '#7c3aed', bg: '#f5f3ff' },
