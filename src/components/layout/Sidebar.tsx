@@ -40,6 +40,7 @@ const IC = {
   assets:      'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10',
   user:        'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
   branch:      'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z',
+  fleet:       'M14 18V6a2 2 0 00-2-2H4a2 2 0 00-2 2v11a1 1 0 001 1h2M14 18H9m5 0h5a1 1 0 001-1v-3.65a1 1 0 00-.22-.624l-3.48-4.35A1 1 0 0015.52 8H14M14 18v-4a2 2 0 012-2h1',
 }
 
 const C = {
@@ -239,6 +240,7 @@ export default function Sidebar() {
   const hasLessons   = hasProjects
   const hasRisks     = hasProjects
   const hasInventory = perms.includes('inventory')                       && tenantModules.inventory !== false
+  const hasFleet      = (perms.includes('assets') || perms.includes('hr_self') || perms.includes('fleet')) && tenantModules.fleet !== false
   const hasQHSE      = perms.includes('qhse')                           && tenantModules.qhse      !== false
   const hasPurchases = perms.includes('purchases')                       && tenantModules.purchases !== false
   const hasFinance   = perms.includes('finance')                        && tenantModules.finance   !== false
@@ -260,6 +262,8 @@ export default function Sidebar() {
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
   const [projectsOpen, setProjectsOpen] = useState(false)
+  const inFleet    = pathname.startsWith('/fleet')
+  const [fleetOpen,    setFleetOpen]    = useState(inFleet)
   const [qhseOpen,      setQhseOpen]      = useState(inQHSE)
   const [inventoryOpen, setInventoryOpen] = useState(pathname.startsWith('/inventory'))
   const [hrOpen,       setHrOpen]       = useState(inHR)
@@ -412,6 +416,19 @@ export default function Sidebar() {
             <SubLink href="/assets/depreciation" label="الإهلاك"     icon={IC.reports}   active={pathname.startsWith('/assets/depreciation')} />
             <SubLink href="/assets/maintenance"  label="الصيانة"     icon={IC.tasks}     active={pathname.startsWith('/assets/maintenance')} />
             <SubLink href="/assets/disposal"     label="الاستبعاد"   icon={IC.purchases} active={pathname.startsWith('/assets/disposal')} />
+          </NavSection>
+        )}
+
+        {hasFleet && (
+          <NavSection label="إدارة الأسطول" icon={IC.fleet}
+            isActive={inFleet} isOpen={fleetOpen} onToggle={() => setFleetOpen(o => !o)}>
+            <SubLink href="/fleet"              label="لوحة القيادة"  icon={IC.dashboard} active={pathname === '/fleet'} />
+            <SubLink href="/fleet/units"        label="سجل الأسطول"   icon={IC.inventory} active={pathname.startsWith('/fleet/units')} />
+            <SubLink href="/fleet/assignments"  label="التخصيص"       icon={IC.projects}  active={pathname.startsWith('/fleet/assignments')} />
+            <SubLink href="/fleet/operator"     label="تشغيل يومي"    icon={IC.user}     active={pathname.startsWith('/fleet/operator')} />
+            <SubLink href="/fleet/maintenance"  label="الصيانة"       icon={IC.tasks}    active={pathname.startsWith('/fleet/maintenance')} />
+            <SubLink href="/fleet/fuel"         label="الوقود"        icon={IC.expense}   active={pathname.startsWith('/fleet/fuel')} />
+            <SubLink href="/fleet/compliance"   label="الامتثال"      icon={IC.shield}   active={pathname.startsWith('/fleet/compliance')} />
           </NavSection>
         )}
 
