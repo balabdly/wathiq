@@ -719,6 +719,7 @@ export default function ProjectsPage() {
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
+  const [clientFilter, setClient] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
   const [myTeamOnly, setMyTeamOnly] = useState(false)
   const [myTeamIds,  setMyTeamIds]  = useState<number[]>([])

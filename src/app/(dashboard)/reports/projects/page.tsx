@@ -61,17 +61,6 @@ const REPORTS = [
     filters: ['type'],
   },
   {
-    id: 'team_workload',
-    title: 'تقرير حمولة الفرق',
-    icon: '👥',
-    color: '#7c3aed',
-    bg: '#f5f3ff',
-    border: '#ddd6fe',
-    desc: 'مشاريع نشطة، مهام مفتوحة، وNCR لكل فريق',
-    href: '/reports/team-workload',
-    filters: [],
-  },
-  {
     id: 'tasks',
     title: 'تقرير مهام المشاريع',
     icon: '✅',
@@ -238,6 +227,19 @@ export default function ReportsProjectsPage() {
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>اختر التقرير المطلوب لعرض محددات البحث</p>
       </div>
+
+      <Link href="/reports/team-workload" style={{ textDecoration: 'none' }}>
+        <div style={{
+          padding: '16px 18px', borderRadius: '12px', border: '2px solid #ddd6fe', background: '#f5f3ff',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '4px',
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#7c3aed', marginBottom: '4px' }}>👥 حمولة فرق العمل</div>
+            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>مشاريع نشطة، مهام مفتوحة، وNCR لكل فريق</div>
+          </div>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#7c3aed' }}>فتح ←</span>
+        </div>
+      </Link>
 
       <Link href="/reports/project-profitability" style={{ textDecoration: 'none' }}>
         <div style={{
