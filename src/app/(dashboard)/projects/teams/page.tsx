@@ -6,7 +6,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import type { ProjectTeam, TeamMember } from '@/lib/project-teams'
 import type { HrEmployee, ProjectRow, TeamsPageData } from './components/types'
-import { normalizeHrEmployee } from './components/types'
+import { normalizeHrEmployee, getHrEmployeeName } from './components/types'
 import { TAB_STYLE } from './components/types'
 import ActiveTeamsTab from './components/ActiveTeamsTab'
 import FormationTab from './components/FormationTab'
@@ -58,9 +58,10 @@ export default function ProjectTeamsPage() {
     const projList = projRes.data || []
     const empList = (empRes.data || []).map((e: HrEmployee) => normalizeHrEmployee(e))
     const empMap = Object.fromEntries(empList.map((e: HrEmployee) => [e.id, e]))
-    const memberRows = (membersRes.data || []).map((m: TeamMember) => ({
-      ...m, employee: empMap[m.employee_id],
-    }))
+    const memberRows = (membersRes.data || []).map((m: TeamMember) => {
+      const emp = m.employee_id ? empMap[m.employee_id] : undefined
+      return { ...m, employee: emp ? { ...emp, name: getHrEmployeeName(emp) } : undefined }
+    })
     const membersByTeam: Record<number, TeamMember[]> = {}
     memberRows.forEach((m: TeamMember) => {
       if (!membersByTeam[m.team_id]) membersByTeam[m.team_id] = []
