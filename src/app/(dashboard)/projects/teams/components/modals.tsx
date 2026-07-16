@@ -11,6 +11,11 @@ const lbl: React.CSSProperties = {
   color: 'var(--text)', marginBottom: '6px',
 }
 
+/** تجاوز width:100% العام على input في globals.css */
+const chk: React.CSSProperties = {
+  width: '16px', height: '16px', minWidth: '16px', flexShrink: 0, padding: 0, margin: 0,
+}
+
 export function TeamModal({ team, employees, existingMembers = [], branchId, tenantId, onClose, onSave }: {
   team: ProjectTeam | null
   employees: HrEmployee[]
@@ -257,9 +262,10 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
                     <div
                       key={emp.id}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 6px',
+                        display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 6px',
                         borderBottom: '1px solid #eee', fontSize: '0.82rem',
                         background: isSelected ? '#eff6ff' : 'transparent', borderRadius: '6px',
+                        width: '100%',
                       }}
                     >
                       <input
@@ -267,23 +273,23 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
                         checked={isSelected}
                         disabled={isLead}
                         onChange={e => toggleMember(emp.id, e.target.checked)}
-                        style={{ flexShrink: 0 }}
+                        style={chk}
                       />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600 }}>{emp.name}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>
+                      <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {emp.job_title || '—'}{emp.department ? ` · ${emp.department}` : ''}
                         </div>
                       </div>
                       {isSelected && (
                         isLead ? (
-                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#1a56db', padding: '2px 8px', background: '#dbeafe', borderRadius: '8px' }}>قائد</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#1a56db', padding: '2px 8px', background: '#dbeafe', borderRadius: '8px', flexShrink: 0, whiteSpace: 'nowrap' }}>قائد</span>
                         ) : (
                           <select
                             value={role}
                             onChange={e => setMemberRole(emp.id, e.target.value)}
                             className="select"
-                            style={{ fontSize: '0.72rem', padding: '4px 6px', minWidth: '80px' }}
+                            style={{ fontSize: '0.72rem', padding: '4px 6px', minWidth: '80px', width: 'auto', flexShrink: 0 }}
                             onClick={e => e.stopPropagation()}
                           >
                             {TEAM_ROLES.filter(r => r !== 'قائد').map(r => (
@@ -307,7 +313,7 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
             <textarea value={form.description} onChange={e => setField('description', e.target.value)} className="input" rows={2} />
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem', cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.is_active} onChange={e => setField('is_active', e.target.checked)} />
+            <input type="checkbox" checked={form.is_active} onChange={e => setField('is_active', e.target.checked)} style={chk} />
             فريق نشط
           </label>
         </div>
