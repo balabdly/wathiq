@@ -20,7 +20,7 @@ export function getHrEmployeeName(e: Pick<HrEmployee, 'name' | 'first_name' | 'f
   return built || '—'
 }
 
-export function normalizeHrEmployee(e: HrEmployee): HrEmployee {
+export function normalizeHrEmployee(e: HrEmployee): HrEmployee & { name: string } {
   return { ...e, name: getHrEmployeeName(e) }
 }
 

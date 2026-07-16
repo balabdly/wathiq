@@ -68,12 +68,15 @@ export default function ProjectTeamsPage() {
       membersByTeam[m.team_id].push(m)
     })
 
-    const teamsWithCounts = (teamsRes.data || []).map((t: ProjectTeam) => ({
-      ...t,
-      lead: t.lead_id ? empMap[t.lead_id] || null : null,
-      member_count: (membersByTeam[t.id] || []).length,
-      project_count: projList.filter((p: ProjectRow) => p.team_id === t.id).length,
-    }))
+    const teamsWithCounts = (teamsRes.data || []).map((t: ProjectTeam) => {
+      const leadEmp = t.lead_id ? empMap[t.lead_id] : null
+      return {
+        ...t,
+        lead: leadEmp ? { id: leadEmp.id, name: leadEmp.name, job_title: leadEmp.job_title } : null,
+        member_count: (membersByTeam[t.id] || []).length,
+        project_count: projList.filter((p: ProjectRow) => p.team_id === t.id).length,
+      }
+    })
 
     setTeams(teamsWithCounts)
     setMembers(membersByTeam)
