@@ -57,7 +57,7 @@ export default function ProjectTeamsPage() {
 
     const projList = projRes.data || []
     const empList = (empRes.data || []).map((e: HrEmployee) => normalizeHrEmployee(e))
-    const empMap = Object.fromEntries(empList.map((e: HrEmployee) => [e.id, e]))
+    const empMap = Object.fromEntries(empList.map(e => [e.id, e])) as Record<number, HrEmployee & { name: string }>
     const memberRows = (membersRes.data || []).map((m: TeamMember) => {
       const emp = m.employee_id ? empMap[m.employee_id] : undefined
       return { ...m, employee: emp ? { ...emp, name: getHrEmployeeName(emp) } : undefined }
