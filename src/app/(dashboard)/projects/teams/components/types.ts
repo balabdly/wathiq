@@ -2,7 +2,27 @@
 
 import type { ProjectTeam, TeamMember } from '@/lib/project-teams'
 
-export type HrEmployee = { id: number; name: string; job_title?: string; department?: string }
+export type HrEmployee = {
+  id: number
+  name?: string | null
+  first_name?: string | null
+  father_name?: string | null
+  grandfather_name?: string | null
+  family_name?: string | null
+  job_title?: string
+  department?: string
+}
+
+/** الاسم الكامل — يستخدم name أو يُركّب من أجزاء الاسم في HR */
+export function getHrEmployeeName(e: Pick<HrEmployee, 'name' | 'first_name' | 'father_name' | 'grandfather_name' | 'family_name'>): string {
+  if (e.name?.trim()) return e.name.trim()
+  const built = [e.first_name, e.father_name, e.grandfather_name, e.family_name].filter(Boolean).join(' ').trim()
+  return built || '—'
+}
+
+export function normalizeHrEmployee(e: HrEmployee): HrEmployee {
+  return { ...e, name: getHrEmployeeName(e) }
+}
 
 export type ProjectRow = {
   id: number

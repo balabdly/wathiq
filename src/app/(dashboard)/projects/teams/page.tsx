@@ -6,6 +6,7 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import type { ProjectTeam, TeamMember } from '@/lib/project-teams'
 import type { HrEmployee, ProjectRow, TeamsPageData } from './components/types'
+import { normalizeHrEmployee } from './components/types'
 import { TAB_STYLE } from './components/types'
 import ActiveTeamsTab from './components/ActiveTeamsTab'
 import FormationTab from './components/FormationTab'
@@ -48,12 +49,14 @@ export default function ProjectTeamsPage() {
       supabase.from('projects')
         .select('id, name, code, status, progress, engineer, team_id, end_date')
         .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id).order('name'),
-      supabase.from('hr_employees').select('id, name, job_title, department').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      supabase.from('hr_employees')
+        .select('id, name, first_name, father_name, grandfather_name, family_name, job_title, department')
+        .eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('team_members').select('*').eq('tenant_id', tenant.id).eq('is_active', true),
     ])
 
     const projList = projRes.data || []
-    const empList = empRes.data || []
+    const empList = (empRes.data || []).map((e: HrEmployee) => normalizeHrEmployee(e))
     const empMap = Object.fromEntries(empList.map((e: HrEmployee) => [e.id, e]))
     const memberRows = (membersRes.data || []).map((m: TeamMember) => ({
       ...m, employee: empMap[m.employee_id],

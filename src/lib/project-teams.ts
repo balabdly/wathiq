@@ -108,6 +108,19 @@ const ENGINEERING_TITLES = [
   'مهندس ميداني', 'مشرف', 'مشرف مشروع',
 ]
 
+/** الاسم الكامل من سجل HR — name أو تركيب الأجزاء */
+export function getHrEmployeeName(e: {
+  name?: string | null
+  first_name?: string | null
+  father_name?: string | null
+  grandfather_name?: string | null
+  family_name?: string | null
+}): string {
+  if (e.name?.trim()) return e.name.trim()
+  const built = [e.first_name, e.father_name, e.grandfather_name, e.family_name].filter(Boolean).join(' ').trim()
+  return built || '—'
+}
+
 /** أعضاء الفريق للإسناد — أو مهندسين الفرع إن لم يُحدَّد فريق */
 export async function fetchAssigneeOptions(
   supabase: { from: (t: string) => any },
@@ -117,17 +130,18 @@ export async function fetchAssigneeOptions(
   if (teamId) {
     const { data: members } = await supabase
       .from('team_members')
-      .select('role_in_team, employee:hr_employees(id, name, job_title)')
+      .select('role_in_team, employee:hr_employees(id, name, first_name, father_name, grandfather_name, family_name, job_title)')
       .eq('tenant_id', tenantId)
       .eq('team_id', teamId)
       .eq('is_active', true)
     const opts = (members || [])
-      .map((m: { role_in_team: string; employee: { id: number; name: string; job_title?: string } | null }) => {
+      .map((m: { role_in_team: string; employee: Record<string, unknown> | null }) => {
         if (!m.employee) return null
+        const emp = m.employee as { id: number; name?: string; job_title?: string; first_name?: string; father_name?: string; grandfather_name?: string; family_name?: string }
         return {
-          id: m.employee.id,
-          name: m.employee.name,
-          job_title: m.employee.job_title,
+          id: emp.id,
+          name: getHrEmployeeName(emp),
+          job_title: emp.job_title,
           role_in_team: m.role_in_team,
         }
       })
@@ -137,15 +151,17 @@ export async function fetchAssigneeOptions(
 
   const { data: all } = await supabase
     .from('hr_employees')
-    .select('id, name, job_title')
+    .select('id, name, first_name, father_name, grandfather_name, family_name, job_title')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .order('name')
   const list = all || []
   const eng = list.filter((e: { job_title?: string }) =>
     ENGINEERING_TITLES.some(t => (e.job_title || '').includes(t)))
-  return (eng.length > 0 ? eng : list).map((e: { id: number; name: string; job_title?: string }) => ({
-    id: e.id, name: e.name, job_title: e.job_title,
+  return (eng.length > 0 ? eng : list).map((e: Record<string, unknown>) => ({
+    id: e.id as number,
+    name: getHrEmployeeName(e as Parameters<typeof getHrEmployeeName>[0]),
+    job_title: e.job_title as string | undefined,
   }))
 }
 
@@ -158,15 +174,21 @@ export async function fetchTeamWithMembers(
   const [teamRes, membersRes] = await Promise.all([
     supabase.from('teams').select('*').eq('id', teamId).eq('tenant_id', tenantId).single(),
     supabase.from('team_members')
-      .select('*, employee:hr_employees(id, name, job_title, department)')
+      .select('*, employee:hr_employees(id, name, first_name, father_name, grandfather_name, family_name, job_title, department)')
       .eq('tenant_id', tenantId)
       .eq('team_id', teamId)
       .eq('is_active', true),
   ])
-  const members = ((membersRes.data || []) as TeamMember[]).map(m => ({
-    ...m,
-    employee: (m as any).employee || undefined,
-  }))
+  const members = ((membersRes.data || []) as TeamMember[]).map(m => {
+    const raw = (m as { employee?: Record<string, unknown> }).employee
+    const employee = raw ? {
+      id: raw.id as number,
+      name: getHrEmployeeName(raw as Parameters<typeof getHrEmployeeName>[0]),
+      job_title: raw.job_title as string | undefined,
+      department: raw.department as string | undefined,
+    } : undefined
+    return { ...m, employee }
+  })
   const team = teamRes.data as ProjectTeam | null
   if (team?.lead_id) {
     const leadEmp = members.find(m => m.employee_id === team.lead_id)?.employee
