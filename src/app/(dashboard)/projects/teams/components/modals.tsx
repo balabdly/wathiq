@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { TEAM_TYPES, TEAM_ROLES, getTeamSpecializations, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
 import type { HrEmployee, ProjectRow } from './types'
+import { getHrEmployeeName } from './types'
 
 const lbl: React.CSSProperties = {
   display: 'block', fontSize: '0.875rem', fontWeight: 600,
@@ -62,7 +63,7 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
     const q = memberSearch.trim()
     if (!q) return employees
     return employees.filter(e =>
-      e.name.includes(q) ||
+      getHrEmployeeName(e).includes(q) ||
       (e.job_title || '').includes(q) ||
       (e.department || '').includes(q),
     )
@@ -224,7 +225,7 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
             <select value={form.lead_id} onChange={e => setField('lead_id', e.target.value)} className="select">
               <option value="">— اختر قائد الفريق —</option>
               {employees.map(e => (
-                <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>
+                <option key={e.id} value={e.id}>{getHrEmployeeName(e)}{e.job_title ? ` — ${e.job_title}` : ''}</option>
               ))}
             </select>
           </div>
@@ -276,7 +277,7 @@ export function TeamModal({ team, employees, existingMembers = [], branchId, ten
                         style={chk}
                       />
                       <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}>
-                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
+                        <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getHrEmployeeName(emp)}</div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {emp.job_title || '—'}{emp.department ? ` · ${emp.department}` : ''}
                         </div>
@@ -369,7 +370,7 @@ export function MemberModal({ teamId, tenantId, employees, existingIds, onClose,
             <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="select">
               <option value="">— اختر —</option>
               {available.map(e => (
-                <option key={e.id} value={e.id}>{e.name}{e.job_title ? ` — ${e.job_title}` : ''}</option>
+                <option key={e.id} value={e.id}>{getHrEmployeeName(e)}{e.job_title ? ` — ${e.job_title}` : ''}</option>
               ))}
             </select>
           </div>

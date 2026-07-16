@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { formatTeamTypeLabel, TEAM_ROLES, TEAM_TYPE_STYLE, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
 import type { TeamsPageData } from './types'
+import { getHrEmployeeName } from './types'
 import { TeamModal } from './modals'
 
 const PANEL_H = 'min(520px, calc(100vh - 320px))'
@@ -42,7 +43,7 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
     const q = hrSearch.trim()
     return employees
       .filter(e => !memberEmpIds.has(e.id))
-      .filter(e => !q || e.name.includes(q) || (e.job_title || '').includes(q) || (e.department || '').includes(q))
+      .filter(e => !q || getHrEmployeeName(e).includes(q) || (e.job_title || '').includes(q) || (e.department || '').includes(q))
   }, [employees, memberEmpIds, hrSearch])
 
   async function addMember(empId: number) {
@@ -91,7 +92,7 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
       await supabase.from('team_members').update({ role_in_team: 'عضو' }).eq('id', prevLead.id)
     }
     if (emp) {
-      await supabase.from('projects').update({ lead_id: empId, engineer: emp.name }).eq('team_id', selected.id)
+      await supabase.from('projects').update({ lead_id: empId, engineer: getHrEmployeeName(emp) }).eq('team_id', selected.id)
     }
     setBusyId(null)
     toast.success('تم تعيين القائد')
@@ -326,7 +327,7 @@ export default function FormationTab({ data }: { data: TeamsPageData }) {
                     }}
                   >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.name}</div>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getHrEmployeeName(emp)}</div>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>
                         {emp.job_title || '—'}{emp.department ? ` · ${emp.department}` : ''}
                       </div>
