@@ -5,8 +5,8 @@ import { Users } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import type { ProjectTeam, TeamMember } from '@/lib/project-teams'
-import type { HrEmployee, ProjectRow, TeamsPageData } from './components/types'
-import { normalizeHrEmployee, getHrEmployeeName } from './components/types'
+import type { HrEmployee, ProjectRow, TeamsPageData, NormalizedHrEmployee } from './components/types'
+import { normalizeHrEmployee, toMemberEmployee } from './components/types'
 import { TAB_STYLE } from './components/types'
 import ActiveTeamsTab from './components/ActiveTeamsTab'
 import FormationTab from './components/FormationTab'
@@ -33,7 +33,7 @@ export default function ProjectTeamsPage() {
   const [teams, setTeams] = useState<ProjectTeam[]>([])
   const [members, setMembers] = useState<Record<number, TeamMember[]>>({})
   const [projects, setProjects] = useState<ProjectRow[]>([])
-  const [employees, setEmployees] = useState<HrEmployee[]>([])
+  const [employees, setEmployees] = useState<NormalizedHrEmployee[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -57,10 +57,10 @@ export default function ProjectTeamsPage() {
 
     const projList = projRes.data || []
     const empList = (empRes.data || []).map((e: HrEmployee) => normalizeHrEmployee(e))
-    const empMap = Object.fromEntries(empList.map(e => [e.id, e])) as Record<number, HrEmployee & { name: string }>
-    const memberRows = (membersRes.data || []).map((m: TeamMember) => {
-      const emp = m.employee_id ? empMap[m.employee_id] : undefined
-      return { ...m, employee: emp ? { ...emp, name: getHrEmployeeName(emp) } : undefined }
+    const empMap = Object.fromEntries(empList.map(e => [e.id, e])) as Record<number, NormalizedHrEmployee>
+    const memberRows: TeamMember[] = (membersRes.data || []).map((m: TeamMember) => {
+      const emp = empMap[m.employee_id]
+      return emp ? { ...m, employee: toMemberEmployee(emp) } : m
     })
     const membersByTeam: Record<number, TeamMember[]> = {}
     memberRows.forEach((m: TeamMember) => {

@@ -20,8 +20,19 @@ export function getHrEmployeeName(e: Pick<HrEmployee, 'name' | 'first_name' | 'f
   return built || '—'
 }
 
-export function normalizeHrEmployee(e: HrEmployee): HrEmployee & { name: string } {
+export type NormalizedHrEmployee = HrEmployee & { name: string }
+
+export function normalizeHrEmployee(e: HrEmployee): NormalizedHrEmployee {
   return { ...e, name: getHrEmployeeName(e) }
+}
+
+export function toMemberEmployee(emp: NormalizedHrEmployee): NonNullable<TeamMember['employee']> {
+  return {
+    id: emp.id,
+    name: emp.name,
+    job_title: emp.job_title,
+    department: emp.department,
+  }
 }
 
 export type ProjectRow = {
@@ -39,7 +50,7 @@ export type TeamsPageData = {
   teams: ProjectTeam[]
   members: Record<number, TeamMember[]>
   projects: ProjectRow[]
-  employees: HrEmployee[]
+  employees: NormalizedHrEmployee[]
   loading: boolean
   reload: () => Promise<void>
   canEdit: boolean
