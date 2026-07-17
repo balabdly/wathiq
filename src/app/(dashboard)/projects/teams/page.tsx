@@ -12,17 +12,19 @@ import ActiveTeamsTab from './components/ActiveTeamsTab'
 import FormationTab from './components/FormationTab'
 import AssignedProjectsTab from './components/AssignedProjectsTab'
 import WorkloadTab from './components/WorkloadTab'
+import TeamTasksTab from './components/TeamTasksTab'
 
-type TabId = 'active' | 'formation' | 'projects' | 'workload'
+type TabId = 'active' | 'formation' | 'projects' | 'tasks' | 'workload'
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'active',     label: 'الفرق النشطة',     icon: '⚡' },
   { id: 'formation',  label: 'تكوين الفرق',     icon: '🏗️' },
   { id: 'projects',   label: 'المشاريع المسندة', icon: '📋' },
+  { id: 'tasks',      label: 'مهام الفريق',      icon: '✅' },
   { id: 'workload',   label: 'حمولة الفرق',     icon: '📊' },
 ]
 
-const VALID_TABS = new Set<TabId>(['active', 'formation', 'projects', 'workload'])
+const VALID_TABS = new Set<TabId>(['active', 'formation', 'projects', 'tasks', 'workload'])
 
 export default function ProjectTeamsPage() {
   const searchParams = useSearchParams()
@@ -130,7 +132,7 @@ export default function ProjectTeamsPage() {
         ))}
       </div>
 
-      <div style={TAB_STYLE.bar}>
+      <div style={{ ...TAB_STYLE.bar, flexWrap: 'wrap', width: '100%', maxWidth: '100%' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={TAB_STYLE.btn(tab === t.id)}>
             {t.icon} {t.label}
@@ -138,13 +140,14 @@ export default function ProjectTeamsPage() {
         ))}
       </div>
 
-      {loading && tab !== 'workload' ? (
+      {loading && tab !== 'workload' && tab !== 'tasks' ? (
         <div style={{ textAlign: 'center', padding: '64px', color: 'var(--text3)' }}>جاري التحميل...</div>
       ) : (
         <>
           {tab === 'active' && <ActiveTeamsTab data={pageData} />}
           {tab === 'formation' && <FormationTab data={pageData} />}
           {tab === 'projects' && <AssignedProjectsTab data={pageData} />}
+          {tab === 'tasks' && <TeamTasksTab data={pageData} />}
           {tab === 'workload' && <WorkloadTab />}
         </>
       )}
