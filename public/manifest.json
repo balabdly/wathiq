@@ -81,7 +81,7 @@
       "name": "المهام",
       "short_name": "مهام",
       "description": "عرض مهامي",
-      "url": "/projects/tasks",
+      "url": "/projects/teams?tab=tasks",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     },
     {

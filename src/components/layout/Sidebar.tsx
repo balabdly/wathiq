@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { signOut } from '@/lib/supabase'
 import React, { useState } from 'react'
@@ -229,7 +229,6 @@ function Divider() {
 
 export default function Sidebar() {
   const pathname  = usePathname()
-  const searchParams = useSearchParams()
   const router    = useRouter()
   const { currentUser, tenant, activeBranch, branches, setActiveBranch, reset } = useStore()
   const perms: string[]   = currentUser?.permissions || []
@@ -342,8 +341,7 @@ export default function Sidebar() {
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
             {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname === '/projects' || (pathname.startsWith('/projects/') && !['/projects/tasks','/projects/lessons','/projects/risks','/projects/teams'].some(p => pathname.startsWith(p)))} />}
-            {hasTeams      && <SubLink href="/projects/teams"    label="إدارة الفرق"       icon={IC.employees}  active={pathname.startsWith('/projects/teams')} />}
-            {hasTasks      && <SubLink href="/projects/teams?tab=tasks" label="المهام" icon={IC.tasks} active={pathname.startsWith('/projects/tasks') || (pathname.startsWith('/projects/teams') && searchParams.get('tab') === 'tasks')} />}
+            {hasTeams      && <SubLink href="/projects/teams"    label="إدارة الفرق"       icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}
           </NavSection>

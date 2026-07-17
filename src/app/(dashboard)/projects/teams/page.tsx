@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Users } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
@@ -28,6 +28,7 @@ const VALID_TABS = new Set<TabId>(['active', 'formation', 'projects', 'tasks', '
 
 export default function ProjectTeamsPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const { tenant, activeBranch, currentUser } = useStore()
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
@@ -42,6 +43,11 @@ export default function ProjectTeamsPage() {
     const t = searchParams.get('tab') as TabId | null
     if (t && VALID_TABS.has(t)) setTab(t)
   }, [searchParams])
+
+  function selectTab(id: TabId) {
+    setTab(id)
+    router.replace(`/projects/teams?tab=${id}`, { scroll: false })
+  }
 
   const loadAll = useCallback(async () => {
     if (!tenant || !activeBranch) return
@@ -134,7 +140,7 @@ export default function ProjectTeamsPage() {
 
       <div style={{ ...TAB_STYLE.bar, flexWrap: 'wrap', width: '100%', maxWidth: '100%' }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={TAB_STYLE.btn(tab === t.id)}>
+          <button key={t.id} onClick={() => selectTab(t.id)} style={TAB_STYLE.btn(tab === t.id)}>
             {t.icon} {t.label}
           </button>
         ))}
