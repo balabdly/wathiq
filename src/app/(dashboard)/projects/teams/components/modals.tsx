@@ -1,9 +1,9 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { X, Save, UserPlus } from 'lucide-react'
+import { X, Save, UserPlus, Search, Trash2, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { TEAM_TYPES, TEAM_ROLES, getTeamSpecializations, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
+import { TEAM_TYPES, TEAM_ROLES, getTeamSpecializations, formatTeamTypeLabel, TEAM_TYPE_STYLE, type ProjectTeam, type TeamMember } from '@/lib/project-teams'
 import type { HrEmployee, ProjectRow } from './types'
 import { getHrEmployeeName } from './types'
 
@@ -480,6 +480,227 @@ export function AssignProjectModal({ teamName, unassigned, onClose, onAssign }: 
         <div className="modal-footer">
           <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleAssign} disabled={saving || !projectId} className="btn btn-primary">إسناد</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const iconBtn = (color: string, bg: string, border: string): React.CSSProperties => ({
+  padding: '6px', borderRadius: '8px', border: `1px solid ${border}`,
+  background: bg, cursor: 'pointer', color, display: 'flex', alignItems: 'center',
+})
+
+/** عرض تفاصيل الفريق — أعضاء + مهام */
+export function TeamViewModal({ team, members, projects, taskCount, onClose }: {
+  team: ProjectTeam
+  members: TeamMember[]
+  projects: ProjectRow[]
+  taskCount: number
+  onClose: () => void
+}) {
+  const style = TEAM_TYPE_STYLE[team.team_type] || TEAM_TYPE_STYLE['ميداني']
+  const teamProjects = projects.filter(p => p.team_id === team.id)
+  const lead = members.find(m => m.role_in_team === 'قائد')
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '520px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <h3 style={{ fontWeight: 700, margin: 0 }}>{team.name}</h3>
+            <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: '8px', background: style.bg, color: style.color, fontWeight: 600 }}>
+              {formatTeamTypeLabel(team)}
+            </span>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            {[
+              { label: 'الأعضاء', value: members.length, color: '#1a56db' },
+              { label: 'المشاريع', value: teamProjects.length, color: '#0ea77b' },
+              { label: 'المهام', value: taskCount, color: '#7c3aed' },
+            ].map(s => (
+              <div key={s.label} style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: s.color }}>{s.value}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          {lead && (
+            <div style={{ fontSize: '0.82rem' }}>
+              <span style={{ color: 'var(--text3)' }}>القائد: </span>
+              <strong>{lead.employee?.name || '—'}</strong>
+            </div>
+          )}
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px' }}>👥 الأعضاء</div>
+            {members.length === 0 ? (
+              <div style={{ color: 'var(--text3)', fontSize: '0.82rem' }}>لا أعضاء</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {members.map(m => (
+                  <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#f8fafc', borderRadius: '8px', fontSize: '0.82rem' }}>
+                    <span style={{ fontWeight: 600 }}>{m.employee?.name || '—'}</span>
+                    <span style={{ color: 'var(--text3)', fontSize: '0.72rem' }}>{m.role_in_team}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {teamProjects.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px' }}>📁 المشاريع المسندة</div>
+              {teamProjects.map(p => (
+                <div key={p.id} style={{ fontSize: '0.78rem', color: 'var(--text3)', padding: '4px 0' }}>{p.name}{p.code ? ` (${p.code})` : ''}</div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إغلاق</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** تعديل أعضاء الفريق */
+export function TeamMembersEditModal({ team, members, employees, tenantId, onClose, onSave }: {
+  team: ProjectTeam
+  members: TeamMember[]
+  employees: HrEmployee[]
+  tenantId: string
+  onClose: () => void
+  onSave: () => void
+}) {
+  const [memberSearch, setMemberSearch] = useState('')
+  const [hrSearch, setHrSearch] = useState('')
+  const [busyId, setBusyId] = useState<number | null>(null)
+
+  const memberEmpIds = useMemo(() => new Set(members.map(m => m.employee_id)), [members])
+
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.trim()
+    if (!q) return members
+    return members.filter(m => (m.employee?.name || '').includes(q) || (m.employee?.job_title || '').includes(q))
+  }, [members, memberSearch])
+
+  const availableEmployees = useMemo(() => {
+    const q = hrSearch.trim()
+    return employees
+      .filter(e => !memberEmpIds.has(e.id))
+      .filter(e => !q || getHrEmployeeName(e).includes(q) || (e.job_title || '').includes(q))
+  }, [employees, memberEmpIds, hrSearch])
+
+  async function addMember(empId: number) {
+    setBusyId(empId)
+    const { error } = await supabase.from('team_members').upsert({
+      tenant_id: tenantId, team_id: team.id, employee_id: empId, role_in_team: 'عضو', is_active: true,
+    }, { onConflict: 'team_id,employee_id' })
+    setBusyId(null)
+    if (error) { toast.error(error.message); return }
+    toast.success('تمت الإضافة')
+    onSave()
+  }
+
+  async function removeMember(m: TeamMember) {
+    if (m.role_in_team === 'قائد') { toast.error('عيّن قائداً آخر أولاً'); return }
+    if (!confirm(`إزالة "${m.employee?.name}"؟`)) return
+    setBusyId(m.employee_id)
+    const { error } = await supabase.from('team_members').update({ is_active: false }).eq('id', m.id)
+    setBusyId(null)
+    if (error) { toast.error(error.message); return }
+    toast.success('تمت الإزالة')
+    onSave()
+  }
+
+  async function setLead(empId: number) {
+    setBusyId(empId)
+    const emp = employees.find(e => e.id === empId)
+    await supabase.from('teams').update({ lead_id: empId, updated_at: new Date().toISOString() }).eq('id', team.id)
+    await supabase.from('team_members').upsert({
+      tenant_id: tenantId, team_id: team.id, employee_id: empId, role_in_team: 'قائد', is_active: true,
+    }, { onConflict: 'team_id,employee_id' })
+    const prevLead = members.find(m => m.role_in_team === 'قائد' && m.employee_id !== empId)
+    if (prevLead) await supabase.from('team_members').update({ role_in_team: 'عضو' }).eq('id', prevLead.id)
+    if (emp) {
+      await supabase.from('projects').update({ lead_id: empId, engineer: getHrEmployeeName(emp) }).eq('team_id', team.id)
+    }
+    setBusyId(null)
+    toast.success('تم تعيين القائد')
+    onSave()
+  }
+
+  async function updateRole(m: TeamMember, role: string) {
+    if (m.role_in_team === 'قائد') return
+    const { error } = await supabase.from('team_members').update({ role_in_team: role }).eq('id', m.id)
+    if (error) { toast.error(error.message); return }
+    onSave()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '720px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, margin: 0 }}>✏️ تعديل أعضاء — {team.name}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', maxHeight: '420px' }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.82rem' }}>👥 الأعضاء ({members.length})</div>
+            <div style={{ padding: '8px' }}>
+              <input value={memberSearch} onChange={e => setMemberSearch(e.target.value)} className="input" placeholder="بحث..." style={{ fontSize: '0.78rem', marginBottom: '6px' }} />
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {filteredMembers.map(m => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px', borderBottom: '1px solid var(--bg2)', fontSize: '0.8rem', background: m.role_in_team === 'قائد' ? '#f0f7ff' : 'transparent' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{m.employee?.name || '—'}{m.role_in_team === 'قائد' && ' ★'}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>{m.employee?.job_title || '—'}</div>
+                  </div>
+                  {m.role_in_team !== 'قائد' && (
+                    <>
+                      <select value={m.role_in_team} onChange={e => updateRole(m, e.target.value)} className="select" style={{ fontSize: '0.65rem', padding: '2px', minWidth: '64px' }}>
+                        {TEAM_ROLES.filter(r => r !== 'قائد').map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <button onClick={() => setLead(m.employee_id)} disabled={busyId === m.employee_id} title="قائد" style={iconBtn('#1a56db', '#eff6ff', '#bfdbfe')}>
+                        <UserPlus style={{ width: '12px', height: '12px' }} />
+                      </button>
+                      <button onClick={() => removeMember(m)} disabled={busyId === m.employee_id} style={iconBtn('#c81e1e', '#fef2f2', '#fecaca')}>
+                        <Trash2 style={{ width: '12px', height: '12px' }} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: '0.82rem', background: '#f8fafc' }}>📋 HR — إضافة</div>
+            <div style={{ padding: '8px' }}>
+              <input value={hrSearch} onChange={e => setHrSearch(e.target.value)} className="input" placeholder="بحث..." style={{ fontSize: '0.78rem', marginBottom: '6px' }} />
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {availableEmployees.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.82rem' }}>لا موظفين متاحين</div>
+              ) : availableEmployees.map(emp => (
+                <div key={emp.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderBottom: '1px solid var(--bg2)', fontSize: '0.8rem' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{getHrEmployeeName(emp)}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>{emp.job_title || '—'}</div>
+                  </div>
+                  <button onClick={() => addMember(emp.id)} disabled={busyId === emp.id} style={{ padding: '5px 10px', borderRadius: '8px', border: 'none', background: '#1a56db', color: 'white', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <ChevronLeft style={{ width: '12px', height: '12px' }} /> إضافة
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-primary">تم</button>
         </div>
       </div>
     </div>

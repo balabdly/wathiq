@@ -34,6 +34,7 @@ export default function ProjectTeamsPage() {
   const router = useRouter()
   const { tenant, activeBranch, currentUser } = useStore()
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
+  const canDelete = currentUser?.role === 'مدير عام'
 
   const [tab, setTab] = useState<TabId>('teams')
   const [teams, setTeams] = useState<ProjectTeam[]>([])
@@ -112,7 +113,7 @@ export default function ProjectTeamsPage() {
 
   const pageData: TeamsPageData = {
     teams, members, projects, employees, loading, reload: loadAll,
-    canEdit, tenantId: tenant!.id, branchId: activeBranch!.id,
+    canEdit, canDelete, tenantId: tenant!.id, branchId: activeBranch!.id,
     branchName: activeBranch?.name,
     currentUserName: currentUser?.name || 'مستخدم',
     currentUserEmployeeId: currentUser?.hr_employee_id,

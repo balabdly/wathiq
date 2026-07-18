@@ -1,18 +1,19 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
+import { formatTeamTypeLabel, TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import type { TeamsPageData, ProjectRow } from './types'
 import {
   TaskModal, STATUS_STEPS, PRIORITY_COLOR,
   type ProjectTask, type TaskProject,
 } from './taskShared'
 import ProjectDetailsModal from './ProjectDetailsModal'
-import { Plus, Search, Pencil, Trash2, Eye, X, FileText } from 'lucide-react'
+import { NewAssignModal } from './modals'
+import { Plus, Search, Pencil, Trash2, Eye, X, FileText, Link2, UserMinus } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
-  const { teams, projects, tenantId, canEdit } = data
+  const { teams, projects, employees, tenantId, canEdit, reload } = data
   const [tasks, setTasks] = useState<ProjectTask[]>([])
   const [loading, setLoading] = useState(true)
   const [teamFilter, setTeamFilter] = useState<number | ''>('')
@@ -25,8 +26,40 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
   const [editTask, setEditTask] = useState<ProjectTask | null>(null)
   const [detailTask, setDetailTask] = useState<ProjectTask | null>(null)
   const [logProject, setLogProject] = useState<ProjectRow | null>(null)
+  const [showAssign, setShowAssign] = useState(false)
 
   const activeTeams = useMemo(() => teams.filter(t => t.is_active), [teams])
+
+  const unassigned = useMemo(
+    () => projects.filter(p => !p.team_id && p.status !== 'مكتمل' && p.status !== 'ملغي'),
+    [projects],
+  )
+
+  async function assignProject(teamId: number, projectId: number) {
+    const team = teams.find(t => t.id === teamId)
+    const lead = team?.lead_id ? employees.find(e => e.id === team.lead_id) : null
+    const { error } = await supabase.from('projects').update({
+      team_id: teamId,
+      lead_id: team?.lead_id || null,
+      engineer: lead?.name || undefined,
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId)
+    if (error) { toast.error(error.message); return }
+    toast.success('تم إسناد المشروع ✅')
+    await reload()
+    loadTasks()
+  }
+
+  async function unassignProject(p: ProjectRow) {
+    if (!confirm(`إلغاء إسناد "${p.name}" من الفريق؟`)) return
+    const { error } = await supabase.from('projects').update({
+      team_id: null, updated_at: new Date().toISOString(),
+    }).eq('id', p.id)
+    if (error) { toast.error(error.message); return }
+    toast.success('تم سحب الإسناد')
+    await reload()
+    loadTasks()
+  }
 
   /** كل مشاريع الفرع — مثل الصفحة القديمة */
   const allProjects: TaskProject[] = useMemo(
@@ -112,12 +145,40 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
             كل مهام الفرع — فلتر اختياري حسب الفريق
           </p>
         </div>
-        {canEdit && allProjects.length > 0 && (
-          <button onClick={() => { setEditTask(null); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
-            <Plus style={{ width: '16px', height: '16px' }} /> مهمة جديدة
-          </button>
+        {canEdit && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setShowAssign(true)}
+              disabled={unassigned.length === 0 || activeTeams.length === 0}
+              className="btn btn-ghost"
+              style={{ fontSize: '0.82rem', border: '1px solid #bfdbfe', color: '#1a56db' }}
+              title={unassigned.length === 0 ? 'لا مشاريع بانتظار الإسناد' : undefined}
+            >
+              <Link2 style={{ width: '16px', height: '16px' }} /> إسناد مشروع
+            </button>
+            {allProjects.length > 0 && (
+              <button onClick={() => { setEditTask(null); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
+                <Plus style={{ width: '16px', height: '16px' }} /> مهمة جديدة
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {unassigned.length > 0 && (
+        <div className="card" style={{ padding: '14px 18px', border: '1px solid #fde68a', background: '#fffbeb' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#b45309', marginBottom: '8px' }}>
+            ⚠️ {unassigned.length} مشروع بانتظار الإسناد — اسند من الزر أعلاه
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {unassigned.map(p => (
+              <span key={p.id} style={{ fontSize: '0.75rem', padding: '3px 9px', borderRadius: '8px', background: 'white', border: '1px solid #fde68a', color: '#92400e' }}>
+                {p.code || p.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px' }}>
         {[
@@ -163,6 +224,15 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
                   >
                     <FileText style={{ width: '14px', height: '14px' }} /> سجل اليوم
                   </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => unassignProject(p)}
+                      title="سحب الإسناد"
+                      style={{ padding: '7px', borderRadius: '8px', border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', color: '#c81e1e', flexShrink: 0 }}
+                    >
+                      <UserMinus style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  )}
                 </div>
               )
             })}
@@ -386,6 +456,15 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
           project={logProject}
           data={data}
           onClose={() => setLogProject(null)}
+        />
+      )}
+
+      {showAssign && (
+        <NewAssignModal
+          unassigned={unassigned}
+          activeTeams={activeTeams.map(t => ({ id: t.id, name: t.name, team_type: formatTeamTypeLabel(t) }))}
+          onClose={() => setShowAssign(false)}
+          onAssign={(teamId, projectId) => assignProject(teamId, projectId)}
         />
       )}
     </div>

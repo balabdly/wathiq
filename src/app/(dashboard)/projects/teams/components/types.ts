@@ -54,6 +54,8 @@ export type TeamsPageData = {
   loading: boolean
   reload: () => Promise<void>
   canEdit: boolean
+  /** حذف الفريق — مدير عام فقط */
+  canDelete: boolean
   tenantId: string
   branchId: number
   branchName?: string
