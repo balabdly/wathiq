@@ -218,7 +218,7 @@ export function parseBoqFromRawText(
     let rest = line.replace(code, ' ').replace(/\s+/g, ' ').trim()
     const unitMatch = rest.match(/\b(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)\b/i)
     const unit = unitMatch ? unitMatch[1].toUpperCase() : 'EA'
-    const qtyMatches = [...rest.matchAll(/(\d+(?:\.\d+)?)/g)].map(m => m[1])
+    const qtyMatches = Array.from(rest.matchAll(/(\d+(?:\.\d+)?)/g)).map(m => m[1])
     const qty = qtyMatches.length ? qtyMatches[qtyMatches.length - 1] : '1'
     const desc = rest
       .replace(/\b(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)\b/gi, '')
@@ -233,7 +233,7 @@ export function parseBoqFromRawText(
     if (c) deduped.set(normalizeCode(c), r)
     else deduped.set(`__${deduped.size}`, r)
   }
-  return parseBoqImportRows([...deduped.values()], frameworkMap, source)
+  return parseBoqImportRows(Array.from(deduped.values()), frameworkMap, source)
 }
 
 async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
@@ -257,7 +257,7 @@ async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
       byRow.get(y)!.push({ x, str: item.str!.trim() })
     }
 
-    const sortedYs = [...byRow.keys()].sort((a, b) => b - a)
+    const sortedYs = Array.from(byRow.keys()).sort((a, b) => b - a)
     for (const y of sortedYs) {
       const cols = byRow.get(y)!.sort((a, b) => a.x - b.x).map(c => c.str).filter(Boolean)
       if (cols.length) allRows.push(cols.join('\t'))
