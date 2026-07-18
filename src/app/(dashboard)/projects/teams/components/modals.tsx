@@ -444,6 +444,54 @@ export function NewAssignModal({ unassigned, activeTeams, onClose, onAssign }: {
   )
 }
 
+export function AssignTeamToProjectModal({ project, activeTeams, onClose, onAssign }: {
+  project: ProjectRow
+  activeTeams: { id: number; name: string; team_type: string }[]
+  onClose: () => void
+  onAssign: (teamId: number) => Promise<void>
+}) {
+  const [teamId, setTeamId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleAssign() {
+    if (!teamId) { toast.error('اختر الفريق'); return }
+    setSaving(true)
+    await onAssign(Number(teamId))
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '440px' }} onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3 style={{ fontWeight: 700, margin: 0 }}>إسناد مشروع لفريق</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X style={{ width: '18px', height: '18px' }} /></button>
+        </div>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', fontSize: '0.875rem' }}>
+            <strong>{project.name}</strong>
+            {project.code && <span style={{ color: 'var(--text3)', marginRight: '8px' }}>({project.code})</span>}
+          </div>
+          <div>
+            <label style={lbl}>الفريق *</label>
+            <select value={teamId} onChange={e => setTeamId(e.target.value)} className="select">
+              <option value="">— اختر الفريق —</option>
+              {activeTeams.map(t => (
+                <option key={t.id} value={t.id}>{t.name} ({t.team_type})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
+          <button onClick={handleAssign} disabled={saving || !teamId} className="btn btn-primary">إسناد</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AssignProjectModal({ teamName, unassigned, onClose, onAssign }: {
   teamName: string
   unassigned: ProjectRow[]
