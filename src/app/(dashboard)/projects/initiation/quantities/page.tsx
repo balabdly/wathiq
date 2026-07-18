@@ -149,7 +149,9 @@ export default function InitiationQuantitiesPage() {
         <select value={projectId} onChange={e => setProjectId(e.target.value ? Number(e.target.value) : '')} className="select" style={{ maxWidth: '420px' }}>
           <option value="">— اختر مشروعاً في مرحلة البدء —</option>
           {projects.map(p => (
-            <option key={p.id} value={p.id}>{p.wo_number ? `${p.wo_number} — ` : ''}{p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.code ? `${p.code} — ` : ''}{p.name}{p.client_name ? ` (${p.client_name})` : ''}
+            </option>
           ))}
         </select>
       </div>

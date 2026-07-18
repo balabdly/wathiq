@@ -1,17 +1,19 @@
 'use client'
 import { createContext, useContext } from 'react'
+import type { ProjectTypeRow } from '@/components/projects/ManageProjectTypesModal'
 
 export type InitiationProject = {
   id: number
   name: string
   code?: string
-  wo_number?: string
-  wo_source?: string
+  client_name?: string
   type?: string
   status?: string
   pmo_phase?: string
-  location?: string
   estimated_value?: number
+  start_date?: string
+  end_date?: string
+  description?: string
   created_at?: string
 }
 
@@ -25,7 +27,9 @@ export type FrameworkBoqRow = {
 
 export type InitiationContextValue = {
   tenantId: string | null
+  branchId: number | null
   projects: InitiationProject[]
+  projectTypes: ProjectTypeRow[]
   frameworkItems: FrameworkBoqRow[]
   loading: boolean
   reloadShared: () => Promise<void>

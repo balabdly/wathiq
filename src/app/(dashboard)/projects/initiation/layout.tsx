@@ -15,23 +15,32 @@ const TABS = [
 ]
 
 export default function InitiationLayout({ children }: { children: React.ReactNode }) {
-  const { tenant } = useStore()
+  const { tenant, activeBranch } = useStore()
   const pathname = usePathname()
 
   const [projects, setProjects] = useState<InitiationProject[]>([])
+  const [projectTypes, setProjectTypes] = useState<{ id: number; code: string; name: string }[]>([])
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [kpis, setKpis] = useState({ total: 0, noWo: 0, noBoq: 0 })
+  const [kpis, setKpis] = useState({ total: 0, noClient: 0, noBoq: 0 })
 
   const reloadShared = useCallback(async () => {
     if (!tenant) return
-    const { data } = await supabase
-      .from('projects')
-      .select('id, name, code, wo_number, wo_source, type, status, pmo_phase, location, estimated_value, created_at')
-      .eq('tenant_id', tenant.id)
-      .eq('pmo_phase', '1_RECEIPT')
-      .order('created_at', { ascending: false })
-    setProjects(data || [])
+    const [projRes, typesRes] = await Promise.all([
+      supabase
+        .from('projects')
+        .select('id, name, code, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
+        .eq('tenant_id', tenant.id)
+        .eq('pmo_phase', '1_RECEIPT')
+        .order('created_at', { ascending: false }),
+      supabase.from('project_types')
+        .select('id, code, name')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('name'),
+    ])
+    setProjects(projRes.data || [])
+    setProjectTypes(typesRes.data || [])
 
     try {
       const contractId = await ensureDefaultSecContract(tenant.id, DEFAULT_SEC_CONTRACT)
@@ -52,7 +61,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     if (!tenant) return
     const { data: phaseProjects } = await supabase
       .from('projects')
-      .select('id, wo_number')
+      .select('id, client_name')
       .eq('tenant_id', tenant.id)
       .eq('pmo_phase', '1_RECEIPT')
 
@@ -73,7 +82,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
     setKpis({
       total: list.length,
-      noWo: list.filter(p => !p.wo_number).length,
+      noClient: list.filter(p => !p.client_name).length,
       noBoq,
     })
   }, [tenant?.id])
@@ -89,7 +98,16 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
   const activeTab = TABS.find(t => pathname?.startsWith(t.href))
 
   return (
-    <InitiationContext.Provider value={{ tenantId: tenant?.id || null, projects, frameworkItems, loading, reloadShared, reloadKpis }}>
+    <InitiationContext.Provider value={{
+      tenantId: tenant?.id || null,
+      branchId: activeBranch?.id || null,
+      projects,
+      projectTypes,
+      frameworkItems,
+      loading,
+      reloadShared,
+      reloadKpis,
+    }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
         <div>
@@ -98,14 +116,14 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
             مرحلة بدء المشروع
           </h1>
           <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-            استلام WO — تسجيل المشروع — الكميات الابتدائية من العقد الإطاري
+            تسجيل المشروع — أنواع مخصصة لكل مستأجر — الكميات الابتدائية
           </p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
           {[
             { label: 'مشاريع في المرحلة', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
-            { label: 'بدون WO', value: kpis.noWo, color: '#e6820a', bg: '#fffbeb' },
+            { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
             { label: 'بدون كميات ابتدائية', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
           ].map(kpi => (
             <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
