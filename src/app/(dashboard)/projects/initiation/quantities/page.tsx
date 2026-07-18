@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useInitiation } from '../InitiationContext'
 import { fetchBoqVersions, createBoqVersion, activateBoqVersion } from '@/lib/pmc-service'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
-import ImportQuantitiesModal, { BoqLineStatusBadge } from '@/components/projects/ImportQuantitiesModal'
+import ImportQuantitiesModal, { BoqLineStatusBadge, type BoqImportKind } from '@/components/projects/ImportQuantitiesModal'
 import {
   type BoqImportLine,
   type BoqLineSource,
@@ -36,6 +36,12 @@ export default function InitiationQuantitiesPage() {
   const [loadingBoq, setLoadingBoq] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [importKind, setImportKind] = useState<BoqImportKind>('excel')
+
+  function openImport(kind: BoqImportKind) {
+    setImportKind(kind)
+    setShowImport(true)
+  }
 
   const frameworkMap = useMemo(() => buildFrameworkMap(frameworkItems), [frameworkItems])
   const summary = useMemo(() => boqImportSummary(lines), [lines])
@@ -82,12 +88,14 @@ export default function InitiationQuantitiesPage() {
       const row = { ...next[idx], [key]: val }
       if (key === 'item_code' || key === 'description') {
         row.matchStatus = inferMatchStatus(String(row.item_code), frameworkMap)
-        if (key === 'item_code' && row.source !== 'excel' && row.source !== 'csv') {
+        if (key === 'item_code' && row.source !== 'excel' && row.source !== 'csv' && row.source !== 'pdf' && row.source !== 'image') {
           row.source = 'manual'
         }
       }
       if (key === 'description' || key === 'qty' || key === 'unit') {
-        row.source = row.source === 'excel' || row.source === 'csv' ? row.source : 'manual'
+        if (row.source !== 'excel' && row.source !== 'csv' && row.source !== 'pdf' && row.source !== 'image') {
+          row.source = 'manual'
+        }
       }
       next[idx] = row
       return next
@@ -105,7 +113,8 @@ export default function InitiationQuantitiesPage() {
         unit: item.unit,
         qty: next[idx].qty || 1,
         unit_price: item.unit_price,
-        source: next[idx].source === 'excel' || next[idx].source === 'csv' ? next[idx].source : 'manual',
+        source: next[idx].source === 'excel' || next[idx].source === 'csv' || next[idx].source === 'pdf' || next[idx].source === 'image'
+          ? next[idx].source : 'manual',
         matchStatus: 'matched',
       }
       return next
@@ -209,13 +218,13 @@ export default function InitiationQuantitiesPage() {
               )}
             </label>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => setShowImport(true)} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #bfdbfe', color: '#1a56db' }}>
+              <button type="button" onClick={() => openImport('excel')} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #bfdbfe', color: '#1a56db' }}>
                 <FileSpreadsheet style={{ width: '13px', height: '13px' }} /> Excel / CSV
               </button>
-              <button type="button" disabled title="قريباً — المرحلة 2" className="btn btn-ghost" style={{ fontSize: '0.78rem', opacity: 0.5, cursor: 'not-allowed' }}>
+              <button type="button" onClick={() => openImport('pdf')} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #fecaca', color: '#c81e1e' }}>
                 <FileText style={{ width: '13px', height: '13px' }} /> PDF
               </button>
-              <button type="button" disabled title="قريباً — المرحلة 3" className="btn btn-ghost" style={{ fontSize: '0.78rem', opacity: 0.5, cursor: 'not-allowed' }}>
+              <button type="button" onClick={() => openImport('image')} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #ddd6fe', color: '#7c3aed' }}>
                 <Image style={{ width: '13px', height: '13px' }} /> صورة UDS
               </button>
               <button type="button" onClick={addLine} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
@@ -306,6 +315,7 @@ export default function InitiationQuantitiesPage() {
 
       {showImport && (
         <ImportQuantitiesModal
+          importKind={importKind}
           frameworkItems={frameworkItems}
           existingLines={lines.filter(l => l.description.trim() || l.item_code)}
           onClose={() => setShowImport(false)}

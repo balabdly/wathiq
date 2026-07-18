@@ -1,6 +1,6 @@
-/** استيراد كميات المشروع — Excel / CSV / UDS */
+/** استيراد كميات المشروع — Excel / CSV / PDF / صورة UDS */
 
-export type BoqLineSource = 'manual' | 'excel' | 'csv'
+export type BoqLineSource = 'manual' | 'excel' | 'csv' | 'pdf' | 'image'
 export type BoqMatchStatus = 'matched' | 'review' | 'manual'
 
 export type BoqImportLine = {
@@ -182,6 +182,109 @@ function splitCsvLine(line: string): string[] {
   return parts
 }
 
+const UNIT_PATTERN = /^(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)$/i
+
+/** استخراج بنود من نص خام (PDF / OCR) */
+export function parseBoqFromRawText(
+  text: string,
+  frameworkMap: Map<string, FrameworkItemRef>,
+  source: 'pdf' | 'image',
+): BoqImportLine[] {
+  const rows: Record<string, unknown>[] = []
+  const lines = text.replace(/\r/g, '\n').split('\n').map(l => l.trim()).filter(Boolean)
+
+  for (const line of lines) {
+    if (line.length < 3) continue
+
+    if (line.includes('\t')) {
+      const parts = line.split('\t').map(p => p.trim()).filter(Boolean)
+      const codePart = parts.find(p => /^[\d.]{6,12}$/.test(p.replace(/\./g, '')))
+      const code = codePart ? codePart.replace(/\./g, '') : ''
+      const unitPart = parts.find(p => UNIT_PATTERN.test(p))
+      const numericParts = parts.filter(p => /^\d+(\.\d+)?$/.test(p) && p !== code)
+      const qtyPart = numericParts.length ? numericParts[numericParts.length - 1] : '1'
+      const descParts = parts.filter(p =>
+        p !== code && p !== unitPart && p !== qtyPart && !/^[\d.]{6,12}$/.test(p.replace(/\./g, '')),
+      )
+      if (code || descParts.length) {
+        rows.push({ item_code: code, description: descParts.join(' '), qty: qtyPart, unit: unitPart || 'EA' })
+      }
+      continue
+    }
+
+    const codeMatch = line.match(/\b(\d{6,9})\b/)
+    if (!codeMatch) continue
+    const code = codeMatch[1]
+    let rest = line.replace(code, ' ').replace(/\s+/g, ' ').trim()
+    const unitMatch = rest.match(/\b(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)\b/i)
+    const unit = unitMatch ? unitMatch[1].toUpperCase() : 'EA'
+    const qtyMatches = [...rest.matchAll(/(\d+(?:\.\d+)?)/g)].map(m => m[1])
+    const qty = qtyMatches.length ? qtyMatches[qtyMatches.length - 1] : '1'
+    const desc = rest
+      .replace(/\b(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)\b/gi, '')
+      .replace(/\d+(?:\.\d+)?/g, '')
+      .trim()
+    rows.push({ item_code: code, description: desc, qty, unit })
+  }
+
+  const deduped = new Map<string, Record<string, unknown>>()
+  for (const r of rows) {
+    const c = str(r.item_code)
+    if (c) deduped.set(normalizeCode(c), r)
+    else deduped.set(`__${deduped.size}`, r)
+  }
+  return parseBoqImportRows([...deduped.values()], frameworkMap, source)
+}
+
+async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
+  const pdfjs = await import('pdfjs-dist')
+  if (typeof window !== 'undefined') {
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+  }
+  const doc = await pdfjs.getDocument({ data: buffer }).promise
+  const allRows: string[] = []
+
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p)
+    const tc = await page.getTextContent()
+    const items = (tc.items as { str?: string; transform?: number[] }[]).filter(i => i.str?.trim())
+
+    const byRow = new Map<number, { x: number; str: string }[]>()
+    for (const item of items) {
+      const y = Math.round(item.transform?.[5] ?? 0)
+      const x = item.transform?.[4] ?? 0
+      if (!byRow.has(y)) byRow.set(y, [])
+      byRow.get(y)!.push({ x, str: item.str!.trim() })
+    }
+
+    const sortedYs = [...byRow.keys()].sort((a, b) => b - a)
+    for (const y of sortedYs) {
+      const cols = byRow.get(y)!.sort((a, b) => a.x - b.x).map(c => c.str).filter(Boolean)
+      if (cols.length) allRows.push(cols.join('\t'))
+    }
+  }
+  return allRows.join('\n')
+}
+
+export async function extractImageText(
+  file: File,
+  onProgress?: (pct: number, status: string) => void,
+): Promise<string> {
+  const { createWorker } = await import('tesseract.js')
+  const worker = await createWorker('ara+eng', 1, {
+    logger: m => {
+      if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+        onProgress?.(Math.round(m.progress * 100), 'جاري قراءة الصورة...')
+      }
+    },
+  })
+  onProgress?.(0, 'تحضير محرك OCR...')
+  const { data: { text } } = await worker.recognize(file)
+  await worker.terminate()
+  onProgress?.(100, 'اكتمل')
+  return text
+}
+
 export type BoqMergeMode = 'merge' | 'append' | 'replace_all'
 
 export function mergeBoqLines(
@@ -255,9 +358,11 @@ export async function downloadBoqImportTemplate() {
 export async function readBoqImportFile(
   file: File,
   frameworkItems: FrameworkItemRef[],
+  onProgress?: (pct: number, status: string) => void,
 ): Promise<{ lines: BoqImportLine[]; source: BoqLineSource }> {
   const frameworkMap = buildFrameworkMap(frameworkItems)
   const ext = file.name.split('.').pop()?.toLowerCase()
+  const mime = file.type.toLowerCase()
 
   if (ext === 'csv') {
     const text = await file.text()
@@ -273,5 +378,25 @@ export async function readBoqImportFile(
     return { lines: parseBoqImportRows(json, frameworkMap, 'excel'), source: 'excel' }
   }
 
-  throw new Error('نوع الملف غير مدعوم — استخدم .xlsx أو .csv')
+  if (ext === 'pdf' || mime === 'application/pdf') {
+    onProgress?.(10, 'قراءة PDF...')
+    const buffer = await file.arrayBuffer()
+    const text = await extractPdfText(buffer)
+    onProgress?.(100, 'اكتمل')
+    const lines = parseBoqFromRawText(text, frameworkMap, 'pdf')
+    if (!lines.length) throw new Error('لم يُعثر على بنود في PDF — تأكد أن الملف يحتوي جدول كميات')
+    return { lines, source: 'pdf' }
+  }
+
+  if (
+    mime.startsWith('image/')
+    || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext || '')
+  ) {
+    const text = await extractImageText(file, onProgress)
+    const lines = parseBoqFromRawText(text, frameworkMap, 'image')
+    if (!lines.length) throw new Error('لم يُعثر على بنود في الصورة — جرّب لقطة أوضح للجدول')
+    return { lines, source: 'image' }
+  }
+
+  throw new Error('نوع الملف غير مدعوم — Excel أو CSV أو PDF أو صورة')
 }
