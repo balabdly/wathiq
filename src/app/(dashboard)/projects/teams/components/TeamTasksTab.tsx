@@ -2,12 +2,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
-import type { TeamsPageData } from './types'
+import type { TeamsPageData, ProjectRow } from './types'
 import {
   TaskModal, STATUS_STEPS, PRIORITY_COLOR,
   type ProjectTask, type TaskProject,
 } from './taskShared'
-import { Plus, Search, Pencil, Trash2, Eye, X } from 'lucide-react'
+import ProjectDetailsModal from './ProjectDetailsModal'
+import { Plus, Search, Pencil, Trash2, Eye, X, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
@@ -23,6 +24,7 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
   const [showModal, setShowModal] = useState(false)
   const [editTask, setEditTask] = useState<ProjectTask | null>(null)
   const [detailTask, setDetailTask] = useState<ProjectTask | null>(null)
+  const [logProject, setLogProject] = useState<ProjectRow | null>(null)
 
   const activeTeams = useMemo(() => teams.filter(t => t.is_active), [teams])
 
@@ -93,6 +95,12 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
     high:    filtered.filter(t => t.priority === 'عالي' && t.status !== 'مكتملة').length,
   }
 
+  const assignedProjects = useMemo(() => {
+    let list = projects.filter(p => p.team_id)
+    if (teamFilter) list = list.filter(p => p.team_id === teamFilter)
+    return list.sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+  }, [projects, teamFilter])
+
   const defaultProjectId = visibleProjects.length === 1 ? visibleProjects[0].id : undefined
 
   return (
@@ -125,6 +133,42 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
           </div>
         ))}
       </div>
+
+      {/* المشاريع المسندة + سجل اليوم */}
+      {assignedProjects.length > 0 && (
+        <div className="card" style={{ padding: '14px 16px' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text3)' }}>
+            📁 المشاريع المسندة — سجل العمل اليومي
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {assignedProjects.map(p => {
+              const team = teams.find(t => t.id === p.team_id)
+              const tStyle = TEAM_TYPE_STYLE[team?.team_type || ''] || TEAM_TYPE_STYLE['ميداني']
+              return (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '10px 12px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e5e7eb', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text3)', display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}>
+                      {p.code && <span>{p.code}</span>}
+                      <span style={{ padding: '1px 7px', borderRadius: '8px', background: tStyle.bg, color: tStyle.color, fontWeight: 600 }}>
+                        {teamName(p.team_id)}
+                      </span>
+                      <span>{p.progress ?? 0}%</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setLogProject(p)}
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.78rem', color: '#1a56db', border: '1px solid #bfdbfe', background: '#eff6ff', flexShrink: 0 }}
+                  >
+                    <FileText style={{ width: '14px', height: '14px' }} /> سجل اليوم
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative' }}>
@@ -335,6 +379,14 @@ export default function TeamTasksTab({ data }: { data: TeamsPageData }) {
             </div>
           </div>
         </div>
+      )}
+
+      {logProject && (
+        <ProjectDetailsModal
+          project={logProject}
+          data={data}
+          onClose={() => setLogProject(null)}
+        />
       )}
     </div>
   )
