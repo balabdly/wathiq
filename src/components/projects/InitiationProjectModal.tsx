@@ -154,10 +154,10 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
         tenant_id: tenantId,
         branch_id: branchId,
       }).select('id').single()
-      if (error || !data) { toast.error(error?.message || 'فشل الحفظ'); setSaving(false); return }
+      if (error || !data?.id) { toast.error(error?.message || 'فشل الحفظ'); setSaving(false); return }
       projectId = data.id
       setUploading(true)
-      await uploadAttachments(projectId, attachments.filter(a => a.pendingFile))
+      await uploadAttachments(data.id, attachments.filter(a => a.pendingFile))
       setUploading(false)
     }
 
