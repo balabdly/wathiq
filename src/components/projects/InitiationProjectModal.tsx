@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { X, Save, Upload, Paperclip, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -36,23 +37,35 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
 }) {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [clients, setClients] = useState<{ id: number; name: string; vat_number?: string }[]>([])
   const [attachments, setAttachments] = useState<AttachmentRow[]>([])
   const [attachCategory, setAttachCategory] = useState(BASIC_ATTACHMENT_CATEGORIES[0])
   const [form, setForm] = useState({
     code: project?.code || '',
     name: project?.name || '',
-    client_name: (project as any)?.client_name || '',
+    client_id: project?.client_id ? String(project.client_id) : '',
     type: project?.type || '',
     estimated_value: project?.estimated_value?.toString() || '',
-    start_date: (project as any)?.start_date || '',
-    end_date: (project as any)?.end_date || '',
-    description: (project as any)?.description || '',
+    start_date: project?.start_date || '',
+    end_date: project?.end_date || '',
+    description: project?.description || '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
   useEffect(() => {
+    supabase.from('finance_clients')
+      .select('id, name, vat_number')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => setClients(data || []))
+  }, [tenantId])
+
+  useEffect(() => {
     if (project?.id) loadAttachments(project.id)
   }, [project?.id])
+
+  const selectedClient = clients.find(c => c.id === Number(form.client_id))
 
   async function loadAttachments(projectId: number) {
     const { data } = await supabase.from('project_attachments')
@@ -117,13 +130,15 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name.trim()) { toast.error('اسم المشروع مطلوب'); return }
+    if (!form.client_id) { toast.error('العميل إلزامي — اختر عميلاً من القائمة'); return }
     if (!form.type) { toast.error('نوع المشروع مطلوب'); return }
     setSaving(true)
 
     const payload: Record<string, unknown> = {
       code: form.code.trim() || null,
       name: form.name.trim(),
-      client_name: form.client_name.trim() || null,
+      client_id: Number(form.client_id),
+      client_name: selectedClient?.name || null,
       type: form.type,
       estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : null,
       start_date: form.start_date || null,
@@ -192,12 +207,32 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
             </div>
 
             <div>
-              <label style={lbl}>اسم العميل</label>
-              <input value={form.client_name} onChange={e => set('client_name', e.target.value)} className="input"
-                placeholder="الشركة السعودية للكهرباء — أو اسم عميل خارجي" />
-              <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text3)' }}>
-                للمشاريع خارج SEC — اكتب اسم العميل الجديد
-              </p>
+              <label style={lbl}>
+                العميل <span style={{ color: '#c81e1e' }}>*</span>
+              </label>
+              {clients.length === 0 ? (
+                <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: '8px', fontSize: '0.82rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
+                  لا يوجد عملاء — أضف العميل أولاً من{' '}
+                  <Link href="/finance/invoices/clients" style={{ color: '#1a56db', fontWeight: 700 }}>المبيعات ← العملاء</Link>
+                </div>
+              ) : (
+                <>
+                  <select value={form.client_id} onChange={e => set('client_id', e.target.value)} className="select" required>
+                    <option value="">— اختر العميل —</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {selectedClient && (
+                    <div style={{ marginTop: '6px', fontSize: '0.72rem', color: '#0ea77b' }}>
+                      الاسم مطابق لسجل العملاء في المبيعات
+                      {selectedClient.vat_number && (
+                        <span style={{ color: 'var(--text3)', marginRight: '8px' }}> · الرقم الضريبي: {selectedClient.vat_number}</span>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div>
@@ -273,7 +308,7 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-            <button type="submit" disabled={saving || uploading} className="btn btn-primary">
+            <button type="submit" disabled={saving || uploading || !form.client_id || clients.length === 0} className="btn btn-primary">
               <Save style={{ width: '14px', height: '14px' }} />
               {saving || uploading ? 'جاري الحفظ...' : 'حفظ'}
             </button>

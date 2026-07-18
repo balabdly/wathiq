@@ -29,7 +29,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     const [projRes, typesRes] = await Promise.all([
       supabase
         .from('projects')
-        .select('id, name, code, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
+        .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
         .eq('tenant_id', tenant.id)
         .eq('pmo_phase', '1_RECEIPT')
         .order('created_at', { ascending: false }),
@@ -61,7 +61,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     if (!tenant) return
     const { data: phaseProjects } = await supabase
       .from('projects')
-      .select('id, client_name')
+      .select('id, client_id')
       .eq('tenant_id', tenant.id)
       .eq('pmo_phase', '1_RECEIPT')
 
@@ -82,7 +82,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
     setKpis({
       total: list.length,
-      noClient: list.filter(p => !p.client_name).length,
+      noClient: list.filter(p => !p.client_id).length,
       noBoq,
     })
   }, [tenant?.id])
