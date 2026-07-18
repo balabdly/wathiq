@@ -5,6 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { X, Save } from 'lucide-react'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'
+import {
+  WORKFLOW_TYPES, BILLING_MODELS, WO_SOURCES, PMO_PHASES_FULL, PMO_PHASES_OM,
+  defaultBillingModel, defaultPmoPhase, defaultWoSource, statusForPhase,
+} from '@/lib/sec-workflow'
+import type { WorkflowType, BillingModel, WoSource, PmoPhase } from '@/lib/sec-workflow'
 
 export interface Props {
   project: Project | null
@@ -41,6 +46,12 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
     client_id:       (project as any)?.client_id ? String((project as any).client_id) : '',
     type:            project?.type                                    || '',
     status:          project?.status                                  || 'تحت التخطيط',
+    workflow_type:   (project as any)?.workflow_type                  || 'FULL_SEC' as WorkflowType,
+    billing_model:   (project as any)?.billing_model                  || 'SPLIT_50_50' as BillingModel,
+    pmo_phase:       (project as any)?.pmo_phase                      || '1_RECEIPT' as PmoPhase,
+    wo_number:       (project as any)?.wo_number                      || '',
+    wo_source:       (project as any)?.wo_source                      || 'UDS' as WoSource,
+    sec_contract_no: (project as any)?.sec_contract_no                || '4400023458',
     team_id:         (project as any)?.team_id ? String((project as any).team_id) : '',
     engineer:        project?.engineer                                || '',
     estimated_value: (project as any)?.estimated_value?.toString()   || (project as any)?.value?.toString() || '',
@@ -52,6 +63,22 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
     description:     (project as any)?.description                   || '',
   })
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  function handleWorkflowChange(wf: WorkflowType) {
+    const phase = defaultPmoPhase(wf)
+    setForm(f => ({
+      ...f,
+      workflow_type: wf,
+      billing_model: defaultBillingModel(wf),
+      wo_source: defaultWoSource(wf),
+      pmo_phase: phase,
+      status: statusForPhase(phase),
+      sec_contract_no: wf === 'FULL_SEC' ? '4400023458' : f.sec_contract_no,
+      type: wf.startsWith('O&M') ? 'O&M' : f.type,
+    }))
+  }
+
+  const phaseOptions = form.workflow_type === 'FULL_SEC' ? PMO_PHASES_FULL : PMO_PHASES_OM
 
   const showActualValue = ['قيد الإغلاق', 'مكتمل'].includes(form.status)
 
@@ -124,6 +151,12 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
       client_name:     selectedClient?.name,
       type:            form.type            || undefined,
       status:          form.status,
+      workflow_type:   form.workflow_type,
+      billing_model:   form.billing_model,
+      pmo_phase:       form.pmo_phase,
+      wo_number:       form.wo_number       || undefined,
+      wo_source:       form.wo_source,
+      sec_contract_no: form.sec_contract_no || undefined,
       team_id:         form.team_id ? Number(form.team_id) : null,
       lead_id:         selectedTeam?.lead_id || null,
       engineer:        form.engineer        || undefined,
@@ -184,6 +217,61 @@ export default function ProjectModal({ project, onClose, onSave }: Props) {
               <input value={form.name} onChange={e => set('name', e.target.value)}
                 onMouseDown={e => e.stopPropagation()}
                 className="input" placeholder="اسم المشروع التفصيلي" required />
+            </div>
+
+            {/* مسار SEC */}
+            <div style={{ background: '#f0f9ff', borderRadius: '12px', padding: '14px', border: '1px solid #bae6fd' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0369a1', marginBottom: '10px' }}>⚡ مسار العمل — SEC</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <label style={lbl}>نوع المسار</label>
+                  <select value={form.workflow_type} onChange={e => handleWorkflowChange(e.target.value as WorkflowType)} className="select">
+                    {WORKFLOW_TYPES.map(w => (
+                      <option key={w.id} value={w.id}>{w.icon} {w.label}</option>
+                    ))}
+                  </select>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.72rem', color: 'var(--text3)' }}>
+                    {WORKFLOW_TYPES.find(w => w.id === form.workflow_type)?.desc}
+                  </p>
+                </div>
+                <div>
+                  <label style={lbl}>مرحلة PMO</label>
+                  <select
+                    value={form.pmo_phase}
+                    onChange={e => {
+                      const phase = e.target.value as PmoPhase
+                      setForm(f => ({ ...f, pmo_phase: phase, status: statusForPhase(phase) }))
+                    }}
+                    className="select"
+                  >
+                    {phaseOptions.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>نموذج التحصيل</label>
+                  <select value={form.billing_model} onChange={e => set('billing_model', e.target.value)} className="select">
+                    {BILLING_MODELS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>رقم أمر العمل (WO)</label>
+                  <input value={form.wo_number} onChange={e => set('wo_number', e.target.value)}
+                    className="input" dir="ltr" placeholder="SAP / UDS" />
+                </div>
+                <div>
+                  <label style={lbl}>مصدر WO</label>
+                  <select value={form.wo_source} onChange={e => set('wo_source', e.target.value)} className="select">
+                    {WO_SOURCES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+                {form.workflow_type === 'FULL_SEC' && (
+                  <div>
+                    <label style={lbl}>رقم العقد الإطاري</label>
+                    <input value={form.sec_contract_no} onChange={e => set('sec_contract_no', e.target.value)}
+                      className="input" dir="ltr" />
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* العميل */}

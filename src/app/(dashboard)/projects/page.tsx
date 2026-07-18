@@ -9,6 +9,7 @@ import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
+import { phaseLabel, WORKFLOW_TYPES } from '@/lib/sec-workflow'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
@@ -1181,6 +1182,17 @@ export default function ProjectsPage() {
                     <div style={{ display: 'flex', gap: '4px', marginBottom: '4px', flexWrap: 'wrap' }}>
                       {p.code && <span className="badge badge-gray" style={{ fontSize: '0.68rem' }}>{p.code}</span>}
                       {p.type && <span className="badge badge-blue" style={{ fontSize: '0.68rem' }}>{TYPE_NAME[p.type] || p.type}</span>}
+                      {(p as any).workflow_type && (
+                        <span className="badge badge-gray" style={{ fontSize: '0.65rem' }}>
+                          {WORKFLOW_TYPES.find(w => w.id === (p as any).workflow_type)?.icon}
+                          {' '}{WORKFLOW_TYPES.find(w => w.id === (p as any).workflow_type)?.label.split(' ')[0]}
+                        </span>
+                      )}
+                      {(p as any).pmo_phase && (
+                        <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 600 }}>
+                          {phaseLabel((p as any).pmo_phase, (p as any).workflow_type)?.split('—')[0]?.trim()}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1a1a2e' }}>{p.name}</div>
                     {((p as any).client_name || (p as any).client) && (

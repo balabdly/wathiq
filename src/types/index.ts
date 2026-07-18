@@ -24,6 +24,13 @@ export type ProjectStatus =
   | 'موقوف'
   | 'ملغي'
 
+export type WorkflowType = 'FULL_SEC' | 'O&M_WITH_WO' | 'O&M_PRE_WO'
+export type BillingModel = 'FULL_100' | 'SPLIT_50_50'
+export type WoSource = 'UDS' | 'SAP' | 'VERBAL'
+export type PmoPhase =
+  | '1_RECEIPT' | '2_PREP' | '3_EXEC' | '4_MEASURE' | '5_CLOSE'
+  | 'O&M_OPEN' | 'O&M_EXEC' | 'O&M_CLOSED'
+
 export type VisitType = 'جودة' | 'سلامة' | 'كهربائية' | 'ميدانية'
 export type LedgerType = 'توريد' | 'صرف' | 'إرجاع للكهرباء' | 'نقل مخزني'
 
@@ -94,6 +101,13 @@ export interface Project {
   location?: string
   description?: string
   notes?: string
+  workflow_type?: WorkflowType
+  billing_model?: BillingModel
+  pmo_phase?: PmoPhase
+  wo_number?: string
+  wo_source?: WoSource
+  sec_contract_no?: string
+  field_memo_id?: number
   stages?: ProjectStage[]
   attachments?: Attachment[]
   timeline?: TimelineEntry[]

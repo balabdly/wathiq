@@ -1,0 +1,298 @@
+﻿item_code,uom,unit_price,description,page
+101000001,KM,1690.00,"المسح الأرضي لمسارات الخطوط الرئيسية والتفريعات Field surveying of main feeders, cables and branches routes (MV / LV,Tra",1
+101000002,EA,700.00,"تحديد الإحداثيات لموقع معين Determination / marking of the coordinates for a specified location, including determination",1
+102000001,EA,137.00,الرفع المساحي لمحطات التوزيع الرئيسية Field survey and Conversion of Grid Stations (Location and Attributes/Image) shoul,1
+102000002,EA,35.00,الرفع المساحي للمعدات الارضية Field survey of UG equipment (Location and Attributes/Image) should be collected and conve,1
+102000003,EA,46.00,الرفع المساحي لعداد واحد Field survey of a Customer Meter (Location and Attributes/Image) should be collected and then c,1
+102000004,KM,556.00,الرفع المساحي للشبكات الهوائية شاملا رفع المعدات المركبة Field survey of Overhead Networks with its Components (Location,1
+102000005,KM,59.00,الرفع المساحي للشبكات الهوائية بدون رفع المعدات المركبة Field survey of Overhead Networks without its components (Locati,2
+201020101,EA,1555.00,استبدال عمود حديدي<=10م في تربة عادية/ رملية Replacement of steel pole up to and including 10 meter in normal / sandy so,3
+201020102,EA,1787.00,استبدال عمود حديدي<=10م في تربة صخرية Replacement of steel pole up to and including 10 meter in rocky soil ( that requir,3
+201020103,EA,1753.00,استبدال عمود حديدي>10م<=15م في تربة عادية / رملية Replacement of steel pole above 10 meter up to and including 15 meter ,3
+201020104,EA,2099.00,استبدال عمود حديدي>10م<=15م في تربة صخرية Replacement of steel pole above 10 meter up to and including 15 meter in rocky,3
+201020105,EA,2004.00,استبدال عمود حديدي>15م<= 23م في تربة عادية / رملية Replacement of steel pole more than 15 meter up to and including 23 m,3
+201020106,EA,2362.00,استبدال عمود حديدي>15م<= 23م في تربة صخرية Replacement of steel pole more than 15 meter up to and including 23 meter in ,3
+201020107,EA,2855.00,استبدال عمود حديدي>23م في تربة عادية/ رمليةReplacement of steel pole more than 23 meter in normal / sandy soil including,3
+201020109,EA,1780.00,استبدال عمود حديدي ذاتي الدعم<= 15م في تربة عادية / رملية Replacement of self support steel pole up to and including 15 ,3
+201020110,EA,2175.00,"استبدال عمود حديدي ذاتي الدعم<= 15م في تربة صخرية Replacement of self support steel pole up to and including 15 meter, i",3
+201020111,EA,1599.00,استبدال عمود خشبي بعمود حديدي<= 15م في تربة عادية / رملية Replacement of wooden pole with steel pole up to and including,3
+201020112,EA,1898.00,استبدال عمود خشبي بعمود حديدي<= 15م في تربة صخرية Replacement of wooden pole with steel pole up to and including 15 mete,3
+201020201,EA,1547.00,استبدال عمود خرساني<=10م في تربه عادية/ رملية Replacement of concrete pole up to and including 10 meter in normal / sand,3
+201020202,EA,1799.00,استبدال عمود خرساني<=10م في تربه صخرية Replacement of concrete pole up to and including 10 meter in rocky soil ( that re,3
+201020203,EA,1714.00,استبدال عمود خرساني>10م<=15م في تربه عادية / رملية Replacement of concrete pole above 10 meter up to and including 15 me,3
+201020204,EA,2015.00,استبدال عمود خرساني>10م<=15م في تربه صخرية Replacement of concrete pole above 10 meter up to and including 15 meter in r,3
+201020205,EA,2177.00,استبدال عمودخرساني>15م<=25م في تربه عادية / رملية Replacement of concrete pole more than 15 meter up to and including 25,3
+201020206,EA,2549.00,استبدال عمودخرساني>15م<=25م في تربه صخرية Replacement of concrete pole more than 15 meter up to and including 25 meter i,3
+201020207,EA,1587.00,استبدال عمود خشبي بعمود خرساني<= 15م في تربة عادية / رملية Replacement of wooden pole with concrete pole up to and inclu,3
+201020208,EA,1822.00,استبدال عمود خشبي بعمود خرساني<= 15م في تربة صخرية Replacement of wooden pole with concrete pole up to and including 15 ,3
+201020302,EA,1342.00,"استبدال عمود جهد منخفض فايبر جلاس في تربة صخرية Replacement of LV Fiber Glass pole, in rocky soil ( that required the us",4
+201030101,EA,2472.00,"إزاحة عمود حديدي<=10م في تربة عادية/رمليةRelocation of steel pole up to and including 10 meter, in normal / sandy soil. ",4
+201030107,EA,2047.00,إزاحة عمود حديدي>23م في تربة عادية/رمليةRelocation of steel pole above 23 meter in normal / sandy soil إزاحة عمود حديدي ,4
+201030205,EA,578.00,"إزاحة عمود خرساني>15م<=25م في تربة عادية/رملية Relocation of concrete pole above 15 meter up to and including 25 meter, ",4
+201040005,EA,582.00,"ازالة عمود خشبي اي مقاس وباي تربة Removal of any size wooden pole, including removal of pole framing and accessories in ",5
+201050002,EA,107.00,"إزالة عمود حديدي/خشبي داعم لماسورة بلاستيكيةRemoval of wooden or steel pole as support to PVC pipe / cables, crossing ca",5
+201060004,M,110.00,توريد وتركيب ماسورة حماية بي في سي لكيبل قائم على عمود Supplying and installation of cable guard (protection PVC pipe) w,5
+201060005,EA,707.00,"تعديل عمود مائل أي نوع Straightning of an existing leaning steel / concrete / wooden / fiber glass pole, any type, inclu",5
+201060006,EA,671.00,تحسين قاعدة عمود قائم أي مقاس Improvement of any size existing pole foundation by breaking and removal of damaged portio,5
+201060007,EA,1359.00,توريد المواد وعمل حماية لقواعد الأعمدة والأبراج في مجاري السيول والأودية Supplying of all required materials and constru,5
+201060009,EA,1934.00,توريد وتركيب ماسورة حديدية بقطر خارجي 1000 مم لحماية قاعدة العمود Supplying and embed of steel pipe ( 1000 mm OD x 9.5 m,5
+202010206,EA,315.00,"هيكلة عمود ج.متوسط.د.مزدوجة عمود بداية/نهاية Framing of MV double circuit, terminal pole (disc/ suspension insulators هي",6
+202030003,EA,237.00,إزالة هيكلة عمود ج. متوسط قائم أي نوع / مقاس لدائرة مفردة Removal of an existing MV pole framing any size / type for sin,6
+203020001,EA,333.00,"استبدال الشداد الطائر Replacement of an existing pole – to – pole flying stay, excluding replacement of poles and down s",7
+203020002,M,100.00,استبدال ماسك الشداد/سلك الشدادReplacement of an existing stay grip / stay wire استبدال ماسك الشداد أو سلك الشداد القائمE,7
+204010401,M,10.00,إعادة شد كابل مجدول/اربعة اسلاك معزولة بين عمودين Re-sagging of LV quadruplex cable /four (4) insulated open wire conduc,8
+204020102,M,13.00,"تركيب وشد د.مزدوجة (سبع موصلات) ج.متوسط <=170مم2 Installation and stringing of MV double circuit ( 7-conductors), up to ",8
+204020201,M,13.00,"استبدال وشد د.مفردة (أربع موصلات)ج.متوسط أي مقاس Replacement and stringing of MV single circuit ( 4-conductors), any siz",8
+204020202,M,15.00,"استبدال وشد د.مزدوجة (سبع موصلات) ج.متوسط أي مقاس Replacement and stringing of MV double circuit ( 7-conductors), any si",8
+204020203,EA,333.00,"استبدال موصل الطور الواحد ج.متوسط أي مقاسReplacement of 1-Φ MV conductor, any size استبدال موصل الطورالواحد جهد متوسط أي",8
+205010101,EA,1511.00,"تركيب محول ثلاثي الأطوار<= 100 ك.ف.أ على عمود Installation of 3-Φ OH transformer up to and including 100 kva, one pole m",9
+205010102,EA,1886.00,تركيب محول ثلاثي الأطوار>100<=500 ك.ف.أ على عمودين Installation of 3-Φ OH transformer above 100 kva and up to and includ,9
+205010201,EA,1800.00,"تركيب منظم جهد آحادي الطورInstallation of 1-Φ voltage regulator, including control panel and making related connections ",9
+205010203,EA,504.00,"تركيب خلايا مكثفات ج.متوسط ثلاثية الأطوار Installation of 3-Φ MV capacitor bank, including all accessories ( i.e. MV fus",9
+205010302,EA,2011.00,تركيب مانعات صواعق/منصهرات ج.متوسط ثلاثية الاطوار Installation of 3-Φ MV lightning arresters / fuse cutout تركيب مانعات ,9
+205020201,EA,1895.00,استبدال منظم جهد آحادي الطورReplacement of 1-Φ voltage regulator استبدال منظم جهد آحادي الطورEA 993.00 SAR Unit Rate 440,10
+205020203,EA,250.00,استبدال خلية مكثفات ثلاثية الاطورReplacement of 3-Φ capacitor bank ( excluding replacement of related accessories ) استب,10
+205040101,EA,1268.00,"إزالة محول هوائي ثلاثي الأطوارعلى عمود واحد أي سعة Removal of 3-Φ OH transformer, one pole mounted type, any capacity wi",11
+205040204,EA,1090.00,إزالة خلية مكثفات ثلاثية الطور( Removal of 3-Φ capacitor bank with all accessories (excluding pole removal إزالة خلية مك,11
+206000007,EA,389.00,"تغيير زيت معدة هوائية Changing Oil for pole-mounted equipment, including draining of old oil, refilling with Companysupp",11
+206000008,M,58.00,قص الأشجار بمنشار كهربائي Cutting or trimming of trees in the vicinity of the line conductors using electrical saw or as,11
+206000009,M,122.00,قص الأشجار باستخدم معدة كهربائية Cutting or trimming of trees in the vicinity of the line conductors using electrical eq,11
+206000011,EA,140.00,"إزالة الأجسام الغريبة من الخط الهوائي Removal of objects from the overhead lines, PMT, bracket, cross arm,.. etc for spe",12
+206000012,KM,10809.00,"تمهيد طريق ترابي قائم بقرب خطوط هوائية Levelling of an existing non-asphalted access road, including removal of sand / g",12
+206000013,KM,15446.00,عمل طريق ترابي جديد بقرب خطوط هوائية Making a new non-asphalted access road near overhead distribution lines with a widt,12
+206000014,EA,956.00,صيانة معدة هوائية Maintenance of any type overhead equipment ( pole-mounted transformer/ autorecloser/ sectionalizer/ Ga,12
+206000015,EA,679.00,"صيانة فاصل خط على الحمل/كابل صاعد ج.متوسط Maintenance of MV pole-mounted load-break switch ( LBS ) / cable riser, any ty",12
+206000016,EA,369.00,"غسيل عوازل عامود د.مفرد ج.متوسط (باستخدام معدة المقاول) Washing ( by contractor water jet equipment ) for one pole, MV s",12
+206000017,EA,478.00,"غسيل عوازل عامود د.مزدوجة ج.متوسط (باستخدام معدة المقاول) Washing ( by contractor water jet equipment) for one pole ,MV ",12
+206000018,EA,92.00,"غسيل عوازل عمود د.مفرد ج.متوسط (باستخدام معدة الشركة) Washing ( by company water jet equipment ) for one pole, MV single",12
+206000019,EA,127.00,غسيل عوازل عمود د.مزدوجة ج.متوسط (باستخدام معدة الشركة) Washing ( by company water jet equipment ) for one pole MV doubl,12
+206000020,KM,506.00,"عمل تفتيش/معاينة على خط هوائي Patrolling of a complete OH line ( including all components without Equipment ), using bin",12
+206000021,EA,422.00,معاينة وفحص لمعدات شبكة هوائية Field inspection of OH equipment with all its accessories ( poles / equipment/ cable rise,12
+206000022,EA,487.00,توريد وتركيب ماسورة حماية مرنة لكابل مجدول على عمود Supplying and installation of LV OH quadruplex flixable protection p,12
+206000028,EA,124.00,أستبدال/إعادة تثبيت غطاء/باب لوحة توزيع محول هوائي قائم Replacement or refixing of any type existing L.V panel for PMT c,12
+206000032,EA,201.00,استبدال جميع الكروت بشاحن البطارية أو بلوحة التحكم لمعدة هوائية ذكية Replacement of all cards for Battery Charger (UPS) ,12
+206000034,EA,135.00,استبدال شاحن دائرة التحكم أو جزء من لوحة التحكم الطرفية لمعدة هوائية Replacement of charger or a part of control panel f,13
+206000045,EA,416.00,"تركيب/استبدال لوحة تحكم لمعدة هوائية ذكيةInsallation or Replacement of control panel for smart OH equipment, Including d",13
+206000050,EA,180.00,"ربط معدة هوائية ذكية قائمة مع مركزالتحكمIntegration of an existing smart OH equipment ,any type, with control center ربط",13
+207000003,M,9.00,عمل تأريض للأعمدة أوالمعدات الهوائية بدفن الطول في تربة صخرية Grounding of overhead poles or equipment by laying groundi,13
+207000004,EA,432.00,تأريض معدة هوائية بلوحة او ذراع مركبة على عمود/عمودين تربة عادية/رملية Grounding of pole-mounted equipment with (control,13
+207000005,EA,568.00,تأريض معدة هوائية بلوحة او ذراع مركبة على عمود/عمودين تربة صخرية Grounding of pole-mounted equipment with (control or LV,13
+207000006,EA,394.00,تأريض معدة هوائية مركبة على عمود او عمودين / كابل صاعد تربة عادية / رملية Grounding of pole-mounted equipment installed ,14
+207000007,EA,495.00,تأريض معدة هوائية مركبةعلى عمود او عمودين/ كابل صاعد تربة صخرية Grounding of pole-mounted equipment installed on single ,14
+207000008,EA,229.00,عمل شبكة من سلك التأريض في تربة عادية Installation of grounding mesh burried under equipment and connecting it to ground,14
+207000009,EA,288.00,عمل شبكة من سلك التأريض في تربة صخرية Installation of grounding mesh burried under equipment and connecting it to ground,14
+301010101,M,59.00,حفرمساركابل ج منخفض والردم بنفس نواتج الحفر لعدد من (1) الى(3) كابل تربة عادية/رملية غ مسفلته Excavation a trench for on,14
+301010102,M,76.00,حفرمساركابل ج منخفض والردم بنفس نواتج الحفر لعدد (4) كابل تربة عادية/رملية غ مسفلته Excavation a trench for four (4) LV ,14
+301010103,M,67.00,حفرمساركابل ج منخفض والردم بنفس نواتج الحفر لعدد من (1) الى(3 ) كابل تربة عادية/ رملية مسفلته Excavation a trench for on,14
+301010104,M,85.00,حفرمساركابل ج منخفض والردم بنفس نواتج الحفر لعدد (4) كابل تربة عادية/رملية مسفلته Excavation a trench for four (4) LV ca,14
+301010105,M,70.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد من (1) الى(3 ) كابل تربة عادية/ رملية غ مسفلته حسب اشتراطات الأ,14
+301010106,M,90.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/ رملية غ مسفلته حسب اشتراطات الأمانة Excava,14
+301010107,M,94.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد من (1) الى(3 ) كابل تربة عادية/ رملية مسفلته حسب اشتراطات الأما,14
+301010108,M,114.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية مسفلته حسب اشتراطات الأمانة Excavatio,14
+301010109,M,82.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد من (1) الى(3 ) كابل تربة عادية/ رملية غ مسفلته حسب مواصفات وزار,14
+301010110,M,103.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/ رملية غ مسفلته حسب مواصفات وزارة الطرق و ا,14
+301010111,M,100.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد من (1) الى(3) كابل تربة عادية/ رملية مسفلته حسب مواصفات وزارة ا,14
+301010112,M,123.00,حفرمساركابل ج منخفض والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية مسفلته حسب مواصفات وزارة الطرق و النق,14
+301010201,M,60.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (1) كابل تربة عادية/ رملية غ مسفلته Excavation a trench for one (1) MV ,15
+301010202,M,77.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (2) كابل تربة عادية/رملية غ مسفلته Excavation a trench for two (2) MV c,15
+301010203,M,98.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (3) كابل تربة عادية/رملية غ مسفلته Excavation a trench for three (3) MV,15
+301010204,M,121.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (4) كابل تربة عادية/رملية غ مسفلته Excavation a trench for four (4) MV ,15
+301010205,M,68.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (1) كابل تربة عادية/رملية مسفلته Excavation a trench for one (1) MV cab,15
+301010206,M,90.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (2) كابل تربة عادية/رملية مسفلته Excavation a trench for two (2) MV cab,15
+301010207,M,111.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (3) كابل تربة عادية/ رملية مسفلته Excavation a trench for three (3) MV ,15
+301010208,M,134.00,حفرمساركابل ج متوسط والردم بنفس نواتج الحفر لعدد (4) كابل تربة عادية/رملية مسفلته Excavation a trench for four (4) MV ca,15
+301010209,M,76.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (1) كابل تربة عادية/ رملية غ مسفلته حسب اشتراطات الأمانة Excava,15
+301010210,M,93.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (2) كابل تربة عادية/رملية غ مسفلته حسب اشتراطات الأمانة Excavat,15
+301010211,M,124.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (3) كابل تربة عادية/رملية غ مسفلته حسب اشتراطات الأمانة Excavat,15
+301010212,M,155.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية غ مسفلته حسب اشتراطات الأمانة Excavat,15
+301010213,M,90.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (1) كابل تربة عادية/رملية مسفلته حسب اشتراطات الأمانة Excavatio,15
+301010214,M,112.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (2) كابل تربة عادية/رملية مسفلته حسب اشتراطات الأمانة Excavatio,15
+301010215,M,144.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (3) كابل تربة عادية/رملية مسفلته حسب اشتراطات الأمانة Excavatio,15
+301010216,M,174.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية مسفلته حسب اشتراطات الأمانة Excavatio,15
+301010217,M,85.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (1) كابل تربة عادية/ رملية غ مسفلته حسب مواصفات وزارة الطرق و ا,15
+301010218,M,104.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (2) كابل تربة عادية/رملية غ مسفلته حسب مواصفات وزارة الطرق و ال,15
+301010219,M,136.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (3) كابل تربة عادية/رملية غ مسفلته حسب مواصفات وزارة الطرق و ال,15
+301010220,M,168.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية غ مسفلته حسب مواصفات وزارة الطرق و ال,15
+301010221,M,98.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (1) كابل تربة عادية/رملية مسفلته حسب مواصفات وزارة الطرق و النق,15
+301010222,M,124.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (2) كابل تربة عادية/رملية مسفلته حسب مواصفات وزارة الطرق و النق,15
+301010223,M,159.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (3) كابل تربة عادية/رملية مسفلته حسب مواصفات وزارة الطرق و النق,15
+301010224,M,192.00,حفرمساركابل ج متوسط والردم باستخدام مواد دفان جديدة لعدد (4) كابل تربة عادية/رملية مسفلته حسب مواصفات وزارة الطرق و النق,16
+301010309,M,125.00,النسبة الإضافية لبنود محددة من أعمال الحفر واعادة الردم والدك عند العمل بالشوارع الضيقة والمزدحمه Percentage rate to be ,17
+301020002,M,140.00,"حفردقيق مسار كابل ج.متوسط بعرض<=20سم عمق > 65 سم<=80سم Excavation mini-cable trench for MV cables , using special equipm",17
+301030001,M,33.00,الحفر اليدوي لمسار الكابلات باستخدام معدات يدوية Manual excavation of cable trench using manual equipment in sensitive s,17
+301030006,M,25.00,"توريد ومد شبك(تنسر) أسفل طبقة خلطة الأسفلت Supplying and laying of mesh (Tenser) on trench final layer, under asphalt mi",17
+302010001,M,1714.00,"توريد وتمديد مواسير بلاستيك(بي في سي) (4 بوصة) Supplying and installation of PVC pipe, 100-150 MM, I.D ( 4 inch ), Class",18
+302020002,M,2319.00,توريد وتمديد عدد(2) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of two (2) pipes high-density poly,18
+302020003,M,3120.00,توريد وتمديد عدد(4) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of four (4) pipes high-density pol,18
+302020004,M,3973.00,توريد وتمديد عدد(6) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of six (6) pipes high-density poly,18
+302020005,M,4782.00,توريد وتمديد عدد(8) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of eight (8) pipes high-density po,18
+302020006,M,5670.00,توريد وتمديد عدد(10) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of ten (10) pipes high-density po,18
+302020007,M,6452.00,توريد وتمديد عدد(12) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of twelve (12) pipes high-density,18
+302020008,M,7217.00,توريد وتمديد عدد(14) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of fourteen (14) pipes high-densi,19
+302020009,M,8070.00,توريد وتمديد عدد(16) ماسورة بولي إثيلين بواسطة طريقة الثقب الأفقي Supplying and laying of sixteen (16) pipes high-densit,19
+302030001,M,506.00,توريد وتركيب/ إنشاءعبارة تحت الطرق او لعبور مجاري الاودية لعدد 1 مجاري كابلات Supplying and installation or construction,19
+302030002,M,686.00,توريد وتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 2 مجاري كابلات Supplying and installation or constructio,19
+302030003,M,982.00,توريد تركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 4 مجاري كابلات Supplying and installation or construction,19
+302030004,M,1267.00,توريدوتركيب/إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 6 مجاري كابلات Supplying and installation or construction ,19
+302030005,M,1499.00,توريدوتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 8 مجاري كابلات Supplying and installation or construction,19
+302030006,M,1805.00,توريدوتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 10مجاري كابلات Supplying and installation or construction,19
+302030007,M,2077.00,توريدوتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 12 كابلات Supplying and installation or construction of R,19
+302030008,M,2369.00,توريدوتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد14 كابلات Supplying and installation or construction of R.,19
+302030009,M,2694.00,توريدوتركيب/ إنشاءعبارات تحت الطرق او لعبور مجاري الاودية لعدد 16مجاري كابلات Supplying and installation or construction,19
+304010101,M,16.00,"تمديد كابل رباعي ج.منخفض <=185 LV cable laying with 4/cores, up to and including 185 sq. mm. Cu or Al. تمديد كابل رباعي ",20
+304030001,M,25.00,"إزالة كابل ج.متوسط/منخفض متعدد القلب/آحادي القلب أي مقاس Removal of MV /LV cable multi / single core, any size إزالة كاب",20
+304040102,M,126.00,تمديد الكابلات على الجسور Laying of cables on bridges in case of cables crossing roads by installing galvanized steel or,20
+304040103,M,17.00,تمديد أواعادة طي كابل أحادي/ رباعي القلب ج.منخفض للتوصيل المؤقت Laying or rerolling of any size 4/Core or 1/Core LV cabl,20
+304040104,M,22.00,تمديد أواعادة طي كابل أحادي/ ثلاثي القلب للتوصيل المؤقت ج.متوسط Laying or rerolling of any size / type 3/Core or 1/Core ,20
+304040105,M,8.00,المبلغ الاضافي حال تمديد كابل ج.متوسط والمنخفض داخل مواسير لقنوات الخدمات أو...الخ Additional amount in case of laying M,21
+304040106,EA,76.00,توريد ودهان كابلات ج.متوسط بمادة مضادة للحريق Supplying and coating with fire prove material (firetherm) for 1/C or 3/C ,21
+304040114,M,55.00,توريد المواد اللازمة وتركيب سدادة لمداخل الكابلات داخل المحطات الرئيسية Supplying andinstallation of required duct plug ,21
+304040202,M,70.00,المبلغ الاضافي عند تمديد كابل ج.متوسط للتوصيل إلى معدة هوائية أو خط هوائي Additional amount in case of laying any size M,21
+304040203,EA,211.00,"أستبدال وصلة العبورللكابل الصاعد Replacement of one jumper of cable risers, including disconnection and removal of exist",21
+305020407,EA,238.00,"تركيب نهاية طرفية كوعية للفازة الواحدة ج.متوسطInstallation of an Elbow / PLUG IN type termination per phase, for MV cabl",23
+306020009,EA,698.00,توريد المواد اللازمة وإعادة أصلاح الممرات الجانبية المرصوفة بالخرسانة Supplying and reinstatement of plain concrete side,24
+307010202,EA,495.00,استبدال قاعدة خرسانية للوحة توزيع فرعية من نوع الألياف الزجاجية Replacement of concrete foundation for fiber type Mini-p,24
+307010203,EA,1282.00,استبدال قاعدة خرسانية للوحة توزيع رئيسية ج.منخفض أي مقاس Replacement of concrete foundation for any size LV Distribution,24
+307020103,EA,156.00,توريد وتركيب أو إنشاء بالموقع لقاعدة خرسانية لمحول<=1000 Supplying and installation or constructing at site of concrete ,25
+308010206,EA,463.00,استبدال قاعدة الياف زجاجية للوحة توزيع فرعية (الجزء السفلي) Replacement of fiber glass MiniPillar (Distribution Cabinet),26
+308010301,EA,236.00,أزاحة لوحة توزيع فرعية أي نوع بدون ازاحة القاعدة Relocation of any type mini-pillar (Distribution Cabinet) without reloc,26
+308010503,EA,153.00,تركيب قاطع تيار فرعي ج.منخفض في لوحة توزيع رئيسية / فرعية أو داخل لوحة توزيع رئيسية لمحطة مدمجة أو وحدة أو غرفة أي مقاس ,26
+308010504,EA,405.00,إستبدال القاطع الرئيسي ج.منخفض في لوحة توزيع رئيسية أو داخل لوحة توزيع رئيسية لمحطة مدمجة أو وحدة أو غرفة Replacement of,26
+308010505,EA,282.00,إستبدال القاطع الفرعي ج.منخفض في لوحة توزيع رئيسية / فرعية أو داخل لوحة توزيع رئيسية لمحطة مدمجة أو وحدة أو غرفة Replace,27
+308010506,EA,50.00,تركيب منصهرات مع الحامل ج.منخفض في لوحة توزيع رئيسية أي مقاس Installation of fuse assembly with fuses at an existing LV ,27
+308020501,EA,950.00,أزاحة وحدة حلقية رئيسية/وحدة قياس لكبار المشتركين/مجموعة مفاتيح قابلة للتوسعة/مفاتيح تحويل آلية ج.متوسط بدون ازاحة القاع,29
+308020502,EA,1139.00,أزاحة وحدة حلقية رئيسية/وحدة قياس لكبار المشتركين/مجموعة مفاتيح قابلة للتوسعة/مفاتيح تحويل آلية ج.متوسط مع ازاحة القاعدة,29
+308020503,EA,970.00,رفع أو خفض/تعديل مستوى وحدة حلقية رئيسية/وحدة قياس لكبار المشتركين/مجموعة مفاتيح قابلة للتوسعة/مفاتيح تحويل آلية ج.متوسط,29
+308020616,EA,542.00,"أزاحة محطة مدمجة(معلبة) سعة 2500 ك.ف.أ ج.متوسط مع إزاحة القاعدة Relocation of Compact ( Package ) S/S 2500 Kva ,33/13.8 ",30
+308020702,EA,699.00,ازالة وحدة حلقية رئيسية/وحدة قياس لكبار المشتركين/مجموعة مفاتيح قابلة للتوسعة/مفاتيح تحويل آلية ج.متوسط مع إزالة القاعدة,30
+308020703,EA,134.00,إزالة خلية داخلية(قاطع/مفتاح/ربط/لوحة قياس) ج.متوسط لمجموعة مفاتيح قابلة للتوسعة Removal of MV indoor switchgear ( circu,30
+308020905,EA,262.00,تركيب او استبدال محول التيار/محول الجهد/مرحل لمعدة قائمة في الشبكة الأرضية Installation / replacement of any type CT / V,30
+308020911,EA,143.00,تركيب مجموعة محولات الجهد/القدرة المدمجة ( CPT ) داخل مفتاح حلقي ذكي Installation of the Compact Potential Transformer (,31
+308020917,EA,186.00,استبدال جميع الكروت بشاحن البطارية أو بلوحة التحكم لمعدة أرضية ذكية Replacement of all cards for Battery Charger (UPS) a,31
+308020918,EA,221.00,فحص وصيانة محول التيار و محول الجهد لمعدة أرضية Inspection and maintenance of CT and VT for UG equipment and checking al,31
+308020921,EA,139.00,تفعيل واختبار جميع الانذارات مركز التحكم لمعدة أرضية ذكية Activation and Testing of all new alarms required by control c,31
+308020927,EA,401.00,فحص واستبدال جميع فيوزات لوحة التحكم لمعدة أرضية ذكية Inspection and Replacement of all fuses for control panel for smar,31
+308020930,EA,196.00,"ربط معدة أرضية ذكية قائمة مع مركزالتحكمIntegration of an existing smart UG equipment ,any type, with control center ربط ",31
+309010002,EA,244.00,تأريض لوحة توزيع رئيسية/فرعية في تربة صخرية Grounding of mini-pillar/ LV Distribution panel including installation of (2,32
+309010003,M,10.00,"تأريض لوحة توزيع رئيسية/فرعية بدفن سلك التأريض في تربة صخرية Grounding of mini-pillar / LV Distribution panel , includin",32
+309020001,EA,319.00,تأريض معدة أرضية في تربة عادية/رملية Grounding of UG equipment or UG equipments inside inset / room (( Compact (Package),32
+309020002,EA,409.00,"تأريض معدات أرضية في تربة صخرية Grounding of UG equipment or UG equipments inside inset / room (( Compact (Package) S/S,",32
+309020003,M,10.00,تأريض معدة أرضية بدفن سلك التأريض في تربة صخرية Grounding of UG equipment or UG equipments inside inset / room (( Compac,32
+309020004,EA,471.00,تأريض معدة أرضية داخل سياج في تربة عادية/ رملية Grounding of pad mounted equipment inside fence (( Compact (Package) S/S,32
+309020005,EA,606.00,"تأريض معدات أرضية داخل سياج في تربة صخرية Grounding of pad mounted equipment inside fence (( Compact (Package) S/S, Unit",32
+309020006,M,10.00,تأريض معدات داخل سياج بدفن سلك التأريض بتربة صخرية Grounding of pad mounted equipment inside fence (( Compact (Package) ,32
+310000001,EA,275.00,صيانة لوحة توزيع فرعية أي نوعMaintainance of any type minipillar صيانة لوحة توزيع فرعية أي نوعEA 174.00 SAR Unit Rate 44,32
+310000004,EA,349.00,"صيانة وحدة حلقية رئيسي/وحدة قياس.. زيتية Maintenance of any type MV RMU or Metering Unit for Bulk consumer,( stand alone",32
+310000007,EA,472.00,استبدال/إعادة تثبيت غطاء او باب لوحة توزيع فرعية أي نوع Replacement or refixing of any type mini pillar cover ( side / t,33
+310000011,EA,158.00,توريد وأستبدال قفل/مفصلة باب محطة مدمجة / محطة وحدة /لوحة توزيع فرعية /رئيسية اي نوع/سعة Supplying and replacement of do,33
+310000012,EA,121.00,تركيب أو أستبدال مفصله باب/ او لسان الاقفال / مثبت باب ( ركزة ) لمحطة مدمجة أو محطة وحدة أو لوحة توزيع فرعية أو رئيسية ا,33
+310000013,EA,322.00,"تغيير زيت معدة أرضية ج.متوسط Changing of Oil for MV U/G equipment, including dumping of old oil, refilling with Company-",33
+310000014,EA,400.00,تركيب/ استبدال/ اصلاح غلاف العازل الخارجي لكابل جهد متوسط Installation / Replacement / Repairing of the insulation cover,33
+310000017,EA,120.00,"عمل معاينة وفحص لوحدة حلقية قائمة اي نوع Inspection / testing of existing any type RMU , using digital cameras / partial",33
+310000018,EA,300.00,عمل معاينة وفحص للوحات التوزيع الفرعيه الارضية القائمة Inspection / testing of existing mini-pillar using thermal camera,33
+310000020,M,20.00,إختبار كابل ضغط متوسط بواسطة الموجاتTesting of HV cable using VLF Using approved company devices /tools and submission o,33
+310000033,EA,450.00,"تعريف كابل جهد متوسط/ منخفض قائم Identification of an existing MV / LV cable , any type/size Using approved company devi",33
+310000036,EA,409.00,استبدال شاحن دائرة التحكم أو جزء من وحدات التحكم الطرفية لمعدة ارضية Replacement of charger or a part of RTU for UG equi,34
+401000003,EA,999.00,سحب أو نقل أوقيادة او اعادة مقطورة بكرة الكابل المرن المتنقلة او مولد الشركة المتنقل او محطة متنقلة بواسطة نقليات المقاو,34
+401000004,KM,9.00,"المبغ الإضافي لكل كيلومتر إضافي Additional amount to be paid to items no ( 401000001 ) , ( 401000002 ) and ( 401000003 )",34
+401000005,EA,78.00,إعادة تعبئة مولد الشركة المتنقل بالوقود (Refilling of company mobile generator with fuel ( fuel to be supplied by compan,34
+401000012,EA,53.00,تركيب لوحة تعريفية لمعدة أرضية/ هوائية installation of any plate or stickers like ( arch flash plate / Asset tag / dange,34
+401000013,EA,49.00,طلاء/ إعادة طلاء الرقم التسلسلي لعمود قائم او معدة هوائية / أرضية قائمة Painting / repainting serial number of existing ,34
+401000019,EA,1079.00,إزالة وترحيل المخلفات/ الكثبان من المواقع القائمة مع تنظيف الموقع Removal of debris / surplus materials / sand close to ,35
+401000021,EA,1959.00,وردية طوارئ عدد(2) فني كهرباء وعدد(1) مشغل معدات ثقيلة مع سلة ونش Performing an emergency shift ( 8 hours ) in operation,35
+401000022,EA,167.00,وردية طوارئ مهندس كهرباء عدد(1) Performing an emergency shift ( 8 hours ) in emergency control center with abilities inc,35
+401000027,EA,100.00,تركيب او استبدال قفل وإعادة اغلاق باب معدة هوائية او ارضية او صندوق عداد Installation or replacement of a lock and reclo,35
+401000028,EA,120.00,توريد المواد اللازمة وإغلاق فتحات معدة هوائية/ أرضية قائمة Supplying of required materials and sealing th openings for e,35
+402000002,EA,162.00,تركيب قضيب تأريض إضافي لتحسين قيمة المقاومة الأرضية في تربة صخرية Installation of additional grounding rod to be connect,35
+402000003,M,9.00,تحسـين مقاومة الأرضي بعمـل حـفـر إضافي في قاع الخندق وتمديد سلك التأريض بداخله Improving soil resistance by excavating a,35
+402000004,EA,59.00,"تركيب/ أستبدال سلك التأريض لأغراض الصيانة Installation/replacement of grounding wire, including disconnection, reconnect",35
+403000001,EA,1182.00,توريد/تركيب/إنشاء قاعدة صندوق وصل/تأريضSupplying and installation or constructing at site of concrete foundation for any,35
+403000005,EA,1579.00,"إستبدال صندوق وصل مع ملحقاته مع القاعدة Replacement of an existing link box, any type, for 33/34.5 KV U/G cables with al",35
+403000009,EA,5281.00,"إزالة صندوق وصل( تاريض ) مع القاعدةRemaval of an existing link box, any type, for 33/34.5 KV U/G cables with its concret",36
+404000002,EA,3083.00,"اختبار المقاومة الأرضيةElectrical Resistivity test (8 ) directions for each point, covering the substation area accordin",36
+501010001,ASM,281.00,"تركيب وتوصيل صندوق بعداد آحادي اى مقاس/نوع Installation and connection of one-meter assembly with its accessories, Any s",36
+501010003,EA,2000.00,"تركيب وتوصيل صندوق بعدادين اى مقاس/نوعInstallation and connection of two-meter ( double ) assembly with its accessories,",36
+501010009,EA,2400.00,استبدال عداد قياس الطاقة المركب على مغذيات التوزيع بمحطات التوزيع الرئسية Replacement of the existing energy meter on Di,36
+501010010,EA,25000.00,توريد وتركيب خلايا قياس( سعة 6 عدادات) لمغذيات التوزيع بمحطات التوزيع الرئسية Supplying and installation of measuring pa,36
+501010011,EA,3500.00,تركيب محول تيارCT قياس بمحطات التوزيع الرئسية Installation of measuring CT in Main Distribution Substations according to,37
+501010012,EA,2000.00,تركيب عداد قياس الطاقة على مغذيات التوزيع بمحطات النقل Installation of energy meter on Distribution feeders in NG Substa,37
+501010013,EA,2400.00,استبدال عداد قياس الطاقة المركب على مغذيات التوزيع بمحطات النقل Replacement of the existing energy meter on Distribution,37
+501010014,EA,25000.00,توريد وتركيب خلايا قياس( سعة 6 عدادات) لمغذيات التوزيع بمحطات النقل Supplying and installation of measuring panels with ,37
+501010015,EA,3500.00,تركيب محول تيارCT قياس بمحطات النقل Installation of measuring CT in NG Substations according to NG Specifications. The w,37
+501020001,ASM,307.00,"تركيب وحدة قياس طاقة/قاطع أي مقاس/نوعInstallation of KWH meter or Circuit Breaker (CB) for an existing box, any size / t",37
+502010002,ASM,328.00,استبدال صندوق بعداد احادي مباشر صندوق بمحول تيار/صندوق بعداد محول تيار منفصل بصندوق آخر بمحول تيار / صندوق بعداد محول تي,37
+502010003,ASM,348.00,استبدال صندوق/لوحة بعداد/عدادين مباشربصندوق/لوحة بعدادين مباشره Replacement of an existing box / panel with one or two -,37
+502010004,ASM,441.00,استبدال صندوق/لوحة بعدادين او أكثر مباشربصندوق/لوحة بأربع عدادات مباشره Replacement of an existing box / panel with two-,38
+502010005,ASM,627.00,استبدال مجموعة صناديق(بعداد/بعدادين) مباشرة بصندوق رباعي مباشر Replacement of a group of existing meter boxs ( one or tw,38
+502010006,ASM,479.00,استبدال كبينة خدمة بكبينة خدمة أي مقاس واي نوع Replacement of an existing LV service cabinet assembly by LV service cabi,38
+502020001,EA,95.00,استبدال صندوق فيوز/صندوق محول تيار ج.منخفض/صندوق خدمة/قسام/صندوق وصل Replacement of an existing LV fuse box / CT Box / h,38
+502020006,ASM,326.00,استبدال وحدة مجمع البيانات للعداد الذكيReplacement of smart meter Data Concentrator Unit (DCU) استبدال وحدة مجمع البيانا,38
+503010002,ASM,344.00,تغير مكان(إزاحة) صندوق بعداد محول تيار/محول تيار منفصل مع ملحقاته Relocation of CT meter / remote type CT meter assembly,38
+503010003,ASM,481.00,تغيرمكان(إزاحة) صندوق/لوحة بثلاث/اربع عدادات مع ملحقاته Relocation of box / panel with three or four-meters ( whole curr,38
+504010001,EA,178.00,إزالة صندوق/لوحة بعداد/بعدادين مباشر أو صندوق بعداد محول تيار مع ملحقاته Removal of box / panel with One or two-meters (,39
+504010002,EA,248.00,إزالة صندوق/لوحة أكثر من عدادين مباشر مع ملحقاته Removal of box / panel with more than two-meters ( whole current ) asse,39
+506000005,EA,97.00,تركيب/إزالة/استبدال جمبرة بين صندوق خدمة وصندوق عداد او داخل صندوق العداد Installation / removal / replacement of LV jum,40
+506000006,EA,56.00,فصل/توصيل التيارعن المشترك بقفل القاطع بالمفتاح ( فصل غير فني ) Disconnection or reconnection of customer power supply f,40
+506000011,EA,170.00,فحص واختبار دقة وحدة قياس الطاقة Checking and testing of any size/type KWH Meter accuracy including CT/VT if required on,40
+506000012,EA,200.00,"تحديث البرنامج الداخلي للعداد الذكي بالموقعUpgrading of Smart Meter’s Firmware (FW) at site, any size/type تحديث البرنام",40
+506000015,EA,162.00,تفعيل واختبار جميع الانذارات الجديدة المطلوبة من قبل مركز التحكم لعداد ذكي Activation and Testing of all new alarms requ,40
+507000002,EA,205.00,تأريض من1 الى4 عدادات(محول تيار أو توصيل مباشر) بصندوق واحد او اكثر في تربة صخرية Grounding of one (1) to four (4) meter,40
+507000003,EA,312.00,"تأريض مجموعة صناديق العدادات داخل غرفة في تربة عادية/رملية Grounding group of meters assembly inside a room , including ",40
+507000004,EA,331.00,"تأريض مجموعة صناديق العدادات داخل غرفة في تربة صخرية Grounding group of meters assembly inside a room, including install",40
+508000001,EA,220.00,استبدال ماسورة عداد حديدية/بلاستيكية أو ماسورة الخدمة الهوائية Replacement of service cable protection PVC / steel pipe ,41
+508000002,EA,199.00,تغيير غطاء/ مفصلات صندوق عداد / مثبت غطاء صندوق العداد أي مقاس / نوع Replacement of meter box cover / hinges / door stay,41
+508000005,EA,267.00,صيانة صندوق عداد رباعي مباشر قائم بملحقاته اي نوع / سعة Maintenance of an existing four (4) meters box ( whole current ),41
+601000008,EA,1955.00,توريد وتركيب/أستبدال غطاء خندق من الصاج Supplying and installation or replacement of trench cover (10mm thick ) for exis,42
+603000002,EA,3711.00,توريد وتركيب غرفة وصلات/تفتيش من الخرسانة الجاهزة ( 800*800*950) بأي نوع تربة Supplying and Installation of any type pre,42
+603000003,EA,4827.00,توريد وتركيب غرفة وصلات/تفتيش من الخرسانة الجاهزة (1100*900*1600) بأي نوع تربة Supplying and Installation of any type pr,42
+603000005,EA,7015.00,توريد وتركيب غرفة وصلات/تفتيش من الخرسانة الجاهزة (1550*1550*1990) بأي نوع تربة Supplying and Installation of any type p,42
+603000006,EA,10428.00,توريد وتركيب غرفة وصلات/تفتيش من الخرسانة الجاهزة (1700*2000*2800) بأي نوع تربة Supplying and Installation of any type p,42
+603000010,EA,1621.00,توريد المواد وتثبيت حامل كابلات ج.متوسط / فايبر داخل غرفة التفتيش Supplying of required materials and Installation of ad,43
+603000014,EA,358.00,توريد المواد وعمل صيانة لفتحة غطاء غرفة التفتيش القائمة Supplying required materials for Civil maintenance / repairing o,43
+603000018,EA,328.00,إصلاح التأريض داخل غرفة التفتيش القائمة Repairing of Grounding inside an existing manhole / handhole إصلاح التأريض داخل ,43
+603000032,EA,306.00,توريد وتركيب أنبوب ضد تسرب المياه... Supplying and installation of sealed ( 4”-8” ) diameter PVC pipe with its accessori,44
+603000033,EA,128.00,توريد مواد وتركيب سدادة داخل غرفة... Supplying of required materials and installation of duct plug for duct with cable(a,44
+603000037,EA,136.00,توريدوطلاء حامل كابلات داخل غرف تفتيش Supplying of all required materials and painting / re-painting of channel cable su,44
+603000038,EA,166.00,توريد وطلاء إطار وغطاء غرفة تفتيش بطلاء Supplying of all required materials and painting / re-painting of manhole/handho,44
+604000001,EA,361.00,توريد وتركيب عدد2 عمود حماية مربوطة بأذرع حديدية للأعمدة الهوائية Supplying and installation of two (2) protection posts,44
+604000003,EA,159.00,رفع/ خفض/ إزاحة عدد 2 عمود حماية مربوطة بأذرع حديدية للأعمدة الهوائية Raising or lowering or relocation of two (2) prote,44
+604000005,EA,418.00,إزالة عدد2 عمود حماية مربوطة بأذرع حديدية للأعمدة الهوائية Removal of two (2) protection posts ( barriers ) bonded with ,44
+605000002,EA,165.00,توريد وطلاء عمود قائم ج.متوسط/منخفض بدهان عاكس للضوء بارتفاع 3م. Supplying of reflective paint and painting of an existi,44
+605000003,EA,395.00,توريد دهان مقاوم لعوامل الطبيعة والصدأ وطلاء كامل العمود القائم بنفس اللون Supplying of weather proofing anti-rust paint,44
+605000004,EA,313.00,توريد مادة عازلة للرطوبة وطلاء القاعدة والجزء السفلي المدفون من العمود Supplying of water proofing material (bitumen or ,44
+605000005,EA,332.00,توريد المواد لاعادة دهان لوحة توزيع فرعية/ رئيسية قائمة Supplying of required materials and repainting of an existing mi,44
+605000009,EA,163.00,توريد المواد ودهان جدران غرفة المحطات القائمةSupplying required materials and paint of an existing S/S room walls توريد ,45
+606000029,EA,250.00,عمل ثقب في جدار خرساني أو اسمنتي قائم Coring for existing R.C.C / block walls for cable entrances / exits عمل ثقب في جدا,46
+701000001,M,9.00,تمديد ماسورة بولي إثيلين اي مقاس Laying of any size high-density polyethylene (HDPE) duct with nylon rope inside the pip,46
+701000002,M,17.00,"توريد وتمديد ماسورة بولي إثيلين مقاس50مم Supplying and Laying of 50mm size high-density polyethylene (HDPE) duct, with 4",46
+701000003,M,38.00,توريد وتمديد مواسير الفايبر من النوع SUBDUCT مقاس حتى ويشمل50ملم (بعدد 4 مواسير داخلية) Supplying and laying of high-den,46
+701000004,M,44.00,توريد وتمديد مواسير الفايبر من النوع SUBDUCT مقاس حتى ويشمل110ملم (بعدد 7 مواسير داخلية) Supplying and laying of high-de,46
+701000005,M,19.00,توريد وتمديد مواسير الفايبر من النوع المموج Corrugated مقاس حتى ويشمل110ملم (بعدد 4 مواسير داخلية) Supplying and laying ,46
+701000006,M,20.00,توريد وتمديد ماسورة مرنة مقاس32ملم لحماية كابلات الاتصالات Supplying and laying of 32 mm size flexible pipe inside Manho,46
+701000008,M,21.00,توريد وتمديد مواسير الفايبر من النوعHDPE مقاس62 ملم(بعدد 12 ماسورة داخلية) Supplying and laying of HDPE 12-Way Duct (8mm,46
+701000009,M,32.00,توريد وتمديد مواسير الفايبر من النوعHDPE مقاس102ملم(بعدد 16 ماسورة داخلية) Supplying and laying of HDPE 16-Way Duct (16m,46
+702000006,M,16.00,تركيب وشد كابل الياف بصرية هوائي(ADSS F/O) أعلى من12 شعيرة بصرية على شبكة توزيع هوائية قائمة Installation and stringing ,47
+702000009,M,21.00,تركيب وشد د.مفردة (ثلاث موصلات)<=170 وموصل الأرضي بداخله كابل الالياف البصرية) مع توريد وتركيب كيبل OPGW Installation an,47
+702000010,M,21.00,تركيب وشد دائرة مزدوجة(ست موصلات حتى ويشمل 170 مم2 وموصل الأرضي بداخله كابل الالياف البصرية ) Installation and stringing,47
+702000011,M,25.00,تركيب وشد دائرة مزدوجة(ست موصلات حتى ويشمل 170 مم2 وموصل الأرضي بداخله كابل الالياف البصرية ) مع توريد وتركيب كيبل OPGW ,47
+702000012,M,27.00,توريد وتمديد كابل اتصالات( كابل ألياف بصرية ) اي سعة للربط بين صندوق توزيع و لوحة الحماية Supplying and Laying of any si,47
+702000013,M,47.00,توريد واستبدال موصل أرضي بآخر يحتوي على كابل الألياف البصرية Supplying & Replacement of Earthing Conductor with another ,47
+702000014,M,18.00,استبدال موصل أرضي بآخر يحتوي على كابل الألياف البصرية Replacement of Earthing Conductor with another Earthing Conductor ,47
+702000015,EA,1198.00,"توريد وتركيب كابل فايبرpigtails داخل لوحات OFMR بطول2 متر Supplying and installation of Fiber Pigtail cable,SM, Simplex,",47
+703000002,EA,6003.00,توريد وتركيب لوحة ألياف بصرية رئيسية( ODF ) سعة96 Supplying and installation of Optical Distribution Frame ( ODF ) wall/,47
+703000003,EA,6003.00,توريد وتركيب صندوق توزيع ألياف بصرية (ODB) سعة96 Supplying and installation of Optical Distribution Box (ODB) 96 cores c,47
+703000004,EA,5549.00,توريد وتركيب صندوق توزيع ألياف بصرية (ODB) سعة48 Supplying and installation of Optical Distribution Box (ODB) 48 cores c,47
+703000005,EA,1422.00,توريد وتركيب صندوق توزيع ألياف بصرية (ODB) سعة24 Supplying and installation of Optical Distribution Box (ODB) 24 cores c,47
+703000006,EA,8477.00,توريد وتركيب لوحة فايبر نوع(OFMR) Supplying and installation of Optical Fiber Management Rack (OFMR) FS ( 2200 x 900 x 4,47
+703000007,EA,4803.00,توريد وتركيب لوحةاف اس ت ي ت ي لعدد 96 شعيرة مع ملحقاتها Supplying and installation of Fiber Splice Termination Panel (F,47
+703000008,EA,5429.00,توريد وتركيب لوحة نوع اف تي ام لعدد96 شعيرة مع ملحقاتها Supplying and installation of Fiber Termination Module (FTM) 96F,47
+704000001,EA,787.00,عمل وصلة مستقيمة لشعيرة واحدة لكابل ألياف بصرية/لكابل دليلي اي مقاس Making a straight joint for one (1) core of any size,47
+704000006,EA,1828.00,توريد و تركيب صندوق لحام داخل غرفة التفتيش/على الأعمدة Supplying and installation of a splicing closure inside manhole o,47
+705000001,EA,55.00,اختبار موصلية و مقدار الفقد لشعيرة كابل الألياف البصرية او كابل دليلي اي مقاس Testing the continuity and Optic loss ( En,48
+706000001,EA,940.00,توريد وتركيب غطاء طرفي لأي كابل اتصالات/ كابل متعدد القلب/كابل تحكم/ كابل دليلي / كابل الالياف البصرية Supply and Instal,48
+706000005,EA,500.00,توريد وتركيب لوحات الترقيم على لوحات وكابلات الفايبر Supplying and installation of fiber optic labeles for fiber optic p,48
+708000002,EA,500.00,"تطبيق ضبطيات الحماية على معيدات التيار في المغذيات الهوائية Implementation of the Number of Counts, OC and EF Pick-up, S",48
+708000003,EA,400.00,سحب ملفات الضبطيات وملفات سجلات الأحداث والأعطال لجميع أنواع معيدات التيار والمجزئات وجميع المرحلات في وحدات القياس الحل,48
+708000004,EA,1000.00,"اختبار كامل نظام الحماية لوحدات القياس الحلقية والوحدات الحلقية Testing the Protection System of MRMUs and RMUs, includi",48
+708000007,EA,600.00,صيانة واختبار كامل نظام الحماية لمعيدات الوصل في المغذيات الهوائية Troubleshooting & Maintenance of the Protection Syste,49
+708000009,EA,600.00,فحص نظام حماية معيدات التيار Inspection of Field Reclosers or Sectionalizers Protection System which involves checking C,49
