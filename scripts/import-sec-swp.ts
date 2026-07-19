@@ -29,6 +29,9 @@ function stripXml(xml: string): string {
   return xml
     .replace(/<w:tab[^/]*\/>/g, '\t')
     .replace(/<w:br[^/]*\/>/g, '\n')
+    .replace(/<w:tr[^>]*>/g, '\n---ROW---\n')
+    .replace(/<w:tc[^>]*>/g, '\t')
+    .replace(/<w:p[^>]*>/g, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -36,46 +39,59 @@ function stripXml(xml: string): string {
     .replace(/\r/g, '')
 }
 
-async function extractDocxText(filePath: string): Promise<string> {
-  const buf = fs.readFileSync(filePath)
-  const zip = await JSZip.loadAsync(buf)
-  const doc = zip.file('word/document.xml')
-  if (!doc) return ''
-  const xml = await doc.async('string')
-  return stripXml(xml)
+function normalizeSpaces(s: string): string {
+  return s.replace(/[\s\u00a0]+/g, ' ').trim()
+}
+
+function parseStepsFromTable(text: string): { step: number; text: string }[] {
+  const rows = text.split('---ROW---').map(r => r.trim()).filter(Boolean)
+  const stepMap = new Map<number, string>()
+
+  for (const row of rows) {
+    const numMatch = row.match(/(?:^|[\n\t])(\d{1,2})\s*$/)
+    if (!numMatch) continue
+    const stepNum = parseInt(numMatch[1], 10)
+    if (stepNum < 1 || stepNum > 60) continue
+
+    const firstCol = row.split(/\t{2,}/)[0] || row.split('\t')[0] || ''
+    const lines = firstCol.split('\n').map(l => normalizeSpaces(l)).filter(Boolean)
+    const stepLine = lines.find(l =>
+      l.length > 8 &&
+      /[\u0600-\u06FF]/.test(l) &&
+      !/^(Hazard|Controls|Steps|Observation|List of|In each|الخطوات|الأخطار|الضوابط|ملاحظ)/i.test(l) &&
+      !/^[\d\u0660-\u0669]+$/.test(l)
+    )
+    if (!stepLine || stepMap.has(stepNum)) continue
+    stepMap.set(stepNum, stepLine.slice(0, 400))
+  }
+
+  return Array.from(stepMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([step, text]) => ({ step, text }))
 }
 
 function parseSwpFromText(procNo: string, text: string) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
-  const titleLine = lines.find(l => l.length > 10 && !l.startsWith('SWP')) || procNo
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && l !== '---ROW---')
 
-  // Find steps section
-  const stepKeywords = ['خطوات', 'الإجراء', 'الاجراء', 'Steps', 'Procedure', 'تسلسل']
-  let startIdx = lines.findIndex(l => stepKeywords.some(k => l.includes(k)))
-  if (startIdx < 0) startIdx = lines.findIndex(l => /^[\d\u0660-\u0669]+[\.\)\-]/.test(l))
-
-  const stepLines: string[] = []
-  if (startIdx >= 0) {
-    for (let i = startIdx + 1; i < lines.length; i++) {
-      const l = lines[i]
-      if (/^(ملاحظ|تحذير|Warning|Note|PPE|معدات)/i.test(l)) break
-      const cleaned = l.replace(/^[\d\u0660-\u0669]+[\.\)\-\s]+/, '').trim()
-      if (cleaned.length > 8) stepLines.push(cleaned)
-    }
+  const workLine = lines.find(l => /نوع\s*العمل|المهمة/.test(l))
+  let title = procNo
+  if (workLine) {
+    const m = workLine.match(/(?:نوع\s*العمل\s*\/?\s*المهمة\s*:?\s*)(.+)/i)
+    title = normalizeSpaces(m?.[1] || workLine).slice(0, 200)
   }
 
-  // Fallback: numbered lines anywhere
-  if (stepLines.length < 2) {
-    for (const l of lines) {
-      const m = l.match(/^(\d+)[\.\)\-\s]+(.{10,})/)
-      if (m) stepLines.push(m[2].trim())
-    }
-  }
+  let stepLines = parseStepsFromTable(text)
 
-  // Fallback: use meaningful lines after title
   if (stepLines.length < 2) {
-    const body = lines.slice(2, 25).filter(l => l.length > 15 && !l.includes('الشركة السعودية'))
-    stepLines.push(...body.slice(0, 12))
+    const startIdx = lines.findIndex(l => /الخطوات|Steps|تسلسل/.test(l))
+    if (startIdx >= 0) {
+      for (let i = startIdx + 1; i < lines.length; i++) {
+        const l = lines[i]
+        if (/^(ملاحظ|تحذير|Warning|Note|PPE|معدات|Hazard|Controls)/i.test(l)) break
+        const cleaned = l.replace(/^[\d\u0660-\u0669]+[\.\)\-\s]+/, '').trim()
+        if (cleaned.length > 8) stepLines.push({ step: stepLines.length + 1, text: cleaned })
+      }
+    }
   }
 
   const workType = procNo.startsWith('SWP-MN') ? 'صيانة'
@@ -85,14 +101,23 @@ function parseSwpFromText(procNo: string, text: string) {
 
   return {
     proc_no: procNo.replace('.docx', '').trim(),
-    title: titleLine.slice(0, 200),
+    title,
     work_type: workType,
-    description: lines.slice(0, 5).join(' ').slice(0, 500) || null,
-    steps: stepLines.slice(0, 30).map((text, i) => ({ step: i + 1, text })),
+    description: lines.slice(0, 8).join(' ').slice(0, 500) || null,
+    steps: stepLines.slice(0, 40).map((s, i) => ({ step: s.step || i + 1, text: s.text })),
     approved_by: 'الشركة السعودية للكهرباء',
     hazards: null,
     precautions: null,
   }
+}
+
+async function extractDocxText(filePath: string): Promise<string> {
+  const buf = fs.readFileSync(filePath)
+  const zip = await JSZip.loadAsync(buf)
+  const doc = zip.file('word/document.xml')
+  if (!doc) return ''
+  const xml = await doc.async('string')
+  return stripXml(xml)
 }
 
 function findRiskXlsx(): string | null {

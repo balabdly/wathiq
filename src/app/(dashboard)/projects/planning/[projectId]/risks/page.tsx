@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Plus, Save, ShieldAlert, Trash2 } from 'lucide-react'
+import { Plus, Save, ShieldAlert, Trash2, ListChecks, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useProjectPlanning } from '../ProjectPlanningContext'
@@ -12,14 +12,32 @@ type Risk = {
   risk_score?: number; status: string; response_plan?: string
 }
 
+type RiskTemplate = {
+  id: number
+  proc_no?: string
+  title: string
+  steps?: { step: number; text: string }[]
+}
+
 const PROB: Record<string, number> = { 'منخفض': 1, 'متوسط': 2, 'عالي': 3 }
+
+function parseTemplateItem(text: string): { title: string; response_plan: string } {
+  const parts = text.split(':')
+  if (parts.length >= 2 && parts[0].trim().length < 120) {
+    return { title: parts[0].trim(), response_plan: parts.slice(1).join(':').trim() }
+  }
+  return { title: text.slice(0, 200), response_plan: '' }
+}
 
 export default function RisksTabPage() {
   const { tenantId, projectId } = useProjectPlanning()
   const [risks, setRisks] = useState<Risk[]>([])
+  const [templates, setTemplates] = useState<RiskTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [form, setForm] = useState({ title: '', category: 'تشغيلي', probability: 'متوسط', impact: 'متوسط', response_plan: '' })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -32,7 +50,16 @@ export default function RisksTabPage() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [tenantId, projectId])
+  useEffect(() => {
+    load()
+    supabase.from('qhse_safe_work_procedures')
+      .select('id, proc_no, title, steps')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .eq('work_type', 'تقييم مخاطر')
+      .order('title')
+      .then(({ data }) => setTemplates(data || []))
+  }, [tenantId, projectId])
 
   async function handleAdd() {
     if (!form.title.trim()) { toast.error('عنوان المخاطرة مطلوب'); return }
@@ -56,6 +83,44 @@ export default function RisksTabPage() {
     setSaving(false)
   }
 
+  async function loadFromTemplate() {
+    if (!selectedTemplateId) { toast.error('اختر قالب تقييم المخاطر'); return }
+    const tpl = templates.find(t => t.id === Number(selectedTemplateId))
+    if (!tpl?.steps?.length) { toast.error('القالب فارغ'); return }
+    if (risks.length > 0 && !confirm(`تحميل ${tpl.steps.length} مخاطرة من «${tpl.title}»؟ لن تُحذف المخاطر الحالية.`)) return
+
+    setImporting(true)
+    const { count } = await supabase.from('project_risks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
+    let nextNum = (count || 0) + 1
+    const rows = tpl.steps
+      .map(s => String(s.text || '').trim())
+      .filter(Boolean)
+      .map(text => {
+        const { title, response_plan } = parseTemplateItem(text)
+        const row = {
+          tenant_id: tenantId,
+          project_id: projectId,
+          risk_code: `R-${String(nextNum++).padStart(3, '0')}`,
+          title,
+          category: 'سلامة',
+          probability: 'متوسط',
+          impact: 'متوسط',
+          risk_score: 4,
+          status: 'مفتوح',
+          response_plan: response_plan || null,
+        }
+        return row
+      })
+
+    const { error } = await supabase.from('project_risks').insert(rows)
+    if (error) toast.error(error.message)
+    else {
+      toast.success(`تم تحميل ${rows.length} مخاطرة من القالب ✅`)
+      await load()
+    }
+    setImporting(false)
+  }
+
   async function handleDelete(id: number) {
     if (!confirm('حذف المخاطرة؟')) return
     await supabase.from('project_risks').delete().eq('id', id)
@@ -64,7 +129,7 @@ export default function RisksTabPage() {
 
   return (
     <div className="card" style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ShieldAlert style={{ width: '17px', height: '17px', color: '#c81e1e' }} /> تقييم المخاطر
         </h3>
@@ -72,6 +137,27 @@ export default function RisksTabPage() {
           <Plus style={{ width: '14px', height: '14px' }} /> إضافة مخاطرة
         </button>
       </div>
+
+      {templates.length > 0 && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px' }}>
+          <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ListChecks style={{ width: '15px', height: '15px' }} /> قالب تقييم المخاطر (SEC)
+          </label>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)} className="select" style={{ flex: 1, minWidth: '220px' }}>
+              <option value="">— اختر القالب —</option>
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.proc_no ? `${t.proc_no} — ` : ''}{t.title}
+                </option>
+              ))}
+            </select>
+            <button onClick={loadFromTemplate} disabled={importing || !selectedTemplateId} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+              <Download style={{ width: '14px', height: '14px' }} /> {importing ? 'جاري التحميل...' : 'تحميل للمشروع'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div style={{ background: '#fef2f2', borderRadius: '10px', padding: '14px', marginBottom: '16px', border: '1px solid #fecaca' }}>
