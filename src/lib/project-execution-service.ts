@@ -58,7 +58,7 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
   const ids = (projects || []).map(p => p.id)
   if (!ids.length) return { data: [] as ExecutionProject[], error: null }
 
-  const teamIds = [...new Set((projects || []).map(p => p.team_id).filter(Boolean))] as number[]
+  const teamIds = Array.from(new Set((projects || []).map(p => p.team_id).filter(Boolean))) as number[]
 
   const [planningRes, costRes, logsRes, teamsRes] = await Promise.all([
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).in('project_id', ids),
