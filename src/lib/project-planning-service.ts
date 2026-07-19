@@ -189,6 +189,8 @@ export async function updateProjectPlanning(tenantId: string, projectId: number,
 
 export async function closeProjectPlanning(tenantId: string, projectId: number) {
   await updateProjectPlanning(tenantId, projectId, { planning_status: 'closed' })
+  const { startProjectExecution } = await import('@/lib/project-execution-service')
+  await startProjectExecution(tenantId, projectId)
 }
 
 export async function fetchCostItems(tenantId: string, projectId: number) {

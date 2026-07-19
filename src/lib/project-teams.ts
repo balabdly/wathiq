@@ -71,6 +71,7 @@ export type TeamProjectLog = {
   author_id?: number | null
   author_name: string
   notes?: string | null
+  log_date?: string
   created_at: string
   files?: TeamProjectLogFile[]
 }

@@ -252,7 +252,7 @@ export default function Sidebar() {
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
 
   const hasTeams     = hasProjects
-  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/field-memos','/projects/framework'].some(p => pathname === p || pathname.startsWith(p+'/'))
+  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/execution','/projects/field-memos','/projects/framework'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inMyHR     = pathname.startsWith('/my-hr')
@@ -340,9 +340,10 @@ export default function Sidebar() {
         {(hasProjects || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
-            {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname === '/projects' || (pathname.startsWith('/projects/') && !['/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/field-memos','/projects/framework'].some(p => pathname.startsWith(p)))} />}
+            {hasProjects   && <SubLink href="/projects"          label="المشاريع"          icon={IC.projects}   active={pathname === '/projects' || (pathname.startsWith('/projects/') && !['/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/execution','/projects/field-memos','/projects/framework'].some(p => pathname.startsWith(p)))} />}
             {hasProjects   && <SubLink href="/projects/initiation" label="مرحلة بدء المشروع" icon={IC.visits} active={pathname.startsWith('/projects/initiation')} />}
             {hasProjects   && <SubLink href="/projects/planning" label="مرحلة تخطيط المشروع" icon={IC.projects} active={pathname.startsWith('/projects/planning')} />}
+            {hasProjects   && <SubLink href="/projects/execution" label="مرحلة تنفيذ المشروع" icon={IC.projects} active={pathname.startsWith('/projects/execution')} />}
             {hasTeams      && <SubLink href="/projects/teams"    label="الفريق والمهام"  icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}

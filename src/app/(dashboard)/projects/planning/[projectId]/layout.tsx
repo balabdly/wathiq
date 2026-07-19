@@ -58,9 +58,9 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const activeSlug = PROJECT_TABS.find(t => pathname?.startsWith(`${base}/${t.slug}`))?.slug
 
   async function handleClosePlanning() {
-    if (!tenant || !confirm('إغلاق تخطيط هذا المشروع؟ سيُنقل إلى المشاريع المغلقة.')) return
+    if (!tenant || !confirm('إغلاق التخطيط ونقل المشروع إلى مرحلة التنفيذ؟')) return
     await closeProjectPlanning(tenant.id, projectId)
-    router.push('/projects/planning/closed')
+    router.push('/projects/execution')
   }
 
   if (loading || !project || !tenant) {
@@ -94,7 +94,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
           )}
           {planning?.planning_status === 'active' && (
             <button onClick={handleClosePlanning} className="btn btn-ghost" style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#6b7280', border: '1px solid #d1d5db' }}>
-              <Archive style={{ width: '14px', height: '14px' }} /> إغلاق التخطيط
+              <Archive style={{ width: '14px', height: '14px' }} /> إغلاق التخطيط والانتقال للتنفيذ
             </button>
           )}
         </div>
