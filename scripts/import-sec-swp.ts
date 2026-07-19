@@ -195,36 +195,49 @@ async function main() {
     process.exit(1)
   }
 
-  const tenantId = process.argv.find(a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1])
-  if (!tenantId) {
-    console.error('Usage: npx tsx scripts/import-sec-swp.ts <tenant_id>  OR  --export')
+  const allTenants = process.argv.includes('--all-tenants')
+  const tenantArg = process.argv.find(a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1] && !a.includes('tsx'))
+  const supabase = createClient(url, key)
+
+  let tenantIds: string[] = []
+  if (allTenants) {
+    const { data, error } = await supabase.from('tenants').select('id, name').order('name')
+    if (error || !data?.length) { console.error('Could not load tenants', error?.message); process.exit(1) }
+    tenantIds = data.map(t => t.id)
+    console.log(`Importing for ${tenantIds.length} tenants...`)
+  } else if (tenantArg) {
+    tenantIds = [tenantArg]
+  } else {
+    console.error('Usage: npx tsx scripts/import-sec-swp.ts --all-tenants  OR  <tenant_id>  OR  --export')
     process.exit(1)
   }
 
-  const supabase = createClient(url, key)
-
-  for (const p of procedures) {
-    const { data: existing } = await supabase.from('qhse_safe_work_procedures')
-      .select('id').eq('tenant_id', tenantId).eq('proc_no', p.proc_no).maybeSingle()
-    const payload = { ...p, tenant_id: tenantId, is_active: true, version: 'SEC' }
-    if (existing) {
-      await supabase.from('qhse_safe_work_procedures').update(payload).eq('id', existing.id)
-    } else {
-      await supabase.from('qhse_safe_work_procedures').insert(payload)
+  async function upsertForTenant(tenantId: string) {
+    for (const p of procedures) {
+      const { data: existing } = await supabase.from('qhse_safe_work_procedures')
+        .select('id').eq('tenant_id', tenantId).eq('proc_no', p.proc_no).maybeSingle()
+      const payload = { ...p, tenant_id: tenantId, is_active: true, version: 'SEC' }
+      if (existing) {
+        await supabase.from('qhse_safe_work_procedures').update(payload).eq('id', existing.id)
+      } else {
+        await supabase.from('qhse_safe_work_procedures').insert(payload)
+      }
+    }
+    if (riskTemplate) {
+      const { data: existing } = await supabase.from('qhse_safe_work_procedures')
+        .select('id').eq('tenant_id', tenantId).eq('proc_no', 'SEC-RISK-TEMPLATE-2025').maybeSingle()
+      const riskPayload = { ...riskTemplate, tenant_id: tenantId, is_active: true, version: 'SEC' }
+      if (existing) {
+        await supabase.from('qhse_safe_work_procedures').update(riskPayload).eq('id', existing.id)
+      } else {
+        await supabase.from('qhse_safe_work_procedures').insert(riskPayload)
+      }
     }
   }
-  console.log(`\nImported ${procedures.length} SWP procedures`)
 
-  if (riskTemplate) {
-    const { data: existing } = await supabase.from('qhse_safe_work_procedures')
-      .select('id').eq('tenant_id', tenantId).eq('proc_no', 'SEC-RISK-TEMPLATE-2025').maybeSingle()
-    const riskPayload = { ...riskTemplate, tenant_id: tenantId, is_active: true }
-    if (existing) {
-      await supabase.from('qhse_safe_work_procedures').update(riskPayload).eq('id', existing.id)
-    } else {
-      await supabase.from('qhse_safe_work_procedures').insert(riskPayload)
-    }
-    console.log('Saved risk assessment template as SEC-RISK-TEMPLATE-2025')
+  for (const tenantId of tenantIds) {
+    await upsertForTenant(tenantId)
+    console.log(`✓ Tenant ${tenantId}: ${procedures.length} SWP + risk template`)
   }
 
   console.log('\nDone.')
