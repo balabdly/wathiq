@@ -3,6 +3,7 @@ import { statusForPhase } from '@/lib/sec-workflow'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
+export type MaterialReceiptType = 'full' | 'partial'
 
 export type ProjectPlanning = {
   id: number
@@ -13,6 +14,12 @@ export type ProjectPlanning = {
   material_reservation_number?: string | null
   material_availability?: MaterialAvailability | null
   material_pickup_notified_at?: string | null
+  materials_list_file_path?: string | null
+  materials_list_file_name?: string | null
+  material_receipt_type?: MaterialReceiptType | null
+  material_receipt_notes?: string | null
+  material_delay_client_caused?: boolean | null
+  material_delay_revised_end?: string | null
   permit_number?: string | null
   permit_start?: string | null
   permit_end?: string | null
