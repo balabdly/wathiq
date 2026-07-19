@@ -1,11 +1,18 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
+
+export type MaterialAvailability = 'pending' | 'available' | 'not_available'
 
 export type ProjectPlanning = {
   id: number
   tenant_id: string
   project_id: number
   planning_status: 'active' | 'closed'
+  material_reservation_date?: string | null
+  material_reservation_number?: string | null
+  material_availability?: MaterialAvailability | null
+  material_pickup_notified_at?: string | null
   permit_number?: string | null
   permit_start?: string | null
   permit_end?: string | null
@@ -57,6 +64,28 @@ export type PlanningProject = {
   estimated_value?: number
   pmo_phase?: string
   planning?: ProjectPlanning | null
+  planningProgress?: PlanningProgress
+}
+
+async function attachPlanningProgress(tenantId: string, projects: PlanningProject[]): Promise<PlanningProject[]> {
+  const ids = projects.map(p => p.id)
+  if (!ids.length) return projects
+
+  const { data: costRows } = await supabase
+    .from('project_planning_cost_items')
+    .select('project_id')
+    .eq('tenant_id', tenantId)
+    .in('project_id', ids)
+
+  const costCounts = new Map<number, number>()
+  for (const row of costRows || []) {
+    costCounts.set(row.project_id, (costCounts.get(row.project_id) || 0) + 1)
+  }
+
+  return projects.map(p => ({
+    ...p,
+    planningProgress: computePlanningProgress(p.planning, costCounts.get(p.id) || 0),
+  }))
 }
 
 export async function fetchPlanningProjects(tenantId: string, status: 'active' | 'closed') {
@@ -78,7 +107,7 @@ export async function fetchPlanningProjects(tenantId: string, status: 'active' |
       .in('id', planningIds)
       .order('created_at', { ascending: false })
     return {
-      data: (data || []).map(p => ({ ...p, planning: planningMap.get(p.id) || null })),
+      data: await attachPlanningProgress(tenantId, (data || []).map(p => ({ ...p, planning: planningMap.get(p.id) || null }))),
       error,
     }
   }
@@ -97,7 +126,7 @@ export async function fetchPlanningProjects(tenantId: string, status: 'active' |
   })
 
   return {
-    data: active.map(p => ({ ...p, planning: planningMap.get(p.id) || null })),
+    data: await attachPlanningProgress(tenantId, active.map(p => ({ ...p, planning: planningMap.get(p.id) || null }))),
     error,
   }
 }
@@ -185,4 +214,21 @@ export async function uploadPlanningFile(tenantId: string, projectId: number, fi
   const { error } = await supabase.storage.from('project-attachments').upload(path, file)
   if (error) throw error
   return { path, name: file.name }
+}
+
+export async function notifyWarehouseMaterialPickup(
+  tenantId: string,
+  projectId: number,
+  projectName: string,
+  reservationNo: string,
+) {
+  const { error } = await supabase.from('notifications').insert({
+    tenant_id: tenantId,
+    for_role: 'inventory',
+    title: 'طلب إرسال شاحنة لاستلام المواد',
+    body: `المشروع «${projectName}» — رقم الحجز: ${reservationNo}. المواد متوفرة — يرجى تجهيز الشاحنة للاستلام.`,
+    type: 'action',
+    project_id: projectId,
+  })
+  if (error) throw error
 }

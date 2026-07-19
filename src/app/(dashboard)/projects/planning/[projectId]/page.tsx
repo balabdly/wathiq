@@ -6,7 +6,7 @@ export default function ProjectPlanningIndex() {
   const router = useRouter()
   const params = useParams()
   useEffect(() => {
-    router.replace(`/projects/planning/${params.projectId}/permit`)
+    router.replace(`/projects/planning/${params.projectId}/materials`)
   }, [router, params.projectId])
   return null
 }

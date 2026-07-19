@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation'
 import { Search, Eye } from 'lucide-react'
 import { usePlanning } from '../PlanningContext'
 import { formatDate } from '@/lib/utils'
+import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { useState } from 'react'
 
 export default function ClosedProjectsPage() {
@@ -28,7 +29,7 @@ export default function ClosedProjectsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', ''].map(h => (
+                {['التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                 ))}
               </tr>
@@ -36,13 +37,16 @@ export default function ClosedProjectsPage() {
             <tbody>
               {filtered.map(p => (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px', minWidth: '120px' }}>
+                    <PlanningProgressBadge progress={p.planningProgress} size="sm" />
+                  </td>
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
                   <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.name}</td>
                   <td style={{ padding: '10px 12px' }}>{p.client_name || '—'}</td>
                   <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.start_date ? formatDate(p.start_date) : '—'}</td>
                   <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.end_date ? formatDate(p.end_date) : '—'}</td>
                   <td style={{ padding: '10px 12px' }}>
-                    <button onClick={() => router.push(`/projects/planning/${p.id}/permit`)} className="btn btn-ghost" style={{ padding: '6px' }} title="عرض">
+                    <button onClick={() => router.push(`/projects/planning/${p.id}/materials`)} className="btn btn-ghost" style={{ padding: '6px' }} title="عرض">
                       <Eye style={{ width: '15px', height: '15px' }} />
                     </button>
                   </td>

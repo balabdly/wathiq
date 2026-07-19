@@ -3,12 +3,15 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
-import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning } from '@/lib/project-planning-service'
+import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
+import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
+import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { ArrowRight, ClipboardList, Archive } from 'lucide-react'
 import { ProjectPlanningContext, type ProjectPlanningDetail } from './ProjectPlanningContext'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
 
 const PROJECT_TABS = [
+  { slug: 'materials', label: 'استلام المواد',       emoji: '📦', color: '#6366f1' },
   { slug: 'permit',    label: 'تصريح البلدية',       emoji: '🏛️', color: '#1a56db' },
   { slug: 'timeline',  label: 'الخطة الزمنية',       emoji: '📅', color: '#7c3aed' },
   { slug: 'safe-work', label: 'إجراءات العمل الآمنة', emoji: '🦺', color: '#e6820a' },
@@ -26,6 +29,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
 
   const [project, setProject] = useState<ProjectPlanningDetail | null>(null)
   const [planning, setPlanning] = useState<ProjectPlanning | null>(null)
+  const [progress, setProgress] = useState<PlanningProgress | null>(null)
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
@@ -40,6 +44,8 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     }
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
+    const { data: costItems } = await fetchCostItems(tenant.id, projectId)
+    setProgress(computePlanningProgress(result.planning, costItems.length))
   }, [tenant?.id, projectId])
 
   useEffect(() => {
@@ -81,6 +87,11 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
               <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>{project.client_name}</p>
             )}
           </div>
+          {progress && (
+            <div style={{ minWidth: '140px' }}>
+              <PlanningProgressBadge progress={progress} />
+            </div>
+          )}
           {planning?.planning_status === 'active' && (
             <button onClick={handleClosePlanning} className="btn btn-ghost" style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#6b7280', border: '1px solid #d1d5db' }}>
               <Archive style={{ width: '14px', height: '14px' }} /> إغلاق التخطيط

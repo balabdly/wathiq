@@ -6,6 +6,7 @@ import { usePlanning } from '../PlanningContext'
 import { ensureProjectPlanning, type PlanningProject } from '@/lib/project-planning-service'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
+import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 
 export default function ActiveProjectsPage() {
   const router = useRouter()
@@ -25,9 +26,9 @@ export default function ActiveProjectsPage() {
       await ensureProjectPlanning(tenantId, project.id, project)
       await reloadActive()
       await reloadKpis()
-      router.push(`/projects/planning/${project.id}/permit`)
-    } catch (e: any) {
-      toast.error(e.message || 'فشل فتح الخطة')
+      router.push(`/projects/planning/${project.id}/materials`)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل فتح الخطة')
     }
     setOpening(null)
   }
@@ -46,7 +47,7 @@ export default function ActiveProjectsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', 'الخطط'].map(h => (
+                {['التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', 'الخطط'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                 ))}
               </tr>
@@ -54,6 +55,9 @@ export default function ActiveProjectsPage() {
             <tbody>
               {filtered.map(p => (
                 <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px', minWidth: '120px' }}>
+                    <PlanningProgressBadge progress={p.planningProgress} size="sm" />
+                  </td>
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
                   <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.name}</td>
                   <td style={{ padding: '10px 12px', color: '#1a56db' }}>{p.client_name || '—'}</td>
@@ -64,7 +68,7 @@ export default function ActiveProjectsPage() {
                   </td>
                   <td style={{ padding: '10px 12px' }}>
                     <button
-                      onClick={() => p.planning ? router.push(`/projects/planning/${p.id}/permit`) : openPlans(p)}
+                      onClick={() => p.planning ? router.push(`/projects/planning/${p.id}/materials`) : openPlans(p)}
                       disabled={opening === p.id}
                       className="btn btn-ghost"
                       style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
