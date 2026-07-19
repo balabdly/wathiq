@@ -42,6 +42,7 @@ export default function SafeWorkTabPage() {
       .select('id, proc_no, title, work_type, steps, approved_by')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
+      .neq('work_type', 'تقييم مخاطر')
       .order('title')
       .then(({ data }) => setTemplates(data || []))
   }, [tenantId])
