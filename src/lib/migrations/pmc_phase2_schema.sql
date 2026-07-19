@@ -222,21 +222,16 @@ begin
         updated_at = now();
 
       insert into project_materials (tenant_id, project_id, material_id, warehouse_id,
-        qty_received, qty_issued, qty_returned, qty_balance, last_recv_txn)
+        qty_received, qty_issued, qty_returned, last_recv_txn)
       values (v_tenant_id, v_project_id, v_mat_id, coalesce(v_warehouse_id, v_mat.warehouse_id),
         case when v_voucher_type = 'RECEIVE' then v_qty else 0 end,
         case when v_voucher_type = 'ISSUE' then v_qty else 0 end,
         case when v_voucher_type in ('RETURN_WH','RETURN_CLIENT') then v_qty else 0 end,
-        case when v_voucher_type in ('RECEIVE','RETURN_WH') then v_qty
-             when v_voucher_type in ('ISSUE','RETURN_CLIENT') then -v_qty else 0 end,
         case when v_voucher_type = 'RECEIVE' then v_voucher_no else null end)
       on conflict (tenant_id, project_id, material_id, warehouse_id) do update set
         qty_received = project_materials.qty_received + case when v_voucher_type = 'RECEIVE' then v_qty else 0 end,
         qty_issued = project_materials.qty_issued + case when v_voucher_type = 'ISSUE' then v_qty else 0 end,
         qty_returned = project_materials.qty_returned + case when v_voucher_type in ('RETURN_WH','RETURN_CLIENT') then v_qty else 0 end,
-        qty_balance = coalesce(project_materials.qty_balance,0) + case
-          when v_voucher_type in ('RECEIVE','RETURN_WH') then v_qty
-          when v_voucher_type in ('ISSUE','RETURN_CLIENT') then -v_qty else 0 end,
         last_recv_txn = case when v_voucher_type = 'RECEIVE' then v_voucher_no else project_materials.last_recv_txn end,
         updated_at = now();
     end if;
