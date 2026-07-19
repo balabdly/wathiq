@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Save, Package, Truck, Upload, Paperclip, AlertTriangle, CalendarClock } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Save, Package, Truck, Upload, Paperclip, AlertTriangle, CalendarClock, RefreshCw, Warehouse } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import {
@@ -8,8 +9,14 @@ import {
   uploadPlanningFile,
   notifyWarehouseMaterialPickup,
   type MaterialAvailability,
-  type MaterialReceiptType,
 } from '@/lib/project-planning-service'
+import {
+  fetchPlanningMaterialsWarehouseStatus,
+  resolveMaterialReservationId,
+  type PlanningMaterialsWarehouseSummary,
+} from '@/lib/planning-materials-warehouse'
+import { fetchOpenReservations } from '@/lib/pmc-service'
+import { RESERVATION_STATUS_LABELS } from '@/lib/pmc-types'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
@@ -21,33 +28,82 @@ const AVAILABILITY_OPTIONS: { value: MaterialAvailability; label: string; color:
 
 const CLIENT_DELAY_REASON = 'تأخر تنفيذ المشروع — استلام جزئي للمواد / تأخر صرف المواد (مسؤولية العميل — ليس المقاول)'
 
+const STATUS_COLORS = { complete: '#0ea77b', partial: '#e6820a', pending: '#9ca3af' }
+const STATUS_LABELS = { complete: 'مكتمل', partial: 'جزئي', pending: 'لم يُستلم' }
+
 export default function MaterialsTabPage() {
   const { tenantId, projectId, project, planning, reload } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [loadingWh, setLoadingWh] = useState(false)
+  const [reservations, setReservations] = useState<{ id: number; reservation_no: string; status: string }[]>([])
+  const [warehouse, setWarehouse] = useState<PlanningMaterialsWarehouseSummary | null>(null)
   const [form, setForm] = useState({
     material_reservation_date: planning?.material_reservation_date || '',
+    material_reservation_id: planning?.material_reservation_id ? String(planning.material_reservation_id) : '',
     material_reservation_number: planning?.material_reservation_number || '',
     material_availability: (planning?.material_availability || 'pending') as MaterialAvailability,
-    material_receipt_type: (planning?.material_receipt_type || 'full') as MaterialReceiptType,
     material_receipt_notes: planning?.material_receipt_notes || '',
     material_delay_client_caused: planning?.material_delay_client_caused ?? false,
     material_delay_revised_end: planning?.material_delay_revised_end || '',
   })
   const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
 
+  const isPartial = warehouse?.receipt_type === 'partial'
+  const isFull = warehouse?.receipt_type === 'full'
+  const hasWarehouse = !!warehouse?.reservation_id && (warehouse.rows.length > 0 || warehouse.totals.received > 0)
+
+  const loadWarehouse = useCallback(async (resId?: string, resNo?: string) => {
+    if (!tenantId || !projectId) return
+    setLoadingWh(true)
+    const summary = await fetchPlanningMaterialsWarehouseStatus(
+      tenantId,
+      projectId,
+      resId ? Number(resId) : planning?.material_reservation_id,
+      resNo || form.material_reservation_number,
+    )
+    setWarehouse(summary)
+    setLoadingWh(false)
+  }, [tenantId, projectId, planning?.material_reservation_id])
+
   useEffect(() => {
     if (!planning) return
     setForm({
       material_reservation_date: planning.material_reservation_date || '',
+      material_reservation_id: planning.material_reservation_id ? String(planning.material_reservation_id) : '',
       material_reservation_number: planning.material_reservation_number || '',
       material_availability: (planning.material_availability || 'pending') as MaterialAvailability,
-      material_receipt_type: (planning.material_receipt_type || 'full') as MaterialReceiptType,
       material_receipt_notes: planning.material_receipt_notes || '',
       material_delay_client_caused: planning.material_delay_client_caused ?? false,
       material_delay_revised_end: planning.material_delay_revised_end || '',
     })
   }, [planning?.id, planning?.updated_at])
+
+  useEffect(() => {
+    if (!tenantId) return
+    fetchOpenReservations(tenantId, projectId).then(({ data }) => setReservations(data || []))
+  }, [tenantId, projectId])
+
+  useEffect(() => {
+    if (warehouse?.receipt_type === 'partial' && warehouse.pending_summary && !planning?.material_receipt_notes) {
+      setForm(f => ({ ...f, material_receipt_notes: warehouse.pending_summary }))
+    }
+  }, [warehouse?.pending_summary, warehouse?.receipt_type, planning?.material_receipt_notes])
+
+  useEffect(() => {
+    if (form.material_reservation_id || form.material_reservation_number) {
+      loadWarehouse(form.material_reservation_id, form.material_reservation_number)
+    }
+  }, [form.material_reservation_id, form.material_reservation_number, planning?.updated_at, loadWarehouse])
+
+  function selectReservation(id: string) {
+    const res = reservations.find(r => r.id === Number(id))
+    setForm(f => ({
+      ...f,
+      material_reservation_id: id,
+      material_reservation_number: res?.reservation_no || f.material_reservation_number,
+    }))
+  }
 
   async function handleUpload(file: File) {
     setUploading(true)
@@ -68,11 +124,11 @@ export default function MaterialsTabPage() {
   async function handleSave() {
     if (!form.material_reservation_date) { toast.error('تاريخ حجز المواد مطلوب'); return }
     if (!form.material_reservation_number.trim()) { toast.error('رقم الحجز مطلوب'); return }
-    if (form.material_receipt_type === 'partial' && !form.material_receipt_notes.trim()) {
-      toast.error('وضّح المواد غير المستلمة أو المتأخرة عند الاستلام الجزئي')
+    if (isPartial && !form.material_receipt_notes.trim()) {
+      toast.error('وضّح المواد المتبقية (تُعبّأ تلقائياً من المخزون — راجعها)')
       return
     }
-    if (form.material_receipt_type === 'partial' && form.material_delay_client_caused && !form.material_delay_revised_end) {
+    if (isPartial && form.material_delay_client_caused && !form.material_delay_revised_end) {
       toast.error('حدّد تاريخ النهاية المعدّل للمشروع بسبب تأخر المواد')
       return
     }
@@ -83,18 +139,22 @@ export default function MaterialsTabPage() {
       const nowAvailable = form.material_availability === 'available'
       const alreadyNotified = !!planning?.material_pickup_notified_at
 
+      const resId = form.material_reservation_id
+        ? Number(form.material_reservation_id)
+        : await resolveMaterialReservationId(tenantId, projectId, form.material_reservation_number.trim())
+
       const payload: Record<string, unknown> = {
         material_reservation_date: form.material_reservation_date,
         material_reservation_number: form.material_reservation_number.trim(),
+        material_reservation_id: resId,
         material_availability: form.material_availability,
-        material_receipt_type: form.material_receipt_type,
-        material_receipt_notes: form.material_receipt_notes.trim() || null,
-        material_delay_client_caused: form.material_receipt_type === 'partial' ? form.material_delay_client_caused : false,
-        material_delay_revised_end: form.material_receipt_type === 'partial' && form.material_delay_revised_end
-          ? form.material_delay_revised_end : null,
+        material_receipt_type: warehouse?.receipt_type === 'none' ? 'full' : warehouse?.receipt_type,
+        material_receipt_notes: isPartial ? form.material_receipt_notes.trim() : null,
+        material_delay_client_caused: isPartial ? form.material_delay_client_caused : false,
+        material_delay_revised_end: isPartial && form.material_delay_revised_end ? form.material_delay_revised_end : null,
       }
 
-      if (form.material_receipt_type === 'partial' && form.material_delay_client_caused && form.material_delay_revised_end) {
+      if (isPartial && form.material_delay_client_caused && form.material_delay_revised_end) {
         payload.timeline_revised_end = form.material_delay_revised_end
         payload.timeline_revision_reason = CLIENT_DELAY_REASON
       }
@@ -102,24 +162,21 @@ export default function MaterialsTabPage() {
       await updateProjectPlanning(tenantId, projectId, payload)
 
       if (nowAvailable && !wasAvailable && !alreadyNotified) {
-        const receiptLabel = form.material_receipt_type === 'partial' ? ' (استلام جزئي)' : ''
+        const receiptLabel = isPartial ? ' (استلام جزئي)' : ''
         await notifyWarehouseMaterialPickup(
-          tenantId,
-          projectId,
-          project.name,
+          tenantId, projectId, project.name,
           `${form.material_reservation_number.trim()}${receiptLabel}`,
         )
         await updateProjectPlanning(tenantId, projectId, {
           material_pickup_notified_at: new Date().toISOString(),
         })
         toast.success('تم الحفظ وإرسال إشعار للمخزون ✅')
-      } else if (form.material_receipt_type === 'partial' && form.material_delay_client_caused && form.material_delay_revised_end) {
-        toast.success('تم الحفظ — وُثّق التأخير بمسؤولية العميل وحدّثت الخطة الزمنية ✅')
       } else {
         toast.success('تم الحفظ ✅')
       }
 
       await reload()
+      await loadWarehouse(String(resId || ''), form.material_reservation_number)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'خطأ في الحفظ')
     }
@@ -127,16 +184,22 @@ export default function MaterialsTabPage() {
   }
 
   const avail = AVAILABILITY_OPTIONS.find(o => o.value === form.material_availability)
-  const isPartial = form.material_receipt_type === 'partial'
 
   return (
     <div className="card" style={{ padding: '20px' }}>
-      <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Package style={{ width: '17px', height: '17px', color: '#6366f1' }} /> خطة استلام المواد
-      </h3>
-      <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '16px', lineHeight: 1.6 }}>
-        أول خطوة في التخطيط — حجز واستلام المواد قبل تصريح البلدية. يمكن رفع قائمة المواد (Excel / PDF / صورة).
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+        <div>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Package style={{ width: '17px', height: '17px', color: '#6366f1' }} /> خطة استلام المواد
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '6px', lineHeight: 1.6, maxWidth: '560px' }}>
+            مرتبطة مباشرة بـ <strong>المخزون</strong> — ما يُستلم عبر أذون الاستلام يظهر هنا فوراً (مستلم / متبقي).
+          </p>
+        </div>
+        <Link href="/inventory/pmc" className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+          <Warehouse style={{ width: '14px', height: '14px' }} /> حجوزات SEC / المخزون
+        </Link>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
         <div>
@@ -144,9 +207,117 @@ export default function MaterialsTabPage() {
           <input type="date" value={form.material_reservation_date} onChange={e => set('material_reservation_date', e.target.value)} className="input" />
         </div>
         <div>
-          <label style={lbl}>رقم الحجز *</label>
-          <input value={form.material_reservation_number} onChange={e => set('material_reservation_number', e.target.value)} className="input" placeholder="مثال: BK-2026-0142" dir="ltr" />
+          <label style={lbl}>حجز المخزون (Booking)</label>
+          {reservations.length > 0 ? (
+            <select value={form.material_reservation_id} onChange={e => selectReservation(e.target.value)} className="select">
+              <option value="">— اختر حجزاً مسجّلاً في المخزون —</option>
+              {reservations.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.reservation_no} ({RESERVATION_STATUS_LABELS[r.status as keyof typeof RESERVATION_STATUS_LABELS] || r.status})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: '0.78rem', color: '#c81e1e', padding: '8px 0' }}>
+              لا حجز في المخزون —{' '}
+              <Link href="/inventory/pmc" style={{ color: '#1a56db', fontWeight: 600 }}>أنشئ حجزاً</Link>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: '14px' }}>
+        <label style={lbl}>رقم الحجز *</label>
+        <input
+          value={form.material_reservation_number}
+          onChange={e => set('material_reservation_number', e.target.value)}
+          className="input"
+          placeholder="يُملأ من حجز المخزون أو أدخله يدوياً"
+          dir="ltr"
+          style={{ maxWidth: '320px' }}
+        />
+      </div>
+
+      {/* Warehouse status */}
+      <div style={{ background: '#f5f3ff', border: '1px solid #c7d2fe', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#4338ca', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Warehouse style={{ width: '16px', height: '16px' }} />
+            حالة الاستلام من المخزون
+            {warehouse?.reservation_status && (
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, background: 'white', padding: '2px 8px', borderRadius: '6px', color: '#6366f1' }}>
+                {RESERVATION_STATUS_LABELS[warehouse.reservation_status as keyof typeof RESERVATION_STATUS_LABELS] || warehouse.reservation_status}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => loadWarehouse(form.material_reservation_id, form.material_reservation_number)}
+            className="btn btn-ghost"
+            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+            disabled={loadingWh}
+          >
+            <RefreshCw style={{ width: '13px', height: '13px' }} /> {loadingWh ? 'جاري التحديث...' : 'تحديث'}
+          </button>
+        </div>
+
+        {warehouse?.reservation_id && (
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '12px', fontSize: '0.82rem' }}>
+            <span><strong style={{ color: '#4338ca' }}>{warehouse.totals.received.toLocaleString('ar-SA')}</strong> <span style={{ color: 'var(--text3)' }}>مستلم</span></span>
+            <span><strong style={{ color: '#c81e1e' }}>{warehouse.totals.remaining.toLocaleString('ar-SA')}</strong> <span style={{ color: 'var(--text3)' }}>متبقي</span></span>
+            <span><strong>{warehouse.totals.on_hand.toLocaleString('ar-SA')}</strong> <span style={{ color: 'var(--text3)' }}>بالعهدة</span></span>
+            <span style={{
+              marginRight: 'auto', fontWeight: 700, padding: '2px 10px', borderRadius: '6px', fontSize: '0.78rem',
+              background: isFull ? '#ecfdf5' : isPartial ? '#fffbeb' : '#f3f4f6',
+              color: isFull ? '#0ea77b' : isPartial ? '#e6820a' : '#9ca3af',
+            }}>
+              {isFull ? '✓ استلام كلي' : isPartial ? '⚠ استلام جزئي' : hasWarehouse ? 'لم يُستلم بعد' : '—'}
+            </span>
+          </div>
+        )}
+
+        {loadingWh ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', fontSize: '0.82rem' }}>جاري تحميل بيانات المخزون...</div>
+        ) : !warehouse?.reservation_id ? (
+          <div style={{ fontSize: '0.82rem', color: 'var(--text3)', padding: '8px 0' }}>
+            اختر حجزاً من المخزون أو أدخل رقم حجز مطابق لحجز SEC — تظهر هنا بنود المستلم والمتبقي بعد تسجيل الاستلام في المخزون.
+          </div>
+        ) : warehouse.rows.length === 0 ? (
+          <div style={{ fontSize: '0.82rem', color: 'var(--text3)' }}>
+            الحجز مربوط — لا حركات استلام بعد. سجّل الاستلام من{' '}
+            <Link href="/inventory/materials/receive" style={{ color: '#1a56db' }}>المخزون → استلام</Link>.
+          </div>
+        ) : (
+          <div style={{ overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', background: 'white', borderRadius: '8px' }}>
+              <thead>
+                <tr style={{ background: '#eef2ff' }}>
+                  {['المادة', 'المخطط', 'مستلم', 'متبقي', 'بالعهدة', 'الحالة'].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#4338ca', fontSize: '0.72rem' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {warehouse.rows.map(r => (
+                  <tr key={r.key} style={{ borderTop: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.description}</td>
+                    <td style={{ padding: '8px 10px' }}>{r.qty_planned > 0 ? `${r.qty_planned} ${r.unit}` : '—'}</td>
+                    <td style={{ padding: '8px 10px', color: '#0ea77b', fontWeight: 600 }}>{r.qty_received} {r.unit}</td>
+                    <td style={{ padding: '8px 10px', color: r.qty_remaining > 0 ? '#c81e1e' : 'var(--text3)', fontWeight: r.qty_remaining > 0 ? 700 : 400 }}>
+                      {r.qty_planned > 0 ? `${r.qty_remaining} ${r.unit}` : '—'}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>{r.qty_on_hand} {r.unit}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: STATUS_COLORS[r.line_status] }}>
+                        {STATUS_LABELS[r.line_status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: '16px' }}>
@@ -154,13 +325,8 @@ export default function MaterialsTabPage() {
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <label className="btn btn-ghost" style={{ cursor: uploading ? 'wait' : 'pointer', margin: 0 }}>
             <Upload style={{ width: '14px', height: '14px' }} /> {uploading ? 'جاري الرفع...' : 'رفع الملف'}
-            <input
-              type="file"
-              accept=".pdf,.xlsx,.xls,.csv,image/*"
-              hidden
-              disabled={uploading}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }}
-            />
+            <input type="file" accept=".pdf,.xlsx,.xls,.csv,image/*" hidden disabled={uploading}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = '' }} />
           </label>
           {planning?.materials_list_file_name && (
             <span style={{ fontSize: '0.78rem', color: '#1a56db', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -170,104 +336,63 @@ export default function MaterialsTabPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-        <div>
-          <label style={lbl}>توفر المواد</label>
-          <select value={form.material_availability} onChange={e => set('material_availability', e.target.value)} className="select">
-            {AVAILABILITY_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label style={lbl}>نوع الاستلام</label>
-          <select value={form.material_receipt_type} onChange={e => set('material_receipt_type', e.target.value)} className="select">
-            <option value="full">استلام كلي — جميع المواد</option>
-            <option value="partial">استلام جزئي — جزء من المواد</option>
-          </select>
-        </div>
+      <div style={{ marginBottom: '16px', maxWidth: '360px' }}>
+        <label style={lbl}>توفر المواد (لإشعار المخزون)</label>
+        <select value={form.material_availability} onChange={e => set('material_availability', e.target.value)} className="select">
+          {AVAILABILITY_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
 
       {isPartial && (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '14px', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', color: '#92400e', fontWeight: 700, fontSize: '0.85rem' }}>
-            <AlertTriangle style={{ width: '16px', height: '16px' }} /> استلام جزئي — تأثير على الجدول الزمني
+            <AlertTriangle style={{ width: '16px', height: '16px' }} /> استلام جزئي (من المخزون) — تأثير على الجدول الزمني
           </div>
           <div style={{ marginBottom: '10px' }}>
-            <label style={lbl}>المواد المتأخرة / غير المستلمة *</label>
+            <label style={lbl}>المواد المتأخرة / المتبقية</label>
             <textarea
               value={form.material_receipt_notes}
               onChange={e => set('material_receipt_notes', e.target.value)}
               className="input"
               rows={3}
-              placeholder="مثال: كابلات 4×240mm² لم تُصرف — باقي المواد مستلمة..."
+              placeholder="تُعبّأ تلقائياً من المخزون — يمكنك التعديل"
             />
           </div>
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', marginBottom: '12px' }}>
-            <input
-              type="checkbox"
-              checked={form.material_delay_client_caused}
+            <input type="checkbox" checked={form.material_delay_client_caused}
               onChange={e => set('material_delay_client_caused', e.target.checked)}
-              style={{ width: '17px', height: '17px', marginTop: '2px' }}
-            />
+              style={{ width: '17px', height: '17px', marginTop: '2px' }} />
             <span style={{ fontSize: '0.85rem', lineHeight: 1.6 }}>
-              <strong>التأخير بسبب العميل</strong> — تأخر صرف المواد من الجهة المالكة / SEC وليس بسبب المقاول.
-              يُستخدم لتبرير تمديد مدة المشروع.
+              <strong>التأخير بسبب العميل</strong> — تأخر صرف المواد من SEC وليس المقاول.
             </span>
           </label>
           {form.material_delay_client_caused && (
             <div>
               <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <CalendarClock style={{ width: '15px', height: '15px' }} /> تاريخ النهاية المعدّل للمشروع *
+                <CalendarClock style={{ width: '15px', height: '15px' }} /> تاريخ النهاية المعدّل *
               </label>
-              <input
-                type="date"
-                value={form.material_delay_revised_end}
-                onChange={e => set('material_delay_revised_end', e.target.value)}
-                className="input"
-                style={{ maxWidth: '220px' }}
-              />
-              <p style={{ fontSize: '0.75rem', color: '#92400e', marginTop: '8px', lineHeight: 1.5 }}>
-                عند الحفظ يُحدَّث تبويب <strong>الخطة الزمنية</strong> تلقائياً بسبب: «{CLIENT_DELAY_REASON}»
-              </p>
+              <input type="date" value={form.material_delay_revised_end}
+                onChange={e => set('material_delay_revised_end', e.target.value)} className="input" style={{ maxWidth: '220px' }} />
             </div>
           )}
         </div>
       )}
 
       {form.material_availability === 'available' && (
-        <div style={{
-          background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '10px',
-          padding: '12px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#065f46',
-          display: 'flex', alignItems: 'flex-start', gap: '10px',
-        }}>
-          <Truck style={{ width: '18px', height: '18px', flexShrink: 0, marginTop: '2px' }} />
+        <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px', fontSize: '0.82rem', color: '#065f46', display: 'flex', gap: '10px' }}>
+          <Truck style={{ width: '18px', height: '18px', flexShrink: 0 }} />
           <div>
-            <strong>عند الحفظ:</strong> يُرسل إشعار لفريق المخزون لترتيب شاحنة الاستلام
-            {isPartial ? ' (استلام جزئي)' : ''}.
-            {planning?.material_pickup_notified_at && (
-              <div style={{ marginTop: '6px', color: '#047857', fontSize: '0.75rem' }}>✓ تم إرسال الإشعار سابقاً</div>
-            )}
+            <strong>عند الحفظ:</strong> إشعار للمخzون لإرسال الشاحنة{isPartial ? ' (استلام جزئي)' : ''}.
+            {planning?.material_pickup_notified_at && <div style={{ marginTop: '4px', fontSize: '0.75rem' }}>✓ تم الإشعار سابقاً</div>}
           </div>
         </div>
       )}
 
       {avail && form.material_availability !== 'available' && !isPartial && (
-        <div style={{
-          padding: '10px 12px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.82rem',
-          background: form.material_availability === 'not_available' ? '#fef2f2' : '#f3f4f6',
-          color: avail.color, fontWeight: 600,
-        }}>
+        <div style={{ padding: '10px 12px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.82rem', background: '#f3f4f6', color: avail.color, fontWeight: 600 }}>
           الحالة: {avail.label}
-        </div>
-      )}
-
-      {planning?.timeline_revision_reason === CLIENT_DELAY_REASON && (
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px', fontSize: '0.78rem', color: '#1e40af' }}>
-          ✓ التأخير موثّق في الخطة الزمنية — مسؤولية العميل
-          {planning.timeline_revised_end && (
-            <span> — النهاية المعدّلة: {planning.timeline_revised_end}</span>
-          )}
         </div>
       )}
 

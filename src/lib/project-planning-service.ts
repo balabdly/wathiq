@@ -12,6 +12,7 @@ export type ProjectPlanning = {
   planning_status: 'active' | 'closed'
   material_reservation_date?: string | null
   material_reservation_number?: string | null
+  material_reservation_id?: number | null
   material_availability?: MaterialAvailability | null
   material_pickup_notified_at?: string | null
   materials_list_file_path?: string | null

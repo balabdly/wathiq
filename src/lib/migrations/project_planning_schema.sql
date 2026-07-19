@@ -7,6 +7,7 @@ create table if not exists project_planning (
   planning_status             text not null default 'active' check (planning_status in ('active', 'closed')),
   material_reservation_date   date,
   material_reservation_number text,
+  material_reservation_id     bigint references material_reservations(id) on delete set null,
   material_availability       text default 'pending' check (material_availability in ('pending', 'available', 'not_available')),
   material_pickup_notified_at timestamptz,
   materials_list_file_path      text,
