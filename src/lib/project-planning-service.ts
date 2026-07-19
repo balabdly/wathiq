@@ -24,6 +24,8 @@ export type ProjectPlanning = {
   safe_work_content?: string | null
   safe_work_file_path?: string | null
   safe_work_file_name?: string | null
+  safe_work_template_id?: number | null
+  safe_work_steps?: { step: number; text: string }[] | null
   quality_plan_content?: string | null
   quality_plan_file_path?: string | null
   quality_plan_file_name?: string | null

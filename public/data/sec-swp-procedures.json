@@ -1,0 +1,534 @@
+{
+  "procedures": [
+    {
+      "proc_no": "SWP-MN-OH-05",
+      "title": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :غسيل عوازل شبكة الخطوط الهوائية المشحونةالتاريخ : 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء ",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :غسيل عوازل شبكة الخطوط الهوائية المشحونةالتاريخ : 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ : 01/01/2026                        إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم : 10-SWP-MN-OHاعتماد المدير: م. سطام فالح العنزي           التاريخ: 01/01/2026                       مراجعة : ياسر اليوسف             ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-OH-05 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-SS-05",
+      "title": "نوع العمل / المهمة: العمليات التشغيلية الخاصة بالقاطع الرئيسي (تشغيل قاطع رئيسي)\t  الإدارة / الدائرة: إدارة كهرباء الجوف / دائرة التشغيل والمساندة \tالتاريخ: 01/01/2026            01/01/2026           ",
+      "work_type": "صيانة",
+      "description": "نوع العمل / المهمة: العمليات التشغيلية الخاصة بالقاطع الرئيسي (تشغيل قاطع رئيسي)\t  الإدارة / الدائرة: إدارة كهرباء الجوف / دائرة التشغيل والمساندة \tالتاريخ: 01/01/2026            01/01/2026            التاريخ:              \t\t\t\t\tإعداد: طارق المطيري / مهدي ذيب / مشهور سعود / خالد بادي / خالد مسيب / عويد معاشي\t\t\t\t\t\t\t\t إجراء العمل الآمن رقم: 02-SWP-OP-HT \tاعتماد المدير: م.  سطام فالح العنزي                          التاريخ:         01/01/2026                         مراجعة: ياسر اليوسف              ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-SS-05 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-OH-01",
+      "title": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: تركيب الاغطية على موصلات الجهود المتوسطةالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء ال",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: تركيب الاغطية على موصلات الجهود المتوسطةالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ: 01/01/2026                        إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم: 06-SWP-MN-OH   اعتماد المدير: م. سطام فالح العنزي           التاريخ: 01/01/2026                       مراجعة : ياسر اليوسف              ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-OH-01 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-OP-HT-04",
+      "title": "نوع العمل / المهمة: العمليات التشغيلية للمحول المعلق) فصل/عزل محول معلق( \t  الإدارة / الدائرة: إدارة كهرباء الجوف / دائرة التشغيل والمساندة\tالتاريخ: 01/01/2026                                 التاريخ ",
+      "work_type": "تشغيل",
+      "description": "نوع العمل / المهمة: العمليات التشغيلية للمحول المعلق) فصل/عزل محول معلق( \t  الإدارة / الدائرة: إدارة كهرباء الجوف / دائرة التشغيل والمساندة\tالتاريخ: 01/01/2026                                 التاريخ 01/01/2026                                \t\t\t\t\tإعداد: طارق المطيري / مهدي ذيب / مشهور سعود / خالد بادي / خالد مسيب / عويد معاشي\t\t\t\t\t\t\t\t\t\t\t\t\t\t \t إجراء العمل الآمن رقم: 09-SWP-OP-HT         اعتماد المدير: م.  سطام فالح العنزي                          التاريخ                     01/01/2026             ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-OP-HT-04 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-M-01",
+      "title": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :أعمال فحص العدادات فحص دقة العداد بجهاز الفحصالتاريخ : 01/01/2026                       الإدارة / الدائرة: إدارة كه",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :أعمال فحص العدادات فحص دقة العداد بجهاز الفحصالتاريخ : 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ : 01/01/2026                        إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم : 02-SWP-MN-MT    اعتماد المدير: م. سطام فالح العنزي           التاريخ: 01/01/2026                       مراجعة : ياسر اليوسف    ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "لا يوجدإستخدام الطريقة السليمة لرفع المواد الثقيلة - إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس ( .حدوث إصابات بسبب حمل المواد الثقيلة - التعرض للجروح - التع رث و السقوط أثناء نقل العدد والادوات واجهزة القياستجهر ث العدد والادوات واجهزة القياس المناسبة لإنجاز العمل5NAUse of lifting equipment for heavy materials - wearing personal safety tools (safety shoes - gloves - head helmet). Injuries due to heavy material load - exposure to wounds - stumbling and falling during transport of materials Processing the required materials to complete the workالتأكد من إستخدام المعدات و الأدوات المناسبة للعمل على فحص العدادات و وجود العدد الكا يف من الفني ر يارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( \t\t\tالتعرض لمخاطر الصعق الكهربا يئ اثناء فحص العدادات تحت الجهد ال\tيحالتأكد من أن جميع الفنير  ي لديهم بطاقات تصري ح العمل6Ensure the use of suitable equipment and tools for operating on the overhead network and the presence of sufficient number of technicianswearing personal safety tools (safety shoes - gloves - head helmet).Exposure to electric shock hazards during the examination of the meters under live voltageEnsure that all technicians have a license card to  work on the overhead network تحديد نقطة تجمع يف حالة الطوارئإرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (تجنب حوادث الإصطدام - تساقط الأجسام من الأعلى - الحريق - الجروحتأم ر ي منطقة العمل بعلامات تحذيرية و طفايات حريق وحقيبة إسعافات أوليةlocating a pool point in an emergencywearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Prevent collision accidents - Falling objects from the top - Fire - wounds Secure the area with warning signs, fire extinguishers and first aid kitإستخدام المعدات والأدوات المناسبة لإنجاز العملارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (التعرض لمخاطر الصعق الكهربا يئ اثناء الكشف العدادات تحت الجهد ال\tيح - تجنب حوادث الإصطدام - تساقط الأجسام من الأعلى - الحريق - الجروحالبدء  يف العمل وتوجيه الفني ر ي عن أي خطر قد يحدث8Use appropriate equipment and tools to complete the workWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Prevent collision accidents - Falling objects from the top - Fire - woundsStart working and guiding technicians for any risk that may occurالوقوف على الارض مستوية وبشكل امنارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (التع رث و السقوط - وقوع صندوق العدادالكشف على السلامة الخارجية لصندوق العداد والتأكد من ثباته على الجدار بشكل محكم9Stand on the ground level and safelyWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Stumble and fall -The occurrence of the meter boxTo detect the external safety of the meter box and to ensure that it is firmly on the wall tightly7 7"
+        },
+        {
+          "step": 2,
+          "text": "تجنب استخدام العدد التالفةاستخدام العدد المناسبة للعملالتع رث و السقوط - وقوع غطاء صندوق العداد- الجروحفك مسامرث غطاء صندوق العداد وفتحه10Avoid using the damaged toolsUse appropriate tools to workStumbling and falling - the lid of the counter box Unscrew the  screws of the counter box and open itتجنب التوصيل الخاطأ لجهاز القياسالتأكد من استخدام جهاز القياس المناسب وضبطه على القيمة المراد قياسها ارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (\t\t\tالتعرض لمخاطر الصعق الكهربا يئ اثناء الكشف العدادات تحت الجهد ال\tيح- اح ثاق جهاز القياسقياس قيمة الجهد على اطراف اسلاك ال رشكة والمش ثك11Avoid faulty plugging of the measuring deviceBe sure to use the appropriate measuring device and adjust it to the value to be measured Wear electric insulating gloves 1000 volts Exposure to electric shock hazard during detectionMeasuring the voltage value on the ends of the joint and company wiresلا يوجداستخدام العدد والادوات المعزولة-ارتداء قفازات كهربائية عازلة 1000 فولت \t\t\tالتعرض لمخاطر الصعق الكهربا يئ اثناء الكشف العدادات تحت الجهد ال\tيح التأكد من سلامة التوصيلات الداخلية لكل طور يف العداد ودوران القرص بشكل صحيحNA Use isolated tools - Wear  electric insulating gloves 1000 voltsExposure to electric shock hazard during detectionCheck the integrity of the internal connections of each phase in the meter and the rotation of the disc correctlyلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( \t\t\tالتعرض لمخاطر الصعق الكهربا يئ اثناء الكشف العدادات تحت الجهد ال\tيحمطابقة بيانات العداد ب ر ي الواقع والنظام والتأكد من سعة محولات التيار13NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Exposure to electric shock hazard during detectionMatch the meter data between reality and the system and ensure the capacity of current transformersالتأكد من سلامة أجهزة الفحص المستخدمةارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( \t  التعرض للصعق الكهربا يئ- تلف يف المعدات والاجهزةالتأكد من ملائمة جهد العداد المراد فحصه لجهد جهاز الفحص14To ensure good operation of test equipmentWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tEnsure that the  meter voltage is suitable for the operating voltage of the test device12 12"
+        },
+        {
+          "step": 3,
+          "text": "لا يوجدارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( \t  التعرض للصعق الكهربا يئ- تلف يف المعدات والاجهزة توصيل جهاز فحص الدقة حسب تعليمات المصنع البدأ بتوصيل السلك المحايد ثم با يف الاطوار15NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tConnecting the Precision Checking Device According to the manufacturer's instructions, start by connecting the neutral wire and the rest of the terminalsلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( \t  التعرض للصعق الكهربا يئ- تلف يف المعدات والاجهزة اتمام عملية الفحص واخد النتيجه وحفظ التقرير يف الجهاز16NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tComplete the Checking Device  and get the result and save the report in the deviceلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس  ( - عدم الوقوف أسفل العمود أثناء العمل. \t  التعرض للصعق الكهربا يئ- تلف يف المعدات والاجهزة ازالة جهاز الفحص حسب تعليمات المصنع البدأ بازالةالاطوار ثم السلك المحايدNAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tRemove the Checking Device  to the manufacturer's instructions Start removing the holes and then the neutral wireتجنب استخدام العدد التالفةاستخدام العدد المناسبة للعملالتع رث و السقوط - وقوع غطاء صندوق العداد- الجروح اغلاق صندوق العداد وربط المسامرث بشكل محكم ووضعالختم18Avoid using the damaged toolsUse appropriate tools to workStumbling and falling - the lid of the counter boxClose the counter box and tighten the screws tightly and place the sealلا يوجدإستخدام الطريقة السليمة لرفع المواد الثقيلة - إرتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس ( .حدوث إصابات بسبب حمل المواد الثقيلة - التعرض للجروح - التع رث و السقوط أثناء نقل العدد والادوات واجهزة القياستنظيف منطقة العمل وترتيب العدد والادوات19NAUse of lifting equipment for heavy materials - wearing personal safety tools (safety shoes - gloves - head helmet). Injuries due to heavy material load - exposure to wounds - stumbling and falling during transport of materialsClean the work area and arrange the number and tools17 17"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-CN-PRJ-03",
+      "title": "نوع العمل / المهمة: إزالة / استبدال المحول الأرضي التاريخ: 01/01/2026 الإدارة / الدائرة: إدارة كهرباء الجوف  \t\t التاريخ: 01/01/2026\t\t \t\t\tإجراء العمل الآمن رقم  09-SWP-CN-PRJ \tإعداد: طارق المطيري / عبد",
+      "work_type": "إنشاءات",
+      "description": "نوع العمل / المهمة: إزالة / استبدال المحول الأرضي التاريخ: 01/01/2026 الإدارة / الدائرة: إدارة كهرباء الجوف  \t\t التاريخ: 01/01/2026\t\t \t\t\tإجراء العمل الآمن رقم  09-SWP-CN-PRJ \tإعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي \t\t\t\t\t\tاعتماد المدير: م . سطام فالح العنزي                                              التاريخ : 01/01/2026                      مراجعة :  ياسر اليوسف                                                   التاريخ: 01/01/2026أجهزة تنفس م",
+      "steps": [
+        {
+          "step": 1,
+          "text": "التأكد من الترقيم الصحيح للداوئر الكهربائية إصابة – تلف – خسائر مادية اصابة، جرح  ترقيم الخطوط للدوائر الكهربائية للضغط المنخفض   7استخدام معدات الوقاية الشخصية من قفازات واقية لليدين وحذاء سلامة ، و خوذة سلامة.  إصابة – تلف – خسائر مادية اصابة، جرح ، سقوط فصل وإزالة جميع الكابلات والموصلات المرتبطة بالمعدة  8الحذر اثناء نقل المحول إلى معدة الرافعة. التأكد من عدم وجود أحد العاملين أسفل المعدة المرفوعة أثناء عملية الرفع التأكد من سلامة السلاسل وأحبال الرفع قبل استخدامها. التأكد من توفر قفل للأصفاد المستخدمة  )shackle(إصابة – تلف – خسائر مادية جرح بسيط، تلف المحول ، سقوط المحول  رفع المحول بواسطة معدة الرفع  9الحذر اثناء نقل القاعدة إلى معدة الرافعة. التأكد من عدم وجود أحد العاملين أسفل المعدة المرفوعة أثناء عملية الرفع التأكد من سلامة السلاسل وأحبال الرفع قبل استخدامها التأكد من توفر قفل للأصفاد المستخدمة  )shackle(إصابة – تلف – خسائر مادية جرح بسيط ، اصابة ، تلف القاعدة ،  سقوط القاعدة على العاملينرفع و القاعدة الخرسانية بواسطة معدة الرفع )اذا لزم الأمر في حالة إزالتها أو استبدالها(  101. تأمين وعزل منطقة العمل 2.الحذر اثناء الترصيص. استخدام أدوات الوقاية الشخصية )القفازات الواقية لليدين، أحذية السلامة ،خوذة السلامة، سدادات اذن )عند الحاجة( ،قناع )كمام( يحمي الجهاز التنفسي من الغبار. رش التربة بالماء للمساعدة في عملية الترصيص وتخفيف الغبار. استخدام الشبك التحذيري والعلامات التحذيرية حول موقع العمل والإنارة ليلا. فحص وصيانة معدات الترصيص بشكل دوري. توزيع العمل على أكبر قدر من الموظفين إصابة – تلف – خسائر مادية انهيار الأرض، جرح بسيط، إصابة، سقوط  في الحفرة ، الاهتزاز والازعاج الناتج من استخدام معدة الترصيص،  الغبار الذي يؤثر على الجهاز التنفسي او التهاب العينين. ردم وترصيص التربة حول مكان المفتاح )إذا لزم الأمر في حال ازالة أو استبدال القاعدة(  112910847093915Page 2 of 3    Rev. 01 [May - 2020]     Approved Document  Page 2 of 3    Rev. 01 [May - 2020]     Approved Document"
+        },
+        {
+          "step": 2,
+          "text": "لتقليل فترة التعرض للاهتزازات والضجيج . 8. أخذ راحة خلال وقت العمل اليومي لتقليل فترة التعرض للاهتزازات والضجيج. اتباع الاجراءات الآمنة المذكورة في عملية تركيب محول أرضي. إصابة – تلف – خسائر مادية جرح بسيط، اصابة، صعق كهربائي في حال القيام بعملية استبدال محول يمكن متابعة  الخطوات بالرجوع الى خطوات تركيب محول أرضي  .  12التأكد من انتهاء العمل وخلو الموقع من العاملين او عامة الناس. مراقبة الموقع أثناء عملية إعادة التيار من قبل موظفي الشركة المؤهلين. إصابة – تلف – خسائر مادية جرح بسيط، اصابة، صعق كهربائي إغلاق تصريح العمل  132910847093915Page 3 of 3    Rev. 01 [May - 2020]     Approved Document  Page 3 of 3    Rev. 01 [May - 2020]     Approved Document"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-CN-PRJ-19",
+      "title": "Classified as Confidential Internal by SEC - )ال رشكة السعودية للكهرباء مصنف مقيد )داخ يلتحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة : اصلاح وصلة لحام لكيبل جهد",
+      "work_type": "إنشاءات",
+      "description": "Classified as Confidential Internal by SEC - )ال رشكة السعودية للكهرباء مصنف مقيد )داخ يلتحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة : اصلاح وصلة لحام لكيبل جهد متوسطالتاريخ : 01/01/2026  الإدارة / الدائرة: إدارة كهرباء الجوفالتاريخ : 01/01/2026   إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم : 02-SWP-MN-Cاعتماد المدير: م . سطام فالح العنزي                التاريخ:    01/01/2026          ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-CN-PRJ-19 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-C-07",
+      "title": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: اعمال الحفر والردمالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ: 0101/01/2",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: اعمال الحفر والردمالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ: 0101/01/2026                        إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم: 12-SWP-MN-Cاعتماد المدير: م. سطام فالح العنزي           التاريخ01/01/2026                        مراجعة : ياسر اليوسف                                    الت",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-C-07 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-OP-HT-11",
+      "title": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :أعمال فحص العدادات فحص دقة العداد بجهاز الفحصالتاريخ :  01/01/2026الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ :  ",
+      "work_type": "تشغيل",
+      "description": "تحديد الأخطار و تقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة :أعمال فحص العدادات فحص دقة العداد بجهاز الفحصالتاريخ :  01/01/2026الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ :                         01/01/2026 إعداد:  ياسر اليوسف – طارق المطيري- عبد العزيز المحارب- عويد معاشي – خالد بادي خالد مسيب – مشهور سعود إجراء العمل الآمن رقم : 02-SWP-MN-MT    اعتماد المدير:            سطام فالح العنزي             التاريخ:             01/01/2026                مراجعة :  ياسر اليوسف ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "لا يوجدإرتداء أدوات السلامة الشخصية) حذاء السلامة - القفازات - خوذة الرأس ( .حدوث إصابات بسبب حمل المواد الثقيلة - التعرض للجروح - التعثر و السقوط أثناء نقل العدد والادوات واجهزة القياستجهير العدد والادوات واجهزة القياس المناسبة لإنجاز العمل5NAUse of lifting equipment for heavy materials - wearing personal safety tools (safety shoes - gloves - head helmet). Injuries due to heavy material load - exposure to wounds - stumbling and falling during transport of materials Processing the required materials to complete the workالتأكد من استخدام المعدات والأدوات المناسبة للعمل على فحص العدادات ووجود العدد الكافي من الفنيينارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (واقي عنق ) \t\t\tالتعرض لمخاطر الصعق الكهربائي اثناء فحص العدادات تحت الجهد الحيالتأكد من أن جميع الفنيين لديهم بطاقات تصري ح العمل6Ensure the use of suitable equipment and tools for operating on the overhead network and the presence of sufficient number of technicianswearing personal safety tools (safety shoes - gloves - head helmet).Exposure to electric shock hazards during the examination of the meters under live voltageEnsure that all technicians have a license card to  work on the overhead network تحديد نقطة تجمع في حالة الطوارئارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي عنق ) تجنب حوادث الاصطدام - تساقط الأجسام من الأعلى - الحريق - الجروحتأمين منطقة العمل بعلامات تحذيرية وطفايات حريق وحقيبة إسعافات أولية7locating a pool point in an emergencywearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Prevent collision accidents - Falling objects from the top - Fire - wounds Secure the area with warning signs, fire extinguishers and first aid kitاستخدام المعدات والأدوات المناسبة لإنجاز العملارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي عنق ) التعرض لمخاطر الصعق الكهربائي اثناء الكشف العدادات تحت الجهد الحي - تجنب حوادث الاصطدام - تساقط الأجسام من الأعلى - الحريق - الجروحالبدء بالعمل وتوجيه الفنيين عن أي خطر قد يحدث8Use appropriate equipment and tools to complete the workWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Prevent collision accidents - Falling objects from the top - Fire - woundsStart working and guiding technicians for any risk that may occurالوقوف على الارض مستوية وبشكل امنارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (واقي عنق ) التع رث والسقوط - وقوع صندوق العدادالكشف على السلامة الخارجية لصندوق العداد والتأكد من ثباته على الجدار بشكل محكم9Stand on the ground level and safelyWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Stumble and fall -The occurrence of the meter boxTo detect the external safety of the meter box and to ensure that it is firmly on the wall tightly"
+        },
+        {
+          "step": 2,
+          "text": "تجنب استخدام العدد التالفةالالتزام بمعدات الوقاية الشخصية و استخدام العداد المناسبة التعثر و السقوط - وقوع غطاء صندوق العداد- الجروحفك مسامير غطاء صندوق العداد وفتحه10Avoid using the damaged toolsUse appropriate tools to workStumbling and falling - the lid of the counter box Unscrew the  screws of the counter box and open itتجنب التوصيل الخطأ لجهاز القياسالتأكد من استخدام جهاز القياس المناسب وضبطه على القيمة المراد قياسها ارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه (واقي العنق ) \t\t\tالتعرض لمخاطر الصعق الكهربائي اثناء الكشف العدادات تحت الجهد الحي واستخدام جهازالقياسقياس قيمة الجهد على أطراف اسلاك الشبكة والمشترك11Avoid faulty plugging of the measuring deviceBe sure to use the appropriate measuring device and adjust it to the value to be measured Wear electric insulating gloves 1000 volts Exposure to electric shock hazard during detectionMeasuring the voltage value on the ends of the joint and company wiresلا يوجدالالتزام بمعدات الوقاية الشخصية واستخدام العدد والادوات المعزولة-ارتداء قفازات كهربائية عازلة 1000 فولت \t\t\tالتعرض لمخاطر الصعق الكهربائي اثناء الكشف العدادات تحت الجهد الحي التأكد من سلامة التوصيلات الداخلية لكل طور  في العداد ودوران القرص بشكل صحيح12NA Use isolated tools - Wear  electric insulating gloves 1000 voltsExposure to electric shock hazard during detectionCheck the integrity of the internal connections of each phase in the meter and the rotation of the disc correctlyلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي العنق )  \t\t\tالتعرض لمخاطر الصعق  الكهربائي اثناء الكشف العدادات تحت الجهد الحيمطابقة بيانات العداد في الواقع والنظام والتأكد من سعة محولات التيار13NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working.Exposure to electric shock hazard during detectionMatch the meter data between reality and the system and ensure the capacity of current transformersالتأكد من سلامة أجهزة الفحص المستخدمةارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي عنق )  \t  التعرض للصعق  الكهربائي - تلف في المعدات والاجهزةالتأكد من ملائمة جهد العداد المراد فحصه لجهد جهاز الفحص14To ensure good operation of test equipmentWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tEnsure that the  meter voltage is suitable for the operating voltage of the test device12 12"
+        },
+        {
+          "step": 3,
+          "text": "لا يوجدارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي عنق )  \t  التعرض للصعق الكهربائي - تلف في المعدات والاجهزة توصيل جهاز فحص الدقة حسب تعليمات المصنع البدأ بتوصيل السلك المحايد ثم الاطوار15NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tConnecting the Precision Checking Device According to the manufacturer's instructions, start by connecting the neutral wire and the rest of the terminalsلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس - حماية الوجه ( واقي عنق ) \t  التعرض للصعق الكهربائي - تلف في المعدات والاجهزة اتمام عملية الفحص واخد النتيجة وحفظ التقرير في جهاز الفحص 16NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tComplete the Checking Device  and get the result and save the report in the deviceلا يوجدارتداء قفازات كهربائية عازلة 1000 فولت ارتداء أدوات السلامة الشخصية ) حذاء السلامة - القفازات - خوذة الرأس   و واقي عنق  ( - عدم الوقوف أسفل العمود أثناء العمل. \t  التعرض للصعق الكهربائي تلف في المعدات والاجهزة ازالة جهاز الفحص حسب تعليمات المصنع البدا بإزالة الاطوار ثم السلك المحايد17NAWear electric insulating gloves 1000 volts wearing personal safety tools (safety shoes - gloves - head helmet - Safety belts ) and Do not stand down the Pole while working. exposure to electric shock- Damage to equipment tRemove the Checking Device  to the manufacturer's instructions Start removing the holes and then the neutral wireتجنب استخدام العدد التالفةا إرتداء أدوات السلامة الشخصية و ستخدام العدد المناسبة للعملالتعثر والسقوط - وقوع غطاء صندوق العداد- الجروح اغلاق صندوق العداد وربط المسامير بشكل محكم ووضع الختم18Avoid using the damaged toolsUse appropriate tools to workStumbling and falling - the lid of the counter boxClose the counter box and tighten the screws tightly and place the sealلا يوجداستخدام الطريقة السليمة لرفع المواد الثقيلة - ارتداء أدوات السلامة الشخصية) حذاء السلامة - القفازات - خوذة الرأس ( .حدوث إصابات بسبب حمل المواد الثقيلة - التعرض للجروح - التعثر و السقوط أثناء نقل العدد والادوات واجهزة القياستنظيف منطقة العمل وترتيب العدد والادوات19NAUse of lifting equipment for heavy materials - wearing personal safety tools (safety shoes - gloves - head helmet). Injuries due to heavy material load - exposure to wounds - stumbling and falling during transport of materialsClean the work area and arrange the number and tools"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-CN-PRJ-12",
+      "title": "نوع العمل / المهمة: الأعمال المدنية للتربة )حفر-تسوية ترصيص – سفلتة( التاريخ: 01/01/2026   الإدارة / الدائرة: إدارة كهرباء الجوف  \t\t\t\t \t \t التاريخ: 01/01/2026   إعداد: طارق المطيري / عبد العزيز المحار",
+      "work_type": "إنشاءات",
+      "description": "نوع العمل / المهمة: الأعمال المدنية للتربة )حفر-تسوية ترصيص – سفلتة( التاريخ: 01/01/2026   الإدارة / الدائرة: إدارة كهرباء الجوف  \t\t\t\t \t \t التاريخ: 01/01/2026   إعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي إجراء العمل الآمن رقم  17-SWP-CN-PRJ اعتماد المدير: م . سطام فالح العنزي                             التاريخ:    01/01/2026                  اعتماد المشرف: ياسر اليوسف                                                          التاريخ: :    01/01/2",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-CN-PRJ-12 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-OH-06",
+      "title": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: استبدال المعدات الأرضية للضغط المنخفضالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: استبدال المعدات الأرضية للضغط المنخفضالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ: 01/01/2026                       اعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم: 01-SWP-MN-SSاعتماد المدير: م. سطام فالح العنزي           التاريخ: 01/01/2026                       مراجعة : ياسر اليوسف                     ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-OH-06 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    },
+    {
+      "proc_no": "SWP-MN-OH-08",
+      "title": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: ازالة المعدات الأرضية للضغط المنخفضالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف ا",
+      "work_type": "صيانة",
+      "description": "تحديد الأخطار وتقييم المخاطر07OHS-PR-02-03-F إجراءات العمل الآمننوع العمل / المهمة: ازالة المعدات الأرضية للضغط المنخفضالتاريخ: 01/01/2026                       الإدارة / الدائرة: إدارة كهرباء الجوف التاريخ: 01/01/2026                       اعداد: طارق المطيري / عبد العزيز المحارب / خالد مسيب / مشهور العنزي / عويد معاشي / خالد بادي  إجراء العمل الآمن رقم: 03-SWP-MN-SSاعتماد المدير: م. سطام فالح العنزي           التاريخ: 01/01/2026                       مراجعة : ياسر اليوسف                       ",
+      "steps": [
+        {
+          "step": 1,
+          "text": "اتباع إجراء SWP-MN-OH-08 المعتمد من SEC — راجع المرفق الأصلي"
+        }
+      ],
+      "approved_by": "الشركة السعودية للكهرباء",
+      "hazards": null,
+      "precautions": null
+    }
+  ],
+  "riskTemplate": {
+    "proc_no": "SEC-RISK-TEMPLATE-2025",
+    "title": "تقييم المخاطر — إدارة كهرباء الجوف 2025 (إنشاءات + صيانة)",
+    "work_type": "تقييم مخاطر",
+    "description": "استورد من ( انشاءات + صيانة (تقييم المخاطر لإدارة كهرباء الجوف 2025.xlsx — 80 بند",
+    "steps": [
+      {
+        "step": 1,
+        "text": "ياسر صالح اليوسف: قائد الفريق-مجموعة السلامة"
+      },
+      {
+        "step": 2,
+        "text": "هاني زايد الرويلي: مدير دائرة العمليات والصيانة"
+      },
+      {
+        "step": 3,
+        "text": "ماجد حمود العنزي: مدير دائرة دعم العمليات و الصيانة"
+      },
+      {
+        "step": 4,
+        "text": "هذلول سالم الهذلول: مدير دائرة تخطيط الشبكات والانشاءات"
+      },
+      {
+        "step": 5,
+        "text": "RA-OP-HT-01: ر — مهمة — عمليات تشغيل قاطع رئيسي"
+      },
+      {
+        "step": 6,
+        "text": "RA-OP-HT-02: OHS-RA-07-JUF-02 — مهمة — عمليات تشغيل مفتاح ربط حلقي- زيتي"
+      },
+      {
+        "step": 7,
+        "text": "RA-OP-HT-03: OHS-RA-07-JUF-03 — مهمة — عمليات تشغيل مفتاح ربط حلقي- ذكي/غازي"
+      },
+      {
+        "step": 8,
+        "text": "RA-OP-HT-04: OHS-RA-07-JUF-04 — مهمة — عمليات تشغيل مفتاح فرعي لمفتاح ربط حلقي"
+      },
+      {
+        "step": 9,
+        "text": "RA-OP-HT-05: OHS-RA-07-JUF-05 — مهمة — عمليات تشغيل وحدة ربط"
+      },
+      {
+        "step": 10,
+        "text": "RA-OP-HT-06: OHS-RA-07-JUF-06 — مهمة — عمليات تشغيل محول معلق"
+      },
+      {
+        "step": 11,
+        "text": "RA-OP-HT-07: OHS-RA-07-JUF-07 — مهمة — استبدال مصهر"
+      },
+      {
+        "step": 12,
+        "text": "RA-OP-HT-08: OHS-RA-07-JUF-08 — مهمة — تحديد الاعطال"
+      },
+      {
+        "step": 13,
+        "text": "RA-OP-HT-09: OHS-RA-07-JUF-09 — مهمة — ربط المولد متنقل"
+      },
+      {
+        "step": 14,
+        "text": "RA-OP-HT-10: OHS-RA-07-JUF-10 — مهمة — قراءة احمال المحطات"
+      },
+      {
+        "step": 15,
+        "text": "RA-OP-LT-01: OHS-RA-07-JUF-11 — مهمة — مهام العمل على العدادات"
+      },
+      {
+        "step": 16,
+        "text": "RA-OP-LT-02: OHS-RA-07-JUF-12 — مهمة — مهام العمل على لوحة توزيع فرعية"
+      },
+      {
+        "step": 17,
+        "text": "RA-OP-LT-03: OHS-RA-07-JUF-13 — مهمة — مهام العمل على لوحة توزيع رئيسية"
+      },
+      {
+        "step": 18,
+        "text": "RA-OP-LT-04: OHS-RA-07-JUF-14 — مهمة — مهمة تحديد المصادر"
+      },
+      {
+        "step": 19,
+        "text": "RA-OP-LT-05: OHS-RA-07-JUF-15 — مهمة — مهام المولدات"
+      },
+      {
+        "step": 20,
+        "text": "RA-OP-LT-06: OHS-RA-07-JUF-16 — مهمة — تمديد الكابلات المؤقتة"
+      },
+      {
+        "step": 21,
+        "text": "RA-OP-LT-07: OHS-RA-07-JUF-17 — مهمة — قراءة احمال المحطات الفرعية"
+      },
+      {
+        "step": 22,
+        "text": "RA-OP-LT-08: OHS-RA-07-JUF-18 — مهمة — عمل وصلة مستقيمة"
+      },
+      {
+        "step": 23,
+        "text": "RA-OP-LT-09: OHS-RA-07-JUF-19 — مهمة — توصيل المناسبات المؤقتة"
+      },
+      {
+        "step": 24,
+        "text": "RA-OP-LT-10: OHS-RA-07-JUF-20 — مهمة — المفتاح المحلي للوحدة الحلقية"
+      },
+      {
+        "step": 25,
+        "text": "RA-OP-CFL-01: OHS-RA-07-JUF-21 — مهمة — تحديد عطل في كابل جهد متوسط 13.8 ك ف"
+      },
+      {
+        "step": 26,
+        "text": "RA-OP-CFL-02: OHS-RA-07-JUF-22 — مهمة — تحديد عطل في كابل جهد منخفض"
+      },
+      {
+        "step": 27,
+        "text": "RA-OP-CFL-03: OHS-RA-07-JUF-23 — مهمة — التعريف الايجابي للكابلات"
+      },
+      {
+        "step": 28,
+        "text": "RA-OP-CFL-04: OHS-RA-07-JUF-24 — مهمة — تحديد المسار للكابلات"
+      },
+      {
+        "step": 29,
+        "text": "RA-OP-CFL-05: OHS-RA-07-JUF-25 — مهمة — فحص ( VLF ) للكابلات الجديدة للجهد المتوسط"
+      },
+      {
+        "step": 30,
+        "text": "RA-OP-CFL-06: OHS-RA-07-JUF-26 — مهمة — الصيانة الدورية لأجهزة الفحص"
+      },
+      {
+        "step": 31,
+        "text": "RA-OP-CFL-07: OHS-RA-07-JUF-27 — مهمة — دخول و خروج السيارات من الموقف"
+      },
+      {
+        "step": 32,
+        "text": "RA-CN-PRJ-01: OHS-RA-07-JUF-28 — مهمة — Warehouse Tasks / مهام المستودعات"
+      },
+      {
+        "step": 33,
+        "text": "RA-CN-PRJ-02: OHS-RA-07-JUF-29 — مهمة — استلام تصريح (PTW) للعمل على غرس عامود تحت الخط الهوائي / مع تركيب معدة جديدة"
+      },
+      {
+        "step": 34,
+        "text": "RA-CN-PRJ-03: OHS-RA-07-JUF-30 — مهمة — اعمال الخطوط الهوائية العامة . حفر  أعمدة + نقل معدات."
+      },
+      {
+        "step": 35,
+        "text": "RA-CN-PRJ-04: OHS-RA-07-JUF-31 — مهمة — تركيب وتجميع صندوق عداد"
+      },
+      {
+        "step": 36,
+        "text": "RA-CN-PRJ-05: OHS-RA-07-JUF-32 — مهمة — سحب و تمديد الكابلات - عمل وصلة مستقيمة أو نهاية طرفية - الأعمال المدنية شاملة الحفر"
+      },
+      {
+        "step": 37,
+        "text": "RA-CN-PRJ-06: OHS-RA-07-JUF-33 — مهمة — تصحيح مستوى /إزالة/ استبدال مفتاح ( EOS)  أو وحدة القياس (Metering Unit)"
+      },
+      {
+        "step": 38,
+        "text": "RA-CN-PRJ-07: OHS-RA-07-JUF-34 — مهمة — ازالة / استبدال مفتاح حلقي"
+      },
+      {
+        "step": 39,
+        "text": "RA-CN-PRJ-08: OHS-RA-07-JUF-35 — مهمة — تركيب مفتاح حلقي"
+      },
+      {
+        "step": 40,
+        "text": "RA-CN-PRJ-09: OHS-RA-07-JUF-36 — مهمة — إزالة/استبدال لوحة توزيع الجهد المنخفض (LVP)"
+      },
+      {
+        "step": 41,
+        "text": "RA-CN-PRJ-10: OHS-RA-07-JUF-37 — مهمة — تصحيح مستوى/إزالة/استبدال المحول الأرضي المدمج.Unit"
+      },
+      {
+        "step": 42,
+        "text": "RA-CN-PRJ-11: OHS-RA-07-JUF-38 — مهمة — إزالة / استبدال محول الأرضي (INDOOR)/ بغرفة محطة"
+      },
+      {
+        "step": 43,
+        "text": "RA-CN-PRJ-12: OHS-RA-07-JUF-39 — مهمة — ازالة - استبدال المحول الأرضي"
+      },
+      {
+        "step": 44,
+        "text": "RA-CN-PRJ-13: OHS-RA-07-JUF-40 — مهمة — تركيب/ استبدال محطة"
+      },
+      {
+        "step": 45,
+        "text": "RA-CN-PRJ-14: OHS-RA-07-JUF-41 — مهمة — تركيب محول أرضي"
+      },
+      {
+        "step": 46,
+        "text": "RA-CN-PRJ-15: OHS-RA-07-JUF-42 — مهمة — تركيب كابل صاعد جديد/ Cabel Riser"
+      },
+      {
+        "step": 47,
+        "text": "RA-CN-PRJ-16: OHS-RA-07-JUF-43 — مهمة — تركيب محول هوائي"
+      },
+      {
+        "step": 48,
+        "text": "RA-CN-PRJ-17: OHS-RA-07-JUF-44 — مهمة — تركيب الاعمدة الهوائية"
+      },
+      {
+        "step": 49,
+        "text": "RA-CN-PRJ-18: OHS-RA-07-JUF-45 — مهمة — مد وشد الموصل والعوازل للخط الهوائي"
+      },
+      {
+        "step": 50,
+        "text": "RA-CN-PRJ-19: OHS-RA-07-JUF-46 — مهمة — استلام تصريح (PTW) للعمل على مد وشد الموصل لتوصيل وصلة ربط بين الخط القديم والجديد"
+      },
+      {
+        "step": 51,
+        "text": "RA-CN-PRJ-20: OHS-RA-07-JUF-47 — مهمة — استلام تصريح (PTW) للعمل على استبدال محول هوائي"
+      },
+      {
+        "step": 52,
+        "text": "RA-MN-OH-01: OHS-RA-07-JUF-48 — مهمة — استبدال أعمدة الخطوط الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 53,
+        "text": "RA-MN-OH-02: OHS-RA-07-JUF-49 — مهمة — استبدال العوازل ومانعات الصواعق للجهد 13.8 ك ف"
+      },
+      {
+        "step": 54,
+        "text": "RA-MN-OH-03: OHS-RA-07-JUF-50 — مهمة — قطع الأشجار القريبة من الخطوط الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 55,
+        "text": "RA-MN-OH-04: OHS-RA-07-JUF-51 — مهمة — تركيب فواصل ب ي الموصلات للخطوط الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 56,
+        "text": "RA-MN-OH-05: OHS-RA-07-JUF-52 — مهمة — إعادة شد الموصلات واسلاك التثبيت للشبكة الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 57,
+        "text": "RA-MN-OH-06: OHS-RA-07-JUF-53 — مهمة — استبدال قضيب تثبيت 13.8 ك ف"
+      },
+      {
+        "step": 58,
+        "text": "RA-MN-OH-07: OHS-RA-07-JUF-54 — مهمة — تنظيف المرابط للشبكة الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 59,
+        "text": "RA-MN-OH-08: OHS-RA-07-JUF-55 — مهمة — استبدال مفتاح هوائي 13.8 ك ف"
+      },
+      {
+        "step": 60,
+        "text": "RA-MN-OH-09: OHS-RA-07-JUF-56 — مهمة — تغيير معدة هوائية 13.8 ك ف"
+      },
+      {
+        "step": 61,
+        "text": "RA-MN-OH-10: OHS-RA-07-JUF-57 — مهمة — استبدال مبينات الأعطال للشبكة الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 62,
+        "text": "RA-MN-OH-11: OHS-RA-07-JUF-58 — مهمة — إعادة تأريض الاعمدة 13.8 ك ف"
+      },
+      {
+        "step": 63,
+        "text": "RA-MN-OH-12: OHS-RA-07-JUF-59 — مهمة — تفتيش الخطوط الهوائية 13.8 ك ف بالكام يا الحرارية"
+      },
+      {
+        "step": 64,
+        "text": "RA-MN-OH-13: OHS-RA-07-JUF-60 — مهمة — التفتيش النظري للخطوط الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 65,
+        "text": "RA-MN-OH-14: OHS-RA-07-JUF-61 — مهمة — طلاء الاعمدة الحديدية"
+      },
+      {
+        "step": 66,
+        "text": "RA-MN-OH-15: OHS-RA-07-JUF-62 — مهمة — غسيل عوازل الخطوط الهوائية 13.8 ك ف"
+      },
+      {
+        "step": 67,
+        "text": "RA-MN-OH-16: OHS-RA-07-JUF-63 — مهمة — قيادة وتشغيل معدة غسيل الخطوط الهوائية"
+      },
+      {
+        "step": 68,
+        "text": "RA-MN-C-01: OHS-RA-07-JUF-64 — مهمة — كابل جهد متوسط ) صاعد على عمود ("
+      },
+      {
+        "step": 69,
+        "text": "RA-MN-C-02: OHS-RA-07-JUF-65 — مهمة — استبدال لوحة التوزيع الفرعية ) MP )"
+      },
+      {
+        "step": 70,
+        "text": "RA-MN-C-03: OHS-RA-07-JUF-66 — مهمة — صيانة لوحة التوزيع الفرعية ) MP"
+      },
+      {
+        "step": 71,
+        "text": "RA-MN-C-04: OHS-RA-07-JUF-67 — مهمة — تنفتيش لوحة التوزي ع الفرعية ) MP"
+      },
+      {
+        "step": 72,
+        "text": "RA-MN-C-05: OHS-RA-07-JUF-68 — مهمة — استبدال او صيانة صندوق خدمة ) Service Box"
+      },
+      {
+        "step": 73,
+        "text": "RA-MN-C-06: OHS-RA-07-JUF-69 — مهمة — استبدال كيبل جهد منخفض"
+      },
+      {
+        "step": 74,
+        "text": "RA-MN-C-07: OHS-RA-07-JUF-70 — مهمة — صيانة وصلة لحام لكيبل جهد منخفض"
+      },
+      {
+        "step": 75,
+        "text": "RA-MN-C-08: OHS-RA-07-JUF-71 — مهمة — صيانة نهاية طرفية لكيبل جهد منخفض"
+      },
+      {
+        "step": 76,
+        "text": "RA-MN-C-09: OHS-RA-07-JUF-72 — مهمة — استبدال كيبل جهد متوسط"
+      },
+      {
+        "step": 77,
+        "text": "RA-MN-C-10: OHS-RA-07-JUF-73 — مهمة — اصلاح وصلة لحام لكيبل جهد متوسط"
+      },
+      {
+        "step": 78,
+        "text": "RA-MN-C-11: OHS-RA-07-JUF-74 — مهمة — اصلاح النهاية الطرفية لكيبل جهد متوسط"
+      },
+      {
+        "step": 79,
+        "text": "RA-MN-SS-01: OHS-RA-07-JUF-75 — مهمة — صيانة المحطة نتيجة تسريب الزيت/التفريغ الجزئي"
+      },
+      {
+        "step": 80,
+        "text": "RA-MN-SS-02: OHS-RA-07-JUF-76 — مهمة — قراءة الأحمال لمحولات التوزيع"
+      }
+    ],
+    "approved_by": "الشركة السعودية للكهرباء",
+    "version": "2025"
+  }
+}

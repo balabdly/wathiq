@@ -1,0 +1,208 @@
+/**
+ * Parse SWP docx + risk xlsx — run: npx tsx scripts/import-sec-swp.ts
+ * Requires SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env.local or env
+ */
+import fs from 'fs'
+import path from 'path'
+import JSZip from 'jszip'
+import * as XLSX from 'xlsx'
+import { createClient } from '@supabase/supabase-js'
+
+const DOWNLOADS = 'C:\\Users\\bk606\\Downloads'
+
+const SWP_FILES = [
+  'SWP-MN-OH-05 2.docx',
+  'SWP-MN-SS-05.docx',
+  'SWP-MN-OH-01.docx',
+  'SWP-OP-HT-04.docx',
+  'SWP-MN-M-01.docx',
+  'SWP-CN-PRJ-03.docx',
+  'SWP-CN-PRJ-19.docx',
+  'SWP-MN-C-07.docx',
+  'SWP-OP-HT-11.docx',
+  'SWP-CN-PRJ-12.docx',
+  'SWP-MN-OH-06.docx',
+  'SWP-MN-OH-08.docx',
+]
+
+function stripXml(xml: string): string {
+  return xml
+    .replace(/<w:tab[^/]*\/>/g, '\t')
+    .replace(/<w:br[^/]*\/>/g, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\r/g, '')
+}
+
+async function extractDocxText(filePath: string): Promise<string> {
+  const buf = fs.readFileSync(filePath)
+  const zip = await JSZip.loadAsync(buf)
+  const doc = zip.file('word/document.xml')
+  if (!doc) return ''
+  const xml = await doc.async('string')
+  return stripXml(xml)
+}
+
+function parseSwpFromText(procNo: string, text: string) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+  const titleLine = lines.find(l => l.length > 10 && !l.startsWith('SWP')) || procNo
+
+  // Find steps section
+  const stepKeywords = ['خطوات', 'الإجراء', 'الاجراء', 'Steps', 'Procedure', 'تسلسل']
+  let startIdx = lines.findIndex(l => stepKeywords.some(k => l.includes(k)))
+  if (startIdx < 0) startIdx = lines.findIndex(l => /^[\d\u0660-\u0669]+[\.\)\-]/.test(l))
+
+  const stepLines: string[] = []
+  if (startIdx >= 0) {
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      const l = lines[i]
+      if (/^(ملاحظ|تحذير|Warning|Note|PPE|معدات)/i.test(l)) break
+      const cleaned = l.replace(/^[\d\u0660-\u0669]+[\.\)\-\s]+/, '').trim()
+      if (cleaned.length > 8) stepLines.push(cleaned)
+    }
+  }
+
+  // Fallback: numbered lines anywhere
+  if (stepLines.length < 2) {
+    for (const l of lines) {
+      const m = l.match(/^(\d+)[\.\)\-\s]+(.{10,})/)
+      if (m) stepLines.push(m[2].trim())
+    }
+  }
+
+  // Fallback: use meaningful lines after title
+  if (stepLines.length < 2) {
+    const body = lines.slice(2, 25).filter(l => l.length > 15 && !l.includes('الشركة السعودية'))
+    stepLines.push(...body.slice(0, 12))
+  }
+
+  const workType = procNo.startsWith('SWP-MN') ? 'صيانة'
+    : procNo.startsWith('SWP-OP') ? 'تشغيل'
+    : procNo.startsWith('SWP-CN') ? 'إنشاءات'
+    : 'SEC'
+
+  return {
+    proc_no: procNo.replace('.docx', '').trim(),
+    title: titleLine.slice(0, 200),
+    work_type: workType,
+    description: lines.slice(0, 5).join(' ').slice(0, 500) || null,
+    steps: stepLines.slice(0, 30).map((text, i) => ({ step: i + 1, text })),
+    approved_by: 'الشركة السعودية للكهرباء',
+    hazards: null,
+    precautions: null,
+  }
+}
+
+function findRiskXlsx(): string | null {
+  const files = fs.readdirSync(DOWNLOADS)
+  const hit = files.find(f => f.endsWith('.xlsx') && (f.includes('2025') || f.includes('تقييم') || f.includes('(')))
+  return hit ? path.join(DOWNLOADS, hit) : null
+}
+
+function parseRiskXlsx(filePath: string) {
+  const wb = XLSX.read(fs.readFileSync(filePath), { type: 'buffer' })
+  const risks: { title: string; category: string; description: string }[] = []
+  for (const sheetName of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(wb.Sheets[sheetName], { defval: '' })
+    for (const row of rows) {
+      const vals = Object.values(row).map(v => String(v).trim()).filter(Boolean)
+      if (vals.length < 2) continue
+      const title = vals.find(v => v.length > 5 && v.length < 120) || ''
+      if (!title || /^(رقم|#|no|م\s*\/\s*o)/i.test(title)) continue
+      const category = sheetName.includes('انش') || sheetName.includes('صيان') ? 'تشغيلي'
+        : sheetName.includes('مخاط') ? 'سلامة' : 'فني'
+      if (risks.some(r => r.title === title)) continue
+      risks.push({ title, category, description: vals.slice(1, 4).join(' — ').slice(0, 300) })
+    }
+  }
+  return risks.slice(0, 80)
+}
+
+async function main() {
+  const exportOnly = process.argv.includes('--export')
+  const outPath = path.join(process.cwd(), 'public', 'data', 'sec-swp-procedures.json')
+
+  const procedures: ReturnType<typeof parseSwpFromText>[] = []
+
+  for (const file of SWP_FILES) {
+    const fp = path.join(DOWNLOADS, file)
+    if (!fs.existsSync(fp)) { console.warn('Missing:', file); continue }
+    const text = await extractDocxText(fp)
+    const procNo = file.replace('.docx', '').replace(' 2', '')
+    const parsed = parseSwpFromText(procNo, text)
+    if (parsed.steps.length === 0) {
+      parsed.steps = [{ step: 1, text: `اتباع إجراء ${procNo} المعتمد من SEC — راجع المرفق الأصلي` }]
+    }
+    procedures.push(parsed)
+    console.log(`✓ ${procNo}: ${parsed.steps.length} steps — ${parsed.title.slice(0, 60)}`)
+  }
+
+  let riskTemplate: Record<string, unknown> | null = null
+  const riskFile = findRiskXlsx()
+  if (riskFile) {
+    console.log('\nRisk file:', path.basename(riskFile))
+    const risks = parseRiskXlsx(riskFile)
+    console.log(`Parsed ${risks.length} risk items`)
+    riskTemplate = {
+      proc_no: 'SEC-RISK-TEMPLATE-2025',
+      title: 'تقييم المخاطر — إدارة كهرباء الجوف 2025 (إنشاءات + صيانة)',
+      work_type: 'تقييم مخاطر',
+      description: `استورد من ${path.basename(riskFile)} — ${risks.length} بند`,
+      steps: risks.map((r, i) => ({ step: i + 1, text: `${r.title}${r.description ? ': ' + r.description : ''}` })),
+      approved_by: 'الشركة السعودية للكهرباء',
+      version: '2025',
+    }
+  }
+
+  if (exportOnly) {
+    fs.mkdirSync(path.dirname(outPath), { recursive: true })
+    fs.writeFileSync(outPath, JSON.stringify({ procedures, riskTemplate }, null, 2), 'utf8')
+    console.log('\nExported to', outPath)
+    return
+  }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) {
+    console.error('Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or use --export')
+    process.exit(1)
+  }
+
+  const tenantId = process.argv.find(a => !a.startsWith('-') && a !== process.argv[0] && a !== process.argv[1])
+  if (!tenantId) {
+    console.error('Usage: npx tsx scripts/import-sec-swp.ts <tenant_id>  OR  --export')
+    process.exit(1)
+  }
+
+  const supabase = createClient(url, key)
+
+  for (const p of procedures) {
+    const { data: existing } = await supabase.from('qhse_safe_work_procedures')
+      .select('id').eq('tenant_id', tenantId).eq('proc_no', p.proc_no).maybeSingle()
+    const payload = { ...p, tenant_id: tenantId, is_active: true, version: 'SEC' }
+    if (existing) {
+      await supabase.from('qhse_safe_work_procedures').update(payload).eq('id', existing.id)
+    } else {
+      await supabase.from('qhse_safe_work_procedures').insert(payload)
+    }
+  }
+  console.log(`\nImported ${procedures.length} SWP procedures`)
+
+  if (riskTemplate) {
+    const { data: existing } = await supabase.from('qhse_safe_work_procedures')
+      .select('id').eq('tenant_id', tenantId).eq('proc_no', 'SEC-RISK-TEMPLATE-2025').maybeSingle()
+    const riskPayload = { ...riskTemplate, tenant_id: tenantId, is_active: true }
+    if (existing) {
+      await supabase.from('qhse_safe_work_procedures').update(riskPayload).eq('id', existing.id)
+    } else {
+      await supabase.from('qhse_safe_work_procedures').insert(riskPayload)
+    }
+    console.log('Saved risk assessment template as SEC-RISK-TEMPLATE-2025')
+  }
+
+  console.log('\nDone.')
+}
+
+main().catch(e => { console.error(e); process.exit(1) })
