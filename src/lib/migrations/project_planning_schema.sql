@@ -25,6 +25,7 @@ create table if not exists project_planning (
   safe_work_file_name         text,
   safe_work_template_id       bigint references qhse_safe_work_procedures(id) on delete set null,
   safe_work_steps             jsonb default '[]',
+  risks_assessment_content    text,
   quality_plan_content        text,
   quality_plan_file_path      text,
   quality_plan_file_name      text,

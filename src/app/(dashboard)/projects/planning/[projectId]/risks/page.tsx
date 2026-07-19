@@ -1,211 +1,58 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Plus, Save, ShieldAlert, Trash2, ListChecks, Download } from 'lucide-react'
+import { Save, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { supabase } from '@/lib/supabase'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-
-const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
-
-type Risk = {
-  id: number; title: string; category: string; probability: string; impact: string
-  risk_score?: number; status: string; response_plan?: string
-}
-
-type RiskTemplate = {
-  id: number
-  proc_no?: string
-  title: string
-  steps?: { step: number; text: string }[]
-}
-
-const PROB: Record<string, number> = { 'منخفض': 1, 'متوسط': 2, 'عالي': 3 }
-
-function parseTemplateItem(text: string): { title: string; response_plan: string } {
-  const parts = text.split(':')
-  if (parts.length >= 2 && parts[0].trim().length < 120) {
-    return { title: parts[0].trim(), response_plan: parts.slice(1).join(':').trim() }
-  }
-  return { title: text.slice(0, 200), response_plan: '' }
-}
+import { updateProjectPlanning } from '@/lib/project-planning-service'
 
 export default function RisksTabPage() {
-  const { tenantId, projectId } = useProjectPlanning()
-  const [risks, setRisks] = useState<Risk[]>([])
-  const [templates, setTemplates] = useState<RiskTemplate[]>([])
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const { tenantId, projectId, planning, reload } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [form, setForm] = useState({ title: '', category: 'تشغيلي', probability: 'متوسط', impact: 'متوسط', response_plan: '' })
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-
-  async function load() {
-    setLoading(true)
-    const { data } = await supabase.from('project_risks')
-      .select('id, title, category, probability, impact, risk_score, status, response_plan')
-      .eq('tenant_id', tenantId).eq('project_id', projectId).order('created_at', { ascending: false })
-    setRisks(data || [])
-    setLoading(false)
-  }
+  const [done, setDone] = useState(false)
 
   useEffect(() => {
-    load()
-    supabase.from('qhse_safe_work_procedures')
-      .select('id, proc_no, title, steps')
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true)
-      .eq('work_type', 'تقييم مخاطر')
-      .order('title')
-      .then(({ data }) => setTemplates(data || []))
-  }, [tenantId, projectId])
+    setDone(planning?.risks_assessment_content === 'done')
+  }, [planning?.risks_assessment_content, planning?.updated_at])
 
-  async function handleAdd() {
-    if (!form.title.trim()) { toast.error('عنوان المخاطرة مطلوب'); return }
+  async function handleSave() {
     setSaving(true)
-    const score = (PROB[form.probability] || 2) * (PROB[form.impact] || 2)
-    const { count } = await supabase.from('project_risks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    const { error } = await supabase.from('project_risks').insert({
-      tenant_id: tenantId, project_id: projectId,
-      risk_code: `R-${String((count || 0) + 1).padStart(3, '0')}`,
-      title: form.title.trim(), category: form.category,
-      probability: form.probability, impact: form.impact, risk_score: score,
-      status: 'مفتوح', response_plan: form.response_plan || null,
-    })
-    if (error) toast.error(error.message)
-    else {
-      toast.success('تمت الإضافة ✅')
-      setForm({ title: '', category: 'تشغيلي', probability: 'متوسط', impact: 'متوسط', response_plan: '' })
-      setShowForm(false)
-      await load()
+    try {
+      await updateProjectPlanning(tenantId, projectId, {
+        risks_assessment_content: done ? 'done' : null,
+      })
+      await reload()
+      toast.success('تم الحفظ ✅')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'خطأ في الحفظ')
     }
     setSaving(false)
   }
 
-  async function loadFromTemplate() {
-    if (!selectedTemplateId) { toast.error('اختر قالب تقييم المخاطر'); return }
-    const tpl = templates.find(t => t.id === Number(selectedTemplateId))
-    if (!tpl?.steps?.length) { toast.error('القالب فارغ'); return }
-    if (risks.length > 0 && !confirm(`تحميل ${tpl.steps.length} مخاطرة من «${tpl.title}»؟ لن تُحذف المخاطر الحالية.`)) return
-
-    setImporting(true)
-    const { count } = await supabase.from('project_risks').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId)
-    let nextNum = (count || 0) + 1
-    const rows = tpl.steps
-      .map(s => String(s.text || '').trim())
-      .filter(Boolean)
-      .map(text => {
-        const { title, response_plan } = parseTemplateItem(text)
-        const row = {
-          tenant_id: tenantId,
-          project_id: projectId,
-          risk_code: `R-${String(nextNum++).padStart(3, '0')}`,
-          title,
-          category: 'سلامة',
-          probability: 'متوسط',
-          impact: 'متوسط',
-          risk_score: 4,
-          status: 'مفتوح',
-          response_plan: response_plan || null,
-        }
-        return row
-      })
-
-    const { error } = await supabase.from('project_risks').insert(rows)
-    if (error) toast.error(error.message)
-    else {
-      toast.success(`تم تحميل ${rows.length} مخاطرة من القالب ✅`)
-      await load()
-    }
-    setImporting(false)
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm('حذف المخاطرة؟')) return
-    await supabase.from('project_risks').delete().eq('id', id)
-    await load()
-  }
-
   return (
     <div className="card" style={{ padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-        <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ShieldAlert style={{ width: '17px', height: '17px', color: '#c81e1e' }} /> تقييم المخاطر
-        </h3>
-        <button onClick={() => setShowForm(!showForm)} className="btn btn-ghost" style={{ fontSize: '0.82rem', color: '#c81e1e', border: '1px solid #fecaca' }}>
-          <Plus style={{ width: '14px', height: '14px' }} /> إضافة مخاطرة
+      <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <ShieldAlert style={{ width: '17px', height: '17px', color: '#c81e1e' }} /> تقييم المخاطر
+      </h3>
+
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer',
+        padding: '14px 16px', background: done ? '#fef2f2' : 'var(--bg2)', borderRadius: '10px',
+        border: `1px solid ${done ? '#fecaca' : 'var(--border)'}`,
+      }}>
+        <input type="checkbox" checked={done} onChange={e => setDone(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>تم تقييم مخاطر المشروع</span>
+        {done && <CheckCircle2 style={{ width: '18px', height: '18px', color: '#c81e1e', marginRight: 'auto' }} />}
+      </label>
+
+      <p style={{ fontSize: '0.82rem', color: 'var(--text3)', marginTop: '12px', lineHeight: 1.6 }}>
+        التقييم التفصيلي يُدار خارج النظام — هنا تأكيد فقط أن البند مكتمل في مرحلة التخطيط.
+      </p>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+        <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+          <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
       </div>
-
-      {templates.length > 0 && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px 14px', marginBottom: '16px' }}>
-          <label style={{ ...lbl, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ListChecks style={{ width: '15px', height: '15px' }} /> قالب تقييم المخاطر (SEC)
-          </label>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <select value={selectedTemplateId} onChange={e => setSelectedTemplateId(e.target.value)} className="select" style={{ flex: 1, minWidth: '220px' }}>
-              <option value="">— اختر القالب —</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.proc_no ? `${t.proc_no} — ` : ''}{t.title}
-                </option>
-              ))}
-            </select>
-            <button onClick={loadFromTemplate} disabled={importing || !selectedTemplateId} className="btn btn-primary" style={{ background: '#c81e1e' }}>
-              <Download style={{ width: '14px', height: '14px' }} /> {importing ? 'جاري التحميل...' : 'تحميل للمشروع'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showForm && (
-        <div style={{ background: '#fef2f2', borderRadius: '10px', padding: '14px', marginBottom: '16px', border: '1px solid #fecaca' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-            <div><label style={lbl}>المخاطرة *</label><input value={form.title} onChange={e => set('title', e.target.value)} className="input" /></div>
-            <div><label style={lbl}>التصنيف</label><select value={form.category} onChange={e => set('category', e.target.value)} className="select">{['تشغيلي','مالي','فني','قانوني','سلامة'].map(c => <option key={c}>{c}</option>)}</select></div>
-            <div><label style={lbl}>الاحتمال</label><select value={form.probability} onChange={e => set('probability', e.target.value)} className="select">{['منخفض','متوسط','عالي'].map(c => <option key={c}>{c}</option>)}</select></div>
-            <div><label style={lbl}>الأثر</label><select value={form.impact} onChange={e => set('impact', e.target.value)} className="select">{['منخفض','متوسط','عالي'].map(c => <option key={c}>{c}</option>)}</select></div>
-          </div>
-          <div style={{ marginBottom: '10px' }}><label style={lbl}>خطة الاستجابة</label><input value={form.response_plan} onChange={e => set('response_plan', e.target.value)} className="input" /></div>
-          <button onClick={handleAdd} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}><Save style={{ width: '14px', height: '14px' }} /> حفظ</button>
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text3)' }}>جاري التحميل...</div>
-      ) : risks.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text3)' }}>لا مخاطر مسجّلة — أضف أول مخاطرة</div>
-      ) : (
-        <div style={{ overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg2)' }}>
-                {['المخاطرة', 'التصنيف', 'الاحتمال', 'الأثر', 'الدرجة', 'الحالة', ''].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {risks.map(r => (
-                <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '8px 10px', fontWeight: 600 }}>{r.title}</td>
-                  <td style={{ padding: '8px 10px' }}>{r.category}</td>
-                  <td style={{ padding: '8px 10px' }}>{r.probability}</td>
-                  <td style={{ padding: '8px 10px' }}>{r.impact}</td>
-                  <td style={{ padding: '8px 10px', fontWeight: 700, color: (r.risk_score || 0) >= 6 ? '#c81e1e' : '#e6820a' }}>{r.risk_score}</td>
-                  <td style={{ padding: '8px 10px' }}>{r.status}</td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <button onClick={() => handleDelete(r.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
-                      <Trash2 style={{ width: '14px', height: '14px' }} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   )
 }
