@@ -1,0 +1,185 @@
+import { supabase } from '@/lib/supabase'
+import { statusForPhase } from '@/lib/sec-workflow'
+
+export type ProjectPlanning = {
+  id: number
+  tenant_id: string
+  project_id: number
+  planning_status: 'active' | 'closed'
+  permit_number?: string | null
+  permit_start?: string | null
+  permit_end?: string | null
+  permit_file_path?: string | null
+  permit_file_name?: string | null
+  work_completion_number?: string | null
+  work_completion_file_path?: string | null
+  work_completion_file_name?: string | null
+  clearance_number?: string | null
+  clearance_file_path?: string | null
+  clearance_file_name?: string | null
+  timeline_start?: string | null
+  timeline_end?: string | null
+  timeline_revised_end?: string | null
+  timeline_revision_reason?: string | null
+  safe_work_content?: string | null
+  safe_work_file_path?: string | null
+  safe_work_file_name?: string | null
+  quality_plan_content?: string | null
+  quality_plan_file_path?: string | null
+  quality_plan_file_name?: string | null
+  cost_plan_notes?: string | null
+  updated_at?: string | null
+}
+
+export type PlanningCostItem = {
+  id?: number
+  tenant_id?: string
+  project_id: number
+  item_name: string
+  category?: string | null
+  planned_amount: number
+  actual_amount?: number
+  notes?: string | null
+  sort_order?: number
+}
+
+export type PlanningProject = {
+  id: number
+  name: string
+  code?: string
+  client_name?: string
+  type?: string
+  start_date?: string
+  end_date?: string
+  estimated_value?: number
+  pmo_phase?: string
+  planning?: ProjectPlanning | null
+}
+
+export async function fetchPlanningProjects(tenantId: string, status: 'active' | 'closed') {
+  const { data: planningRows } = await supabase
+    .from('project_planning')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('planning_status', status)
+
+  const planningMap = new Map((planningRows || []).map(p => [p.project_id, p as ProjectPlanning]))
+  const planningIds = Array.from(planningMap.keys())
+
+  if (status === 'closed') {
+    if (!planningIds.length) return { data: [] as PlanningProject[], error: null }
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase')
+      .eq('tenant_id', tenantId)
+      .in('id', planningIds)
+      .order('created_at', { ascending: false })
+    return {
+      data: (data || []).map(p => ({ ...p, planning: planningMap.get(p.id) || null })),
+      error,
+    }
+  }
+
+  // active: all initiation projects (1_RECEIPT) + those in planning (2_PREP)
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase')
+    .eq('tenant_id', tenantId)
+    .in('pmo_phase', ['1_RECEIPT', '2_PREP'])
+    .order('created_at', { ascending: false })
+
+  const active = (projects || []).filter(p => {
+    const pl = planningMap.get(p.id)
+    return !pl || pl.planning_status === 'active'
+  })
+
+  return {
+    data: active.map(p => ({ ...p, planning: planningMap.get(p.id) || null })),
+    error,
+  }
+}
+
+export async function ensureProjectPlanning(tenantId: string, projectId: number, project?: { start_date?: string; end_date?: string }) {
+  const { data: existing } = await supabase
+    .from('project_planning')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+
+  if (existing) return existing as ProjectPlanning
+
+  const { data, error } = await supabase.from('project_planning').insert({
+    tenant_id: tenantId,
+    project_id: projectId,
+    planning_status: 'active',
+    timeline_start: project?.start_date || null,
+    timeline_end: project?.end_date || null,
+  }).select('*').single()
+
+  if (error) throw error
+
+  await supabase.from('projects').update({
+    pmo_phase: '2_PREP',
+    status: statusForPhase('2_PREP'),
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+
+  return data as ProjectPlanning
+}
+
+export async function fetchProjectPlanning(tenantId: string, projectId: number) {
+  const [{ data: project, error: pErr }, { data: planning }] = await Promise.all([
+    supabase.from('projects')
+      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, description')
+      .eq('tenant_id', tenantId).eq('id', projectId).single(),
+    supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
+  ])
+  if (pErr) throw pErr
+  return { project, planning: planning as ProjectPlanning | null }
+}
+
+export async function updateProjectPlanning(tenantId: string, projectId: number, payload: Partial<ProjectPlanning>) {
+  const { error } = await supabase.from('project_planning')
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+  if (error) throw error
+}
+
+export async function closeProjectPlanning(tenantId: string, projectId: number) {
+  await updateProjectPlanning(tenantId, projectId, { planning_status: 'closed' })
+}
+
+export async function fetchCostItems(tenantId: string, projectId: number) {
+  const { data, error } = await supabase.from('project_planning_cost_items')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .order('sort_order')
+  return { data: (data || []) as PlanningCostItem[], error }
+}
+
+export async function saveCostItems(tenantId: string, projectId: number, items: PlanningCostItem[]) {
+  await supabase.from('project_planning_cost_items').delete().eq('tenant_id', tenantId).eq('project_id', projectId)
+  if (!items.length) return
+  const rows = items.map((item, i) => ({
+    tenant_id: tenantId,
+    project_id: projectId,
+    item_name: item.item_name,
+    category: item.category || null,
+    planned_amount: item.planned_amount,
+    actual_amount: item.actual_amount || 0,
+    notes: item.notes || null,
+    sort_order: i,
+  }))
+  const { error } = await supabase.from('project_planning_cost_items').insert(rows)
+  if (error) throw error
+}
+
+export async function uploadPlanningFile(tenantId: string, projectId: number, file: File, prefix: string) {
+  const path = `${tenantId}/planning/${projectId}/${prefix}_${Date.now()}_${file.name}`
+  const { error } = await supabase.storage.from('project-attachments').upload(path, file)
+  if (error) throw error
+  return { path, name: file.name }
+}
