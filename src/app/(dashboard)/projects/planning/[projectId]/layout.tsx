@@ -45,7 +45,10 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
-    setProgress(computePlanningProgress(result.planning, costItems.length))
+    setProgress(computePlanningProgress(
+      result.planning,
+      (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,
+    ))
   }, [tenant?.id, projectId])
 
   useEffect(() => {

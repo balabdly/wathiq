@@ -83,18 +83,18 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
 
   const { data: costRows } = await supabase
     .from('project_planning_cost_items')
-    .select('project_id')
+    .select('project_id, planned_amount')
     .eq('tenant_id', tenantId)
     .in('project_id', ids)
 
-  const costCounts = new Map<number, number>()
+  const costComplete = new Set<number>()
   for (const row of costRows || []) {
-    costCounts.set(row.project_id, (costCounts.get(row.project_id) || 0) + 1)
+    if (Number(row.planned_amount) > 0) costComplete.add(row.project_id)
   }
 
   return projects.map(p => ({
     ...p,
-    planningProgress: computePlanningProgress(p.planning, costCounts.get(p.id) || 0),
+    planningProgress: computePlanningProgress(p.planning, costComplete.has(p.id) ? 1 : 0),
   }))
 }
 

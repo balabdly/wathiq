@@ -7,6 +7,16 @@ import { fetchCostItems, saveCostItems, updateProjectPlanning, type PlanningCost
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
+/** بنود مصاريف شائعة — للبدء السريع (ليست قيمة العقد) */
+const EXPENSE_STARTER_ROWS: Omit<PlanningCostItem, 'project_id'>[] = [
+  { item_name: 'مواد وتوريد', category: 'مواد', planned_amount: 0, notes: '' },
+  { item_name: 'عمالة وصيانة', category: 'عمالة', planned_amount: 0, notes: '' },
+  { item_name: 'معدات وآلات', category: 'معدات', planned_amount: 0, notes: '' },
+  { item_name: 'نقل ولوجستيات', category: 'نقل', planned_amount: 0, notes: '' },
+  { item_name: 'تصاريح ورسوم', category: 'إدارية', planned_amount: 0, notes: '' },
+  { item_name: 'مقاول باطن', category: 'باطن', planned_amount: 0, notes: '' },
+]
+
 function emptyItem(projectId: number): PlanningCostItem {
   return { project_id: projectId, item_name: '', category: '', planned_amount: 0, notes: '' }
 }
@@ -24,14 +34,20 @@ export default function CostsTabPage() {
   async function load() {
     setLoading(true)
     const { data } = await fetchCostItems(tenantId, projectId)
-    setItems(data.length ? data : [{ ...emptyItem(projectId), item_name: 'القيمة التقديرية للمشروع', planned_amount: Number(project.estimated_value || 0), category: 'رئيسي' }])
+    if (data.length) {
+      setItems(data)
+    } else {
+      setItems(EXPENSE_STARTER_ROWS.map(r => ({ ...r, project_id: projectId })))
+    }
     setNotes(planning?.cost_plan_notes || '')
     setLoading(false)
   }
 
   useEffect(() => { load() }, [tenantId, projectId, planning?.cost_plan_notes])
 
-  const total = items.reduce((s, i) => s + Number(i.planned_amount || 0), 0)
+  const totalExpenses = items.reduce((s, i) => s + Number(i.planned_amount || 0), 0)
+  const contractValue = Number(project.estimated_value || 0)
+  const margin = contractValue > 0 ? contractValue - totalExpenses : null
 
   async function handleSaveEdit() {
     setSaving(true)
@@ -73,12 +89,24 @@ export default function CostsTabPage() {
         <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text3)' }}>جاري التحميل...</div>
       ) : (
         <>
-          <div style={{ background: '#ecfeff', borderRadius: '10px', padding: '16px', marginBottom: '14px' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>إجمالي الخطة</div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0891b2' }}>{total.toLocaleString('ar-SA')} ر.س</div>
-            {project.estimated_value && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>
-                القيمة التقديرية من البدء: {Number(project.estimated_value).toLocaleString('ar-SA')} ر.س
+          <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '12px', lineHeight: 1.6 }}>
+            سجّل هنا <strong>المصاريف المتوقعة</strong> على المشروع (مواد، عمالة، معدات…). قيمة العقد من مرحلة البدء تظهر للمقارنة فقط — ليست بنداً في خطة التكاليف.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: contractValue ? '1fr 1fr' : '1fr', gap: '12px', marginBottom: '14px' }}>
+            <div style={{ background: '#ecfeff', borderRadius: '10px', padding: '16px' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>إجمالي المصاريف المتوقعة</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0891b2' }}>{totalExpenses.toLocaleString('ar-SA')} ر.س</div>
+            </div>
+            {contractValue > 0 && (
+              <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '16px', border: '1px solid #e5e7eb' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>قيمة العقد (إيراد — مرجع من البدء)</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0ea77b' }}>{contractValue.toLocaleString('ar-SA')} ر.س</div>
+                {margin !== null && totalExpenses > 0 && (
+                  <div style={{ fontSize: '0.72rem', marginTop: '6px', color: margin >= 0 ? '#0ea77b' : '#c81e1e', fontWeight: 600 }}>
+                    {margin >= 0 ? `فارق متوقع +${margin.toLocaleString('ar-SA')}` : `عجز متوقع ${margin.toLocaleString('ar-SA')}`} ر.س
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -86,7 +114,7 @@ export default function CostsTabPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)' }}>
-                  {['البند', 'التصنيف', 'المبلغ المخطط', 'ملاحظات'].map(h => (
+                  {['البند', 'التصنيف', 'المصروف المتوقع', 'ملاحظات'].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
@@ -115,7 +143,8 @@ export default function CostsTabPage() {
             </div>
             <div className="modal-body" style={{ fontSize: '0.85rem' }}>
               <p><strong>المشروع:</strong> {project.name}</p>
-              <p><strong>الإجمالي:</strong> {total.toLocaleString('ar-SA')} ر.س</p>
+              <p><strong>إجمالي المصاريف:</strong> {totalExpenses.toLocaleString('ar-SA')} ر.س</p>
+              {contractValue > 0 && <p><strong>قيمة العقد (مرجع):</strong> {contractValue.toLocaleString('ar-SA')} ر.س</p>}
               {notes && <p><strong>ملاحظات:</strong> {notes}</p>}
               <div style={{ marginTop: '12px' }}>
                 {items.map((item, i) => (
@@ -143,7 +172,7 @@ export default function CostsTabPage() {
                 <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
                   <div><label style={lbl}>البند</label><input value={item.item_name} onChange={e => { const n = [...editItems]; n[idx] = { ...n[idx], item_name: e.target.value }; setEditItems(n) }} className="input" /></div>
                   <div><label style={lbl}>التصنيف</label><input value={item.category || ''} onChange={e => { const n = [...editItems]; n[idx] = { ...n[idx], category: e.target.value }; setEditItems(n) }} className="input" /></div>
-                  <div><label style={lbl}>المبلغ</label><input type="number" value={item.planned_amount} onChange={e => { const n = [...editItems]; n[idx] = { ...n[idx], planned_amount: Number(e.target.value) }; setEditItems(n) }} className="input" dir="ltr" /></div>
+                  <div><label style={lbl}>المصروف المتوقع (ر.س)</label><input type="number" min="0" value={item.planned_amount} onChange={e => { const n = [...editItems]; n[idx] = { ...n[idx], planned_amount: Number(e.target.value) }; setEditItems(n) }} className="input" dir="ltr" /></div>
                   <button onClick={() => setEditItems(editItems.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '8px' }}><Trash2 style={{ width: '14px', height: '14px' }} /></button>
                 </div>
               ))}

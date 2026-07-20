@@ -62,7 +62,7 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
 
   const [planningRes, costRes, logsRes, teamsRes] = await Promise.all([
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).in('project_id', ids),
-    supabase.from('project_planning_cost_items').select('project_id').eq('tenant_id', tenantId).in('project_id', ids),
+    supabase.from('project_planning_cost_items').select('project_id, planned_amount').eq('tenant_id', tenantId).in('project_id', ids),
     supabase.from('team_project_logs').select('project_id, log_date, created_at').eq('tenant_id', tenantId).in('project_id', ids),
     teamIds.length
       ? supabase.from('teams').select('id, name, team_type').eq('tenant_id', tenantId).in('id', teamIds)
@@ -70,9 +70,9 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
   ])
 
   const planningMap = new Map((planningRes.data || []).map(p => [p.project_id, p as ProjectPlanning]))
-  const costCounts = new Map<number, number>()
+  const costComplete = new Set<number>()
   for (const row of costRes.data || []) {
-    costCounts.set(row.project_id, (costCounts.get(row.project_id) || 0) + 1)
+    if (Number(row.planned_amount) > 0) costComplete.add(row.project_id)
   }
   const teamMap = new Map((teamsRes.data || []).map(t => [t.id, t]))
   const logStats = new Map<number, { count: number; lastDate: string | null }>()
@@ -91,7 +91,7 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
     return {
       ...p,
       planning,
-      planningProgress: computePlanningProgress(planning, costCounts.get(p.id) || 0),
+      planningProgress: computePlanningProgress(planning, costComplete.has(p.id) ? 1 : 0),
       team,
       logCount: stats?.count || 0,
       lastLogDate: stats?.lastDate || null,
@@ -116,7 +116,7 @@ export async function fetchExecutionProject(tenantId: string, projectId: number)
 
   const [{ data: planning }, { data: costRows }, { data: team }] = await Promise.all([
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
-    supabase.from('project_planning_cost_items').select('project_id').eq('tenant_id', tenantId).eq('project_id', projectId),
+    supabase.from('project_planning_cost_items').select('project_id, planned_amount').eq('tenant_id', tenantId).eq('project_id', projectId),
     project.team_id
       ? supabase.from('teams').select('id, name, team_type, lead_id').eq('id', project.team_id).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -127,7 +127,7 @@ export async function fetchExecutionProject(tenantId: string, projectId: number)
     project: {
       ...project,
       planning: pl,
-      planningProgress: computePlanningProgress(pl, costRows?.length || 0),
+      planningProgress: computePlanningProgress(pl, (costRows || []).some(r => Number(r.planned_amount) > 0) ? 1 : 0),
       team: team || null,
     } as ExecutionProjectDetail,
   }
