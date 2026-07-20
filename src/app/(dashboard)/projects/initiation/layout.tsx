@@ -1,18 +1,13 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
-import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
+import { SEC_PMO_PHASES } from '@/lib/project-phase-display'
 import { Rocket } from 'lucide-react'
 import { InitiationContext, type InitiationProject, type FrameworkBoqRow } from './InitiationContext'
-
-const TABS = [
-  { href: '/projects/initiation/projects',   label: 'المشاريع',              emoji: '📁', color: '#1a56db' },
-  { href: '/projects/initiation/quantities', label: 'كميات المشروع الابتدائية', emoji: '📋', color: '#7c3aed' },
-]
 
 export default function InitiationLayout({ children }: { children: React.ReactNode }) {
   const { tenant, activeBranch } = useStore()
@@ -22,7 +17,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
   const [projectTypes, setProjectTypes] = useState<{ id: number; code: string; name: string }[]>([])
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [kpis, setKpis] = useState({ total: 0, noClient: 0, noBoq: 0 })
+  const [kpis, setKpis] = useState({ total: 0, inStart: 0, noClient: 0, noBoq: 0 })
 
   const reloadShared = useCallback(async () => {
     if (!tenant) return
@@ -31,7 +26,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
         .from('projects')
         .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
         .eq('tenant_id', tenant.id)
-        .eq('pmo_phase', '1_RECEIPT')
+        .in('pmo_phase', SEC_PMO_PHASES)
         .order('created_at', { ascending: false }),
       supabase.from('project_types')
         .select('id, code, name')
@@ -61,9 +56,9 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     if (!tenant) return
     const { data: phaseProjects } = await supabase
       .from('projects')
-      .select('id, client_id')
+      .select('id, client_id, pmo_phase')
       .eq('tenant_id', tenant.id)
-      .eq('pmo_phase', '1_RECEIPT')
+      .in('pmo_phase', SEC_PMO_PHASES)
 
     const list = phaseProjects || []
     const ids = list.map(p => p.id)
@@ -82,6 +77,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
     setKpis({
       total: list.length,
+      inStart: list.filter(p => p.pmo_phase === '1_RECEIPT').length,
       noClient: list.filter(p => !p.client_id).length,
       noBoq,
     })
@@ -95,7 +91,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
   useEffect(() => { reloadKpis() }, [pathname, reloadKpis])
 
-  const activeTab = TABS.find(t => pathname?.startsWith(t.href))
+  const isDetail = /\/projects\/initiation\/\d+/.test(pathname || '')
 
   return (
     <InitiationContext.Provider value={{
@@ -109,53 +105,39 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
       reloadKpis,
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-        <div>
-          <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Rocket style={{ width: '20px', height: '20px', color: '#1a56db' }} />
-            مرحلة بدء المشروع
-          </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-            تسجيل المشروع — أنواع مخصصة لكل مستأجر — الكميات الابتدائية
-          </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-          {[
-            { label: 'مشاريع في المرحلة', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
-            { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
-            { label: 'بدون كميات ابتدائية', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
-          ].map(kpi => (
-            <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label}</div>
+        {!isDetail && (
+          <>
+            <div>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Rocket style={{ width: '20px', height: '20px', color: '#1a56db' }} />
+                مرحلة بدء المشروع
+              </h1>
+              <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
+                تسجيل المشاريع — متابعة حالة كل مشروع حتى الإغلاق — الكميات من أيقونة بجانب كل مشروع
+              </p>
             </div>
-          ))}
-        </div>
 
-        <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content', flexWrap: 'wrap' }}>
-          {TABS.map(t => {
-            const active = pathname?.startsWith(t.href)
-            return (
-              <Link key={t.href} href={t.href}
-                style={{
-                  padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600,
-                  textDecoration: 'none', transition: 'all 0.2s',
-                  background: active ? t.color : 'transparent',
-                  color: active ? 'white' : 'var(--text3)',
-                  boxShadow: active ? `0 2px 8px ${t.color}44` : 'none',
-                }}>
-                {t.emoji} {t.label}
-              </Link>
-            )
-          })}
-        </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+              {[
+                { label: 'إجمالي المشاريع', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
+                { label: 'في مرحلة البدء', value: kpis.inStart, color: '#6b7280', bg: '#f9fafb' },
+                { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
+                { label: 'بدون كميات', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
+              ].map(kpi => (
+                <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+                  <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
             <div style={{
               width: '32px', height: '32px', border: '3px solid var(--border)',
-              borderTopColor: activeTab?.color || '#1a56db', borderRadius: '50%',
+              borderTopColor: '#1a56db', borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }} />
           </div>
