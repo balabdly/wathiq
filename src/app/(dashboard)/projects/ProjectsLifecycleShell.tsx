@@ -4,14 +4,14 @@ import { usePathname } from 'next/navigation'
 import { FolderOpen } from 'lucide-react'
 
 const TABS = [
+  { href: '/projects/monitoring', label: 'لوحة المتابعة', emoji: '📊', color: '#7c3aed', match: (p: string) => p.startsWith('/projects/monitoring') || p === '/projects' },
   { href: '/projects/initiation/projects', label: 'مرحلة البدء', emoji: '🚀', color: '#1a56db', match: (p: string) => p.startsWith('/projects/initiation') },
   { href: '/projects/planning', label: 'مرحلة التخطيط', emoji: '📋', color: '#0ea77b', match: (p: string) => p.startsWith('/projects/planning') && !/\/planning\/\d+/.test(p) },
   { href: '/projects/execution', label: 'مرحلة التنفيذ', emoji: '🏗️', color: '#e6820a', match: (p: string) => p.startsWith('/projects/execution') && !/\/execution\/\d+/.test(p) },
-  { href: '/projects', label: 'لوحة المتابعة', emoji: '📊', color: '#7c3aed', match: (p: string) => p === '/projects' },
 ]
 
 export function showProjectsLifecycleShell(pathname: string): boolean {
-  if (pathname === '/projects') return true
+  if (pathname === '/projects' || pathname.startsWith('/projects/monitoring')) return true
   const excluded = ['/projects/tasks', '/projects/teams', '/projects/lessons', '/projects/risks', '/projects/field-memos', '/projects/framework']
   if (excluded.some(p => pathname.startsWith(p))) return false
   if (pathname.startsWith('/projects/initiation')) {
@@ -37,7 +37,7 @@ export default function ProjectsLifecycleShell({ children }: { children: React.R
           المشاريع
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-          سلال المراحل — البدء ← التخطيط ← التنفيذ — ولوحة متابعة للمشاريع النشطة
+          متابعة — بدء — تخطيط — تنفيذ
         </p>
       </div>
 

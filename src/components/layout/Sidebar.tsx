@@ -254,6 +254,7 @@ export default function Sidebar() {
   const hasTeams     = hasProjects
   const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/execution','/projects/field-memos','/projects/framework'].some(p => pathname === p || pathname.startsWith(p+'/'))
   const lifecycleActive = pathname === '/projects'
+    || pathname.startsWith('/projects/monitoring')
     || pathname.startsWith('/projects/initiation')
     || (pathname.startsWith('/projects/planning') && !/\/planning\/\d+/.test(pathname))
     || (pathname.startsWith('/projects/execution') && !/\/execution\/\d+/.test(pathname))
@@ -344,7 +345,7 @@ export default function Sidebar() {
         {(hasProjects || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
-            {hasProjects   && <SubLink href="/projects/initiation/projects" label="المشاريع"          icon={IC.projects}   active={lifecycleActive} />}
+            {hasProjects   && <SubLink href="/projects/monitoring" label="المشاريع"          icon={IC.projects}   active={lifecycleActive} />}
             {hasTeams      && <SubLink href="/projects/teams"    label="الفريق والمهام"  icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}
