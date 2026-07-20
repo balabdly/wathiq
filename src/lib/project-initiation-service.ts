@@ -49,7 +49,7 @@ export async function fetchInitiationBasketProjects(tenantId: string) {
 export async function completeProjectInitiation(
   tenantId: string,
   projectId: number,
-  project?: { start_date?: string; end_date?: string; client_id?: number | null },
+  project?: { pmo_phase?: string; start_date?: string; end_date?: string; client_id?: number | null },
 ) {
   let p = project
   if (!p) {

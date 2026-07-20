@@ -6,7 +6,7 @@ export type InitiationProject = {
   id: number
   name: string
   code?: string
-  client_id?: number
+  client_id?: number | null
   client_name?: string
   type?: string
   status?: string
