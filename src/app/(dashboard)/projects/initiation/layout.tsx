@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
 import { SEC_PMO_PHASES } from '@/lib/project-phase-display'
-import { Rocket } from 'lucide-react'
 import { InitiationContext, type InitiationProject, type FrameworkBoqRow } from './InitiationContext'
 
 export default function InitiationLayout({ children }: { children: React.ReactNode }) {
@@ -106,31 +105,19 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {!isDetail && (
-          <>
-            <div>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Rocket style={{ width: '20px', height: '20px', color: '#1a56db' }} />
-                مرحلة بدء المشروع
-              </h1>
-              <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-                تسجيل المشاريع — متابعة حالة كل مشروع حتى الإغلاق — الكميات من أيقونة بجانب كل مشروع
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-              {[
-                { label: 'إجمالي المشاريع', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
-                { label: 'في مرحلة البدء', value: kpis.inStart, color: '#6b7280', bg: '#f9fafb' },
-                { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
-                { label: 'بدون كميات', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
-              ].map(kpi => (
-                <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label}</div>
-                </div>
-              ))}
-            </div>
-          </>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            {[
+              { label: 'إجمالي المشاريع', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
+              { label: 'في مرحلة البدء', value: kpis.inStart, color: '#6b7280', bg: '#f9fafb' },
+              { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
+              { label: 'بدون كميات', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
+            ].map(kpi => (
+              <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+                <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{kpi.label}</div>
+              </div>
+            ))}
+          </div>
         )}
 
         {loading ? (

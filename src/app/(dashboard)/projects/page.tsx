@@ -995,15 +995,9 @@ export default function ProjectsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FolderOpen style={{ width: '22px', height: '22px', color: '#1a56db' }} />
-            المشاريع
-          </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>{projects.length} مشروع إجمالاً</p>
-        </div>
+      {/* أدوات اللوحة */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>{projects.length} مشروع — Kanban / قائمة / شبكة</p>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {canEdit && (
             <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">

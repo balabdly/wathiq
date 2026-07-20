@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { fetchAllPlanningProjects } from '@/lib/project-planning-service'
-import { ClipboardList } from 'lucide-react'
 import { PlanningContext, type PlanningContextValue } from './PlanningContext'
 
 export default function PlanningLayout({ children }: { children: React.ReactNode }) {
@@ -61,29 +60,21 @@ export default function PlanningLayout({ children }: { children: React.ReactNode
   return (
     <PlanningContext.Provider value={ctx}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <ClipboardList style={{ width: '20px', height: '20px', color: '#0ea77b' }} />
-            مرحلة تخطيط المشروع
-          </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-            متابعة خطط المشاريع — المواد — التصريح — الزمني — السلامة — الجودة — التكاليف
-          </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-          {[
-            { label: 'إجمالي المشاريع', value: kpis.total, color: '#0ea77b', bg: '#ecfdf5' },
-            { label: 'قيد التخطيط', value: kpis.inPlanning, color: '#1a56db', bg: '#eff6ff' },
-            { label: 'بخطط مسجّلة', value: kpis.withPlans, color: '#7c3aed', bg: '#f5f3ff' },
-            { label: 'انتقلت للتنفيذ', value: kpis.inExecution, color: '#e6820a', bg: '#fffbeb' },
-          ].map(k => (
-            <div key={k.label} className="card" style={{ padding: '16px', background: k.bg }}>
-              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: k.color }}>{k.value}</div>
-              <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{k.label}</div>
-            </div>
-          ))}
-        </div>
+        {!isProjectDetail && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            {[
+              { label: 'إجمالي المشاريع', value: kpis.total, color: '#0ea77b', bg: '#ecfdf5' },
+              { label: 'قيد التخطيط', value: kpis.inPlanning, color: '#1a56db', bg: '#eff6ff' },
+              { label: 'بخطط مسجّلة', value: kpis.withPlans, color: '#7c3aed', bg: '#f5f3ff' },
+              { label: 'انتقلت للتنفيذ', value: kpis.inExecution, color: '#e6820a', bg: '#fffbeb' },
+            ].map(k => (
+              <div key={k.label} className="card" style={{ padding: '16px', background: k.bg }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: k.color }}>{k.value}</div>
+                <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
