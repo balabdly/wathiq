@@ -2,9 +2,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Send, Upload, Users } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, RotateCcw, Send, Upload, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
+import { reopenProjectPlanning } from '@/lib/project-planning-service'
 import {
   fetchExecutionProject,
   fetchActiveTeams,
@@ -45,6 +46,7 @@ export default function ExecutionProjectPage() {
   const [notes, setNotes] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
+  const [reopening, setReopening] = useState(false)
 
   const reload = useCallback(async () => {
     if (!tenant) return
@@ -126,6 +128,27 @@ export default function ExecutionProjectPage() {
     setSaving(false)
   }
 
+  async function handleReopenPlanning() {
+    if (!tenant) return
+    const msg = [
+      'إرجاع المشروع إلى مرحلة التخطيط؟',
+      '',
+      '• يُلغى إسناد الفريق',
+      '• يُعاد فتح التخطيط للتعديل',
+      '• سجل الإنجاز اليومي يبقى محفوظاً',
+    ].join('\n')
+    if (!confirm(msg)) return
+    setReopening(true)
+    try {
+      await reopenProjectPlanning(tenant.id, projectId)
+      toast.success('تم إرجاع المشروع إلى التخطيط')
+      router.push('/projects/planning')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
+    }
+    setReopening(false)
+  }
+
   if (loading || !project) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
@@ -154,6 +177,18 @@ export default function ExecutionProjectPage() {
         </div>
         {project.planningProgress && (
           <PlanningProgressBadge progress={project.planningProgress} />
+        )}
+        {canEdit && project.pmo_phase === '3_EXEC' && (
+          <button
+            onClick={handleReopenPlanning}
+            disabled={reopening}
+            className="btn btn-ghost"
+            style={{ fontSize: '0.78rem', color: '#0ea77b', border: '1px solid #86efac', marginRight: 'auto' }}
+            title="تصحيح — إرجاع للتخطيط"
+          >
+            <RotateCcw style={{ width: '14px', height: '14px' }} />
+            {reopening ? 'جاري الإرجاع...' : 'إرجاع للتخطيط'}
+          </button>
         )}
       </div>
 

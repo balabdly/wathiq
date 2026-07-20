@@ -1,7 +1,6 @@
-﻿'use client'
+'use client'
 import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import Link from 'next/link'
 import ProjectModal  from '@/components/projects/ProjectModal'
 import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
@@ -34,38 +33,38 @@ type Task = {
 import toast from 'react-hot-toast'
 
 const PROJECT_TYPES: { code: string; name: string }[] = [
-  { code: '801',   name: '┘à╪┤╪د╪▒┘è╪╣ ╪د┘╪▒╪ذ╪╖ ╪د┘┘â┘ç╪▒╪ذ╪د╪خ┘è 801' },
-  { code: '802',   name: '┘à╪┤╪د╪▒┘è╪╣ ╪د┘╪ز┘ê╪▓┘è╪╣ 802' },
-  { code: '405',   name: '┘à╪┤╪د╪▒┘è╪╣ ┘â┘ç╪▒╪ذ╪د╪ة 405' },
-  { code: '441',   name: '┘à╪┤╪د╪▒┘è╪╣ ╪د┘┘à╪ص┘ê┘╪د╪ز 441' },
-  { code: '442',   name: '┘à╪ص╪╖╪د╪ز ╪د┘╪ز┘ê╪▓┘è╪╣ 442' },
-  { code: '805',   name: '┘à╪┤╪د╪▒┘è╪╣ ╪د┘┘┘é┘ 805' },
-  { code: 'O&M',   name: '╪╡┘è╪د┘╪ر ┘ê╪ز╪┤╪║┘è┘ O&M' },
-  { code: 'EPC',   name: '┘ç┘╪»╪│╪ر ┘ê╪ز┘ê╪▒┘è╪» ┘ê╪ز┘┘┘è╪░ EPC' },
-  { code: 'CIVIL', name: '╪ث╪╣┘à╪د┘ ┘à╪»┘┘è╪ر' },
-  { code: 'OTHER', name: '╪ث╪«╪▒┘ë' },
+  { code: '801',   name: 'مشاريع الربط الكهربائي 801' },
+  { code: '802',   name: 'مشاريع التوزيع 802' },
+  { code: '405',   name: 'مشاريع كهرباء 405' },
+  { code: '441',   name: 'مشاريع المحولات 441' },
+  { code: '442',   name: 'محطات التوزيع 442' },
+  { code: '805',   name: 'مشاريع النقل 805' },
+  { code: 'O&M',   name: 'صيانة وتشغيل O&M' },
+  { code: 'EPC',   name: 'هندسة وتوريد وتنفيذ EPC' },
+  { code: 'CIVIL', name: 'أعمال مدنية' },
+  { code: 'OTHER', name: 'أخرى' },
 ]
 const TYPE_NAME: Record<string, string> = Object.fromEntries(PROJECT_TYPES.map(t => [t.code, t.name]))
 
 const COLUMNS = [
-  { id: '╪ز╪ص╪ز ╪د┘╪ز╪«╪╖┘è╪╖', label: '╪ز╪ص╪ز ╪د┘╪ز╪«╪╖┘è╪╖', icon: '≡اôï', color: '#6b7280', bg: '#f9fafb',  border: '#e5e7eb', autoProgress: 0   },
-  { id: '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░',  label: '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░',  icon: '≡ا¤', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', autoProgress: 10  },
-  { id: '┘é┘è╪» ╪د┘╪ح╪║┘╪د┘é',  label: '┘é┘è╪» ╪د┘╪ح╪║┘╪د┘é',  icon: '≡ا¤ْ', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', autoProgress: 60  },
-  { id: '┘à┘â╪ز┘à┘',        label: '┘à┘â╪ز┘à┘',         icon: 'ظ£à', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', autoProgress: 100 },
-  { id: '┘à╪ز╪ث╪«╪▒',        label: '┘à╪ز╪ث╪«╪▒',         icon: 'ظأبي╕', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5', autoProgress: null },
-  { id: '┘à┘ê┘é┘ê┘',        label: '┘à┘ê┘é┘ê┘',          icon: '≡اأس', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d', autoProgress: null },
-  { id: '┘à┘╪║┘è',         label: '┘à┘╪║┘è',           icon: 'ظإî', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
+  { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb',  border: '#e5e7eb', autoProgress: 0   },
+  { id: 'قيد التنفيذ',  label: 'قيد التنفيذ',  icon: '🔄', color: '#1a56db', bg: '#eff6ff', border: '#bfdbfe', autoProgress: 10  },
+  { id: 'قيد الإغلاق',  label: 'قيد الإغلاق',  icon: '🔒', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', autoProgress: 60  },
+  { id: 'مكتمل',        label: 'مكتمل',         icon: '✅', color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', autoProgress: 100 },
+  { id: 'متأخر',        label: 'متأخر',         icon: '⚠️', color: '#c81e1e', bg: '#fef2f2', border: '#fca5a5', autoProgress: null },
+  { id: 'موقوف',        label: 'موقوف',          icon: '🚫', color: '#e6820a', bg: '#fffbeb', border: '#fcd34d', autoProgress: null },
+  { id: 'ملغي',         label: 'ملغي',           icon: '❌', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
 ]
 
 function getStatusColor(p: Project): string {
   const status = p.status as string
   const days   = daysUntil(p.end_date)
-  if (p.progress >= 100 || status === '┘à┘â╪ز┘à┘')                                       return 'badge-green'
-  if (status === '┘à╪ز╪ث╪«╪▒' || (days !== null && days < 0 && status === '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░')) return 'badge-red'
-  if (status === '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░')                                                       return 'badge-blue'
-  if (status === '┘é┘è╪» ╪د┘╪ح╪║┘╪د┘é')                                                       return 'badge-closing'
-  if (status === '┘à┘ê┘é┘ê┘')                                                              return 'badge-amber'
-  if (status === '┘à┘╪║┘è')                                                               return 'badge-gray'
+  if (p.progress >= 100 || status === 'مكتمل')                                       return 'badge-green'
+  if (status === 'متأخر' || (days !== null && days < 0 && status === 'قيد التنفيذ')) return 'badge-red'
+  if (status === 'قيد التنفيذ')                                                       return 'badge-blue'
+  if (status === 'قيد الإغلاق')                                                       return 'badge-closing'
+  if (status === 'موقوف')                                                              return 'badge-amber'
+  if (status === 'ملغي')                                                               return 'badge-gray'
   return 'badge-gray'
 }
 
@@ -82,9 +81,9 @@ function getCurrentStage(p: Project) {
   return PROJECT_STAGES[0]
 }
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// ┘à┘ê╪»╪د┘ ╪ح╪╢╪د┘╪ر ┘à┘╪د╪ص╪╕╪ر
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
+// ══════════════════════════════════════
+// مودال إضافة ملاحظة
+// ══════════════════════════════════════
 function NoteModal({ project, onClose, onSave }: {
   project: Project; onClose: () => void; onSave: (note: string) => Promise<void>
 }) {
@@ -103,7 +102,7 @@ function NoteModal({ project, onClose, onSave }: {
     onClose()
   }
 
-  const notes = (project.history || []).filter(h => h.includes('≡اôإ')).slice(-5).reverse()
+  const notes = (project.history || []).filter(h => h.includes('📝')).slice(-5).reverse()
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => { (e.currentTarget as any)._md = e.target }} onClick={(e) => { if (e.target === e.currentTarget && (e.currentTarget as any)._md === e.currentTarget) onClose() }} style={{ zIndex: 60 }}>
@@ -111,7 +110,7 @@ function NoteModal({ project, onClose, onSave }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <StickyNote style={{ width: '18px', height: '18px', color: '#e6820a' }} />
-            ╪ح╪╢╪د┘╪ر ┘à┘╪د╪ص╪╕╪ر ظ¤ {project.name}
+            إضافة ملاحظة — {project.name}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
             <X style={{ width: '18px', height: '18px' }} />
@@ -121,10 +120,10 @@ function NoteModal({ project, onClose, onSave }: {
           <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <textarea ref={textRef} value={text} onChange={e => setText(e.target.value)}
               className="input" style={{ minHeight: '100px', resize: 'none' }}
-              placeholder="╪د┘â╪ز╪ذ ┘à┘╪د╪ص╪╕╪ز┘â ┘ç┘╪د..." />
+              placeholder="اكتب ملاحظتك هنا..." />
             {notes.length > 0 && (
               <div>
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '6px' }}>╪ت╪«╪▒ ╪د┘┘à┘╪د╪ص╪╕╪د╪ز:</div>
+                <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginBottom: '6px' }}>آخر الملاحظات:</div>
                 {notes.map((n, i) => (
                   <div key={i} style={{ fontSize: '0.78rem', color: '#6b7280', padding: '5px 10px', background: '#f9fafb', borderRadius: '6px', marginBottom: '4px' }}>{n}</div>
                 ))}
@@ -132,10 +131,10 @@ function NoteModal({ project, onClose, onSave }: {
             )}
           </div>
           <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-ghost">╪ح┘╪║╪د╪ة</button>
+            <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
             <button type="submit" disabled={saving || !text.trim()} className="btn btn-primary" style={{ background: '#e6820a' }}>
               {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Send style={{ width: '14px', height: '14px' }} />}
-              ╪ص┘╪╕ ╪د┘┘à┘╪د╪ص╪╕╪ر
+              حفظ الملاحظة
             </button>
           </div>
         </form>
@@ -144,9 +143,9 @@ function NoteModal({ project, onClose, onSave }: {
   )
 }
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// ╪▓╪▒ ╪د┘╪ح╪╢╪د┘╪ر ╪د┘╪│╪▒┘è╪╣╪ر (+) ظ¤ ┘à┘╪د╪ص╪╕╪ر / ╪▓┘è╪د╪▒╪ر QHSE / ┘à┘ç┘à╪ر
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
+// ══════════════════════════════════════
+// زر الإضافة السريعة (+) — ملاحظة / زيارة QHSE / مهمة
+// ══════════════════════════════════════
 function QuickAddButton({ project, onNote, onTask, onQhse }: {
   project: Project
   onNote:  () => void
@@ -156,7 +155,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
   const [open, setOpen] = useState(false)
   const [qhseOpen, setQhseOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const noteCount = (project.history || []).filter(h => h.includes('≡اôإ')).length
+  const noteCount = (project.history || []).filter(h => h.includes('📝')).length
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -190,7 +189,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100, minWidth: '160px',
           overflow: 'hidden',
         }}>
-          {/* ┘à┘╪د╪ص╪╕╪ر */}
+          {/* ملاحظة */}
           <button onClick={() => { setOpen(false); onNote() }}
             style={{ width: '100%', padding: '9px 14px', border: 'none', background: 'white', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600,
@@ -198,10 +197,10 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
             onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
             onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
             <span style={{ color: '#e6820a' }}><MessageSquarePlus style={{ width: '14px', height: '14px' }} /></span>
-            ┘à┘╪د╪ص╪╕╪ر
+            ملاحظة
           </button>
 
-          {/* ╪▓┘è╪د╪▒╪ر QHSE ظ¤ ┘é╪د╪خ┘à╪ر ┘╪▒╪╣┘è╪ر */}
+          {/* زيارة QHSE — قائمة فرعية */}
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setQhseOpen(o => !o)}
@@ -212,7 +211,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
               onMouseLeave={e => (e.currentTarget.style.background = qhseOpen ? '#f9fafb' : 'white')}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#1a56db' }}><MapPin style={{ width: '14px', height: '14px' }} /></span>
-                ╪▓┘è╪د╪▒╪ر
+                زيارة
               </div>
               <ChevronDown style={{ width: '10px', height: '10px', transform: qhseOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
             </button>
@@ -220,9 +219,9 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
             {qhseOpen && (
               <div style={{ background: '#f8fafc', borderTop: '1px solid #f1f5f9' }}>
                 {[
-                  { label: '≡اؤةي╕ ╪▓┘è╪د╪▒╪ر ╪│┘╪د┘à╪ر', type: 'safety_inspection',   color: '#e6820a' },
-                  { label: '≡ا¤ ╪▓┘è╪د╪▒╪ر ╪ش┘ê╪»╪ر',   type: 'quality_inspection',  color: '#1a56db' },
-                  { label: '≡اî┐ ╪▓┘è╪د╪▒╪ر ╪ذ┘è╪خ┘è╪ر',  type: 'env_inspection',      color: '#059669' },
+                  { label: '🛡️ زيارة سلامة', type: 'safety_inspection',   color: '#e6820a' },
+                  { label: '🔍 زيارة جودة',   type: 'quality_inspection',  color: '#1a56db' },
+                  { label: '🌿 زيارة بيئية',  type: 'env_inspection',      color: '#059669' },
                 ].map(item => (
                   <button key={item.type}
                     onClick={() => { setOpen(false); setQhseOpen(false); onQhse(item.type) }}
@@ -238,7 +237,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
             )}
           </div>
 
-          {/* ┘à┘ç┘à╪ر */}
+          {/* مهمة */}
           <button onClick={() => { setOpen(false); onTask() }}
             style={{ width: '100%', padding: '9px 14px', border: 'none', background: 'white', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600,
@@ -246,7 +245,7 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
             onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
             onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
             <span style={{ color: '#7c3aed' }}><ClipboardList style={{ width: '14px', height: '14px' }} /></span>
-            ┘à┘ç┘à╪ر
+            مهمة
           </button>
         </div>
       )}
@@ -256,29 +255,29 @@ function QuickAddButton({ project, onNote, onTask, onQhse }: {
 
 
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// ┘à┘ê╪»╪د┘ ╪ح╪╢╪د┘╪ر ╪▓┘è╪د╪▒╪ر ╪│╪▒┘è╪╣╪ر
+// ══════════════════════════════════════
+// مودال إضافة زيارة سريعة
 
 const STATUS_STEPS = [
-  { id: '┘┘à ╪ز╪ذ╪»╪ث',     icon: <Circle style={{ width: '14px', height: '14px' }} />,       color: '#9ca3af', bg: '#f3f4f6' },
-  { id: '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░', icon: <Clock style={{ width: '14px', height: '14px' }} />,         color: '#1a56db', bg: '#eff6ff' },
-  { id: '┘à╪╣┘┘é╪ر',       icon: <AlertTriangle style={{ width: '14px', height: '14px' }} />, color: '#e6820a', bg: '#fffbeb' },
-  { id: '┘à┘â╪ز┘à┘╪ر',      icon: <CheckCircle2 style={{ width: '14px', height: '14px' }} />,  color: '#0ea77b', bg: '#ecfdf5' },
-  { id: '┘à┘╪║╪د╪ر',       icon: <X style={{ width: '14px', height: '14px' }} />,             color: '#6b7280', bg: '#f3f4f6' },
+  { id: 'لم تبدأ',     icon: <Circle style={{ width: '14px', height: '14px' }} />,       color: '#9ca3af', bg: '#f3f4f6' },
+  { id: 'قيد التنفيذ', icon: <Clock style={{ width: '14px', height: '14px' }} />,         color: '#1a56db', bg: '#eff6ff' },
+  { id: 'معلقة',       icon: <AlertTriangle style={{ width: '14px', height: '14px' }} />, color: '#e6820a', bg: '#fffbeb' },
+  { id: 'مكتملة',      icon: <CheckCircle2 style={{ width: '14px', height: '14px' }} />,  color: '#0ea77b', bg: '#ecfdf5' },
+  { id: 'ملغاة',       icon: <X style={{ width: '14px', height: '14px' }} />,             color: '#6b7280', bg: '#f3f4f6' },
 ]
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// TaskModal ظ¤ ┘à┘ê╪»╪د┘ ╪ح╪╢╪د┘╪ر/╪ز╪╣╪»┘è┘ ╪د┘┘à┘ç┘à╪ر
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
+// ══════════════════════════════════════
+// TaskModal — مودال إضافة/تعديل المهمة
+// ══════════════════════════════════════
 
 const lbl: React.CSSProperties = {
   display: 'block', fontSize: '0.875rem', fontWeight: 600,
   color: 'var(--text)', marginBottom: '6px'
 }
 const PRIORITY_COLOR: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  '╪╣╪د┘┘è':    { bg: '#fef2f2', color: '#c81e1e', border: '#fca5a5', label: '≡ا¤┤ ╪╣╪د┘┘è' },
-  '┘à╪ز┘ê╪│╪╖':   { bg: '#fffbeb', color: '#e6820a', border: '#fcd34d', label: '≡ااة ┘à╪ز┘ê╪│╪╖' },
-  '┘à┘╪«┘╪╢':   { bg: '#f0fdf4', color: '#0ea77b', border: '#86efac', label: '≡اات ┘à┘╪«┘╪╢' },
+  'عالي':    { bg: '#fef2f2', color: '#c81e1e', border: '#fca5a5', label: '🔴 عالي' },
+  'متوسط':   { bg: '#fffbeb', color: '#e6820a', border: '#fcd34d', label: '🟡 متوسط' },
+  'منخفض':   { bg: '#f0fdf4', color: '#0ea77b', border: '#86efac', label: '🟢 منخفض' },
 }
 
 function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId }: {
@@ -293,8 +292,8 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
     title:       task?.title       || '',
     description: task?.description || '',
     assignee:    task?.assignee    || '',
-    priority:    task?.priority    || '┘à╪ز┘ê╪│╪╖',
-    status:      task?.status      || '┘┘à ╪ز╪ذ╪»╪ث',
+    priority:    task?.priority    || 'متوسط',
+    status:      task?.status      || 'لم تبدأ',
     category:    task?.category    || '',
     start_date:  task?.start_date  || '',
     due_date:    task?.due_date    || '',
@@ -310,8 +309,8 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
   }, [tenantId, form.project_id, projects])
 
   async function handleSave() {
-    if (!form.title.trim())    { toast.error('╪╣┘┘ê╪د┘ ╪د┘┘à┘ç┘à╪ر ┘à╪╖┘┘ê╪ذ'); return }
-    if (!form.project_id)      { toast.error('┘è╪ش╪ذ ╪ز╪ص╪»┘è╪» ╪د┘┘à╪┤╪▒┘ê╪╣');   return }
+    if (!form.title.trim())    { toast.error('عنوان المهمة مطلوب'); return }
+    if (!form.project_id)      { toast.error('يجب تحديد المشروع');   return }
     setSaving(true)
     const payload: any = {
       tenant_id:   tenantId,
@@ -327,13 +326,13 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
       progress:    Number(form.progress),
       notes:       form.notes       || null,
     }
-    if (form.status === '┘à┘â╪ز┘à┘╪ر' && (!task || task.status !== '┘à┘â╪ز┘à┘╪ر')) {
+    if (form.status === 'مكتملة' && (!task || task.status !== 'مكتملة')) {
       payload.completed_at = new Date().toISOString()
       payload.progress = 100
     }
     if (task) await supabase.from('project_tasks').update(payload).eq('id', task.id)
     else      await supabase.from('project_tasks').insert(payload)
-    toast.success(task ? '╪ز┘à ╪د┘╪ز╪╣╪»┘è┘ ظ£à' : 'ظ£à ╪ز┘à╪ز ╪ح╪╢╪د┘╪ر ╪د┘┘à┘ç┘à╪ر')
+    toast.success(task ? 'تم التعديل ✅' : '✅ تمت إضافة المهمة')
     onSave(); setSaving(false)
   }
 
@@ -342,7 +341,7 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
       <div className="modal-box" style={{ maxWidth: '580px' }} onMouseDown={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>
-            {task ? 'ظ£ي╕ ╪ز╪╣╪»┘è┘ ╪د┘┘à┘ç┘à╪ر' : 'ظئـ ┘à┘ç┘à╪ر ╪ش╪»┘è╪»╪ر'}
+            {task ? '✏️ تعديل المهمة' : '➕ مهمة جديدة'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
             <X style={{ width: '18px', height: '18px' }} />
@@ -351,46 +350,46 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
 
           <div>
-            <label style={lbl}>╪د┘┘à╪┤╪▒┘ê╪╣ <span style={{ color: '#c81e1e' }}>*</span></label>
+            <label style={lbl}>المشروع <span style={{ color: '#c81e1e' }}>*</span></label>
             <select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select">
-              <option value="">ظ¤ ╪د╪«╪ز╪▒ ╪د┘┘à╪┤╪▒┘ê╪╣ ظ¤</option>
+              <option value="">— اختر المشروع —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>)}
             </select>
           </div>
 
           <div>
-            <label style={lbl}>╪╣┘┘ê╪د┘ ╪د┘┘à┘ç┘à╪ر <span style={{ color: '#c81e1e' }}>*</span></label>
-            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="┘ê╪╡┘ ┘à╪«╪ز╪╡╪▒ ┘┘┘à┘ç┘à╪ر..." />
+            <label style={lbl}>عنوان المهمة <span style={{ color: '#c81e1e' }}>*</span></label>
+            <input value={form.title} onChange={e => set('title', e.target.value)} className="input" placeholder="وصف مختصر للمهمة..." />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={lbl}>╪د┘┘à╪│╪ج┘ê┘</label>
+              <label style={lbl}>المسؤول</label>
               {assignees.length === 0 ? (
-                <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="╪د╪│┘à ╪د┘┘à┘ç┘╪»╪│" />
+                <input value={form.assignee} onChange={e => set('assignee', e.target.value)} className="input" placeholder="اسم المهندس" />
               ) : (
                 <select value={form.assignee} onChange={e => set('assignee', e.target.value)} className="select">
-                  <option value="">ظ¤ ╪د╪«╪ز╪▒ ┘à┘ ╪د┘┘╪▒┘è┘é ظ¤</option>
+                  <option value="">— اختر من الفريق —</option>
                   {assignees.map(m => (
                     <option key={m.id} value={m.name}>
-                      {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` ظ¤ ${m.job_title}` : ''}
+                      {m.name}{m.role_in_team ? ` (${m.role_in_team})` : m.job_title ? ` — ${m.job_title}` : ''}
                     </option>
                   ))}
                 </select>
               )}
             </div>
             <div>
-              <label style={lbl}>╪د┘╪ز╪╡┘┘è┘</label>
+              <label style={lbl}>التصنيف</label>
               <select value={form.category} onChange={e => set('category', e.target.value)} className="select">
-                <option value="">ظ¤ ╪د╪«╪ز╪▒ ظ¤</option>
-                {['╪ز╪╡┘à┘è┘à', '╪ز┘┘┘è╪░', '╪ح╪»╪د╪▒┘è', '╪│┘╪د┘à╪ر', '╪ش┘ê╪»╪ر', '┘à╪┤╪ز╪▒┘è╪د╪ز', '╪ث╪«╪▒┘ë'].map(c => <option key={c}>{c}</option>)}
+                <option value="">— اختر —</option>
+                {['تصميم', 'تنفيذ', 'إداري', 'سلامة', 'جودة', 'مشتريات', 'أخرى'].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
 
-          {/* ╪د┘╪ث┘ê┘┘ê┘è╪ر */}
+          {/* الأولوية */}
           <div>
-            <label style={lbl}>╪د┘╪ث┘ê┘┘ê┘è╪ر</label>
+            <label style={lbl}>الأولوية</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               {Object.entries(PRIORITY_COLOR).map(([k, v]) => (
                 <button key={k} type="button" onClick={() => set('priority', k)}
@@ -404,9 +403,9 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
             </div>
           </div>
 
-          {/* ╪د┘╪ص╪د┘╪ر */}
+          {/* الحالة */}
           <div>
-            <label style={lbl}>╪د┘╪ص╪د┘╪ر</label>
+            <label style={lbl}>الحالة</label>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {STATUS_STEPS.map(s => (
                 <button key={s.id} type="button" onClick={() => set('status', s.id)}
@@ -422,34 +421,34 @@ function TaskModal({ task, projects, tenantId, onClose, onSave, defaultProjectId
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
-              <label style={lbl}>╪ز╪د╪▒┘è╪« ╪د┘╪ذ╪»╪ة</label>
+              <label style={lbl}>تاريخ البدء</label>
               <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input" />
             </div>
             <div>
-              <label style={lbl}>╪ز╪د╪▒┘è╪« ╪د┘╪د╪│╪ز╪ص┘é╪د┘é</label>
+              <label style={lbl}>تاريخ الاستحقاق</label>
               <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} className="input" />
             </div>
           </div>
 
           <div>
-            <label style={lbl}>┘╪│╪ذ╪ر ╪د┘╪ح┘╪ش╪د╪▓: <strong>{form.progress}%</strong></label>
+            <label style={lbl}>نسبة الإنجاز: <strong>{form.progress}%</strong></label>
             <input type="range" min={0} max={100} step={5} value={form.progress}
               onChange={e => set('progress', e.target.value)}
               style={{ width: '100%', accentColor: 'var(--primary)' }} />
           </div>
 
           <div>
-            <label style={lbl}>╪د┘┘ê╪╡┘ ┘ê╪د┘╪ز┘╪د╪╡┘è┘</label>
+            <label style={lbl}>الوصف والتفاصيل</label>
             <textarea value={form.description} onChange={e => set('description', e.target.value)}
-              className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="╪ز┘╪د╪╡┘è┘ ╪د┘┘à┘ç┘à╪ر..." />
+              className="input" style={{ minHeight: '70px', resize: 'none' }} placeholder="تفاصيل المهمة..." />
           </div>
 
         </div>
         <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-ghost">╪ح┘╪║╪د╪ة</button>
+          <button onClick={onClose} className="btn btn-ghost">إلغاء</button>
           <button onClick={handleSave} disabled={saving} className="btn btn-primary">
             {saving ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} /> : <Save style={{ width: '14px', height: '14px' }} />}
-            {task ? '╪ص┘╪╕ ╪د┘╪ز╪╣╪»┘è┘' : '╪ح╪╢╪د┘╪ر ╪د┘┘à┘ç┘à╪ر'}
+            {task ? 'حفظ التعديل' : 'إضافة المهمة'}
           </button>
         </div>
       </div>
@@ -479,15 +478,15 @@ function ManageTypesModal({ tenantId, onClose }: {
   }
 
   async function handleAdd() {
-    if (!newName.trim()) { toast.error('╪د╪│┘à ╪د┘┘┘ê╪╣ ┘à╪╖┘┘ê╪ذ'); return }
+    if (!newName.trim()) { toast.error('اسم النوع مطلوب'); return }
     setSaving(true)
     const code = newName.trim().substring(0, 20)
     const { error } = await supabase.from('project_types')
       .insert({ tenant_id: tenantId, code, name: newName.trim() })
-    if (error) { toast.error(error.code === '23505' ? '┘ç╪░╪د ╪د┘┘┘ê╪╣ ┘à┘ê╪ش┘ê╪» ┘à╪│╪ذ┘é╪د┘ï' : '╪«╪╖╪ث ┘┘è ╪د┘╪ص┘╪╕'); setSaving(false); return }
+    if (error) { toast.error(error.code === '23505' ? 'هذا النوع موجود مسبقاً' : 'خطأ في الحفظ'); setSaving(false); return }
     setNewName('')
     await loadTypes()
-    toast.success('ظ£à ╪ز┘à╪ز ╪د┘╪ح╪╢╪د┘╪ر')
+    toast.success('✅ تمت الإضافة')
     setSaving(false)
   }
 
@@ -496,14 +495,14 @@ function ManageTypesModal({ tenantId, onClose }: {
     await supabase.from('project_types').update({ name: editName.trim(), code: editName.trim().substring(0, 20) }).eq('id', id)
     setEditId(null); setEditName('')
     await loadTypes()
-    toast.success('╪ز┘à ╪د┘╪ز╪╣╪»┘è┘ ظ£à')
+    toast.success('تم التعديل ✅')
   }
 
   async function handleDelete(id: number, name: string) {
-    if (!confirm(`╪ص╪░┘ ╪د┘┘┘ê╪╣ "${name}"╪ا`)) return
+    if (!confirm(`حذف النوع "${name}"؟`)) return
     await supabase.from('project_types').update({ is_active: false }).eq('id', id)
     await loadTypes()
-    toast.success('╪ز┘à ╪د┘╪ص╪░┘')
+    toast.success('تم الحذف')
   }
 
   return (
@@ -512,7 +511,7 @@ function ManageTypesModal({ tenantId, onClose }: {
         <div className="modal-header">
           <h3 style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Tag style={{ width: '18px', height: '18px', color: '#7c3aed' }} />
-            ╪ح╪»╪د╪▒╪ر ╪ث┘┘ê╪د╪╣ ╪د┘┘à╪┤╪د╪▒┘è╪╣
+            إدارة أنواع المشاريع
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)' }}>
             <X style={{ width: '18px', height: '18px' }} />
@@ -520,34 +519,34 @@ function ManageTypesModal({ tenantId, onClose }: {
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-          {/* ╪ز┘ê╪╢┘è╪ص */}
+          {/* توضيح */}
           <div style={{ background: '#f5f3ff', borderRadius: '10px', padding: '12px 14px', border: '1px solid #ddd6fe', fontSize: '0.82rem', color: '#5b21b6', lineHeight: 1.6 }}>
-            <div style={{ fontWeight: 700, marginBottom: '4px' }}>≡اْة ╪ز┘ê╪╢┘è╪ص</div>
-            ╪ث┘┘ê╪د╪╣ ╪د┘┘à╪┤╪د╪▒┘è╪╣ ╪ز┘╪│╪ز╪«╪»┘à ┘┘╪ز╪╡┘┘è┘ ┘ê╪د┘╪ز┘é╪د╪▒┘è╪▒ ظ¤ ┘à╪س┘ ┘à╪▒╪د┘â╪▓ ╪د┘╪ز┘â┘┘╪ر.
+            <div style={{ fontWeight: 700, marginBottom: '4px' }}>💡 توضيح</div>
+            أنواع المشاريع تُستخدم للتصنيف والتقارير — مثل مراكز التكلفة.
             <br />
-            <span style={{ opacity: 0.8 }}>┘à╪س╪د┘: <strong>┘à╪┤╪▒┘ê╪╣ 405</strong> ╪ث┘ê <strong>╪╡┘è╪د┘╪ر ╪»┘ê╪▒┘è╪ر</strong> ╪ث┘ê <strong>╪ز┘ê╪│╪╣╪ر ╪┤╪ذ┘â╪ر</strong></span>
+            <span style={{ opacity: 0.8 }}>مثال: <strong>مشروع 405</strong> أو <strong>صيانة دورية</strong> أو <strong>توسعة شبكة</strong></span>
           </div>
 
-          {/* ╪ح╪╢╪د┘╪ر ┘┘ê╪╣ ╪ش╪»┘è╪» */}
+          {/* إضافة نوع جديد */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <input
               value={newName} onChange={e => setNewName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
-              className="input" placeholder="╪د┘â╪ز╪ذ ╪د╪│┘à ╪د┘┘┘ê╪╣ ╪د┘╪ش╪»┘è╪»..." style={{ flex: 1 }} />
+              className="input" placeholder="اكتب اسم النوع الجديد..." style={{ flex: 1 }} />
             <button onClick={handleAdd} disabled={saving || !newName.trim()} className="btn btn-primary" style={{ background: '#7c3aed', whiteSpace: 'nowrap' }}>
               {saving
                 ? <span style={{ width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
                 : <Plus style={{ width: '15px', height: '15px' }} />}
-              ╪ح╪╢╪د┘╪ر
+              إضافة
             </button>
           </div>
 
-          {/* ┘é╪د╪خ┘à╪ر ╪د┘╪ث┘┘ê╪د╪╣ */}
+          {/* قائمة الأنواع */}
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>╪ش╪د╪▒┘è ╪د┘╪ز╪ص┘à┘è┘...</div>
+            <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>جاري التحميل...</div>
           ) : types.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af', background: '#f9fafb', borderRadius: '10px', fontSize: '0.875rem' }}>
-              ┘╪د ╪ز┘ê╪ش╪» ╪ث┘┘ê╪د╪╣ ╪ذ╪╣╪» ظ¤ ╪ث╪╢┘ ╪ث┘ê┘ ┘┘ê╪╣
+              لا توجد أنواع بعد — أضف أول نوع
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
@@ -560,7 +559,7 @@ function ManageTypesModal({ tenantId, onClose }: {
                         className="input" style={{ flex: 1, padding: '5px 10px' }} autoFocus />
                       <button onClick={() => handleEdit(t.id)}
                         style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #bbf7d0', background: '#ecfdf5', color: '#0ea77b', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}>
-                        ╪ص┘╪╕
+                        حفظ
                       </button>
                       <button onClick={() => { setEditId(null); setEditName('') }}
                         style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', color: '#9ca3af', cursor: 'pointer' }}>
@@ -586,7 +585,7 @@ function ManageTypesModal({ tenantId, onClose }: {
           )}
         </div>
         <div className="modal-footer">
-          <button onClick={onClose} className="btn btn-primary" style={{ background: '#7c3aed' }}>╪ز┘à</button>
+          <button onClick={onClose} className="btn btn-primary" style={{ background: '#7c3aed' }}>تم</button>
         </div>
       </div>
     </div>
@@ -594,9 +593,9 @@ function ManageTypesModal({ tenantId, onClose }: {
 }
 
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// ╪ذ╪╖╪د┘é╪ر Kanban
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
+// ══════════════════════════════════════
+// بطاقة Kanban
+// ══════════════════════════════════════
 function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
   p: Project; teamName?: string; canEdit: boolean; lockPhase?: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
@@ -614,42 +613,42 @@ function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit,
       onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)')}
       onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
 
-      {/* ╪د┘╪ث┘â┘ê╪د╪» + ╪د┘╪ص╪د┘╪ر */}
+      {/* الأكواد + الحالة */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '5px', flexWrap: 'wrap' }}>
         {p.code && <span className="badge badge-gray" style={{ fontSize: '0.65rem' }}>{p.code}</span>}
         {p.type && <span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{TYPE_NAME[p.type] || p.type}</span>}
       </div>
 
-      {/* ╪ح╪┤╪╣╪د╪▒ ╪د┘┘à┘ê╪د┘╪╣ */}
+      {/* إشعار الموانع */}
       {blockers && (blockers.tasks > 0 || blockers.ncr > 0) && (
         <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '5px' }}>
           {blockers.tasks > 0 && (
             <span style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '10px', background: '#fef2f2', color: '#c81e1e', fontWeight: 600, border: '1px solid #fecaca' }}>
-              ظأبي╕ {blockers.tasks} ┘à┘ç┘à╪ر ┘à┘╪ز┘ê╪ص╪ر
+              ⚠️ {blockers.tasks} مهمة مفتوحة
             </span>
           )}
           {blockers.ncr > 0 && (
             <span style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '10px', background: '#fffbeb', color: '#e6820a', fontWeight: 600, border: '1px solid #fcd34d' }}>
-              ≡ا¤┤ {blockers.ncr} NCR ┘à┘╪ز┘ê╪ص╪ر
+              🔴 {blockers.ncr} NCR مفتوحة
             </span>
           )}
         </div>
       )}
 
-      {/* ╪د┘╪د╪│┘à */}
+      {/* الاسم */}
       <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1a1a2e', marginBottom: '4px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
         {p.name}
       </div>
 
-      {/* ╪د┘╪╣┘à┘è┘ */}
+      {/* العميل */}
       {((p as any).client_name || (p as any).client) && (
         <div style={{ fontSize: '0.72rem', color: '#1a56db', marginBottom: '6px', fontWeight: 600 }}>
-          ≡ات {(p as any).client_name || (p as any).client}
+          🏢 {(p as any).client_name || (p as any).client}
         </div>
       )}
 
       {teamName && (
-        <div style={{ fontSize: '0.68rem', color: '#1a56db', marginBottom: '4px', fontWeight: 600 }}>≡اّح {teamName}</div>
+        <div style={{ fontSize: '0.68rem', color: '#1a56db', marginBottom: '4px', fontWeight: 600 }}>👥 {teamName}</div>
       )}
 
       {/* Progress */}
@@ -663,20 +662,20 @@ function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit,
         </div>
       </div>
 
-      {/* ╪د┘╪ز╪د╪▒┘è╪« + ╪د┘┘à╪ز╪ذ┘é┘è */}
+      {/* التاريخ + المتبقي */}
       {days !== null && (
         <div style={{ marginBottom: '8px' }}>
           <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 600, background: isLate ? '#fef2f2' : days <= 7 ? '#fffbeb' : '#f9fafb', color: isLate ? '#c81e1e' : days <= 7 ? '#e6820a' : '#9ca3af' }}>
-            {isLate ? `ظأبي╕ ┘à╪ز╪ث╪«╪▒ ${Math.abs(days)} ┘è┘ê┘à` : days === 0 ? 'ظ░ ╪ز╪│┘┘è┘à ╪د┘┘è┘ê┘à' : `≡اôà ┘à╪ز╪ذ┘é┘è ${days} ┘è┘ê┘à`}
+            {isLate ? `⚠️ متأخر ${Math.abs(days)} يوم` : days === 0 ? '⏰ تسليم اليوم' : `📅 متبقي ${days} يوم`}
           </span>
         </div>
       )}
 
-      {/* ╪د┘╪ث╪▓╪▒╪د╪▒ */}
+      {/* الأزرار */}
       <div style={{ display: 'flex', gap: '4px' }} onClick={e => e.stopPropagation()}>
         <button onClick={onView}
           style={{ flex: 1, padding: '5px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.72rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
-          <Eye style={{ width: '12px', height: '12px' }} /> ╪ز┘╪د╪╡┘è┘
+          <Eye style={{ width: '12px', height: '12px' }} /> تفاصيل
         </button>
         <QuickAddButton project={p} onNote={onNote} onQhse={onQhse} onTask={onTask} />
         {canEdit && !lockPhase && (
@@ -694,13 +693,13 @@ function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit,
         {canEdit && !lockPhase && (
           <div style={{ display: 'flex', gap: '2px', marginRight: 'auto' }}>
             {colIdx > 0 && (
-              <button onClick={() => onMove('prev')} title="╪▒╪ش┘ê╪╣"
+              <button onClick={() => onMove('prev')} title="رجوع"
                 style={{ padding: '5px 6px', borderRadius: '6px', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center' }}>
                 <ChevronRight style={{ width: '12px', height: '12px' }} />
               </button>
             )}
             {colIdx < COLUMNS.length - 1 && (
-              <button onClick={() => onMove('next')} title="╪ز┘é╪»┘à"
+              <button onClick={() => onMove('next')} title="تقدم"
                 style={{ padding: '5px 6px', borderRadius: '6px', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', color: '#9ca3af', display: 'flex', alignItems: 'center' }}>
                 <ChevronLeft style={{ width: '12px', height: '12px' }} />
               </button>
@@ -712,15 +711,15 @@ function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit,
   )
 }
 
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
-// ╪د┘╪╡┘╪ص╪ر ╪د┘╪▒╪خ┘è╪│┘è╪ر
-// ظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـظـ
+// ══════════════════════════════════════
+// الصفحة الرئيسية
+// ══════════════════════════════════════
 export default function ProjectsPage() {
   const { tenant, activeBranch, projects, setProjects, currentUser } = useStore()
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
-  // ┘à┘ê╪»╪د┘ QHSE ╪د┘╪│╪▒┘è╪╣
+  // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
   const [clientFilter, setClient] = useState('')
@@ -734,7 +733,7 @@ export default function ProjectsPage() {
   function changeView(mode: 'kanban' | 'grid' | 'list') {
     setViewMode(mode)
     updateDisplayPref('projects', mode as any)
-    // ╪ص┘╪╕ ┘┘è ┘é╪د╪╣╪»╪ر ╪د┘╪ذ┘è╪د┘╪د╪ز
+    // حفظ في قاعدة البيانات
     if (tenant) {
       import('@/lib/supabase').then(({ supabase }) => {
         supabase.from('employees')
@@ -755,7 +754,7 @@ export default function ProjectsPage() {
   const [editProject,      setEditProject]      = useState<Project | null>(null)
   const [detailProject,    setDetail]           = useState<Project | null>(null)
 
-  const canEdit = currentUser?.role === '┘à╪»┘è╪▒ ╪╣╪د┘à' || currentUser?.permissions?.includes('projects_edit')
+  const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
   const [projectBlockers, setProjectBlockers] = useState<Record<number, { tasks: number; ncr: number }>>({})
   const [teamNames, setTeamNames] = useState<Record<number, string>>({})
 
@@ -768,7 +767,7 @@ export default function ProjectsPage() {
       supabase.from('visits').select('project_id')
         .eq('tenant_id', tenant.id)
         .in('project_id', projectIds)
-        .eq('specs', '╪║┘è╪▒ ┘à╪╖╪د╪ذ┘é')
+        .eq('specs', 'غير مطابق')
         .is('resolved_report', null),
     ])
     const map: Record<number, { tasks: number; ncr: number }> = {}
@@ -807,13 +806,13 @@ export default function ProjectsPage() {
     setTeamNames(tMap)
     setProjects(loaded)
     setLoading(false)
-    // ╪ز╪ص┘à┘è┘ ┘à┘ê╪د┘╪╣ ╪د┘╪ح╪║┘╪د┘é ┘┘┘à╪┤╪د╪▒┘è╪╣ ╪د┘┘╪┤╪╖╪ر
-    const activeIds = loaded.filter((p: any) => p.status !== '┘à┘â╪ز┘à┘' && p.status !== '┘à┘╪║┘è').map((p: any) => p.id)
+    // تحميل موانع الإغلاق للمشاريع النشطة
+    const activeIds = loaded.filter((p: any) => p.status !== 'مكتمل' && p.status !== 'ملغي').map((p: any) => p.id)
     if (activeIds.length > 0) loadProjectBlockers(activeIds)
   }
 
-  // ظ£à ╪ح╪╡┘╪د╪ص handleSave ظ¤ insert ┘┘╪ش╪»┘è╪»╪î update ┘┘╪ز╪╣╪»┘è┘
-  // ╪د┘┘╪│╪ذ╪ر ╪د┘╪ز┘┘é╪د╪خ┘è╪ر ╪ص╪│╪ذ ╪د┘╪ص╪د┘╪ر
+  // ✅ إصلاح handleSave — insert للجديد، update للتعديل
+  // النسبة التلقائية حسب الحالة
   function getAutoProgress(status: string | undefined, currentProgress: number): number {
     const col = COLUMNS.find(c => c.id === (status || ''))
     return col?.autoProgress !== null && col?.autoProgress !== undefined
@@ -825,15 +824,15 @@ export default function ProjectsPage() {
     if (!tenant || !activeBranch) return
 
     if (!(data as any).id) {
-      toast.error('╪ث┘╪┤╪خ ╪د┘┘à╪┤╪▒┘ê╪╣ ╪د┘╪ش╪»┘è╪» ┘à┘ ╪ز╪ذ┘ê┘è╪ذ ┬س┘à╪▒╪ص┘╪ر ╪د┘╪ذ╪»╪ة┬╗')
+      toast.error('أنشئ المشروع الجديد من تبويب «مرحلة البدء»')
       return
     }
 
     let error: any = null
 
-    // ظـظـ ┘╪ص╪╡ ╪┤╪▒┘ê╪╖ ╪د┘╪د┘â╪ز┘à╪د┘ ╪╣┘╪» ╪ز╪║┘è┘è╪▒ ╪د┘╪ص╪د┘╪ر ┘┘ "┘à┘â╪ز┘à┘" ظـظـ
+    // ══ فحص شروط الاكتمال عند تغيير الحالة لـ "مكتمل" ══
     const existingProject = projects.find(p => p.id === (data as any).id)
-    if (data.status === '┘à┘â╪ز┘à┘' && existingProject?.status !== '┘à┘â╪ز┘à┘') {
+    if (data.status === 'مكتمل' && existingProject?.status !== 'مكتمل') {
       const blockers: string[] = []
 
       const { data: attachments } = await supabase
@@ -842,36 +841,36 @@ export default function ProjectsPage() {
       const uploadedCategories = (attachments || []).map((a: { category: string }) => a.category)
       const missingDocs = getMissingClosureDocs(uploadedCategories)
       if (missingDocs.length > 0)
-        blockers.push(`┘à╪▒┘┘é╪د╪ز ┘╪د┘é╪╡╪ر: ${formatMissingClosureDocs(missingDocs)}`)
+        blockers.push(`مرفقات ناقصة: ${formatMissingClosureDocs(missingDocs)}`)
 
       const { data: allTasks } = await supabase
         .from('project_tasks').select('status')
         .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
       const openCount = (allTasks || []).filter(t => isTaskOpen(t.status)).length
       if (openCount > 0)
-        blockers.push(`${openCount} ┘à┘ç┘à╪ر ┘à┘╪ز┘ê╪ص╪ر ┘┘à ╪ز┘╪║┘┘é`)
+        blockers.push(`${openCount} مهمة مفتوحة لم تُغلق`)
 
       const { data: openNCR } = await supabase
         .from('visits').select('id')
         .eq('project_id', (data as any).id).eq('tenant_id', tenant.id)
-        .eq('specs', '╪║┘è╪▒ ┘à╪╖╪د╪ذ┘é').is('resolved_report', null)
+        .eq('specs', 'غير مطابق').is('resolved_report', null)
       if ((openNCR?.length || 0) > 0)
-        blockers.push(`${openNCR!.length} ╪▓┘è╪د╪▒╪ر ╪║┘è╪▒ ┘à╪╖╪د╪ذ┘é╪ر (NCR) ┘à┘╪ز┘ê╪ص╪ر`)
+        blockers.push(`${openNCR!.length} زيارة غير مطابقة (NCR) مفتوحة`)
 
       if (blockers.length > 0) {
-        const msg = ['ظؤ¤ ┘╪د ┘è┘à┘â┘ ╪ح╪║┘╪د┘é ╪د┘┘à╪┤╪▒┘ê╪╣:'].concat(blockers.map(b => 'ظت ' + b)).join(String.fromCharCode(10))
+        const msg = ['⛔ لا يمكن إغلاق المشروع:'].concat(blockers.map(b => '• ' + b)).join(String.fromCharCode(10))
         toast.error(msg, { duration: 8000, style: { whiteSpace: 'pre-line' } })
         return
       }
     }
 
-    // ╪ز╪╖╪ذ┘è┘é ╪د┘┘╪│╪ذ╪ر ╪د┘╪ز┘┘é╪د╪خ┘è╪ر ╪ص╪│╪ذ ╪د┘╪ص╪د┘╪ر
-    const autoProgress = getAutoProgress(data.status || '╪ز╪ص╪ز ╪د┘╪ز╪«╪╖┘è╪╖', data.progress || 0)
+    // تطبيق النسبة التلقائية حسب الحالة
+    const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
     const payload = { ...data, progress: autoProgress } as Partial<Project> & { pmo_phase?: PmoPhase }
     if (payload.pmo_phase) {
       payload.status = statusForPhase(payload.pmo_phase)
     }
-    // ┘╪د ┘╪ص╪░┘ value ظ¤ ┘é┘è┘à╪ر ╪د┘╪╣┘é╪» ┘à╪╖┘┘ê╪ذ╪ر
+    // لا نحذف value — قيمة العقد مطلوبة
 
     if ((payload as any).id) {
       const { id, ...rest } = payload as any
@@ -887,17 +886,17 @@ export default function ProjectsPage() {
       error = res.error
     }
 
-    if (error) { toast.error('╪ص╪»╪س ╪«╪╖╪ث ┘┘è ╪د┘╪ص┘╪╕: ' + error.message); return }
+    if (error) { toast.error('حدث خطأ في الحفظ: ' + error.message); return }
     await loadProjects()
     setShowModal(false); setEditProject(null)
-    toast.success(editProject ? '╪ز┘à ╪د┘╪ز╪╣╪»┘è┘ ظ£à' : '╪ز┘à ╪ح╪╢╪د┘╪ر ╪د┘┘à╪┤╪▒┘ê╪╣ ظ£à')
+    toast.success(editProject ? 'تم التعديل ✅' : 'تم إضافة المشروع ✅')
   }
 
   async function handleDelete(p: Project) {
-    if (!confirm(`╪ص╪░┘ ╪د┘┘à╪┤╪▒┘ê╪╣ "${p.name}"╪ا`)) return
+    if (!confirm(`حذف المشروع "${p.name}"؟`)) return
     await projectsApi.delete(p.id)
     setProjects(projects.filter(x => x.id !== p.id))
-    toast.success('╪ز┘à ╪ص╪░┘ ╪د┘┘à╪┤╪▒┘ê╪╣')
+    toast.success('تم حذف المشروع')
   }
 
   async function handleSaveNote(project: Project, noteText: string) {
@@ -905,16 +904,16 @@ export default function ProjectsPage() {
     const now     = new Date()
     const dateStr = now.toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' })
     const timeStr = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', hour12: false })
-    const entry   = `${dateStr}╪î ${timeStr}: ≡اôإ ${noteText}`
+    const entry   = `${dateStr}، ${timeStr}: 📝 ${noteText}`
     const history = [...(project.history || []), entry]
     const { error } = await supabase.from('projects').update({ history }).eq('id', project.id)
-    if (error) { toast.error('╪«╪╖╪ث ┘┘è ╪ص┘╪╕ ╪د┘┘à┘╪د╪ص╪╕╪ر'); return }
+    if (error) { toast.error('خطأ في حفظ الملاحظة'); return }
     setProjects(projects.map(p => p.id === project.id ? { ...p, history } : p))
-    toast.success('ظ£à ╪ز┘à ╪ص┘╪╕ ╪د┘┘à┘╪د╪ص╪╕╪ر')
+    toast.success('✅ تم حفظ الملاحظة')
   }
 
   async function handleMove(_p: Project, _direction: 'prev' | 'next') {
-    toast.error('╪ز╪║┘è┘è╪▒ ╪د┘┘à╪▒╪ص┘╪ر ┘è╪ز┘à ╪╣╪ذ╪▒ ╪│┘╪د┘ ╪د┘╪ذ╪»╪ة ظ ╪د┘╪ز╪«╪╖┘è╪╖ ظ ╪د┘╪ز┘┘┘è╪░')
+    toast.error('تغيير المرحلة يتم عبر سلال البدء ← التخطيط ← التنفيذ')
   }
 
   const now = new Date(); now.setHours(0, 0, 0, 0)
@@ -937,9 +936,9 @@ export default function ProjectsPage() {
     )
   })
 
-  const activeCount = projects.filter(p => p.status === '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░').length
-  const doneCount   = projects.filter(p => p.progress >= 100 || p.status === '┘à┘â╪ز┘à┘').length
-  const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now && p.status !== '┘à┘â╪ز┘à┘').length
+  const activeCount = projects.filter(p => p.status === 'قيد التنفيذ').length
+  const doneCount   = projects.filter(p => p.progress >= 100 || p.status === 'مكتمل').length
+  const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now && p.status !== 'مكتمل').length
   const totalValue = projects.reduce((s, p) => s + (Number((p as any).estimated_value) || 0), 0)
 
   if (detailProject) {
@@ -955,31 +954,20 @@ export default function ProjectsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
-      {/* ╪ث╪»┘ê╪د╪ز ╪د┘┘┘ê╪ص╪ر */}
+      {/* أدوات اللوحة */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
-          {projects.length} ┘à╪┤╪▒┘ê╪╣ ┘┘è ╪د┘╪ز┘┘┘è╪░ ┘ê╪د┘╪ح╪║┘╪د┘é ظ¤ ┘┘┘à╪ز╪د╪ذ╪╣╪ر ┘┘é╪╖ (┘╪د ╪ز╪║┘è┘è╪▒ ┘┘┘à╪▒╪د╪ص┘ ┘à┘ ┘ç┘╪د)
+          {projects.length} مشروع في التنفيذ والإغلاق — للمتابعة والاستعراض فقط
         </p>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {canEdit && (
-            <Link href="/projects/initiation/projects" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> ┘à╪┤╪▒┘ê╪╣ ╪ش╪»┘è╪»
-            </Link>
-          )}
-          <button onClick={() => setShowManageTypes(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
-            <Tag style={{ width: '15px', height: '15px' }} /> ╪ث┘┘ê╪د╪╣ ╪د┘┘à╪┤╪د╪▒┘è╪╣
-          </button>
-        </div>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
         {[
-          { label: '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░',    value: String(activeCount), color: '#1a56db', bg: '#eff6ff', icon: '≡ا¤' },
-          { label: '┘à┘â╪ز┘à┘',           value: String(doneCount),   color: '#0ea77b', bg: '#ecfdf5', icon: 'ظ£à' },
-          { label: '┘à╪ز╪ث╪«╪▒',           value: String(lateCount),   color: '#c81e1e', bg: '#fef2f2', icon: 'ظأبي╕' },
-          { label: '╪ح╪ش┘à╪د┘┘è ╪د┘┘é┘è┘à╪ر',  value: formatCurrency(totalValue), color: '#e6820a', bg: '#fffbeb', icon: '≡اْ░' },
+          { label: 'قيد التنفيذ',    value: String(activeCount), color: '#1a56db', bg: '#eff6ff', icon: '🔄' },
+          { label: 'مكتمل',           value: String(doneCount),   color: '#0ea77b', bg: '#ecfdf5', icon: '✅' },
+          { label: 'متأخر',           value: String(lateCount),   color: '#c81e1e', bg: '#fef2f2', icon: '⚠️' },
+          { label: 'إجمالي القيمة',  value: formatCurrency(totalValue), color: '#e6820a', bg: '#fffbeb', icon: '💰' },
         ].map(kpi => (
           <div key={kpi.label} className="card" style={{ padding: '14px 16px', background: kpi.bg }}>
             <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.icon} {kpi.value}</div>
@@ -988,34 +976,34 @@ export default function ProjectsPage() {
         ))}
       </div>
 
-      {/* ╪د┘┘┘╪د╪ز╪▒ */}
+      {/* الفلاتر */}
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ position: 'relative' }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '15px', height: '15px', color: '#9ca3af' }} />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="╪ذ╪ص╪س ╪ذ╪د╪│┘à ╪ث┘ê ╪▒┘é┘à ╪د┘┘à╪┤╪▒┘ê╪╣..." className="input"
+            placeholder="بحث باسم أو رقم المشروع..." className="input"
             style={{ paddingRight: '32px', width: '220px' }} />
         </div>
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
-          <option value="">┘â┘ ╪د┘╪ص╪د┘╪د╪ز</option>
+          <option value="">كل الحالات</option>
           {COLUMNS.map(c => (
-            <option key={c.id} value={c.id}>{c.icon} {c.label}{c.autoProgress !== null ? ` ظ¤ ${c.autoProgress}%` : ''}</option>
+            <option key={c.id} value={c.id}>{c.icon} {c.label}{c.autoProgress !== null ? ` — ${c.autoProgress}%` : ''}</option>
           ))}
         </select>
 
         <select value={typeFilter} onChange={e => setType(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
-          <option value="">┘â┘ ╪د┘╪ث┘┘ê╪د╪╣</option>
+          <option value="">كل الأنواع</option>
           {existingTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
 
         <select value={clientFilter} onChange={e => setClient(e.target.value)} className="select" style={{ width: 'auto', minWidth: '160px' }}>
-          <option value="">┘â┘ ╪د┘╪ش┘ç╪د╪ز</option>
+          <option value="">كل الجهات</option>
           {existingClients.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
 
         <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '160px' }}>
-          <option value="">┘â┘ ╪د┘┘╪▒┘é</option>
+          <option value="">كل الفرق</option>
           {Object.entries(teamNames).map(([id, name]) => (
             <option key={id} value={id}>{name}</option>
           ))}
@@ -1030,13 +1018,13 @@ export default function ProjectsPage() {
               background: myTeamOnly ? '#f5f3ff' : 'white',
               color: myTeamOnly ? '#7c3aed' : 'var(--text3)',
             }}>
-            ≡اّح ┘à╪┤╪د╪▒┘è╪╣ ┘╪▒┘è┘é┘è
+            👥 مشاريع فريقي
           </button>
         )}
 
         {(search || statusFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
           <button onClick={() => { setSearch(''); setStatus(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
-            className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>┘à╪│╪ص ╪د┘┘┘╪د╪ز╪▒</button>
+            className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>مسح الفلاتر</button>
         )}
 
         <div style={{ display: 'flex', gap: '2px', background: '#f3f4f6', padding: '3px', borderRadius: '8px', marginRight: 'auto' }}>
@@ -1056,7 +1044,7 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* ╪د┘┘à╪ص╪ز┘ê┘ë */}
+      {/* المحتوى */}
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
           <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -1064,22 +1052,18 @@ export default function ProjectsPage() {
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <FolderOpen style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 12px' }} />
-          <p style={{ color: '#9ca3af', marginBottom: '16px' }}>┘╪د ┘à╪┤╪د╪▒┘è╪╣ ┘┘è ┘à╪▒╪ص┘╪ر ╪د┘╪ز┘┘┘è╪░ ظ¤ ╪د╪╣╪ز┘à╪» ╪ز╪«╪╖┘è╪╖ ┘à╪┤╪▒┘ê╪╣ ╪ث┘ê┘╪د┘ï</p>
-          {canEdit && (
-            <Link href="/projects/initiation/projects" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> ╪ذ╪»╪ة ┘à╪┤╪▒┘ê╪╣ ╪ش╪»┘è╪»
-            </Link>
-          )}
+          <p style={{ color: '#9ca3af', marginBottom: '8px' }}>لا مشاريع في مرحلة التنفيذ بعد</p>
+          <p style={{ color: '#d1d5db', fontSize: '0.82rem' }}>ابدأ من تبويب «مرحلة البدء» ثم التخطيط والتنفيذ</p>
         </div>
 
       ) : viewMode === 'kanban' ? (
-        /* ظـظـ Kanban ظـظـ */
+        /* ══ Kanban ══ */
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '12px', alignItems: 'flex-start', minWidth: 0 }}>
           {COLUMNS.map(col => {
             const colProjects = filtered.filter(p => {
-              if (col.id === '┘à╪ز╪ث╪«╪▒')
-                return p.status === '┘à╪ز╪ث╪«╪▒' || (p.status === '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
-              return p.status === col.id && !(col.id === '┘é┘è╪» ╪د┘╪ز┘┘┘è╪░' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
+              if (col.id === 'متأخر')
+                return p.status === 'متأخر' || (p.status === 'قيد التنفيذ' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
+              return p.status === col.id && !(col.id === 'قيد التنفيذ' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
             })
             return (
               <div key={col.id} style={{ flexShrink: 0, width: '230px' }}>
@@ -1094,7 +1078,7 @@ export default function ProjectsPage() {
                 </div>
                 <div style={{ minHeight: '200px', padding: '8px', background: col.bg, border: `1px solid ${col.border}`, borderTop: `3px solid ${col.color}`, borderRadius: '0 0 10px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {colProjects.length === 0 ? (
-                    <div style={{ padding: '24px', textAlign: 'center', color: '#d1d5db', fontSize: '0.8rem' }}>┘╪د ╪ز┘ê╪ش╪» ┘à╪┤╪د╪▒┘è╪╣</div>
+                    <div style={{ padding: '24px', textAlign: 'center', color: '#d1d5db', fontSize: '0.8rem' }}>لا توجد مشاريع</div>
                   ) : (
                     colProjects.map(p => (
                       <KanbanCard key={p.id} p={p} teamName={(p as any).team_id ? teamNames[(p as any).team_id] : undefined} canEdit={!!canEdit} lockPhase blockers={projectBlockers[p.id]}
@@ -1114,7 +1098,7 @@ export default function ProjectsPage() {
         </div>
 
       ) : viewMode === 'grid' ? (
-        /* ظـظـ Grid ظـظـ */
+        /* ══ Grid ══ */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
           {filtered.map(p => {
             const days   = daysUntil(p.end_date)
@@ -1138,19 +1122,19 @@ export default function ProjectsPage() {
                       )}
                       {(p as any).pmo_phase && (
                         <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 600 }}>
-                          {phaseLabel((p as any).pmo_phase, (p as any).workflow_type)?.split('ظ¤')[0]?.trim()}
+                          {phaseLabel((p as any).pmo_phase, (p as any).workflow_type)?.split('—')[0]?.trim()}
                         </span>
                       )}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1a1a2e' }}>{p.name}</div>
                     {((p as any).client_name || (p as any).client) && (
                       <div style={{ fontSize: '0.72rem', color: '#1a56db', marginTop: '3px', fontWeight: 600 }}>
-                        ≡ات {(p as any).client_name || (p as any).client}
+                        🏢 {(p as any).client_name || (p as any).client}
                       </div>
                     )}
                   </div>
                   <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.72rem', flexShrink: 0 }}>
-                    {p.progress >= 100 ? '┘à┘â╪ز┘à┘' : isLate ? '┘à╪ز╪ث╪«╪▒' : p.status}
+                    {p.progress >= 100 ? 'مكتمل' : isLate ? 'متأخر' : p.status}
                   </span>
                 </div>
                 <div style={{ marginBottom: '10px' }}>
@@ -1164,16 +1148,16 @@ export default function ProjectsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: '8px', fontSize: '0.72rem', color: '#9ca3af', flexWrap: 'wrap' }}>
                   {(p as any).team_id && teamNames[(p as any).team_id] && (
-                    <span style={{ color: '#1a56db', fontWeight: 600 }}>≡اّح {teamNames[(p as any).team_id]}</span>
+                    <span style={{ color: '#1a56db', fontWeight: 600 }}>👥 {teamNames[(p as any).team_id]}</span>
                   )}
-                  {p.engineer && <span>≡اّ╖ {p.engineer}</span>}
-                  {p.end_date && <span>≡اôà {formatDate(p.end_date)}</span>}
-                  {(p as any).estimated_value   && <span>≡اْ░ {formatCurrency((p as any).estimated_value)}</span>}
+                  {p.engineer && <span>👷 {p.engineer}</span>}
+                  {p.end_date && <span>📅 {formatDate(p.end_date)}</span>}
+                  {(p as any).estimated_value   && <span>💰 {formatCurrency((p as any).estimated_value)}</span>}
                 </div>
                 <div style={{ marginTop: '12px', display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
                   <button onClick={() => setDetail(p)}
                     style={{ flex: 1, padding: '6px', borderRadius: '7px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                    <Eye style={{ width: '13px', height: '13px' }} /> ╪ز┘╪د╪╡┘è┘
+                    <Eye style={{ width: '13px', height: '13px' }} /> تفاصيل
                   </button>
                   <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })} onTask={() => setTaskProject(p)} />
                   {canEdit && (
@@ -1195,12 +1179,12 @@ export default function ProjectsPage() {
         </div>
 
       ) : (
-        /* ظـظـ List ظـظـ */
+        /* ══ List ══ */
         <div className="card" style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['╪▒┘é┘à', '╪د╪│┘à ╪د┘┘à╪┤╪▒┘ê╪╣', '╪د┘┘┘ê╪╣', '╪د┘╪ش┘ç╪ر', '╪د┘╪ص╪د┘╪ر', '╪د┘╪ح┘╪ش╪د╪▓', '╪د┘┘é┘è┘à╪ر', '╪د┘┘à┘ç┘╪»╪│', '╪د┘╪ز╪│┘┘è┘à', ''].map(h => (
+                {['رقم', 'اسم المشروع', 'النوع', 'الجهة', 'الحالة', 'الإنجاز', 'القيمة', 'المهندس', 'التسليم', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -1214,14 +1198,14 @@ export default function ProjectsPage() {
                     onClick={() => setDetail(p)}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg2)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem', color: '#1a56db' }}>{p.code || 'ظ¤'}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '0.78rem', color: '#1a56db' }}>{p.code || '—'}</td>
                     <td style={{ padding: '10px 12px', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{TYPE_NAME[p.type || ''] || p.type || 'ظ¤'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: 'var(--text3)', whiteSpace: 'nowrap' }}>{TYPE_NAME[p.type || ''] || p.type || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: '#1a56db', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {(p as any).client_name || (p as any).client || 'ظ¤'}
+                      {(p as any).client_name || (p as any).client || '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? '┘à╪ز╪ث╪«╪▒' : p.status}</span>
+                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? 'متأخر' : p.status}</span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1231,14 +1215,14 @@ export default function ProjectsPage() {
                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text3)', whiteSpace: 'nowrap' }}>{p.progress}%</span>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{(p as any).estimated_value ? formatCurrency((p as any).estimated_value) : 'ظ¤'}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{p.engineer || 'ظ¤'}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: isLate ? '#c81e1e' : 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(p.end_date) || 'ظ¤'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{(p as any).estimated_value ? formatCurrency((p as any).estimated_value) : '—'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{p.engineer || '—'}</td>
+                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: isLate ? '#c81e1e' : 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(p.end_date) || '—'}</td>
                     <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '3px' }}>
                         <button onClick={() => setDetail(p)}
                           style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1a56db', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          ╪ز┘╪د╪╡┘è┘
+                          تفاصيل
                         </button>
                         <QuickAddButton project={p} onNote={() => setNoteProject(p)} onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })} onTask={() => setTaskProject(p)} />
                         {canEdit && (
@@ -1275,7 +1259,7 @@ export default function ProjectsPage() {
           onSave={async (text) => { await handleSaveNote(noteProject, text) }} />
       )}
 
-      {/* ظـظـ ┘à┘ê╪»╪د┘ QHSE ╪د┘╪│╪▒┘è╪╣ ظـظـ */}
+      {/* ══ مودال QHSE السريع ══ */}
       {qhseModal && (
         <QuickQhseModal
           type={qhseModal.type}
