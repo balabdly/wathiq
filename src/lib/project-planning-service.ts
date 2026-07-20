@@ -204,6 +204,43 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   await startProjectExecution(tenantId, projectId)
 }
 
+/** إرجاع مشروع من التنفيذ إلى سلة التخطيط (تصحيح خطأ الاعتماد) */
+export async function reopenProjectPlanning(tenantId: string, projectId: number) {
+  const { data: project, error: pErr } = await supabase
+    .from('projects')
+    .select('id, pmo_phase')
+    .eq('tenant_id', tenantId)
+    .eq('id', projectId)
+    .single()
+  if (pErr) throw pErr
+  if (project.pmo_phase !== '3_EXEC') {
+    throw new Error('يمكن إرجاع مشاريع في مرحلة التنفيذ فقط')
+  }
+
+  const { data: planning } = await supabase
+    .from('project_planning')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+  if (!planning) throw new Error('لا يوجد سجل تخطيط لهذا المشروع')
+
+  const { error: projErr } = await supabase.from('projects').update({
+    pmo_phase: '2_PREP',
+    status: statusForPhase('2_PREP'),
+    team_id: null,
+    engineer: null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+  if (projErr) throw projErr
+
+  const { error: planErr } = await supabase.from('project_planning').update({
+    planning_status: 'active',
+    updated_at: new Date().toISOString(),
+  }).eq('tenant_id', tenantId).eq('project_id', projectId)
+  if (planErr) throw planErr
+}
+
 export async function fetchCostItems(tenantId: string, projectId: number) {
   const { data, error } = await supabase.from('project_planning_cost_items')
     .select('*')
