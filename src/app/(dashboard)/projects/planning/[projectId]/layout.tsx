@@ -7,6 +7,7 @@ import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetc
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { ArrowRight, ClipboardList, Archive } from 'lucide-react'
+import toast from 'react-hot-toast'
 import { ProjectPlanningContext, type ProjectPlanningDetail } from './ProjectPlanningContext'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
 
@@ -20,6 +21,8 @@ const PROJECT_TABS = [
   { slug: 'costs',     label: 'خطة التكاليف',        emoji: '💰', color: '#0891b2' },
 ]
 
+const POST_PLANNING_PHASES = new Set(['3_EXEC', '4_MEASURE', '5_CLOSE'])
+
 export default function ProjectPlanningLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
   const pathname = usePathname()
@@ -30,19 +33,25 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const [project, setProject] = useState<ProjectPlanningDetail | null>(null)
   const [planning, setPlanning] = useState<ProjectPlanning | null>(null)
   const [progress, setProgress] = useState<PlanningProgress | null>(null)
+  const [readOnly, setReadOnly] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
     if (!tenant || !projectId) return
     const result = await fetchProjectPlanning(tenant.id, projectId)
     const phase = result.project?.pmo_phase
+    const isPostPlanning = !!phase && POST_PLANNING_PHASES.has(phase)
 
     if (phase === '1_RECEIPT') {
       router.replace('/projects/initiation/projects')
       return
     }
-    if (phase === '3_EXEC' || phase === '4_MEASURE' || phase === '5_CLOSE') {
+    if (isPostPlanning && result.planning?.planning_status !== 'closed') {
       router.replace('/projects/execution')
+      return
+    }
+    if (!isPostPlanning && phase !== '2_PREP') {
+      router.replace('/projects/planning')
       return
     }
     if (!result.planning && phase === '2_PREP') {
@@ -55,6 +64,8 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
       result.planning = refreshed.planning
     }
 
+    const viewOnly = result.planning?.planning_status === 'closed' || isPostPlanning
+    setReadOnly(viewOnly)
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
@@ -74,9 +85,18 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const activeSlug = PROJECT_TABS.find(t => pathname?.startsWith(`${base}/${t.slug}`))?.slug
 
   async function handleClosePlanning() {
-    if (!tenant || !confirm('اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟')) return
-    await closeProjectPlanning(tenant.id, projectId)
-    router.push('/projects/execution')
+    if (!tenant || !progress?.isComplete) {
+      toast.error('أكمل جميع أقسام التخطيط قبل الاعتماد')
+      return
+    }
+    if (!confirm('اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟')) return
+    try {
+      await closeProjectPlanning(tenant.id, projectId)
+      toast.success('تم اعتماد التخطيط')
+      router.push('/projects/execution')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الاعتماد')
+    }
   }
 
   if (loading || !project || !tenant) {
@@ -88,10 +108,14 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   }
 
   return (
-    <ProjectPlanningContext.Provider value={{ tenantId: tenant.id, projectId, project, planning, reload }}>
+    <ProjectPlanningContext.Provider value={{ tenantId: tenant.id, projectId, project, planning, reload, readOnly }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => router.push('/projects/planning')} className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+          <button
+            onClick={() => router.push(readOnly ? '/projects/execution' : '/projects/planning')}
+            className="btn btn-ghost"
+            style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+          >
             <ArrowRight style={{ width: '14px', height: '14px' }} /> العودة
           </button>
           <div>
@@ -108,12 +132,23 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
               <PlanningProgressBadge progress={progress} />
             </div>
           )}
-          {planning?.planning_status === 'active' && (
-            <button onClick={handleClosePlanning} className="btn btn-ghost" style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#6b7280', border: '1px solid #d1d5db' }}>
+          {!readOnly && planning?.planning_status === 'active' && progress?.isComplete && (
+            <button onClick={handleClosePlanning} className="btn btn-primary" style={{ marginRight: 'auto', fontSize: '0.82rem' }}>
               <Archive style={{ width: '14px', height: '14px' }} /> اعتماد التخطيط والانتقال للتنفيذ
             </button>
           )}
+          {!readOnly && planning?.planning_status === 'active' && progress && !progress.isComplete && (
+            <span style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#e6820a', fontWeight: 600 }}>
+              أكمل {progress.completed}/{progress.total} أقسام للاعتماد
+            </span>
+          )}
         </div>
+
+        {readOnly && (
+          <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1a56db' }}>
+            عرض للقراءة فقط — التخطيط معتمد والمشروع في مرحلة التنفيذ
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', flexWrap: 'wrap' }}>
           {PROJECT_TABS.map(t => {

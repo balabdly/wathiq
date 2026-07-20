@@ -21,6 +21,7 @@ export type ProjectPlanningContextValue = {
   project: ProjectPlanningDetail
   planning: ProjectPlanning | null
   reload: () => Promise<void>
+  readOnly?: boolean
 }
 
 export const ProjectPlanningContext = createContext<ProjectPlanningContextValue | null>(null)

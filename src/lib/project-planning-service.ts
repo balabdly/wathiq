@@ -129,50 +129,6 @@ export async function fetchAllPlanningProjects(tenantId: string) {
   }
 }
 
-/** @deprecated استخدم fetchAllPlanningProjects */
-export async function fetchPlanningProjects(tenantId: string, status: 'active' | 'closed') {
-  const { data: planningRows } = await supabase
-    .from('project_planning')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .eq('planning_status', status)
-
-  const planningMap = new Map((planningRows || []).map(p => [p.project_id, p as ProjectPlanning]))
-  const planningIds = Array.from(planningMap.keys())
-
-  if (status === 'closed') {
-    if (!planningIds.length) return { data: [] as PlanningProject[], error: null }
-    const { data, error } = await supabase
-      .from('projects')
-      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase')
-      .eq('tenant_id', tenantId)
-      .in('id', planningIds)
-      .order('created_at', { ascending: false })
-    return {
-      data: await attachPlanningProgress(tenantId, (data || []).map(p => ({ ...p, planning: planningMap.get(p.id) || null }))),
-      error,
-    }
-  }
-
-  // active: all initiation projects (1_RECEIPT) + those in planning (2_PREP)
-  const { data: projects, error } = await supabase
-    .from('projects')
-    .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase')
-    .eq('tenant_id', tenantId)
-    .in('pmo_phase', ['1_RECEIPT', '2_PREP'])
-    .order('created_at', { ascending: false })
-
-  const active = (projects || []).filter(p => {
-    const pl = planningMap.get(p.id)
-    return !pl || pl.planning_status === 'active'
-  })
-
-  return {
-    data: await attachPlanningProgress(tenantId, active.map(p => ({ ...p, planning: planningMap.get(p.id) || null }))),
-    error,
-  }
-}
-
 export async function ensureProjectPlanning(tenantId: string, projectId: number, project?: { start_date?: string; end_date?: string }) {
   const { data: existing } = await supabase
     .from('project_planning')
@@ -214,6 +170,16 @@ export async function fetchProjectPlanning(tenantId: string, projectId: number) 
 }
 
 export async function updateProjectPlanning(tenantId: string, projectId: number, payload: Partial<ProjectPlanning>) {
+  const { data: existing } = await supabase.from('project_planning')
+    .select('planning_status')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+
+  if (existing?.planning_status === 'closed' && payload.planning_status !== 'active') {
+    throw new Error('التخطيط معتمد — للعرض فقط')
+  }
+
   const { error } = await supabase.from('project_planning')
     .update({ ...payload, updated_at: new Date().toISOString() })
     .eq('tenant_id', tenantId)
@@ -222,6 +188,17 @@ export async function updateProjectPlanning(tenantId: string, projectId: number,
 }
 
 export async function closeProjectPlanning(tenantId: string, projectId: number) {
+  const [{ data: planning }, { data: costRows }] = await Promise.all([
+    supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
+    supabase.from('project_planning_cost_items').select('planned_amount').eq('tenant_id', tenantId).eq('project_id', projectId),
+  ])
+
+  const costComplete = (costRows || []).some(r => Number(r.planned_amount) > 0)
+  const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0)
+  if (!progress.isComplete) {
+    throw new Error(`يجب إكمال جميع أقسام التخطيط (${progress.completed}/${progress.total}) قبل الاعتماد`)
+  }
+
   await updateProjectPlanning(tenantId, projectId, { planning_status: 'closed' })
   const { startProjectExecution } = await import('@/lib/project-execution-service')
   await startProjectExecution(tenantId, projectId)
@@ -237,6 +214,15 @@ export async function fetchCostItems(tenantId: string, projectId: number) {
 }
 
 export async function saveCostItems(tenantId: string, projectId: number, items: PlanningCostItem[]) {
+  const { data: planning } = await supabase.from('project_planning')
+    .select('planning_status')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+  if (planning?.planning_status === 'closed') {
+    throw new Error('التخطيط معتمد — للعرض فقط')
+  }
+
   await supabase.from('project_planning_cost_items').delete().eq('tenant_id', tenantId).eq('project_id', projectId)
   if (!items.length) return
   const rows = items.map((item, i) => ({

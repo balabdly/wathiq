@@ -1,10 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
-import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { fetchExecutionProjects, type ExecutionProject } from '@/lib/project-execution-service'
-import { HardHat } from 'lucide-react'
 import { ExecutionContext, type ExecutionContextValue } from './ExecutionContext'
 
 export default function ExecutionLayout({ children }: { children: React.ReactNode }) {
@@ -56,19 +54,9 @@ export default function ExecutionLayout({ children }: { children: React.ReactNod
   return (
     <ExecutionContext.Provider value={ctx}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div>
-          <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <HardHat style={{ width: '20px', height: '20px', color: '#e6820a' }} />
-            مرحلة تنفيذ المشروع
-          </h1>
-          <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-            إسناد الفرق — متابعة الإنجاز اليومي — استعراض خطط التخطيط
-          </p>
-        </div>
-
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
           {[
-            { label: 'مشاريع قيد التنفيذ', value: kpis.total, color: '#e6820a', bg: '#fffbeb' },
+            { label: 'في سلة التنفيذ', value: kpis.total, color: '#e6820a', bg: '#fffbeb' },
             { label: 'مسندة لفرق', value: kpis.assigned, color: '#0ea77b', bg: '#ecfdf5' },
             { label: 'بانتظار الإسناد', value: kpis.unassigned, color: '#c81e1e', bg: '#fef2f2' },
           ].map(k => (
@@ -77,18 +65,6 @@ export default function ExecutionLayout({ children }: { children: React.ReactNod
               <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>{k.label}</div>
             </div>
           ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: '6px', background: '#e5e7eb', padding: '6px', borderRadius: '14px', width: 'fit-content' }}>
-          <Link href="/projects/execution" style={{
-            padding: '8px 16px', borderRadius: '10px', fontSize: '0.875rem', fontWeight: 600,
-            textDecoration: 'none', transition: 'all 0.2s',
-            background: pathname === '/projects/execution' ? '#e6820a' : 'transparent',
-            color: pathname === '/projects/execution' ? 'white' : 'var(--text3)',
-            boxShadow: pathname === '/projects/execution' ? '0 2px 8px #e6820a44' : 'none',
-          }}>
-            🏗️ قائمة المشاريع
-          </Link>
         </div>
 
         {loading ? (

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import ProjectModal  from '@/components/projects/ProjectModal'
 import ProjectDetail from '@/components/projects/ProjectDetail'
 import { useStore } from '@/hooks/useStore'
@@ -9,7 +10,9 @@ import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-import { phaseLabel, WORKFLOW_TYPES } from '@/lib/sec-workflow'
+import { phaseLabel, WORKFLOW_TYPES, statusForPhase } from '@/lib/sec-workflow'
+import type { PmoPhase } from '@/lib/sec-workflow'
+import { isMonitorPhase } from '@/lib/project-phase-display'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
@@ -594,8 +597,8 @@ function ManageTypesModal({ tenantId, onClose }: {
 // ══════════════════════════════════════
 // بطاقة Kanban
 // ══════════════════════════════════════
-function KanbanCard({ p, teamName, canEdit, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
-  p: Project; teamName?: string; canEdit: boolean; blockers?: { tasks: number; ncr: number }
+function KanbanCard({ p, teamName, canEdit, lockPhase, blockers, onView, onEdit, onDelete, onMove, onNote, onQhse, onTask }: {
+  p: Project; teamName?: string; canEdit: boolean; lockPhase?: boolean; blockers?: { tasks: number; ncr: number }
   onView: () => void; onEdit: () => void; onDelete: () => void
   onMove: (dir: 'prev' | 'next') => void; onNote: () => void
   onQhse: (type: string) => void; onTask: () => void
@@ -676,7 +679,7 @@ function KanbanCard({ p, teamName, canEdit, blockers, onView, onEdit, onDelete, 
           <Eye style={{ width: '12px', height: '12px' }} /> تفاصيل
         </button>
         <QuickAddButton project={p} onNote={onNote} onQhse={onQhse} onTask={onTask} />
-        {canEdit && (
+        {canEdit && !lockPhase && (
           <>
             <button onClick={onEdit}
               style={{ padding: '5px 7px', borderRadius: '6px', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center' }}>
@@ -688,7 +691,7 @@ function KanbanCard({ p, teamName, canEdit, blockers, onView, onEdit, onDelete, 
             </button>
           </>
         )}
-        {canEdit && (
+        {canEdit && !lockPhase && (
           <div style={{ display: 'flex', gap: '2px', marginRight: 'auto' }}>
             {colIdx > 0 && (
               <button onClick={() => onMove('prev')} title="رجوع"
@@ -799,7 +802,7 @@ export default function ProjectsPage() {
       projectsApi.getAll(tenant.id, activeBranch.id),
       supabase.from('teams').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
     ])
-    const loaded = data || []
+    const loaded = (data || []).filter((p: Project & { pmo_phase?: string }) => isMonitorPhase(p.pmo_phase))
     const tMap: Record<number, string> = {}
     ;(teamsData || []).forEach((t: { id: number; name: string }) => { tMap[t.id] = t.name })
     setTeamNames(tMap)
@@ -821,6 +824,12 @@ export default function ProjectsPage() {
 
   async function handleSave(data: Partial<Project>): Promise<void> {
     if (!tenant || !activeBranch) return
+
+    if (!(data as any).id) {
+      toast.error('أنشئ المشروع الجديد من تبويب «مرحلة البدء»')
+      return
+    }
+
     let error: any = null
 
     // ══ فحص شروط الاكتمال عند تغيير الحالة لـ "مكتمل" ══
@@ -859,7 +868,10 @@ export default function ProjectsPage() {
 
     // تطبيق النسبة التلقائية حسب الحالة
     const autoProgress = getAutoProgress(data.status || 'تحت التخطيط', data.progress || 0)
-    const payload = { ...data, progress: autoProgress }
+    const payload = { ...data, progress: autoProgress } as Partial<Project> & { pmo_phase?: PmoPhase }
+    if (payload.pmo_phase) {
+      payload.status = statusForPhase(payload.pmo_phase)
+    }
     // لا نحذف value — قيمة العقد مطلوبة
 
     if ((payload as any).id) {
@@ -902,59 +914,8 @@ export default function ProjectsPage() {
     toast.success('✅ تم حفظ الملاحظة')
   }
 
-  async function handleMove(p: Project, direction: 'prev' | 'next') {
-    const colIdx = COLUMNS.findIndex(c => c.id === p.status)
-    const newIdx = direction === 'next' ? colIdx + 1 : colIdx - 1
-    if (newIdx < 0 || newIdx >= COLUMNS.length) return
-    const newStatus = COLUMNS[newIdx].id as ProjectStatus
-
-    if (newStatus === 'مكتمل') {
-      const blockers: string[] = []
-
-      // 1. فحص المرفقات المطلوبة
-      const { data: attachments } = await supabase
-        .from('project_attachments').select('category')
-        .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-      const uploadedCategories = (attachments || []).map((a: { category: string }) => a.category)
-      const missingDocs = getMissingClosureDocs(uploadedCategories)
-      if (missingDocs.length > 0) {
-        blockers.push(`مرفقات ناقصة: ${formatMissingClosureDocs(missingDocs)}`)
-      }
-
-      // 2. فحص المهام المفتوحة
-      const { data: allTasks } = await supabase
-        .from('project_tasks').select('status')
-        .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-      const openTasksCount = (allTasks || []).filter(t => isTaskOpen(t.status)).length
-      if (openTasksCount > 0) {
-        blockers.push(`${openTasksCount} مهمة مفتوحة لم تُغلق`)
-      }
-
-      // 3. فحص الزيارات غير المطابقة المفتوحة
-      const { data: openNCR } = await supabase
-        .from('visits').select('id', { count: 'exact' })
-        .eq('project_id', p.id).eq('tenant_id', tenant?.id)
-        .eq('specs', 'غير مطابق').is('resolved_report', null)
-      const openNCRCount = openNCR?.length || 0
-      if (openNCRCount > 0) {
-        blockers.push(`${openNCRCount} زيارة غير مطابقة (NCR) مفتوحة`)
-      }
-
-      if (blockers.length > 0) {
-        const msg = ['⛔ لا يمكن إغلاق المشروع:'].concat(blockers.map((b: string) => '• ' + b)).join(String.fromCharCode(10))
-        toast.error(msg, { duration: 8000, style: { whiteSpace: 'pre-line' } })
-        return
-      }
-    }
-
-    // النسبة التلقائية حسب المرحلة
-    const autoP = COLUMNS[newIdx].autoProgress
-    const newProgress = autoP !== null ? autoP : p.progress
-    const { error } = await supabase.from('projects')
-      .update({ status: newStatus, progress: newProgress }).eq('id', p.id)
-    if (error) { toast.error('خطأ في التحديث: ' + error.message); return }
-    setProjects(projects.map(x => x.id === p.id ? { ...x, status: newStatus, progress: newProgress } : x))
-    toast.success(`${COLUMNS[newIdx].icon} ${newStatus} — ${newProgress}%`)
+  async function handleMove(_p: Project, _direction: 'prev' | 'next') {
+    toast.error('تغيير المرحلة يتم عبر سلال البدء ← التخطيط ← التنفيذ')
   }
 
   const now = new Date(); now.setHours(0, 0, 0, 0)
@@ -997,12 +958,14 @@ export default function ProjectsPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       {/* أدوات اللوحة */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>{projects.length} مشروع — Kanban / قائمة / شبكة</p>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
+          {projects.length} مشروع في التنفيذ والإغلاق — للمتابعة فقط (لا تغيير للمراحل من هنا)
+        </p>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {canEdit && (
-            <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
+            <Link href="/projects/initiation/projects" className="btn btn-primary" style={{ textDecoration: 'none' }}>
               <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
-            </button>
+            </Link>
           )}
           <button onClick={() => setShowManageTypes(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '10px', border: '1px solid #ddd6fe', background: '#f5f3ff', color: '#7c3aed', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
@@ -1102,11 +1065,11 @@ export default function ProjectsPage() {
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: '60px', textAlign: 'center' }}>
           <FolderOpen style={{ width: '48px', height: '48px', color: '#e5e7eb', margin: '0 auto 12px' }} />
-          <p style={{ color: '#9ca3af', marginBottom: '16px' }}>لا توجد مشاريع</p>
+          <p style={{ color: '#9ca3af', marginBottom: '16px' }}>لا مشاريع في مرحلة التنفيذ — اعتمد تخطيط مشروع أولاً</p>
           {canEdit && (
-            <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary">
-              <Plus style={{ width: '16px', height: '16px' }} /> إضافة مشروع
-            </button>
+            <Link href="/projects/initiation/projects" className="btn btn-primary" style={{ textDecoration: 'none' }}>
+              <Plus style={{ width: '16px', height: '16px' }} /> بدء مشروع جديد
+            </Link>
           )}
         </div>
 
@@ -1135,7 +1098,7 @@ export default function ProjectsPage() {
                     <div style={{ padding: '24px', textAlign: 'center', color: '#d1d5db', fontSize: '0.8rem' }}>لا توجد مشاريع</div>
                   ) : (
                     colProjects.map(p => (
-                      <KanbanCard key={p.id} p={p} teamName={(p as any).team_id ? teamNames[(p as any).team_id] : undefined} canEdit={!!canEdit} blockers={projectBlockers[p.id]}
+                      <KanbanCard key={p.id} p={p} teamName={(p as any).team_id ? teamNames[(p as any).team_id] : undefined} canEdit={!!canEdit} lockPhase blockers={projectBlockers[p.id]}
                         onView={() => setDetail(p)}
                         onEdit={() => { setEditProject(p); setShowModal(true) }}
                         onDelete={() => handleDelete(p)}
@@ -1144,14 +1107,6 @@ export default function ProjectsPage() {
                         onQhse={(type) => setQhseModal({ type: type as QhseVisitType, projectId: p.id })}
                         onTask={() => setTaskProject(p)} />
                     ))
-                  )}
-                  {canEdit && col.id !== 'مكتمل' && (
-                    <button onClick={() => { setEditProject(null); setShowModal(true) }}
-                      style={{ padding: '8px', borderRadius: '8px', border: `1px dashed ${col.border}`, background: 'transparent', cursor: 'pointer', color: col.color, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.6)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <Plus style={{ width: '13px', height: '13px' }} /> إضافة مشروع
-                    </button>
                   )}
                 </div>
               </div>

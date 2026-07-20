@@ -253,7 +253,10 @@ export default function Sidebar() {
 
   const hasTeams     = hasProjects
   const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/execution','/projects/field-memos','/projects/framework'].some(p => pathname === p || pathname.startsWith(p+'/'))
-  const lifecycleActive = pathname === '/projects' || pathname.startsWith('/projects/initiation') || (pathname.startsWith('/projects/planning') && !/\/planning\/\d+/.test(pathname))
+  const lifecycleActive = pathname === '/projects'
+    || pathname.startsWith('/projects/initiation')
+    || (pathname.startsWith('/projects/planning') && !/\/planning\/\d+/.test(pathname))
+    || (pathname.startsWith('/projects/execution') && !/\/execution\/\d+/.test(pathname))
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inMyHR     = pathname.startsWith('/my-hr')
@@ -342,7 +345,6 @@ export default function Sidebar() {
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
             {hasProjects   && <SubLink href="/projects/initiation/projects" label="المشاريع"          icon={IC.projects}   active={lifecycleActive} />}
-            {hasProjects   && <SubLink href="/projects/execution" label="مرحلة تنفيذ المشروع" icon={IC.projects} active={pathname.startsWith('/projects/execution')} />}
             {hasTeams      && <SubLink href="/projects/teams"    label="الفريق والمهام"  icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
             {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
             {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}

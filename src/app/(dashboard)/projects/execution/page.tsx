@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, Users, ClipboardList } from 'lucide-react'
+import { Search, Eye, Users } from 'lucide-react'
 import { useExecution } from './ExecutionContext'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -69,24 +69,14 @@ export default function ExecutionListPage() {
                       </div>
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button
-                          onClick={() => router.push(`/projects/initiation/${p.id}/quantities`)}
-                          className="btn btn-ghost"
-                          style={{ padding: '6px 10px', color: '#7c3aed', border: '1px solid #ddd6fe' }}
-                          title="كميات المشروع"
-                        >
-                          <ClipboardList style={{ width: '16px', height: '16px' }} />
-                        </button>
-                        <button
-                          onClick={() => router.push(`/projects/execution/${p.id}`)}
-                          className="btn btn-ghost"
-                          style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d' }}
-                          title="استعراض المشروع"
-                        >
-                          <Eye style={{ width: '16px', height: '16px' }} />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => router.push(`/projects/execution/${p.id}`)}
+                        className="btn btn-ghost"
+                        style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d' }}
+                        title="استعراض المشروع"
+                      >
+                        <Eye style={{ width: '16px', height: '16px' }} />
+                      </button>
                     </td>
                   </tr>
                 ))}
