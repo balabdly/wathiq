@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
-import { SEC_PMO_PHASES } from '@/lib/project-phase-display'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
@@ -99,46 +98,34 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
 }
 
 export async function fetchAllPlanningProjects(tenantId: string) {
-  const { data: planningRows } = await supabase
-    .from('project_planning')
-    .select('*')
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, created_at')
     .eq('tenant_id', tenantId)
+    .eq('pmo_phase', '2_PREP')
+    .order('created_at', { ascending: false })
 
-  const planningMap = new Map((planningRows || []).map(p => [p.project_id, p as ProjectPlanning]))
-  const idsFromPlanning = Array.from(planningMap.keys())
+  const list = projects || []
+  const ids = list.map(p => p.id)
 
-  const phases = [...SEC_PMO_PHASES]
-
-  const [byPhaseRes, byPlanningRes] = await Promise.all([
-    supabase
-      .from('projects')
-      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, created_at')
+  let planningMap = new Map<number, ProjectPlanning>()
+  if (ids.length > 0) {
+    const { data: planningRows } = await supabase
+      .from('project_planning')
+      .select('*')
       .eq('tenant_id', tenantId)
-      .in('pmo_phase', phases)
-      .order('created_at', { ascending: false }),
-    idsFromPlanning.length
-      ? supabase
-          .from('projects')
-          .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, created_at')
-          .eq('tenant_id', tenantId)
-          .in('id', idsFromPlanning)
-      : Promise.resolve({ data: [], error: null }),
-  ])
-
-  const merged = new Map<number, PlanningProject>()
-  for (const p of [...(byPhaseRes.data || []), ...(byPlanningRes.data || [])]) {
-    merged.set(p.id, { ...p, planning: planningMap.get(p.id) || null })
+      .in('project_id', ids)
+      .eq('planning_status', 'active')
+    planningMap = new Map((planningRows || []).map(p => [p.project_id, p as ProjectPlanning]))
   }
 
-  const sorted = Array.from(merged.values()).sort((a, b) => {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
-    return tb - ta
-  })
+  const basket = list
+    .filter(p => planningMap.has(p.id))
+    .map(p => ({ ...p, planning: planningMap.get(p.id) || null }))
 
   return {
-    data: await attachPlanningProgress(tenantId, sorted),
-    error: byPhaseRes.error || byPlanningRes.error,
+    data: await attachPlanningProgress(tenantId, basket),
+    error,
   }
 }
 

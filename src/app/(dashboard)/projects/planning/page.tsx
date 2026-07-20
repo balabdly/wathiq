@@ -3,18 +3,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, ClipboardList } from 'lucide-react'
 import { usePlanning } from './PlanningContext'
-import { ensureProjectPlanning, type PlanningProject } from '@/lib/project-planning-service'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
-import ProjectPhaseBadge from '@/components/projects/ProjectPhaseBadge'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
 
 export default function PlanningListPage() {
   const router = useRouter()
-  const { tenantId, projects, reload, reloadKpis } = usePlanning()
+  const { projects } = usePlanning()
   const [search, setSearch] = useState('')
-  const [opening, setOpening] = useState<number | null>(null)
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
@@ -23,24 +20,8 @@ export default function PlanningListPage() {
 
   const { paginated, PaginationBar } = useFilteredPagination(filtered, 10, search)
 
-  async function openPlans(project: PlanningProject) {
-    if (!tenantId) return
-    setOpening(project.id)
-    try {
-      if ((project.pmo_phase === '1_RECEIPT' || project.pmo_phase === '2_PREP') && project.planning?.planning_status !== 'closed') {
-        await ensureProjectPlanning(tenantId, project.id, project)
-        await reload()
-        await reloadKpis()
-      }
-      router.push(`/projects/planning/${project.id}/materials`)
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل فتح الخطة')
-    }
-    setOpening(null)
-  }
-
-  function canEditPlans(p: PlanningProject) {
-    return (p.pmo_phase === '1_RECEIPT' || p.pmo_phase === '2_PREP') && p.planning?.planning_status !== 'closed'
+  function openPlans(projectId: number) {
+    router.push(`/projects/planning/${projectId}/materials`)
   }
 
   return (
@@ -53,14 +34,14 @@ export default function PlanningListPage() {
 
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>
-            لا مشاريع مسجّلة — ابدأ من «مرحلة بدء المشروع»
+            لا مشاريع في سلة التخطيط — أرسل مشروعاً من مرحلة البدء
           </div>
         ) : (
           <div style={{ overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['المرحلة', 'التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', 'الخطط'].map(h => (
+                  {['التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', 'الخطط'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
@@ -68,11 +49,8 @@ export default function PlanningListPage() {
               <tbody>
                 {paginated.map(p => (
                   <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 12px' }}>
-                      <ProjectPhaseBadge phase={p.pmo_phase} size="sm" />
-                    </td>
                     <td style={{ padding: '10px 12px', minWidth: '120px' }}>
-                      {p.planning ? (
+                      {p.planningProgress ? (
                         <PlanningProgressBadge progress={p.planningProgress} size="sm" />
                       ) : (
                         <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>—</span>
@@ -88,14 +66,12 @@ export default function PlanningListPage() {
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <button
-                        onClick={() => openPlans(p)}
-                        disabled={opening === p.id}
+                        onClick={() => openPlans(p.id)}
                         className="btn btn-ghost"
                         style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
-                        title={canEditPlans(p) ? 'إضافة / عرض الخطط' : 'عرض الخطط'}
+                        title="فتح خطط المشروع"
                       >
-                        <ClipboardList style={{ width: '16px', height: '16px' }} />
-                        {canEditPlans(p) ? (p.planning ? 'عرض' : 'إضافة') : 'عرض'}
+                        <ClipboardList style={{ width: '16px', height: '16px' }} /> فتح
                       </button>
                     </td>
                   </tr>

@@ -8,7 +8,7 @@ export type PlanningContextValue = {
   loading: boolean
   reload: () => Promise<void>
   reloadKpis: () => Promise<void>
-  kpis: { total: number; inPlanning: number; withPlans: number; inExecution: number }
+  kpis: { total: number; complete: number; inProgress: number }
 }
 
 export const PlanningContext = createContext<PlanningContextValue | null>(null)

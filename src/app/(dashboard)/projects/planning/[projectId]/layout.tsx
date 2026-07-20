@@ -34,14 +34,27 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
 
   const reload = useCallback(async () => {
     if (!tenant || !projectId) return
-    let result = await fetchProjectPlanning(tenant.id, projectId)
-    if (!result.planning) {
+    const result = await fetchProjectPlanning(tenant.id, projectId)
+    const phase = result.project?.pmo_phase
+
+    if (phase === '1_RECEIPT') {
+      router.replace('/projects/initiation/projects')
+      return
+    }
+    if (phase === '3_EXEC' || phase === '4_MEASURE' || phase === '5_CLOSE') {
+      router.replace('/projects/execution')
+      return
+    }
+    if (!result.planning && phase === '2_PREP') {
       await ensureProjectPlanning(tenant.id, projectId, {
         start_date: result.project?.start_date,
         end_date: result.project?.end_date,
       })
-      result = await fetchProjectPlanning(tenant.id, projectId)
+      const refreshed = await fetchProjectPlanning(tenant.id, projectId)
+      result.project = refreshed.project
+      result.planning = refreshed.planning
     }
+
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
@@ -49,7 +62,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
       result.planning,
       (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,
     ))
-  }, [tenant?.id, projectId])
+  }, [tenant?.id, projectId, router])
 
   useEffect(() => {
     if (!tenant || !projectId) return
@@ -61,7 +74,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const activeSlug = PROJECT_TABS.find(t => pathname?.startsWith(`${base}/${t.slug}`))?.slug
 
   async function handleClosePlanning() {
-    if (!tenant || !confirm('إغلاق التخطيط ونقل المشروع إلى مرحلة التنفيذ؟')) return
+    if (!tenant || !confirm('اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟')) return
     await closeProjectPlanning(tenant.id, projectId)
     router.push('/projects/execution')
   }
@@ -97,7 +110,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
           )}
           {planning?.planning_status === 'active' && (
             <button onClick={handleClosePlanning} className="btn btn-ghost" style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#6b7280', border: '1px solid #d1d5db' }}>
-              <Archive style={{ width: '14px', height: '14px' }} /> إغلاق التخطيط والانتقال للتنفيذ
+              <Archive style={{ width: '14px', height: '14px' }} /> اعتماد التخطيط والانتقال للتنفيذ
             </button>
           )}
         </div>

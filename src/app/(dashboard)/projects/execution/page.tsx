@@ -29,7 +29,7 @@ export default function ExecutionListPage() {
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>
             <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏗️</div>
-            لا مشاريع في مرحلة التنفيذ — أغلق تخطيط مشروع لنقله هنا
+            لا مشاريع في سلة التنفيذ — اعتمد تخطيط مشروع لنقله هنا
           </div>
         ) : (
           <div style={{ overflow: 'auto' }}>

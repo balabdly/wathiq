@@ -3,11 +3,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { completeProjectInitiation } from '@/lib/project-initiation-service'
 import { useInitiation } from '../InitiationContext'
 import InitiationProjectModal from '@/components/projects/InitiationProjectModal'
 import ManageProjectTypesModal from '@/components/projects/ManageProjectTypesModal'
-import ProjectPhaseBadge from '@/components/projects/ProjectPhaseBadge'
-import { Plus, Search, Pencil, Trash2, Tag, ClipboardList } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Tag, ClipboardList, ArrowLeftCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -26,6 +26,7 @@ export default function InitiationProjectsPage() {
   const [showModal, setShowModal] = useState(false)
   const [showTypes, setShowTypes] = useState(false)
   const [editProject, setEditProject] = useState<InitiationProject | null>(null)
+  const [sending, setSending] = useState<number | null>(null)
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
@@ -43,6 +44,31 @@ export default function InitiationProjectsPage() {
     toast.success('تم الحذف')
     await reloadShared()
     await reloadKpis()
+  }
+
+  async function handleSendToPlanning(project: InitiationProject) {
+    if (!tenantId) return
+    if (!project.client_id) {
+      toast.error('حدّد العميل أولاً')
+      return
+    }
+    if (!project.hasBoq) {
+      toast.error('احفظ الكميات الابتدائية أولاً')
+      return
+    }
+    if (!confirm(`إنهاء مرحلة البدء ونقل «${project.name}» إلى التخطيط؟`)) return
+
+    setSending(project.id)
+    try {
+      await completeProjectInitiation(tenantId, project.id, project)
+      toast.success('تم نقل المشروع إلى مرحلة التخطيط')
+      await reloadShared()
+      await reloadKpis()
+      router.push('/projects/planning')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل النقل')
+    }
+    setSending(null)
   }
 
   if (!tenantId || !branchId) {
@@ -68,54 +94,75 @@ export default function InitiationProjectsPage() {
         </div>
 
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>لا مشاريع مسجلة</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>لا مشاريع في سلة البدء</div>
         ) : (
           <div style={{ overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['المرحلة', 'الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'البداية', 'النهاية', ''].map(h => (
+                  {['الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'الكميات', 'البداية', 'النهاية', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {paginated.map(p => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 12px' }}>
-                      <ProjectPhaseBadge phase={p.pmo_phase} size="sm" />
-                    </td>
-                    <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
-                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.name}</td>
-                    <td style={{ padding: '10px 12px', color: '#1a56db', fontWeight: 600 }}>{p.client_name || '—'}</td>
-                    <td style={{ padding: '10px 12px' }}>{typeLabel(p.type, projectTypes)}</td>
-                    <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0ea77b' }}>
-                      {p.estimated_value ? `${Number(p.estimated_value).toLocaleString('ar-SA')} ر.س` : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.start_date ? formatDate(p.start_date) : '—'}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.end_date ? formatDate(p.end_date) : '—'}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button
-                          onClick={() => router.push(`/projects/initiation/${p.id}/quantities`)}
-                          className="btn btn-ghost"
-                          style={{ padding: '6px', color: '#7c3aed', border: '1px solid #ddd6fe' }}
-                          title="كميات المشروع"
-                        >
-                          <ClipboardList style={{ width: '14px', height: '14px' }} />
-                        </button>
-                        <button onClick={() => { setEditProject(p); setShowModal(true) }} className="btn btn-ghost" style={{ padding: '6px' }} title="تعديل">
-                          <Pencil style={{ width: '14px', height: '14px' }} />
-                        </button>
-                        {p.pmo_phase === '1_RECEIPT' && (
+                {paginated.map(p => {
+                  const ready = !!(p.client_id && p.hasBoq)
+                  return (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.name}</td>
+                      <td style={{ padding: '10px 12px', color: '#1a56db', fontWeight: 600 }}>{p.client_name || '—'}</td>
+                      <td style={{ padding: '10px 12px' }}>{typeLabel(p.type, projectTypes)}</td>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0ea77b' }}>
+                        {p.estimated_value ? `${Number(p.estimated_value).toLocaleString('ar-SA')} ر.س` : '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span style={{
+                          fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px', borderRadius: '6px',
+                          background: p.hasBoq ? '#ecfdf5' : '#fef2f2',
+                          color: p.hasBoq ? '#0ea77b' : '#c81e1e',
+                        }}>
+                          {p.hasBoq ? 'محفوظة' : 'ناقصة'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.start_date ? formatDate(p.start_date) : '—'}</td>
+                      <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.end_date ? formatDate(p.end_date) : '—'}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            onClick={() => router.push(`/projects/initiation/${p.id}/quantities`)}
+                            className="btn btn-ghost"
+                            style={{ padding: '6px', color: '#7c3aed', border: '1px solid #ddd6fe' }}
+                            title="كميات المشروع"
+                          >
+                            <ClipboardList style={{ width: '14px', height: '14px' }} />
+                          </button>
+                          <button onClick={() => { setEditProject(p); setShowModal(true) }} className="btn btn-ghost" style={{ padding: '6px' }} title="تعديل">
+                            <Pencil style={{ width: '14px', height: '14px' }} />
+                          </button>
+                          <button
+                            onClick={() => handleSendToPlanning(p)}
+                            disabled={!ready || sending === p.id}
+                            className="btn btn-ghost"
+                            style={{
+                              padding: '6px 8px',
+                              color: ready ? '#0ea77b' : '#9ca3af',
+                              border: `1px solid ${ready ? '#86efac' : '#e5e7eb'}`,
+                              opacity: sending === p.id ? 0.6 : 1,
+                            }}
+                            title={ready ? 'إرسال للتخطيط' : 'أكمل العميل والكميات أولاً'}
+                          >
+                            <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
+                          </button>
                           <button onClick={() => handleDelete(p.id, p.name)} className="btn btn-ghost" style={{ padding: '6px', color: '#c81e1e' }} title="حذف">
                             <Trash2 style={{ width: '14px', height: '14px' }} />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

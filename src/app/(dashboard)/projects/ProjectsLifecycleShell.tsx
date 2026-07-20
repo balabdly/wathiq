@@ -33,7 +33,7 @@ export default function ProjectsLifecycleShell({ children }: { children: React.R
           المشاريع
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-          بدء المشروع — التخطيط — لوحة المتابعة الشاملة
+          كل تبويب يعرض مشاريع مرحلته فقط — البدء ← التخطيط ← التنفيذ
         </p>
       </div>
 

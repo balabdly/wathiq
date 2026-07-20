@@ -16,6 +16,7 @@ export type InitiationProject = {
   end_date?: string
   description?: string
   created_at?: string
+  hasBoq?: boolean
 }
 
 export type FrameworkBoqRow = {

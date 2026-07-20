@@ -12,7 +12,7 @@ export default function PlanningLayout({ children }: { children: React.ReactNode
 
   const [projects, setProjects] = useState<PlanningContextValue['projects']>([])
   const [loading, setLoading] = useState(true)
-  const [kpis, setKpis] = useState({ total: 0, inPlanning: 0, withPlans: 0, inExecution: 0 })
+  const [kpis, setKpis] = useState({ total: 0, complete: 0, inProgress: 0 })
 
   const reload = useCallback(async () => {
     if (!tenant) return
@@ -24,11 +24,11 @@ export default function PlanningLayout({ children }: { children: React.ReactNode
     if (!tenant) return
     const { data } = await fetchAllPlanningProjects(tenant.id)
     const list = data || []
+    const complete = list.filter(p => p.planningProgress?.isComplete).length
     setKpis({
       total: list.length,
-      inPlanning: list.filter(p => p.pmo_phase === '2_PREP').length,
-      withPlans: list.filter(p => p.planning).length,
-      inExecution: list.filter(p => p.pmo_phase === '3_EXEC' || p.pmo_phase === '4_MEASURE').length,
+      complete,
+      inProgress: list.length - complete,
     })
   }, [tenant?.id])
 
@@ -61,12 +61,11 @@ export default function PlanningLayout({ children }: { children: React.ReactNode
     <PlanningContext.Provider value={ctx}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {!isProjectDetail && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
             {[
-              { label: 'إجمالي المشاريع', value: kpis.total, color: '#0ea77b', bg: '#ecfdf5' },
-              { label: 'قيد التخطيط', value: kpis.inPlanning, color: '#1a56db', bg: '#eff6ff' },
-              { label: 'بخطط مسجّلة', value: kpis.withPlans, color: '#7c3aed', bg: '#f5f3ff' },
-              { label: 'انتقلت للتنفيذ', value: kpis.inExecution, color: '#e6820a', bg: '#fffbeb' },
+              { label: 'في سلة التخطيط', value: kpis.total, color: '#0ea77b', bg: '#ecfdf5' },
+              { label: 'قيد الإعداد', value: kpis.inProgress, color: '#1a56db', bg: '#eff6ff' },
+              { label: 'جاهز للاعتماد', value: kpis.complete, color: '#7c3aed', bg: '#f5f3ff' },
             ].map(k => (
               <div key={k.label} className="card" style={{ padding: '16px', background: k.bg }}>
                 <div style={{ fontSize: '1.3rem', fontWeight: 700, color: k.color }}>{k.value}</div>

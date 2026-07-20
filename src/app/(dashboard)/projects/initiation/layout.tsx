@@ -3,9 +3,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { fetchInitiationBasketProjects } from '@/lib/project-initiation-service'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
-import { SEC_PMO_PHASES } from '@/lib/project-phase-display'
 import { InitiationContext, type InitiationProject, type FrameworkBoqRow } from './InitiationContext'
 
 export default function InitiationLayout({ children }: { children: React.ReactNode }) {
@@ -16,24 +16,19 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
   const [projectTypes, setProjectTypes] = useState<{ id: number; code: string; name: string }[]>([])
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [kpis, setKpis] = useState({ total: 0, inStart: 0, noClient: 0, noBoq: 0 })
+  const [kpis, setKpis] = useState({ total: 0, readyForPlanning: 0, noClient: 0, noBoq: 0 })
 
   const reloadShared = useCallback(async () => {
     if (!tenant) return
-    const [projRes, typesRes] = await Promise.all([
-      supabase
-        .from('projects')
-        .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
-        .eq('tenant_id', tenant.id)
-        .in('pmo_phase', SEC_PMO_PHASES)
-        .order('created_at', { ascending: false }),
+    const [basketRes, typesRes] = await Promise.all([
+      fetchInitiationBasketProjects(tenant.id),
       supabase.from('project_types')
         .select('id, code, name')
         .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('name'),
     ])
-    setProjects(projRes.data || [])
+    setProjects(basketRes.data || [])
     setProjectTypes(typesRes.data || [])
 
     try {
@@ -53,32 +48,13 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
   const reloadKpis = useCallback(async () => {
     if (!tenant) return
-    const { data: phaseProjects } = await supabase
-      .from('projects')
-      .select('id, client_id, pmo_phase')
-      .eq('tenant_id', tenant.id)
-      .in('pmo_phase', SEC_PMO_PHASES)
-
-    const list = phaseProjects || []
-    const ids = list.map(p => p.id)
-    let noBoq = list.length
-
-    if (ids.length > 0) {
-      const { data: boqRows } = await supabase
-        .from('project_boq_versions')
-        .select('project_id')
-        .eq('tenant_id', tenant.id)
-        .eq('version_type', 'INITIAL')
-        .in('project_id', ids)
-      const withBoq = new Set((boqRows || []).map(r => r.project_id))
-      noBoq = list.filter(p => !withBoq.has(p.id)).length
-    }
-
+    const { data } = await fetchInitiationBasketProjects(tenant.id)
+    const list = data || []
     setKpis({
       total: list.length,
-      inStart: list.filter(p => p.pmo_phase === '1_RECEIPT').length,
+      readyForPlanning: list.filter(p => p.client_id && p.hasBoq).length,
       noClient: list.filter(p => !p.client_id).length,
-      noBoq,
+      noBoq: list.filter(p => !p.hasBoq).length,
     })
   }, [tenant?.id])
 
@@ -107,8 +83,8 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
         {!isDetail && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
             {[
-              { label: 'إجمالي المشاريع', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
-              { label: 'في مرحلة البدء', value: kpis.inStart, color: '#6b7280', bg: '#f9fafb' },
+              { label: 'في سلة البدء', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
+              { label: 'جاهز للتخطيط', value: kpis.readyForPlanning, color: '#0ea77b', bg: '#ecfdf5' },
               { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
               { label: 'بدون كميات', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
             ].map(kpi => (
