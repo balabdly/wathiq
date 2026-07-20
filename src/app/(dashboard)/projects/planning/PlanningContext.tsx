@@ -4,13 +4,11 @@ import type { PlanningProject } from '@/lib/project-planning-service'
 
 export type PlanningContextValue = {
   tenantId: string | null
-  activeProjects: PlanningProject[]
-  closedProjects: PlanningProject[]
+  projects: PlanningProject[]
   loading: boolean
-  reloadActive: () => Promise<void>
-  reloadClosed: () => Promise<void>
+  reload: () => Promise<void>
   reloadKpis: () => Promise<void>
-  kpis: { active: number; withPlans: number; closed: number }
+  kpis: { total: number; inPlanning: number; withPlans: number; inExecution: number }
 }
 
 export const PlanningContext = createContext<PlanningContextValue | null>(null)

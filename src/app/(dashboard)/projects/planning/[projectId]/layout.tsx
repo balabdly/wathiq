@@ -75,7 +75,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     <ProjectPlanningContext.Provider value={{ tenantId: tenant.id, projectId, project, planning, reload }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => router.push('/projects/planning/active')} className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+          <button onClick={() => router.push('/projects/planning')} className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
             <ArrowRight style={{ width: '14px', height: '14px' }} /> العودة
           </button>
           <div>

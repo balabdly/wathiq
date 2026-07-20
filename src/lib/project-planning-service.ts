@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { SEC_PMO_PHASES } from '@/lib/project-phase-display'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
@@ -71,6 +72,7 @@ export type PlanningProject = {
   end_date?: string
   estimated_value?: number
   pmo_phase?: string
+  created_at?: string
   planning?: ProjectPlanning | null
   planningProgress?: PlanningProgress
 }
@@ -96,6 +98,51 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
   }))
 }
 
+export async function fetchAllPlanningProjects(tenantId: string) {
+  const { data: planningRows } = await supabase
+    .from('project_planning')
+    .select('*')
+    .eq('tenant_id', tenantId)
+
+  const planningMap = new Map((planningRows || []).map(p => [p.project_id, p as ProjectPlanning]))
+  const idsFromPlanning = Array.from(planningMap.keys())
+
+  const phases = [...SEC_PMO_PHASES]
+
+  const [byPhaseRes, byPlanningRes] = await Promise.all([
+    supabase
+      .from('projects')
+      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, created_at')
+      .eq('tenant_id', tenantId)
+      .in('pmo_phase', phases)
+      .order('created_at', { ascending: false }),
+    idsFromPlanning.length
+      ? supabase
+          .from('projects')
+          .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, created_at')
+          .eq('tenant_id', tenantId)
+          .in('id', idsFromPlanning)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  const merged = new Map<number, PlanningProject>()
+  for (const p of [...(byPhaseRes.data || []), ...(byPlanningRes.data || [])]) {
+    merged.set(p.id, { ...p, planning: planningMap.get(p.id) || null })
+  }
+
+  const sorted = Array.from(merged.values()).sort((a, b) => {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0
+    return tb - ta
+  })
+
+  return {
+    data: await attachPlanningProgress(tenantId, sorted),
+    error: byPhaseRes.error || byPlanningRes.error,
+  }
+}
+
+/** @deprecated استخدم fetchAllPlanningProjects */
 export async function fetchPlanningProjects(tenantId: string, status: 'active' | 'closed') {
   const { data: planningRows } = await supabase
     .from('project_planning')
