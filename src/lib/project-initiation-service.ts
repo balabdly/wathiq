@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { statusForPhase } from '@/lib/sec-workflow'
 import { ensureProjectPlanning } from '@/lib/project-planning-service'
 
 export type InitiationBasketProject = {
@@ -83,4 +84,25 @@ export async function completeProjectInitiation(
   }
 
   await ensureProjectPlanning(tenantId, projectId, p)
+}
+
+/** إرجاع مشروع من التخطيط إلى سلة البدء (تصحيح بيانات المشروع) */
+export async function reopenProjectToInitiation(tenantId: string, projectId: number) {
+  const { data: project, error: pErr } = await supabase
+    .from('projects')
+    .select('id, pmo_phase')
+    .eq('tenant_id', tenantId)
+    .eq('id', projectId)
+    .single()
+  if (pErr) throw pErr
+  if (project.pmo_phase !== '2_PREP') {
+    throw new Error('يمكن إرجاع مشاريع في مرحلة التخطيط فقط')
+  }
+
+  const { error } = await supabase.from('projects').update({
+    pmo_phase: '1_RECEIPT',
+    status: statusForPhase('1_RECEIPT'),
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+  if (error) throw error
 }

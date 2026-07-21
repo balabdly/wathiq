@@ -137,7 +137,22 @@ export async function ensureProjectPlanning(tenantId: string, projectId: number,
     .eq('project_id', projectId)
     .maybeSingle()
 
-  if (existing) return existing as ProjectPlanning
+  if (existing) {
+    const { error: phaseErr } = await supabase.from('projects').update({
+      pmo_phase: '2_PREP',
+      status: statusForPhase('2_PREP'),
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId).eq('tenant_id', tenantId)
+    if (phaseErr) throw phaseErr
+
+    if (existing.planning_status !== 'active') {
+      await supabase.from('project_planning').update({
+        planning_status: 'active',
+        updated_at: new Date().toISOString(),
+      }).eq('tenant_id', tenantId).eq('project_id', projectId)
+    }
+    return existing as ProjectPlanning
+  }
 
   const { data, error } = await supabase.from('project_planning').insert({
     tenant_id: tenantId,

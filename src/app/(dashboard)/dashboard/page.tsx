@@ -246,7 +246,7 @@ export default function DashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
           <KpiCard label="المشاريع النشطة" value={stats?.activeProjects || 0}
             sub={stats?.delayedProjects ? `⚠ ${stats.delayedProjects} متأخر` : '✅ كلها في الوقت'}
-            subOk={!stats?.delayedProjects} icon={<FolderOpen style={{ width: '18px', height: '18px' }} />} color="blue" href="/projects" />
+            subOk={!stats?.delayedProjects} icon={<FolderOpen style={{ width: '18px', height: '18px' }} />} color="blue" href="/projects/monitoring" />
           <KpiCard label="NCR معلقة" value={stats?.openNcr || 0}
             sub={stats?.openNcr ? 'تحتاج إجراء تصحيحي' : '✅ لا توجد ملاحظات'}
             subOk={!stats?.openNcr} icon={<AlertTriangle style={{ width: '18px', height: '18px' }} />} color={stats?.openNcr ? 'red' : 'green'} href="/visits" />

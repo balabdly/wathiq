@@ -1,15 +1,22 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, Users } from 'lucide-react'
+import { Search, Eye, RotateCcw, Users } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { useStore } from '@/hooks/useStore'
+import { reopenProjectPlanning } from '@/lib/project-planning-service'
 import { useExecution } from './ExecutionContext'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
 
 export default function ExecutionListPage() {
   const router = useRouter()
-  const { projects } = useExecution()
+  const { currentUser } = useStore()
+  const { tenantId, projects, reload } = useExecution()
   const [search, setSearch] = useState('')
+  const [returning, setReturning] = useState<number | null>(null)
+
+  const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
@@ -17,6 +24,27 @@ export default function ExecutionListPage() {
   })
 
   const { paginated, PaginationBar } = useFilteredPagination(filtered, 10, search)
+
+  async function handleReturnToPlanning(projectId: number, name: string) {
+    if (!tenantId) return
+    const msg = [
+      `إرجاع «${name}» إلى مرحلة التخطيط؟`,
+      '',
+      '• يُلغى إسناد الفريق',
+      '• يُعاد فتح التخطيط للتعديل',
+      '• سجل الإنجاز اليومي يبقى محفوظاً',
+    ].join('\n')
+    if (!confirm(msg)) return
+    setReturning(projectId)
+    try {
+      await reopenProjectPlanning(tenantId, projectId)
+      toast.success('تم إرجاع المشروع إلى التخطيط')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
+    }
+    setReturning(null)
+  }
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -69,14 +97,27 @@ export default function ExecutionListPage() {
                       </div>
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <button
-                        onClick={() => router.push(`/projects/execution/${p.id}`)}
-                        className="btn btn-ghost"
-                        style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d' }}
-                        title="استعراض المشروع"
-                      >
-                        <Eye style={{ width: '16px', height: '16px' }} />
-                      </button>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          onClick={() => router.push(`/projects/execution/${p.id}`)}
+                          className="btn btn-ghost"
+                          style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d' }}
+                          title="عرض المشروع"
+                        >
+                          <Eye style={{ width: '16px', height: '16px' }} />
+                        </button>
+                        {canEdit && p.pmo_phase === '3_EXEC' && (
+                          <button
+                            onClick={() => handleReturnToPlanning(p.id, p.name)}
+                            disabled={returning === p.id}
+                            className="btn btn-ghost"
+                            style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac', opacity: returning === p.id ? 0.6 : 1 }}
+                            title="إرجاع لمرحلة التخطيط"
+                          >
+                            <RotateCcw style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

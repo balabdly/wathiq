@@ -1,17 +1,23 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, ClipboardList } from 'lucide-react'
-import { usePlanning } from './PlanningContext'
+import { Search, Eye, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useStore } from '@/hooks/useStore'
+import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
+import { usePlanning } from './PlanningContext'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
 
 export default function PlanningListPage() {
   const router = useRouter()
-  const { projects } = usePlanning()
+  const { currentUser } = useStore()
+  const { tenantId, projects, reload } = usePlanning()
   const [search, setSearch] = useState('')
+  const [returning, setReturning] = useState<number | null>(null)
+
+  const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
@@ -20,8 +26,24 @@ export default function PlanningListPage() {
 
   const { paginated, PaginationBar } = useFilteredPagination(filtered, 10, search)
 
-  function openPlans(projectId: number) {
-    router.push(`/projects/planning/${projectId}/materials`)
+  async function handleReturnToInitiation(projectId: number, name: string) {
+    if (!tenantId) return
+    const msg = [
+      `إرجاع «${name}» إلى مرحلة البدء؟`,
+      '',
+      '• لتصحيح بيانات المشروع أو الكميات',
+      '• خطط التخطيط تبقى محفوظة',
+    ].join('\n')
+    if (!confirm(msg)) return
+    setReturning(projectId)
+    try {
+      await reopenProjectToInitiation(tenantId, projectId)
+      toast.success('تم إرجاع المشروع إلى مرحلة البدء')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
+    }
+    setReturning(null)
   }
 
   return (
@@ -41,7 +63,7 @@ export default function PlanningListPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', 'الخطط'].map(h => (
+                  {['التخطيط', 'الرقم', 'المشروع', 'العميل', 'البداية', 'النهاية', 'القيمة', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
@@ -65,14 +87,27 @@ export default function PlanningListPage() {
                       {p.estimated_value ? `${Number(p.estimated_value).toLocaleString('ar-SA')} ر.س` : '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <button
-                        onClick={() => openPlans(p.id)}
-                        className="btn btn-ghost"
-                        style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
-                        title="فتح خطط المشروع"
-                      >
-                        <ClipboardList style={{ width: '16px', height: '16px' }} /> فتح
-                      </button>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          onClick={() => router.push(`/projects/planning/${p.id}/materials`)}
+                          className="btn btn-ghost"
+                          style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
+                          title="عرض المشروع"
+                        >
+                          <Eye style={{ width: '16px', height: '16px' }} />
+                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleReturnToInitiation(p.id, p.name)}
+                            disabled={returning === p.id}
+                            className="btn btn-ghost"
+                            style={{ padding: '6px 10px', color: '#1a56db', border: '1px solid #bfdbfe', opacity: returning === p.id ? 0.6 : 1 }}
+                            title="إرجاع لمرحلة البدء"
+                          >
+                            <RotateCcw style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

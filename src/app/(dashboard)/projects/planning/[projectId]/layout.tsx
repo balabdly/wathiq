@@ -4,9 +4,10 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
+import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
-import { ArrowRight, ClipboardList, Archive } from 'lucide-react'
+import { ArrowRight, ClipboardList, Archive, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ProjectPlanningContext, type ProjectPlanningDetail } from './ProjectPlanningContext'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
@@ -27,8 +28,10 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
-  const { tenant } = useStore()
+  const { tenant, currentUser } = useStore()
   const projectId = Number(params.projectId)
+  const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
+  const [returning, setReturning] = useState(false)
 
   const [project, setProject] = useState<ProjectPlanningDetail | null>(null)
   const [planning, setPlanning] = useState<ProjectPlanning | null>(null)
@@ -99,6 +102,26 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     }
   }
 
+  async function handleReturnToInitiation() {
+    if (!tenant || !project) return
+    const msg = [
+      `إرجاع «${project.name}» إلى مرحلة البدء؟`,
+      '',
+      '• لتصحيح بيانات المشروع أو الكميات',
+      '• خطط التخطيط تبقى محفوظة',
+    ].join('\n')
+    if (!confirm(msg)) return
+    setReturning(true)
+    try {
+      await reopenProjectToInitiation(tenant.id, projectId)
+      toast.success('تم إرجاع المشروع إلى مرحلة البدء')
+      router.push('/projects/initiation/projects')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
+    }
+    setReturning(false)
+  }
+
   if (loading || !project || !tenant) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '60px' }}>
@@ -135,6 +158,18 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
           {!readOnly && planning?.planning_status === 'active' && progress?.isComplete && (
             <button onClick={handleClosePlanning} className="btn btn-primary" style={{ marginRight: 'auto', fontSize: '0.82rem' }}>
               <Archive style={{ width: '14px', height: '14px' }} /> اعتماد التخطيط والانتقال للتنفيذ
+            </button>
+          )}
+          {!readOnly && canEdit && planning?.planning_status === 'active' && (
+            <button
+              onClick={handleReturnToInitiation}
+              disabled={returning}
+              className="btn btn-ghost"
+              style={{ fontSize: '0.78rem', color: '#1a56db', border: '1px solid #bfdbfe', marginRight: !progress?.isComplete ? 'auto' : undefined }}
+              title="إرجاع لمرحلة البدء"
+            >
+              <RotateCcw style={{ width: '14px', height: '14px' }} />
+              {returning ? 'جاري الإرجاع...' : 'إرجاع للبدء'}
             </button>
           )}
           {!readOnly && planning?.planning_status === 'active' && progress && !progress.isComplete && (
