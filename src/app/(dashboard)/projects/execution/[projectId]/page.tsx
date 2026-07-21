@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Ruler } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -15,6 +15,7 @@ import {
   formatTodayLabel,
   type ExecutionProjectDetail,
 } from '@/lib/project-execution-service'
+import { advanceProjectToMeasure } from '@/lib/project-measure-service'
 import { formatTeamTypeLabel, TEAM_TYPE_STYLE, type TeamProjectLog } from '@/lib/project-teams'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -48,6 +49,7 @@ export default function ExecutionProjectPage() {
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [reopening, setReopening] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
 
   const reload = useCallback(async () => {
     if (!tenant) return
@@ -131,9 +133,28 @@ export default function ExecutionProjectPage() {
       await reload()
       await reloadLogs()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الحفظ')
+      const msg = e instanceof Error ? e.message : 'فشل الحفظ'
+      toast.error(msg.includes('progress_percent') ? 'خطأ في قاعدة البيانات — تواصل مع الدعم لتطبيق التحديث' : msg)
     }
     setSaving(false)
+  }
+
+  async function handleAdvanceToMeasure() {
+    if (!tenant) return
+    if ((project?.progress ?? 0) < 100) {
+      toast.error('يجب أن تصل نسبة الإنجاز إلى 100% أولاً')
+      return
+    }
+    if (!confirm('نقل المشروع إلى مرحلة المقايسة والتسوية؟')) return
+    setAdvancing(true)
+    try {
+      await advanceProjectToMeasure(tenant.id, projectId)
+      toast.success('تم نقل المشروع إلى المقايسة')
+      router.push('/projects/measure')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل النقل')
+    }
+    setAdvancing(false)
   }
 
   async function handleReopenPlanning() {
@@ -187,16 +208,30 @@ export default function ExecutionProjectPage() {
           <PlanningProgressBadge progress={project.planningProgress} />
         )}
         {canEdit && project.pmo_phase === '3_EXEC' && (
-          <button
-            onClick={handleReopenPlanning}
-            disabled={reopening}
-            className="btn btn-ghost"
-            style={{ fontSize: '0.78rem', color: '#0ea77b', border: '1px solid #86efac', marginRight: 'auto' }}
-            title="تصحيح — إرجاع للتخطيط"
-          >
-            <Undo2 style={{ width: '14px', height: '14px' }} />
-            {reopening ? 'جاري الإرجاع...' : 'إرجاع للتخطيط'}
-          </button>
+          <>
+            {(project.progress ?? 0) >= 100 && (
+              <button
+                onClick={handleAdvanceToMeasure}
+                disabled={advancing}
+                className="btn btn-primary"
+                style={{ fontSize: '0.78rem', background: '#7c3aed', marginRight: 'auto' }}
+                title="الانتقال للمقايسة"
+              >
+                <Ruler style={{ width: '14px', height: '14px' }} />
+                {advancing ? 'جاري النقل...' : '→ المقايسة'}
+              </button>
+            )}
+            <button
+              onClick={handleReopenPlanning}
+              disabled={reopening}
+              className="btn btn-ghost"
+              style={{ fontSize: '0.78rem', color: '#0ea77b', border: '1px solid #86efac' }}
+              title="تصحيح — إرجاع للتخطيط"
+            >
+              <Undo2 style={{ width: '14px', height: '14px' }} />
+              {reopening ? 'جاري الإرجاع...' : 'إرجاع للتخطيط'}
+            </button>
+          </>
         )}
       </div>
 

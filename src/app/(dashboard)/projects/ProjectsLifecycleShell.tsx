@@ -8,6 +8,8 @@ const TABS = [
   { href: '/projects/initiation/projects', label: 'مرحلة البدء', emoji: '🚀', color: '#1a56db', match: (p: string) => p.startsWith('/projects/initiation') },
   { href: '/projects/planning', label: 'مرحلة التخطيط', emoji: '📋', color: '#0ea77b', match: (p: string) => p.startsWith('/projects/planning') && !/\/planning\/\d+/.test(p) },
   { href: '/projects/execution', label: 'مرحلة التنفيذ', emoji: '🏗️', color: '#e6820a', match: (p: string) => p.startsWith('/projects/execution') && !/\/execution\/\d+/.test(p) },
+  { href: '/projects/measure', label: 'مرحلة المقايسة', emoji: '📐', color: '#9333ea', match: (p: string) => p.startsWith('/projects/measure') && !/\/measure\/\d+/.test(p) },
+  { href: '/projects/close', label: 'مرحلة الإغلاق', emoji: '🏁', color: '#059669', match: (p: string) => p.startsWith('/projects/close') && !/\/close\/\d+/.test(p) },
 ]
 
 export function showProjectsLifecycleShell(pathname: string): boolean {
@@ -23,6 +25,12 @@ export function showProjectsLifecycleShell(pathname: string): boolean {
   if (pathname.startsWith('/projects/execution')) {
     return !/\/projects\/execution\/\d+/.test(pathname)
   }
+  if (pathname.startsWith('/projects/measure')) {
+    return !/\/projects\/measure\/\d+/.test(pathname)
+  }
+  if (pathname.startsWith('/projects/close')) {
+    return !/\/projects\/close\/\d+/.test(pathname)
+  }
   return false
 }
 
@@ -37,7 +45,7 @@ export default function ProjectsLifecycleShell({ children }: { children: React.R
           المشاريع
         </h1>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
-          متابعة — بدء — تخطيط — تنفيذ
+          متابعة — بدء — تخطيط — تنفيذ — مقايسة — إغلاق
         </p>
       </div>
 
