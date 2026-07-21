@@ -146,13 +146,14 @@ export default function MeasureProjectPage() {
     )
   }
 
-  const measure = project.measure
-  const billing = project.billing_model || 'SPLIT_50_50'
+  const proj = project
+  const measure = proj.measure
+  const billing = proj.billing_model || 'SPLIT_50_50'
   const readOnly = measure?.measure_status === 'closed'
 
   function isCheckDone(key: typeof CHECKLIST[number]['key']): boolean {
-    if (key === 'execution_confirmed') return !!(measure?.execution_confirmed || (project.progress ?? 0) >= 100)
-    if (key === 'as_built_confirmed') return !!(measure?.as_built_confirmed || project.hasAsBuiltBoq)
+    if (key === 'execution_confirmed') return !!(measure?.execution_confirmed || (proj.progress ?? 0) >= 100)
+    if (key === 'as_built_confirmed') return !!(measure?.as_built_confirmed || proj.hasAsBuiltBoq)
     if (key === 'material_reconciled') return !!measure?.material_reconciled
     if (key === 'variance_reviewed') return !!measure?.variance_reviewed
     if (key === 'interim_invoice_number') return billing === 'FULL_100' || !!measure?.interim_invoice_number?.trim()
