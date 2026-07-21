@@ -182,6 +182,16 @@ export async function fetchProjectDailyLogs(tenantId: string, projectId: number)
   return withFiles
 }
 
+export async function updateProjectProgress(tenantId: string, projectId: number, progress: number) {
+  const pct = Math.min(100, Math.max(0, Math.round(progress)))
+  const { error } = await supabase.from('projects').update({
+    progress: pct,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+  if (error) throw error
+  return pct
+}
+
 export async function submitDailyLog(
   tenantId: string,
   projectId: number,
@@ -190,8 +200,13 @@ export async function submitDailyLog(
   authorId: number | null | undefined,
   notes: string,
   files: File[],
+  progressPercent?: number | null,
 ) {
   const logDate = todayDateStr()
+  const progress = progressPercent != null
+    ? Math.min(100, Math.max(0, Math.round(progressPercent)))
+    : null
+
   const { data: logRow, error } = await supabase.from('team_project_logs').insert({
     tenant_id: tenantId,
     team_id: teamId,
@@ -200,9 +215,14 @@ export async function submitDailyLog(
     author_name: authorName,
     notes: notes.trim() || null,
     log_date: logDate,
+    progress_percent: progress,
   }).select('id').single()
 
   if (error || !logRow) throw error || new Error('فشل الحفظ')
+
+  if (progress != null) {
+    await updateProjectProgress(tenantId, projectId, progress)
+  }
 
   for (const file of files) {
     const filePath = `${tenantId}/team-logs/${teamId}/${projectId}/${Date.now()}_${file.name}`

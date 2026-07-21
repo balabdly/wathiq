@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, RotateCcw, Send, Upload, Users } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -44,6 +44,7 @@ export default function ExecutionProjectPage() {
   const [loadingLogs, setLoadingLogs] = useState(true)
   const [assigning, setAssigning] = useState(false)
   const [notes, setNotes] = useState('')
+  const [progressPct, setProgressPct] = useState(0)
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [reopening, setReopening] = useState(false)
@@ -52,6 +53,7 @@ export default function ExecutionProjectPage() {
     if (!tenant) return
     const { project: p } = await fetchExecutionProject(tenant.id, projectId)
     setProject(p)
+    setProgressPct(p?.progress ?? 0)
     if (activeBranch) {
       const t = await fetchActiveTeams(tenant.id, activeBranch.id)
       setTeams(t)
@@ -107,6 +109,10 @@ export default function ExecutionProjectPage() {
       toast.error('اكتب ملاحظة أو أرفق ملفاً')
       return
     }
+    if (Number.isNaN(progressPct) || progressPct < 0 || progressPct > 100) {
+      toast.error('أدخل نسبة إنجاز بين 0 و 100')
+      return
+    }
     setSaving(true)
     try {
       await submitDailyLog(
@@ -117,10 +123,12 @@ export default function ExecutionProjectPage() {
         currentUser?.hr_employee_id,
         notes,
         files,
+        progressPct,
       )
       toast.success('تم تسجيل إنجاز اليوم ✅')
       setNotes('')
       setFiles([])
+      await reload()
       await reloadLogs()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الحفظ')
@@ -186,10 +194,21 @@ export default function ExecutionProjectPage() {
             style={{ fontSize: '0.78rem', color: '#0ea77b', border: '1px solid #86efac', marginRight: 'auto' }}
             title="تصحيح — إرجاع للتخطيط"
           >
-            <RotateCcw style={{ width: '14px', height: '14px' }} />
+            <Undo2 style={{ width: '14px', height: '14px' }} />
             {reopening ? 'جاري الإرجاع...' : 'إرجاع للتخطيط'}
           </button>
         )}
+      </div>
+
+      {/* نسبة الإنجاز */}
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>📊 نسبة الإنجاز التراكمية</span>
+          <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#e6820a' }}>{project.progress ?? 0}%</span>
+        </div>
+        <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${project.progress ?? 0}%`, background: '#e6820a', borderRadius: '8px', transition: 'width 0.3s' }} />
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
@@ -289,6 +308,24 @@ export default function ExecutionProjectPage() {
             </div>
           ) : (
             <>
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#92400e', marginBottom: '6px' }}>
+                  نسبة الإنجاز التراكمية (%)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={progressPct}
+                  onChange={e => setProgressPct(Number(e.target.value))}
+                  className="input"
+                  style={{ width: '120px', fontWeight: 700 }}
+                  dir="ltr"
+                />
+                <span style={{ fontSize: '0.72rem', color: '#92400e', marginRight: '8px' }}>
+                  حدّدها حسب ما تم إنجازه حتى اليوم
+                </span>
+              </div>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
@@ -326,6 +363,11 @@ function DailyLogEntry({ log }: { log: TeamProjectLog }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>📅 {dateLabel}</span>
+          {log.progress_percent != null && (
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#fffbeb', color: '#e6820a' }}>
+              {Number(log.progress_percent)}%
+            </span>
+          )}
           <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>👤 {log.author_name}</span>
         </div>
         <span style={{ fontSize: '0.7rem', color: 'var(--text3)' }}>

@@ -7,7 +7,7 @@ import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetc
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
-import { ArrowRight, ClipboardList, Archive, RotateCcw } from 'lucide-react'
+import { ArrowRight, ClipboardList, Archive, Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ProjectPlanningContext, type ProjectPlanningDetail } from './ProjectPlanningContext'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
@@ -168,7 +168,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
               style={{ fontSize: '0.78rem', color: '#1a56db', border: '1px solid #bfdbfe', marginRight: !progress?.isComplete ? 'auto' : undefined }}
               title="إرجاع لمرحلة البدء"
             >
-              <RotateCcw style={{ width: '14px', height: '14px' }} />
+              <Undo2 style={{ width: '14px', height: '14px' }} />
               {returning ? 'جاري الإرجاع...' : 'إرجاع للبدء'}
             </button>
           )}

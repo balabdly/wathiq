@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, RotateCcw, Users } from 'lucide-react'
+import { Search, Eye, Undo2, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -114,7 +114,7 @@ export default function ExecutionListPage() {
                             style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac', opacity: returning === p.id ? 0.6 : 1 }}
                             title="إرجاع لمرحلة التخطيط"
                           >
-                            <RotateCcw style={{ width: '16px', height: '16px' }} />
+                            <Undo2 style={{ width: '16px', height: '16px' }} />
                           </button>
                         )}
                       </div>
