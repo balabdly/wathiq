@@ -111,7 +111,7 @@ export default function ExecutionListPage() {
                             disabled={returning === p.id}
                             className="btn btn-ghost"
                             style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac', opacity: returning === p.id ? 0.6 : 1 }}
-                            title="إرجاع لمرحلة التخطيط"
+                            title="تعديل المقايسة — إرجاع للتخطيط"
                           >
                             <Undo2 style={{ width: '16px', height: '16px' }} />
                           </button>
