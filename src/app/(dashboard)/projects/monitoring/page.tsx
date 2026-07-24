@@ -10,6 +10,7 @@ const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModa
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
 import { phaseLabel, WORKFLOW_TYPES, statusForPhase, PMO_PHASES_FULL, PMO_PHASES_OM } from '@/lib/sec-workflow'
+import type { PmoPhase } from '@/lib/sec-workflow'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
