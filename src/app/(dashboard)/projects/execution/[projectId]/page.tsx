@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Ruler } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -15,12 +15,13 @@ import {
   formatTodayLabel,
   type ExecutionProjectDetail,
 } from '@/lib/project-execution-service'
-import { advanceProjectToMeasure } from '@/lib/project-measure-service'
+import { advanceProjectToClose } from '@/lib/project-execution-service'
 import { formatTeamTypeLabel, TEAM_TYPE_STYLE, type TeamProjectLog } from '@/lib/project-teams'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 
 const PLAN_TABS = [
+  { slug: 'boq', label: 'المقايسة', emoji: '📐' },
   { slug: 'materials', label: 'استلام المواد', emoji: '📦' },
   { slug: 'permit', label: 'تصريح البلدية', emoji: '🏛️' },
   { slug: 'timeline', label: 'الخطة الزمنية', emoji: '📅' },
@@ -139,18 +140,18 @@ export default function ExecutionProjectPage() {
     setSaving(false)
   }
 
-  async function handleAdvanceToMeasure() {
+  async function handleAdvanceToClose() {
     if (!tenant) return
     if ((project?.progress ?? 0) < 100) {
       toast.error('يجب أن تصل نسبة الإنجاز إلى 100% أولاً')
       return
     }
-    if (!confirm('نقل المشروع إلى مرحلة المقايسة والتسوية؟')) return
+    if (!confirm('المقايسة مطابقة للتنفيذ — نقل المشروع إلى مرحلة الإغلاق؟')) return
     setAdvancing(true)
     try {
-      await advanceProjectToMeasure(tenant.id, projectId)
-      toast.success('تم نقل المشروع إلى المقايسة')
-      router.push('/projects/measure')
+      await advanceProjectToClose(tenant.id, projectId)
+      toast.success('تم نقل المشروع إلى الإغلاق')
+      router.push('/projects/close')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل النقل')
     }
@@ -159,19 +160,19 @@ export default function ExecutionProjectPage() {
 
   async function handleReopenPlanning() {
     if (!tenant) return
+    const reason = prompt('سبب تعديل المقايسة (اختياري):') ?? ''
     const msg = [
-      'إرجاع المشروع إلى مرحلة التخطيط؟',
+      'إرجاع المشروع إلى التخطيط لتعديل المقايسة؟',
       '',
-      '• يُلغى إسناد الفريق',
-      '• يُعاد فتح التخطيط للتعديل',
-      '• سجل الإنجاز اليومي يبقى محفوظاً',
+      '• يبقى إسناد الفريق وسجل الإنجاز محفوظاً',
+      '• عدّل البنود في تبويب المقايسة ثم أعد اعتماد التخطيط',
     ].join('\n')
     if (!confirm(msg)) return
     setReopening(true)
     try {
-      await reopenProjectPlanning(tenant.id, projectId)
-      toast.success('تم إرجاع المشروع إلى التخطيط')
-      router.push('/projects/planning')
+      await reopenProjectPlanning(tenant.id, projectId, { preserveTeam: true, reason: reason || undefined })
+      toast.success('تم إرجاع المشروع للتخطيط — عدّل المقايسة')
+      router.push(`/projects/planning/${projectId}/boq`)
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
     }
@@ -211,25 +212,25 @@ export default function ExecutionProjectPage() {
           <>
             {(project.progress ?? 0) >= 100 && (
               <button
-                onClick={handleAdvanceToMeasure}
+                onClick={handleAdvanceToClose}
                 disabled={advancing}
                 className="btn btn-primary"
-                style={{ fontSize: '0.78rem', background: '#7c3aed', marginRight: 'auto' }}
-                title="الانتقال للمقايسة"
+                style={{ fontSize: '0.78rem', background: '#059669', marginRight: 'auto' }}
+                title="المقايسة مطابقة — الانتقال للإغلاق"
               >
-                <Ruler style={{ width: '14px', height: '14px' }} />
-                {advancing ? 'جاري النقل...' : '→ المقايسة'}
+                <Flag style={{ width: '14px', height: '14px' }} />
+                {advancing ? 'جاري النقل...' : '→ الإغلاق'}
               </button>
             )}
             <button
               onClick={handleReopenPlanning}
               disabled={reopening}
               className="btn btn-ghost"
-              style={{ fontSize: '0.78rem', color: '#0ea77b', border: '1px solid #86efac' }}
-              title="تصحيح — إرجاع للتخطيط"
+              style={{ fontSize: '0.78rem', color: '#1a56db', border: '1px solid #bfdbfe' }}
+              title="تعديل المقايسة — إرجاع للتخطيط"
             >
               <Undo2 style={{ width: '14px', height: '14px' }} />
-              {reopening ? 'جاري الإرجاع...' : 'إرجاع للتخطيط'}
+              {reopening ? 'جاري الإرجاع...' : 'تعديل المقايسة'}
             </button>
           </>
         )}

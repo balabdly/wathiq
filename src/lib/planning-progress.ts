@@ -8,12 +8,13 @@ export type PlanningProgress = {
   isComplete: boolean
 }
 
-export const PLANNING_SECTIONS = 7
+export const PLANNING_SECTIONS = 8
 
 export function computePlanningProgress(
   planning: ProjectPlanning | null | undefined,
   costItemsCount = 0,
   materialLinesCount = 0,
+  hasBoqLines = false,
 ): PlanningProgress {
   if (!planning) {
     return { percent: 0, completed: 0, total: PLANNING_SECTIONS, label: 'لم يبدأ', isComplete: false }
@@ -23,6 +24,7 @@ export function computePlanningProgress(
   }
 
   const checks = [
+    hasBoqLines,
     !!(
       planning.material_reservation_number?.trim()
       || materialLinesCount > 0

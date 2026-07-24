@@ -52,11 +52,7 @@ export default function InitiationProjectsPage() {
       toast.error('حدّد العميل أولاً')
       return
     }
-    if (!project.hasBoq) {
-      toast.error('احفظ الكميات الابتدائية أولاً')
-      return
-    }
-    if (!confirm(`إنهاء مرحلة البدء ونقل «${project.name}» إلى التخطيط؟`)) return
+    if (!confirm(`إنهاء مرحلة البدء ونقل «${project.name}» إلى التخطيط؟\n\nستُعد المقايسة في مرحلة التخطيط.`)) return
 
     setSending(project.id)
     try {
@@ -100,14 +96,14 @@ export default function InitiationProjectsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'الكميات', 'البداية', 'النهاية', ''].map(h => (
+                  {['الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'البداية', 'النهاية', ''].map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {paginated.map(p => {
-                  const ready = !!(p.client_id && p.hasBoq)
+                  const ready = !!p.client_id
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
@@ -117,15 +113,6 @@ export default function InitiationProjectsPage() {
                       <td style={{ padding: '10px 12px', fontWeight: 600, color: '#0ea77b' }}>
                         {p.estimated_value ? `${Number(p.estimated_value).toLocaleString('ar-SA')} ر.س` : '—'}
                       </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span style={{
-                          fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px', borderRadius: '6px',
-                          background: p.hasBoq ? '#ecfdf5' : '#fef2f2',
-                          color: p.hasBoq ? '#0ea77b' : '#c81e1e',
-                        }}>
-                          {p.hasBoq ? 'محفوظة' : 'ناقصة'}
-                        </span>
-                      </td>
                       <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.start_date ? formatDate(p.start_date) : '—'}</td>
                       <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.end_date ? formatDate(p.end_date) : '—'}</td>
                       <td style={{ padding: '10px 12px' }}>
@@ -134,7 +121,7 @@ export default function InitiationProjectsPage() {
                             onClick={() => router.push(`/projects/initiation/${p.id}/quantities`)}
                             className="btn btn-ghost"
                             style={{ padding: '6px', color: '#7c3aed', border: '1px solid #ddd6fe' }}
-                            title="كميات المشروع"
+                            title="مسودة كميات (اختياري)"
                           >
                             <ClipboardList style={{ width: '14px', height: '14px' }} />
                           </button>
@@ -151,7 +138,7 @@ export default function InitiationProjectsPage() {
                               border: `1px solid ${ready ? '#86efac' : '#e5e7eb'}`,
                               opacity: sending === p.id ? 0.6 : 1,
                             }}
-                            title={ready ? 'إرسال للتخطيط' : 'أكمل العميل والكميات أولاً'}
+                            title={ready ? 'إرسال للتخطيط' : 'حدّد العميل أولاً'}
                           >
                             <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                           </button>

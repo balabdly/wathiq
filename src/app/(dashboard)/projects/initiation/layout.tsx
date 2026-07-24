@@ -52,9 +52,9 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     const list = data || []
     setKpis({
       total: list.length,
-      readyForPlanning: list.filter(p => p.client_id && p.hasBoq).length,
+      readyForPlanning: list.filter(p => p.client_id).length,
       noClient: list.filter(p => !p.client_id).length,
-      noBoq: list.filter(p => !p.hasBoq).length,
+      noBoq: 0,
     })
   }, [tenant?.id])
 

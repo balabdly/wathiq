@@ -9,7 +9,7 @@ import {
   fetchCloseProject,
   updateProjectClosure,
   approveProjectClosure,
-  reopenProjectToMeasure,
+  reopenProjectToExecution,
   uploadClosureFile,
   type CloseProjectDetail,
 } from '@/lib/project-close-service'
@@ -130,14 +130,14 @@ export default function CloseProjectPage() {
     setClosing(false)
   }
 
-  async function handleReopenMeasure() {
+  async function handleReopenExecution() {
     if (!tenant) return
-    if (!confirm('إرجاع المشروع إلى مرحلة المقايسة؟')) return
+    if (!confirm('إرجاع المشروع إلى مرحلة التنفيذ؟')) return
     setReopening(true)
     try {
-      await reopenProjectToMeasure(tenant.id, projectId)
+      await reopenProjectToExecution(tenant.id, projectId)
       toast.success('تم الإرجاع')
-      router.push('/projects/measure')
+      router.push('/projects/execution')
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
     }
@@ -185,9 +185,9 @@ export default function CloseProjectPage() {
         {project.closureProgress && <PlanningProgressBadge progress={project.closureProgress} />}
         {canEdit && !readOnly && (
           <>
-            <button onClick={handleReopenMeasure} disabled={reopening} className="btn btn-ghost" style={{ fontSize: '0.78rem', color: '#7c3aed', border: '1px solid #c4b5fd' }}>
+            <button onClick={handleReopenExecution} disabled={reopening} className="btn btn-ghost" style={{ fontSize: '0.78rem', color: '#e6820a', border: '1px solid #fcd34d' }}>
               <Undo2 style={{ width: '14px', height: '14px' }} />
-              {reopening ? 'جاري...' : 'إرجاع للمقايسة'}
+              {reopening ? 'جاري...' : 'إرجاع للتنفيذ'}
             </button>
             <button
               onClick={handleApproveClosure}

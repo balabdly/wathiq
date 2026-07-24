@@ -38,10 +38,18 @@ export default function ProjectQuantitiesEditor({
   projectId,
   frameworkItems,
   onSaved,
+  readOnly = false,
+  title = 'بنود المقايسة',
+  saveLabel = 'حفظ المقايسة',
+  isRevision = false,
 }: {
   projectId: number
   frameworkItems: FrameworkBoqRow[]
   onSaved?: () => void
+  readOnly?: boolean
+  title?: string
+  saveLabel?: string
+  isRevision?: boolean
 }) {
   const { tenant, currentUser } = useStore()
   const [lines, setLines] = useState<LineRow[]>([emptyLine()])
@@ -63,7 +71,8 @@ export default function ProjectQuantitiesEditor({
     if (!tenant) return
     setLoadingBoq(true)
     const { data } = await fetchBoqVersions(tenant.id, pid)
-    const initial = (data || []).find(v => v.version_type === 'INITIAL')
+    const initial = (data || []).find(v => v.status === 'ACTIVE')
+      || (data || []).find(v => v.version_type === 'INITIAL')
     if (initial?.lines?.length) {
       setVersionId(initial.id)
       setLines(initial.lines.map(l => {
@@ -141,7 +150,7 @@ export default function ProjectQuantitiesEditor({
   const total = lines.reduce((s, l) => s + l.qty * l.unit_price, 0)
 
   async function handleSave() {
-    if (!tenant) return
+    if (!tenant || readOnly) return
     const valid = lines.filter(l => l.description.trim() && l.qty > 0)
     if (valid.length === 0) { toast.error('أضف بنداً واحداً على الأقل'); return }
     setSaving(true)
@@ -175,7 +184,7 @@ export default function ProjectQuantitiesEditor({
           project_id: projectId,
           version_type: 'INITIAL',
           version_no: 1,
-          notes: 'كميات ابتدائية — مرحلة البدء',
+          notes: isRevision ? 'تعديل مقايسة بعد التنفيذ' : 'مقايسة — مرحلة التخطيط',
           created_by: currentUser?.name,
           lines: boqLines,
         })
@@ -183,7 +192,7 @@ export default function ProjectQuantitiesEditor({
         const initial = (data || []).find(v => v.version_type === 'INITIAL')
         if (initial?.id) await activateBoqVersion(tenant.id, initial.id, projectId)
       }
-      toast.success('تم حفظ الكميات الابتدائية ✅')
+      toast.success(isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅')
       await loadBoq(projectId)
       onSaved?.()
     } catch (e: unknown) {
@@ -201,12 +210,14 @@ export default function ProjectQuantitiesEditor({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
         <label style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Tag style={{ width: '15px', height: '15px', color: 'var(--primary)' }} />
-          بنود الكميات الابتدائية
+          {title}
           {frameworkItems.length > 0 && (
             <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 400 }}>— من العقد الإطاري SEC</span>
           )}
         </label>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {!readOnly && (
+            <>
           <button type="button" onClick={() => openImport('excel')} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #bfdbfe', color: '#1a56db' }}>
             <FileSpreadsheet style={{ width: '13px', height: '13px' }} /> Excel / CSV
           </button>
@@ -219,6 +230,8 @@ export default function ProjectQuantitiesEditor({
           <button type="button" onClick={addLine} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
             <Plus style={{ width: '13px', height: '13px' }} /> بند يدوي
           </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -260,24 +273,26 @@ export default function ProjectQuantitiesEditor({
                   </td>
                 )}
                 <td style={{ padding: '6px 8px', minWidth: '180px' }}>
-                  <input value={line.description} onChange={e => updateLine(idx, 'description', e.target.value)} className="input" style={{ fontSize: '0.82rem' }} placeholder="الوصف أو اختر من العقد" />
+                  <input value={line.description} onChange={e => updateLine(idx, 'description', e.target.value)} className="input" style={{ fontSize: '0.82rem' }} placeholder="الوصف أو اختر من العقد" readOnly={readOnly} />
                 </td>
                 <td style={{ padding: '6px 8px', width: '80px' }}>
-                  <input type="number" min="0" step="0.01" value={line.qty} onChange={e => updateLine(idx, 'qty', Number(e.target.value))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" />
+                  <input type="number" min="0" step="0.01" value={line.qty} onChange={e => updateLine(idx, 'qty', Number(e.target.value))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" readOnly={readOnly} />
                 </td>
                 <td style={{ padding: '6px 8px', width: '70px' }}>
-                  <input value={line.unit} onChange={e => updateLine(idx, 'unit', e.target.value)} className="input" style={{ fontSize: '0.82rem' }} />
+                  <input value={line.unit} onChange={e => updateLine(idx, 'unit', e.target.value)} className="input" style={{ fontSize: '0.82rem' }} readOnly={readOnly} />
                 </td>
                 <td style={{ padding: '6px 8px', width: '90px' }}>
-                  <input type="number" min="0" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" readOnly={line.matchStatus === 'matched' && line.unit_price > 0} />
+                  <input type="number" min="0" value={line.unit_price} onChange={e => updateLine(idx, 'unit_price', Number(e.target.value))} className="input" style={{ fontSize: '0.82rem' }} dir="ltr" readOnly={readOnly || (line.matchStatus === 'matched' && line.unit_price > 0)} />
                 </td>
                 <td style={{ padding: '6px 8px', fontWeight: 700, color: '#0ea77b', whiteSpace: 'nowrap' }}>
                   {(line.qty * line.unit_price).toLocaleString('ar-SA')}
                 </td>
                 <td style={{ padding: '6px 8px' }}>
+                  {!readOnly && (
                   <button type="button" onClick={() => removeLine(idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
                     <Trash2 style={{ width: '14px', height: '14px' }} />
                   </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -289,10 +304,12 @@ export default function ProjectQuantitiesEditor({
         <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1a56db' }}>
           الإجمالي: {total.toLocaleString('ar-SA')} ر.س
         </div>
+        {!readOnly && (
         <button onClick={handleSave} disabled={saving} className="btn btn-primary">
           <Save style={{ width: '16px', height: '16px' }} />
-          {saving ? 'جاري الحفظ...' : 'حفظ الكميات الابتدائية'}
+          {saving ? 'جاري الحفظ...' : saveLabel}
         </button>
+        )}
       </div>
 
       {showImport && (

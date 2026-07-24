@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines } from '@/lib/planning-material-lines-service'
+import { projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -14,6 +15,7 @@ import { ProjectPlanningContext, type ProjectPlanningDetail } from './ProjectPla
 import type { ProjectPlanning } from '@/lib/project-planning-service'
 
 const PROJECT_TABS = [
+  { slug: 'boq',       label: 'المقايسة',            emoji: '📐', color: '#1a56db' },
   { slug: 'materials', label: 'استلام المواد',       emoji: '📦', color: '#6366f1' },
   { slug: 'permit',    label: 'تصريح البلدية',       emoji: '🏛️', color: '#1a56db' },
   { slug: 'timeline',  label: 'الخطة الزمنية',       emoji: '📅', color: '#7c3aed' },
@@ -74,10 +76,12 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
     const { data: matLines } = await fetchPlanningMaterialLines(tenant.id, projectId)
+    const hasBoq = await projectHasActiveBoqLines(tenant.id, projectId)
     setProgress(computePlanningProgress(
       result.planning,
       (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,
       (matLines || []).length,
+      hasBoq,
     ))
   }, [tenant?.id, projectId, router])
 
@@ -184,7 +188,13 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
 
         {readOnly && (
           <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1a56db' }}>
-            عرض للقراءة فقط — التخطيط معتمد والمشروع في مرحلة التنفيذ
+            عرض للقراءة فقط — التخطيط معتمد{project.pmo_phase === '3_EXEC' ? ' والمشروع في مرحلة التنفيذ' : ''}
+          </div>
+        )}
+
+        {!readOnly && planning?.cost_plan_notes?.includes('[تعديل مقايسة]') && (
+          <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.8rem', color: '#92400e' }}>
+            وضع تعديل المقايسة — عدّل البنود في تبويب المقايسة ثم أعد اعتماد التخطيط
           </div>
         )}
 

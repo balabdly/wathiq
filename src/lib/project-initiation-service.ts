@@ -71,18 +71,6 @@ export async function completeProjectInitiation(
     throw new Error('يجب تحديد العميل قبل إرسال المشروع للتخطيط')
   }
 
-  const { data: boq } = await supabase
-    .from('project_boq_versions')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('project_id', projectId)
-    .eq('version_type', 'INITIAL')
-    .maybeSingle()
-
-  if (!boq) {
-    throw new Error('يجب حفظ الكميات الابتدائية قبل إرسال المشروع للتخطيط')
-  }
-
   await ensureProjectPlanning(tenantId, projectId, p)
 }
 

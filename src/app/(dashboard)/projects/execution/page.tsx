@@ -27,18 +27,17 @@ export default function ExecutionListPage() {
 
   async function handleReturnToPlanning(projectId: number, name: string) {
     if (!tenantId) return
+    const reason = prompt(`سبب تعديل مقايسة «${name}» (اختياري):`) ?? ''
     const msg = [
-      `إرجاع «${name}» إلى مرحلة التخطيط؟`,
+      `إرجاع «${name}» إلى التخطيط لتعديل المقايسة؟`,
       '',
-      '• يُلغى إسناد الفريق',
-      '• يُعاد فتح التخطيط للتعديل',
-      '• سجل الإنجاز اليومي يبقى محفوظاً',
+      '• يبقى إسناد الفريق وسجل الإنجاز محفوظاً',
     ].join('\n')
     if (!confirm(msg)) return
     setReturning(projectId)
     try {
-      await reopenProjectPlanning(tenantId, projectId)
-      toast.success('تم إرجاع المشروع إلى التخطيط')
+      await reopenProjectPlanning(tenantId, projectId, { preserveTeam: true, reason: reason || undefined })
+      toast.success('تم إرجاع المشروع للتخطيط')
       await reload()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')

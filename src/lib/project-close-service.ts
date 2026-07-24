@@ -93,7 +93,7 @@ export async function fetchCloseProjects(tenantId: string, branchId?: number) {
     .from('projects')
     .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, status, progress, billing_model, branch_id')
     .eq('tenant_id', tenantId)
-    .eq('pmo_phase', '5_CLOSE')
+    .in('pmo_phase', ['4_MEASURE', '5_CLOSE'])
     .neq('status', 'مكتمل')
     .order('updated_at', { ascending: false })
 
@@ -158,8 +158,18 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
     .single()
 
   if (error) throw error
-  if (project.pmo_phase !== '5_CLOSE') {
+  if (!['4_MEASURE', '5_CLOSE'].includes(project.pmo_phase || '')) {
     throw new Error('المشروع ليس في مرحلة الإغلاق')
+  }
+
+  if (project.pmo_phase === '4_MEASURE') {
+    await supabase.from('projects').update({
+      pmo_phase: '5_CLOSE',
+      status: statusForPhase('5_CLOSE'),
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId).eq('tenant_id', tenantId)
+    project.pmo_phase = '5_CLOSE'
+    project.status = statusForPhase('5_CLOSE')
   }
 
   const closure = await ensureProjectClosure(tenantId, projectId)
@@ -241,8 +251,8 @@ export async function approveProjectClosure(tenantId: string, projectId: number)
   if (error) throw error
 }
 
-/** إرجاع من الإغلاق إلى المقايسة */
-export async function reopenProjectToMeasure(tenantId: string, projectId: number) {
+/** إرجاع من الإغلاق إلى التنفيذ */
+export async function reopenProjectToExecution(tenantId: string, projectId: number) {
   const { data: project, error: pErr } = await supabase
     .from('projects')
     .select('id, pmo_phase, status')
@@ -251,27 +261,27 @@ export async function reopenProjectToMeasure(tenantId: string, projectId: number
     .single()
 
   if (pErr) throw pErr
-  if (project.pmo_phase !== '5_CLOSE' || project.status === 'مكتمل') {
+  if (!['4_MEASURE', '5_CLOSE'].includes(project.pmo_phase || '') || project.status === 'مكتمل') {
     throw new Error('يمكن إرجاع مشاريع في مرحلة الإغلاق (غير المكتملة) فقط')
   }
 
   const { error: projErr } = await supabase.from('projects').update({
-    pmo_phase: '4_MEASURE',
-    status: statusForPhase('4_MEASURE'),
+    pmo_phase: '3_EXEC',
+    status: statusForPhase('3_EXEC'),
     updated_at: new Date().toISOString(),
   }).eq('id', projectId).eq('tenant_id', tenantId)
   if (projErr) throw projErr
-
-  await supabase.from('project_measure').update({
-    measure_status: 'active',
-    updated_at: new Date().toISOString(),
-  }).eq('tenant_id', tenantId).eq('project_id', projectId)
 
   await supabase.from('project_closure').update({
     closure_status: 'active',
     closed_at: null,
     updated_at: new Date().toISOString(),
   }).eq('tenant_id', tenantId).eq('project_id', projectId)
+}
+
+/** @deprecated استخدم reopenProjectToExecution */
+export async function reopenProjectToMeasure(tenantId: string, projectId: number) {
+  return reopenProjectToExecution(tenantId, projectId)
 }
 
 export async function uploadClosureFile(tenantId: string, projectId: number, file: File, prefix: string) {

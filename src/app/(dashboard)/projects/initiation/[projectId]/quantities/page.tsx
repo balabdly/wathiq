@@ -15,7 +15,7 @@ export default function ProjectQuantitiesPage() {
   const project = projects.find(p => p.id === projectId)
   const [sending, setSending] = useState(false)
 
-  const ready = !!(project?.client_id && project?.hasBoq)
+  const ready = !!project?.client_id
 
   async function handleSendToPlanning() {
     if (!tenantId || !project) return
@@ -69,11 +69,15 @@ export default function ProjectQuantitiesPage() {
           disabled={!ready || sending}
           className="btn btn-primary"
           style={{ fontSize: '0.82rem', opacity: !ready ? 0.6 : 1 }}
-          title={ready ? 'إنهاء البدء وإرسال للتخطيط' : 'أكمل العميل والكميات أولاً'}
+          title={ready ? 'إنهاء البدء وإرسال للتخطيط' : 'حدّد العميل أولاً'}
         >
           <ArrowLeftCircle style={{ width: '16px', height: '16px' }} />
           {sending ? 'جاري النقل...' : 'إرسال للتخطيط'}
         </button>
+      </div>
+
+      <div className="card" style={{ padding: '16px', marginBottom: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', fontSize: '0.82rem', color: '#1a56db' }}>
+        المقايسة أصبحت في <strong>مرحلة التخطيط</strong> (تبويب المقايسة). يمكنك حفظ مسودة هنا أو الانتقال مباشرة للتخطيط.
       </div>
 
       <div className="card" style={{ padding: '16px' }}>

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { fetchProjectsWithBoqLines, projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
@@ -91,9 +92,27 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
     if (Number(row.planned_amount) > 0) costComplete.add(row.project_id)
   }
 
+  const boqComplete = await fetchProjectsWithBoqLines(tenantId, ids)
+
+  const { data: matLineRows } = await supabase
+    .from('project_planning_material_lines')
+    .select('project_id')
+    .eq('tenant_id', tenantId)
+    .in('project_id', ids)
+
+  const matLineCounts = new Map<number, number>()
+  for (const row of matLineRows || []) {
+    matLineCounts.set(row.project_id, (matLineCounts.get(row.project_id) || 0) + 1)
+  }
+
   return projects.map(p => ({
     ...p,
-    planningProgress: computePlanningProgress(p.planning, costComplete.has(p.id) ? 1 : 0),
+    planningProgress: computePlanningProgress(
+      p.planning,
+      costComplete.has(p.id) ? 1 : 0,
+      matLineCounts.get(p.id) || 0,
+      boqComplete.has(p.id),
+    ),
   }))
 }
 
@@ -209,7 +228,8 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   ])
 
   const costComplete = (costRows || []).some(r => Number(r.planned_amount) > 0)
-  const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0)
+  const hasBoq = await projectHasActiveBoqLines(tenantId, projectId)
+  const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0, 0, hasBoq)
   if (!progress.isComplete) {
     throw new Error(`يجب إكمال جميع أقسام التخطيط (${progress.completed}/${progress.total}) قبل الاعتماد`)
   }
@@ -219,8 +239,12 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   await startProjectExecution(tenantId, projectId)
 }
 
-/** إرجاع مشروع من التنفيذ إلى سلة التخطيط (تصحيح خطأ الاعتماد) */
-export async function reopenProjectPlanning(tenantId: string, projectId: number) {
+/** إرجاع مشروع من التنفيذ إلى سلة التخطيط (تعديل مقايسة أو تصحيح) */
+export async function reopenProjectPlanning(
+  tenantId: string,
+  projectId: number,
+  options?: { preserveTeam?: boolean; reason?: string },
+) {
   const { data: project, error: pErr } = await supabase
     .from('projects')
     .select('id, pmo_phase')
@@ -240,19 +264,30 @@ export async function reopenProjectPlanning(tenantId: string, projectId: number)
     .maybeSingle()
   if (!planning) throw new Error('لا يوجد سجل تخطيط لهذا المشروع')
 
-  const { error: projErr } = await supabase.from('projects').update({
+  const projUpdate: Record<string, unknown> = {
     pmo_phase: '2_PREP',
     status: statusForPhase('2_PREP'),
-    team_id: null,
-    engineer: null,
     updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
+  }
+  if (!options?.preserveTeam) {
+    projUpdate.team_id = null
+    projUpdate.engineer = null
+  }
+
+  const { error: projErr } = await supabase.from('projects').update(projUpdate)
+    .eq('id', projectId).eq('tenant_id', tenantId)
   if (projErr) throw projErr
 
-  const { error: planErr } = await supabase.from('project_planning').update({
+  const planPatch: Record<string, unknown> = {
     planning_status: 'active',
     updated_at: new Date().toISOString(),
-  }).eq('tenant_id', tenantId).eq('project_id', projectId)
+  }
+  if (options?.reason?.trim()) {
+    planPatch.cost_plan_notes = `[تعديل مقايسة] ${options.reason.trim()}`
+  }
+
+  const { error: planErr } = await supabase.from('project_planning').update(planPatch)
+    .eq('tenant_id', tenantId).eq('project_id', projectId)
   if (planErr) throw planErr
 }
 

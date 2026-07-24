@@ -42,6 +42,35 @@ export async function startProjectExecution(tenantId: string, projectId: number)
   if (error) throw error
 }
 
+/** نقل من التنفيذ إلى الإغلاق (تخطي مرحلة المقايسة المنفصلة) */
+export async function advanceProjectToClose(tenantId: string, projectId: number) {
+  const { data: project, error: pErr } = await supabase
+    .from('projects')
+    .select('id, pmo_phase, progress')
+    .eq('tenant_id', tenantId)
+    .eq('id', projectId)
+    .single()
+
+  if (pErr) throw pErr
+  if (project.pmo_phase !== '3_EXEC') {
+    throw new Error('يمكن نقل مشاريع في مرحلة التنفيذ فقط')
+  }
+  if ((project.progress ?? 0) < 100) {
+    throw new Error('يجب أن تصل نسبة الإنجاز إلى 100% قبل الانتقال للإغلاق')
+  }
+
+  const { error: phaseErr } = await supabase.from('projects').update({
+    pmo_phase: '5_CLOSE',
+    status: statusForPhase('5_CLOSE'),
+    progress: 100,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+  if (phaseErr) throw phaseErr
+
+  const { ensureProjectClosure } = await import('@/lib/project-close-service')
+  await ensureProjectClosure(tenantId, projectId)
+}
+
 export async function fetchExecutionProjects(tenantId: string, branchId?: number) {
   let query = supabase
     .from('projects')

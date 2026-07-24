@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Search, Eye, Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
-import { reopenProjectToMeasure } from '@/lib/project-close-service'
+import { reopenProjectToExecution } from '@/lib/project-close-service'
 import { useClose } from './CloseContext'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -25,19 +25,19 @@ export default function CloseListPage() {
 
   const { paginated, PaginationBar } = useFilteredPagination(filtered, 10, search)
 
-  async function handleReturnToMeasure(projectId: number, name: string) {
+  async function handleReturnToExecution(projectId: number, name: string) {
     if (!tenantId) return
     const msg = [
-      `إرجاع «${name}» إلى مرحلة المقايسة؟`,
+      `إرجاع «${name}» إلى مرحلة التنفيذ؟`,
       '',
-      '• لمراجعة المقايسة أو المستخلص',
+      '• لمراجعة التنفيذ أو تعديل المقايسة',
       '• بيانات الإغلاق تبقى محفوظة',
     ].join('\n')
     if (!confirm(msg)) return
     setReturning(projectId)
     try {
-      await reopenProjectToMeasure(tenantId, projectId)
-      toast.success('تم إرجاع المشروع إلى المقايسة')
+      await reopenProjectToExecution(tenantId, projectId)
+      toast.success('تم إرجاع المشروع إلى التنفيذ')
       await reload()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
@@ -56,7 +56,7 @@ export default function CloseListPage() {
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>
             <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏁</div>
-            لا مشاريع في سلة الإغلاق — اعتمد مقايسة مشروع لنقله هنا
+            لا مشاريع في سلة الإغلاق — انقل مشروعاً من التنفيذ بعد اكتمال 100%
           </div>
         ) : (
           <div style={{ overflow: 'auto' }}>
@@ -102,11 +102,11 @@ export default function CloseListPage() {
                           </button>
                           {canEdit && (
                             <button
-                              onClick={() => handleReturnToMeasure(p.id, p.name)}
+                              onClick={() => handleReturnToExecution(p.id, p.name)}
                               disabled={returning === p.id}
                               className="btn btn-ghost"
-                              style={{ padding: '6px 10px', color: '#7c3aed', border: '1px solid #c4b5fd', opacity: returning === p.id ? 0.6 : 1 }}
-                              title="إرجاع لمرحلة المقايسة"
+                              style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d', opacity: returning === p.id ? 0.6 : 1 }}
+                              title="إرجاع لمرحلة التنفيذ"
                             >
                               <Undo2 style={{ width: '16px', height: '16px' }} />
                             </button>
