@@ -273,7 +273,7 @@ export default function MaterialsTabPage() {
             <Package style={{ width: '17px', height: '17px', color: '#6366f1' }} /> خطة حجز المواد
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '6px', lineHeight: 1.6, maxWidth: '580px' }}>
-            تاريخ الحجز + رقم الحجز + قائمة المواد — <strong>رقم الحجز يكفي للاستلام في المخzون</strong> دون اكتمال التخطيط. ثم متابعة محجوز / مصروف / متبقي.
+            تاريخ الحجز + رقم الحجز + قائمة المواد — <strong>رقم الحجز يكفي للاستلام في المخزون</strong> دون اكتمال التخطيط. ثم متابعة محجوز / مصروف / متبقي.
           </p>
         </div>
         <Link href="/inventory/pmc" className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
@@ -290,7 +290,7 @@ export default function MaterialsTabPage() {
           </div>
           <div>
             <label style={lbl}>رقم الحجز *</label>
-            <input value={form.material_reservation_number} onChange={e => set('material_reservation_number', e.target.value)} className="input" placeholder="رقم حجز SEC — يكفي للمخzون" dir="ltr" disabled={readOnly} />
+            <input value={form.material_reservation_number} onChange={e => set('material_reservation_number', e.target.value)} className="input" placeholder="رقم حجز SEC — يكفي للمخزون" dir="ltr" disabled={readOnly} />
           </div>
           <div>
             <label style={lbl}>ربط بحجز المخزون</label>

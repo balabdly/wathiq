@@ -1028,22 +1028,20 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
-              حجز المواد <span style={{ color: '#c81e1e' }}>*</span>
+              حجز المواد / رقم الحجز <span style={{ color: '#c81e1e' }}>*</span>
             </label>
-            {reservations.length === 0 ? (
-              <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e' }}>
-                لا توجد حجوزات — أنشئ حجزاً من حجوزات SEC
-              </div>
-            ) : (
+            {reservations.length > 0 && (
               <select value={reservationId} onChange={e => {
                 setReservationId(e.target.value)
                 const r = reservations.find(x => String(x.id) === e.target.value)
                 setBookingNo(r?.reservation_no || '')
-              }} className="select">
-                <option value="">— اختر الحجز —</option>
+              }} className="select" style={{ marginBottom: '8px' }}>
+                <option value="">— أو أدخل الرقم يدوياً —</option>
                 {reservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no}</option>)}
               </select>
             )}
+            <input value={bookingNo} onChange={e => setBookingNo(e.target.value)} className="input"
+              placeholder="رقم حجز SEC" dir="ltr" />
           </div>
 
           <div>
