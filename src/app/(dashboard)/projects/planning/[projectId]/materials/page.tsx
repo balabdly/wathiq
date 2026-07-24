@@ -273,7 +273,7 @@ export default function MaterialsTabPage() {
             <Package style={{ width: '17px', height: '17px', color: '#6366f1' }} /> خطة حجز المواد
           </h3>
           <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '6px', lineHeight: 1.6, maxWidth: '580px' }}>
-            تاريخ الحجز + رقم الحجز + قائمة المواد — ثم متابعة <strong>محجوز / مصروف / متبقي</strong> من المخزون بعد الاستلام والصرف.
+            تاريخ الحجز + رقم الحجز + قائمة المواد — <strong>رقم الحجز يكفي للاستلام في المخzون</strong> دون اكتمال التخطيط. ثم متابعة محجوز / مصروف / متبقي.
           </p>
         </div>
         <Link href="/inventory/pmc" className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
@@ -383,7 +383,7 @@ export default function MaterialsTabPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', background: 'white', borderRadius: '8px' }}>
               <thead>
                 <tr style={{ background: '#dbeafe' }}>
-                  {['المادة *', 'الوحدة', 'محجوز *', 'رقم كتalog', 'ملاحظات', ''].map(h => (
+                  {['المادة *', 'الوحدة', 'محجوز *', 'Catalog', 'ملاحظات', ''].map(h => (
                     <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
