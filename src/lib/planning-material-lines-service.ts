@@ -128,14 +128,14 @@ export function parseMaterialsSpreadsheet(file: File): Promise<PlanningMaterialL
             qty_planned: 0,
           }
 
-          for (const [col, field] of colMap.entries()) {
+          colMap.forEach((field, col) => {
             const val = row[col]
             if (field === 'qty_planned') line.qty_planned = parseQty(val)
             else if (field === 'description') line.description = String(val ?? '').trim()
             else if (field === 'unit') line.unit = String(val ?? 'قطعة').trim() || 'قطعة'
             else if (field === 'catalog_no') line.catalog_no = String(val ?? '').trim() || null
             else if (field === 'notes') line.notes = String(val ?? '').trim() || null
-          }
+          })
 
           if (!hasDescription) {
             const vals = Object.values(row).map(v => String(v ?? '').trim())
