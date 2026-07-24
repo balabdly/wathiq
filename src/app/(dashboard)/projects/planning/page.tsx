@@ -89,7 +89,7 @@ export default function PlanningListPage() {
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <button
-                          onClick={() => router.push(`/projects/planning/${p.id}/materials`)}
+                          onClick={() => router.push(`/projects/planning/${p.id}/boq`)}
                           className="btn btn-ghost"
                           style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
                           title="عرض المشروع"

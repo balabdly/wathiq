@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
-import { fetchBoqVersions, fetchProjectsWithBoqLines, projectHasActiveBoqLines } from '@/lib/pmc-service'
-import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
+import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines } from '@/lib/pmc-service'
+import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
 export type MaterialReceiptType = 'full' | 'partial'
@@ -60,6 +60,14 @@ export type BoqRevisionSnapshotLine = {
   unit: string
   qty: number
   unit_price?: number
+  line_category?: 'MATERIAL' | 'WORK'
+}
+
+function resolveLineCategoryFromRow(line: { line_category?: string | null; notes?: string | null; material_id?: number | null }): 'MATERIAL' | 'WORK' {
+  if (line.line_category === 'MATERIAL' || line.line_category === 'WORK') return line.line_category
+  if (line.notes?.includes('line_category:MATERIAL')) return 'MATERIAL'
+  if (line.material_id) return 'MATERIAL'
+  return 'WORK'
 }
 
 export type PlanningCostItem = {
@@ -104,26 +112,18 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
     if (Number(row.planned_amount) > 0) costComplete.add(row.project_id)
   }
 
-  const boqComplete = await fetchProjectsWithBoqLines(tenantId, ids)
-
-  const { data: matLineRows } = await supabase
-    .from('project_planning_material_lines')
-    .select('project_id')
-    .eq('tenant_id', tenantId)
-    .in('project_id', ids)
-
-  const matLineCounts = new Map<number, number>()
-  for (const row of matLineRows || []) {
-    matLineCounts.set(row.project_id, (matLineCounts.get(row.project_id) || 0) + 1)
-  }
+  const boqCountsMap = new Map<number, BoqCategoryCounts>()
+  await Promise.all(ids.map(async id => {
+    boqCountsMap.set(id, await fetchProjectBoqCategoryCounts(tenantId, id))
+  }))
 
   return projects.map(p => ({
     ...p,
     planningProgress: computePlanningProgress(
       p.planning,
       costComplete.has(p.id) ? 1 : 0,
-      matLineCounts.get(p.id) || 0,
-      boqComplete.has(p.id),
+      0,
+      boqCountsMap.get(p.id) || { materials: 0, works: 0 },
     ),
   }))
 }
@@ -242,8 +242,10 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   const costComplete = (costRows || []).some(r => Number(r.planned_amount) > 0)
   const hasBoq = await projectHasActiveBoqLines(tenantId, projectId)
   if (!hasBoq) {
-    throw new Error('يجب حفظ المقايسة (بنود BOQ) قبل اعتماد التخطيط')
+    throw new Error('يجب حفظ المقايسة (مواد + أعمال) قبل اعتماد التخطيط')
   }
+
+  const boqCounts = await fetchProjectBoqCategoryCounts(tenantId, projectId)
 
   const isRevision = !!(planning as ProjectPlanning | null)?.cost_plan_notes?.includes('[تعديل مقايسة]')
     || !!((planning as ProjectPlanning | null)?.boq_revision_snapshot as unknown[] | null)?.length
@@ -252,7 +254,7 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
     throw new Error('يجب إرفاق نموذج موافقة الكهرباء على تعديل المقايسة قبل الاعتماد')
   }
 
-  const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0, 0, hasBoq)
+  const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0, 0, boqCounts)
   if (!progress.isComplete) {
     throw new Error(`يجب إكمال جميع أقسام التخطيط (${progress.completed}/${progress.total}) قبل الاعتماد`)
   }
@@ -330,6 +332,7 @@ export async function reopenProjectPlanning(
         description: l.description,
         unit: l.unit,
         qty: Number(l.qty_planned),
+        line_category: resolveLineCategoryFromRow(l),
       }))
     }
   }

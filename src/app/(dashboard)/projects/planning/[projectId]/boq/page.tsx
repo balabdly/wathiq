@@ -6,7 +6,8 @@ import { useStore } from '@/hooks/useStore'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
 import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
-import ProjectQuantitiesEditor from '@/components/projects/ProjectQuantitiesEditor'
+import ProjectEstimateEditor from '@/components/projects/ProjectEstimateEditor'
+import BoqReservationPanel from '@/components/projects/BoqReservationPanel'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import { supabase } from '@/lib/supabase'
 
@@ -83,12 +84,19 @@ export default function PlanningBoqPage() {
 
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ClipboardList style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+          مقايسة SEC — {project.name}
+        </h3>
+        <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
+          المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء
+        </p>
+      </div>
+
       {isRevision && !readOnly && (
-        <div style={{
-          padding: '10px 14px', borderRadius: '10px', marginBottom: '16px',
-          background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.82rem', color: '#92400e',
-        }}>
-          <strong>تعديل مقايسة</strong> — الكمية السابقة ثابتة للمراجعة. عدّل عمود «الكمية المعدّلة» ثم أرفق موافقة SEC وأعد اعتماد التخطيط.
+        <div style={{ padding: '10px 14px', borderRadius: '10px', marginBottom: '16px', background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.82rem', color: '#92400e' }}>
+          <strong>تعديل مقايسة</strong> — عمود «الكمية السابقة» و«الكمية المعدّلة» للمواد والأعمال معاً.
         </div>
       )}
 
@@ -124,37 +132,32 @@ export default function PlanningBoqPage() {
           ) : !readOnly ? (
             <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#1a56db', fontWeight: 600 }}>
               <Upload style={{ width: '16px', height: '16px' }} />
-              {uploadingApproval ? 'جاري الرفع...' : 'رفع نموذج الموافقة (PDF / Word / صورة)'}
+              {uploadingApproval ? 'جاري الرفع...' : 'رفع نموذج الموافقة'}
               <input type="file" accept=".pdf,.doc,.docx,image/*" style={{ display: 'none' }}
                 disabled={uploadingApproval}
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleApprovalUpload(f) }} />
             </label>
-          ) : (
-            <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>لم يُرفق بعد</span>
-          )}
+          ) : null}
         </div>
       )}
 
-      <div style={{ marginBottom: '14px' }}>
-        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ClipboardList style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-          المقايسة — {project.name}
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
-          {isRevision
-            ? 'قارن الكمية السابقة بالكمية المعدّلة — البنود المختلفة تظهر بخلفية برتقالية'
-            : 'بنود الأعمال، الكميات، أسعار الوحدة، والإجمالي النهائي للمشروع'}
-        </p>
-      </div>
-
-      <ProjectQuantitiesEditor
+      <ProjectEstimateEditor
         projectId={projectId}
         frameworkItems={frameworkItems}
         readOnly={!!readOnly}
         isRevision={isRevision}
         revisionSnapshot={revisionSnapshot}
-        title={isRevision ? 'تعديل المقايسة' : 'بنود المقايسة'}
         saveLabel={isRevision ? 'حفظ تعديل المقايسة' : 'حفظ المقايسة'}
+        onSaved={() => reload()}
+      />
+
+      <BoqReservationPanel
+        tenantId={tenantId}
+        projectId={projectId}
+        projectName={project.name}
+        clientName={project.client_name}
+        planning={planning}
+        readOnly={readOnly}
         onSaved={() => reload()}
       />
     </div>

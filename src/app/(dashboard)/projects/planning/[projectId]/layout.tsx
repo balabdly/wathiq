@@ -4,8 +4,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
-import { fetchPlanningMaterialLines } from '@/lib/planning-material-lines-service'
-import { projectHasActiveBoqLines } from '@/lib/pmc-service'
+import { fetchProjectBoqCategoryCounts } from '@/lib/pmc-service'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -16,7 +15,6 @@ import type { ProjectPlanning } from '@/lib/project-planning-service'
 
 const PROJECT_TABS = [
   { slug: 'boq',       label: 'المقايسة',            emoji: '📐', color: '#1a56db' },
-  { slug: 'materials', label: 'استلام المواد',       emoji: '📦', color: '#6366f1' },
   { slug: 'permit',    label: 'تصريح البلدية',       emoji: '🏛️', color: '#1a56db' },
   { slug: 'timeline',  label: 'الخطة الزمنية',       emoji: '📅', color: '#7c3aed' },
   { slug: 'safe-work', label: 'إجراءات العمل الآمنة', emoji: '🦺', color: '#e6820a' },
@@ -75,13 +73,12 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
-    const { data: matLines } = await fetchPlanningMaterialLines(tenant.id, projectId)
-    const hasBoq = await projectHasActiveBoqLines(tenant.id, projectId)
+    const boqCounts = await fetchProjectBoqCategoryCounts(tenant.id, projectId)
     setProgress(computePlanningProgress(
       result.planning,
       (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,
-      (matLines || []).length,
-      hasBoq,
+      0,
+      boqCounts,
     ))
   }, [tenant?.id, projectId, router])
 

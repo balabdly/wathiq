@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { fetchProjectBoqCategoryCounts } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
 import type { ProjectTeam, TeamProjectLog } from '@/lib/project-teams'

@@ -48,6 +48,7 @@ export type ProjectBoqLine = {
   unit: string
   qty_planned: number
   notes?: string | null
+  line_category?: 'MATERIAL' | 'WORK' | null
 }
 
 export type InventoryVoucherLine = {

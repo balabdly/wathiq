@@ -22,7 +22,6 @@ import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 
 const PLAN_TABS = [
   { slug: 'boq', label: 'المقايسة', emoji: '📐' },
-  { slug: 'materials', label: 'استلام المواد', emoji: '📦' },
   { slug: 'permit', label: 'تصريح البلدية', emoji: '🏛️' },
   { slug: 'timeline', label: 'الخطة الزمنية', emoji: '📅' },
   { slug: 'safe-work', label: 'العمل الآمن', emoji: '🦺' },

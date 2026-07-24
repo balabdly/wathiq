@@ -134,6 +134,7 @@ export async function createBoqVersion(payload: {
       unit: l.unit || 'قطعة',
       qty_planned: l.qty_planned,
       notes: l.notes || null,
+      line_category: (l as ProjectBoqLine & { line_category?: string }).line_category || 'WORK',
     }))
     const { error: lErr } = await supabase.from('project_boq_lines').insert(lineRows)
     if (lErr) return { data: null, error: lErr }
@@ -142,38 +143,40 @@ export async function createBoqVersion(payload: {
   return fetchBoqVersions(payload.tenant_id, payload.project_id)
 }
 
-/** مشاريع لديها بنود BOQ نشطة (INITIAL أو ACTIVE) */
-export async function fetchProjectsWithBoqLines(tenantId: string, projectIds: number[]): Promise<Set<number>> {
-  const result = new Set<number>()
-  if (!projectIds.length) return result
-
-  const { data: versions } = await supabase
-    .from('project_boq_versions')
-    .select('id, project_id, status, version_type')
-    .eq('tenant_id', tenantId)
-    .in('project_id', projectIds)
-
-  const versionIds = (versions || []).map(v => v.id)
-  if (!versionIds.length) return result
-
-  const { data: lines } = await supabase
-    .from('project_boq_lines')
-    .select('boq_version_id')
-    .in('boq_version_id', versionIds)
-
-  const versionsWithLines = new Set((lines || []).map(l => l.boq_version_id))
-  for (const v of versions || []) {
-    if (!versionsWithLines.has(v.id)) continue
-    if (v.status === 'ACTIVE' || v.version_type === 'INITIAL') {
-      result.add(v.project_id)
-    }
+export async function fetchProjectBoqCategoryCounts(tenantId: string, projectId: number): Promise<{ materials: number; works: number }> {
+  const { data } = await fetchBoqVersions(tenantId, projectId)
+  const active = (data || []).find(v => v.status === 'ACTIVE') || (data || []).find(v => v.version_type === 'INITIAL')
+  let materials = 0
+  let works = 0
+  for (const l of active?.lines || []) {
+    const cat = l.line_category === 'MATERIAL' || l.notes?.includes('line_category:MATERIAL') || l.material_id ? 'MATERIAL' : 'WORK'
+    if (cat === 'MATERIAL' && Number(l.qty_planned) > 0) materials++
+    else if (Number(l.qty_planned) > 0) works++
   }
-  return result
+  if (!materials) {
+    const { count } = await supabase
+      .from('project_planning_material_lines')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+    materials = count || 0
+  }
+  return { materials, works }
 }
 
 export async function projectHasActiveBoqLines(tenantId: string, projectId: number): Promise<boolean> {
-  const set = await fetchProjectsWithBoqLines(tenantId, [projectId])
-  return set.has(projectId)
+  const c = await fetchProjectBoqCategoryCounts(tenantId, projectId)
+  return c.materials > 0 && c.works > 0
+}
+
+/** @deprecated استخدم fetchProjectBoqCategoryCounts */
+export async function fetchProjectsWithBoqLines(tenantId: string, projectIds: number[]): Promise<Set<number>> {
+  const result = new Set<number>()
+  await Promise.all(projectIds.map(async id => {
+    const c = await fetchProjectBoqCategoryCounts(tenantId, id)
+    if (c.materials > 0 && c.works > 0) result.add(id)
+  }))
+  return result
 }
 
 export async function activateBoqVersion(tenantId: string, versionId: number, projectId: number) {

@@ -8,13 +8,15 @@ export type PlanningProgress = {
   isComplete: boolean
 }
 
-export const PLANNING_SECTIONS = 8
+export const PLANNING_SECTIONS = 7
+
+export type BoqCategoryCounts = { materials: number; works: number }
 
 export function computePlanningProgress(
   planning: ProjectPlanning | null | undefined,
   costItemsCount = 0,
-  materialLinesCount = 0,
-  hasBoqLines = false,
+  _materialLinesCount = 0,
+  boqCounts: BoqCategoryCounts = { materials: 0, works: 0 },
 ): PlanningProgress {
   if (!planning) {
     return { percent: 0, completed: 0, total: PLANNING_SECTIONS, label: 'لم يبدأ', isComplete: false }
@@ -23,13 +25,10 @@ export function computePlanningProgress(
     return { percent: 100, completed: PLANNING_SECTIONS, total: PLANNING_SECTIONS, label: 'مكتمل', isComplete: true }
   }
 
+  const hasFullBoq = boqCounts.materials > 0 && boqCounts.works > 0
+
   const checks = [
-    hasBoqLines,
-    !!(
-      planning.material_reservation_number?.trim()
-      || materialLinesCount > 0
-      || planning.materials_list_file_path
-    ),
+    hasFullBoq,
     !!(planning.permit_number),
     !!(planning.timeline_start && planning.timeline_end),
     planning.safe_work_content === 'done',

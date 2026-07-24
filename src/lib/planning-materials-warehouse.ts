@@ -117,11 +117,14 @@ export async function fetchPlanningMaterialsWarehouseStatus(
   if (boqVersionId) {
     const { data: lines } = await supabase
       .from('project_boq_lines')
-      .select('material_id, description, unit, qty_planned, catalog_no')
+      .select('material_id, description, unit, qty_planned, catalog_no, line_category, notes')
       .eq('tenant_id', tenantId)
       .eq('boq_version_id', boqVersionId)
       .order('line_no')
-    boqLines = lines || []
+    boqLines = (lines || []).filter(l => {
+      const cat = l.line_category === 'MATERIAL' || l.notes?.includes('line_category:MATERIAL') || l.material_id ? 'MATERIAL' : 'WORK'
+      return cat === 'MATERIAL'
+    })
   }
 
   let manualLines: { material_id?: null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[] = []
