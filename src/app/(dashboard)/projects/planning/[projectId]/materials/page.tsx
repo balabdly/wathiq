@@ -285,12 +285,12 @@ export default function MaterialsTabPage() {
         <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '12px', color: '#334155' }}>📋 بيانات الحجز</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '14px' }}>
           <div>
-            <label style={lbl}>تاريخ الحجز *</label>
-            <input type="date" value={form.material_reservation_date} onChange={e => set('material_reservation_date', e.target.value)} className="input" />
+            <label style={lbl}>تاريخ الحجز <span style={{ fontWeight: 400, color: 'var(--text3)' }}>(اختياري)</span></label>
+            <input type="date" value={form.material_reservation_date} onChange={e => set('material_reservation_date', e.target.value)} className="input" disabled={readOnly} />
           </div>
           <div>
             <label style={lbl}>رقم الحجز *</label>
-            <input value={form.material_reservation_number} onChange={e => set('material_reservation_number', e.target.value)} className="input" placeholder="رقم حجز SEC" dir="ltr" />
+            <input value={form.material_reservation_number} onChange={e => set('material_reservation_number', e.target.value)} className="input" placeholder="رقم حجز SEC — يكفي للمخzون" dir="ltr" disabled={readOnly} />
           </div>
           <div>
             <label style={lbl}>ربط بحجز المخزون</label>
@@ -304,8 +304,8 @@ export default function MaterialsTabPage() {
                 ))}
               </select>
             ) : (
-              <div style={{ fontSize: '0.78rem', color: '#c81e1e', padding: '8px 0' }}>
-                لا حجز — <Link href="/inventory/pmc" style={{ color: '#1a56db', fontWeight: 600 }}>أنشئ حجزاً</Link>
+              <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 0' }}>
+                يُنشأ الحجز تلقائياً عند الحفظ برقم الحجز أعلاه
               </div>
             )}
           </div>
@@ -313,7 +313,7 @@ export default function MaterialsTabPage() {
         <div>
           <label style={lbl}>المواد المحجوزة — مرفق (Excel / PDF / صورة)</label>
           <p style={{ fontSize: '0.72rem', color: 'var(--text3)', margin: '0 0 8px' }}>
-            ارفع قائمة المواد من SEC — أو اربط BOQ نشط من PMC لملء الجدول تلقائياً.
+            ارفع قائمة المواد من SEC — أو أدخل/استورد البنود في الجدول أدناه (أو BOQ من PMC).
           </p>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <label className="btn btn-ghost" style={{ cursor: uploading ? 'wait' : 'pointer', margin: 0 }}>
