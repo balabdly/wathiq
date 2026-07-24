@@ -6,7 +6,7 @@ import {
   fetchReservations, createReservation, fetchBoqVersions,
   createBoqVersion, activateBoqVersion, fetchReservationReconciliation,
   fetchVariationOrders, createVariationOrder, applyVariationOrder, approveVariationOrder,
-  finalizeReservationReconciliation,
+  finalizeReservationReconciliation, formatSupabaseError,
 } from '@/lib/pmc-service'
 import {
   RESERVATION_STATUS_LABELS, BOQ_VERSION_TYPE_LABELS, VARIATION_STATUS_LABELS,
@@ -111,7 +111,7 @@ export default function PmcPage() {
       notes: resForm.notes || undefined,
       ownership_type: 'CUSTODY',
     })
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(formatSupabaseError(error)); return }
     toast.success('تم إنشاء الحجز')
     setShowResForm(false)
     setResForm({ project_id: '', reservation_no: '', client_name: '', notes: '' })
@@ -139,7 +139,7 @@ export default function PmcPage() {
         qty_planned: Number(boqForm.qty_planned) || 0,
       }],
     })
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(formatSupabaseError(error)); return }
     toast.success('تم إنشاء إصدار BOQ')
     setShowBoqForm(false)
     loadBoq(projectId)
@@ -158,7 +158,7 @@ export default function PmcPage() {
       reason: varForm.reason || undefined,
       sec_reference: varForm.sec_reference || undefined,
     })
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(formatSupabaseError(error)); return }
     toast.success('تم إنشاء أمر التغيير')
     setShowVarForm(false)
     setVarForm({ variation_no: '', parent_boq_version_id: '', reason: '', sec_reference: '' })
@@ -177,7 +177,7 @@ export default function PmcPage() {
     const { error } = await finalizeReservationReconciliation(
       tenant.id, Number(closeResId), closeBoqId ? Number(closeBoqId) : undefined,
     )
-    if (error) { toast.error(error.message); return }
+    if (error) { toast.error(formatSupabaseError(error)); return }
     toast.success('تم إغلاق الحجز والمطابقة النهائية')
     loadBase()
     loadReconcile(filterProject ? Number(filterProject) : undefined)
@@ -409,7 +409,7 @@ export default function PmcPage() {
                       {v.status === 'APPROVED' && tenant && (
                         <button onClick={async () => {
                           const { error } = await applyVariationOrder(v.id)
-                          if (error) { toast.error(error.message); return }
+                          if (error) { toast.error(formatSupabaseError(error)); return }
                           toast.success('تم تطبيق الأمر — إصدار BOQ جديد')
                           loadVariations(Number(filterProject))
                           loadBoq(Number(filterProject))
