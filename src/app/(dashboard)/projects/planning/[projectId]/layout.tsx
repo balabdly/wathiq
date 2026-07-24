@@ -4,6 +4,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
+import { fetchPlanningMaterialLines } from '@/lib/planning-material-lines-service'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -72,9 +73,11 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
+    const { data: matLines } = await fetchPlanningMaterialLines(tenant.id, projectId)
     setProgress(computePlanningProgress(
       result.planning,
       (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,
+      (matLines || []).length,
     ))
   }, [tenant?.id, projectId, router])
 

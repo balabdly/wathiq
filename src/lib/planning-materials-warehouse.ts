@@ -8,11 +8,16 @@ export type PlanningMaterialWarehouseRow = {
   material_id: number | null
   description: string
   unit: string
+  /** الكمية المحجوزة (من BOQ / المقايسة) */
   qty_planned: number
   qty_received: number
+  /** متبقي الاستلام = محجوز − مستلم */
   qty_remaining: number
   qty_on_hand: number
+  /** الكمية المصروفة للموقع */
   qty_issued: number
+  /** متبقي الصرف = محجوز − مصروف */
+  qty_remaining_issue: number
   line_status: 'complete' | 'partial' | 'pending'
 }
 
@@ -20,11 +25,15 @@ export type PlanningMaterialsWarehouseSummary = {
   reservation_id: number | null
   reservation_no: string | null
   reservation_status: string | null
+  reservation_date: string | null
   rows: PlanningMaterialWarehouseRow[]
-  totals: { planned: number; received: number; remaining: number; on_hand: number }
+  totals: { planned: number; received: number; remaining: number; on_hand: number; issued: number; remaining_issue: number }
   receipt_type: MaterialReceiptType | 'none'
   pending_lines: PlanningMaterialWarehouseRow[]
   pending_summary: string
+  has_boq_lines: boolean
+  has_manual_lines: boolean
+  line_source: 'boq' | 'manual' | 'none'
 }
 
 function num(v: unknown): number {
@@ -48,11 +57,15 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     reservation_id: null,
     reservation_no: reservationNo || null,
     reservation_status: null,
+    reservation_date: null,
     rows: [],
-    totals: { planned: 0, received: 0, remaining: 0, on_hand: 0 },
+    totals: { planned: 0, received: 0, remaining: 0, on_hand: 0, issued: 0, remaining_issue: 0 },
     receipt_type: 'none',
     pending_lines: [],
     pending_summary: '',
+    has_boq_lines: false,
+    has_manual_lines: false,
+    line_source: 'none',
   }
 
   let reservation: { id: number; reservation_no: string; status: string; boq_version_id?: number | null } | null = null
@@ -111,16 +124,38 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     boqLines = lines || []
   }
 
+  let manualLines: { material_id?: null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[] = []
+  if (!boqLines.length) {
+    const { data: planLines } = await supabase
+      .from('project_planning_material_lines')
+      .select('description, unit, qty_planned, catalog_no')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+      .order('sort_order')
+    manualLines = (planLines || []).map(l => ({
+      material_id: null,
+      description: l.description,
+      unit: l.unit || 'قطعة',
+      qty_planned: Number(l.qty_planned) || 0,
+      catalog_no: l.catalog_no,
+    }))
+  }
+
+  const plannedSource = boqLines.length > 0 ? boqLines : manualLines
+  const lineSource: 'boq' | 'manual' | 'none' = boqLines.length > 0 ? 'boq' : manualLines.length > 0 ? 'manual' : 'none'
+
   const rows: PlanningMaterialWarehouseRow[] = []
   const usedMaterialIds = new Set<number>()
 
-  for (const line of boqLines) {
+  for (const line of plannedSource) {
     const mid = line.material_id ?? null
     const bal = mid ? balanceByMaterial.get(mid) : undefined
     if (mid) usedMaterialIds.add(mid)
     const planned = num(line.qty_planned)
     const received = num(bal?.qty_received)
+    const issued = num(bal?.qty_issued)
     const remaining = Math.max(0, planned - received)
+    const remainingIssue = planned > 0 ? Math.max(0, planned - issued) : 0
     rows.push({
       key: mid ? `m-${mid}` : `boq-${line.description}`,
       material_id: mid,
@@ -130,7 +165,8 @@ export async function fetchPlanningMaterialsWarehouseStatus(
       qty_received: received,
       qty_remaining: remaining,
       qty_on_hand: num(bal?.qty_on_hand),
-      qty_issued: num(bal?.qty_issued),
+      qty_issued: issued,
+      qty_remaining_issue: remainingIssue,
       line_status: lineStatus(planned, received),
     })
   }
@@ -138,6 +174,7 @@ export async function fetchPlanningMaterialsWarehouseStatus(
   for (const bal of balances) {
     if (usedMaterialIds.has(bal.material_id)) continue
     const received = num(bal.qty_received)
+    const issued = num(bal.qty_issued)
     rows.push({
       key: `m-${bal.material_id}`,
       material_id: bal.material_id,
@@ -147,7 +184,8 @@ export async function fetchPlanningMaterialsWarehouseStatus(
       qty_received: received,
       qty_remaining: 0,
       qty_on_hand: num(bal.qty_on_hand),
-      qty_issued: num(bal.qty_issued),
+      qty_issued: issued,
+      qty_remaining_issue: 0,
       line_status: received > 0 ? 'partial' : 'pending',
     })
   }
@@ -158,8 +196,10 @@ export async function fetchPlanningMaterialsWarehouseStatus(
       received: acc.received + r.qty_received,
       remaining: acc.remaining + r.qty_remaining,
       on_hand: acc.on_hand + r.qty_on_hand,
+      issued: acc.issued + r.qty_issued,
+      remaining_issue: acc.remaining_issue + r.qty_remaining_issue,
     }),
-    { planned: 0, received: 0, remaining: 0, on_hand: 0 },
+    { planned: 0, received: 0, remaining: 0, on_hand: 0, issued: 0, remaining_issue: 0 },
   )
 
   const pending_lines = rows.filter(r => r.line_status !== 'complete' && (r.qty_planned > 0 || r.qty_received <= 0))
@@ -180,12 +220,22 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     reservation_id: reservation.id,
     reservation_no: reservation.reservation_no,
     reservation_status: reservation.status,
+    reservation_date: null,
     rows,
     totals,
     receipt_type,
     pending_lines,
     pending_summary,
+    has_boq_lines: boqLines.length > 0,
+    has_manual_lines: manualLines.length > 0,
+    line_source: lineSource,
   }
+}
+
+export async function getPlanningMaterialsFileUrl(filePath: string | null | undefined): Promise<string | null> {
+  if (!filePath) return null
+  const { data } = await supabase.storage.from('project-attachments').createSignedUrl(filePath, 3600)
+  return data?.signedUrl ?? null
 }
 
 export async function resolveMaterialReservationId(

@@ -44,6 +44,46 @@ export async function createReservation(payload: {
   return { data: data as MaterialReservation | null, error }
 }
 
+/** إنشاء أو إيجاد حجز برقم الحجز فقط — لا يتطلب اكتمال التخطيط */
+export async function ensureReservationByNumber(
+  tenantId: string,
+  projectId: number,
+  reservationNo: string,
+  clientName?: string | null,
+) {
+  const no = reservationNo.trim()
+  if (!no) return { data: null, error: { message: 'رقم الحجز مطلوب' } as { message: string } }
+
+  const { data: existing, error: findErr } = await supabase
+    .from('material_reservations')
+    .select('id, reservation_no, status, project_id, client_name, tenant_id')
+    .eq('tenant_id', tenantId)
+    .eq('reservation_no', no)
+    .maybeSingle()
+
+  if (findErr) return { data: null, error: findErr }
+  if (existing) {
+    if (existing.project_id !== projectId) {
+      return { data: null, error: { message: 'رقم الحجز مربوط بمشروع آخر' } }
+    }
+    return { data: existing as MaterialReservation, error: null }
+  }
+
+  const { data: project } = await supabase
+    .from('projects')
+    .select('client_name')
+    .eq('id', projectId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  return createReservation({
+    tenant_id: tenantId,
+    project_id: projectId,
+    reservation_no: no,
+    client_name: clientName || project?.client_name || undefined,
+  })
+}
+
 export async function closeReservation(id: number) {
   return supabase
     .from('material_reservations')

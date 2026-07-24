@@ -14,7 +14,7 @@ import {
   Paperclip,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { fetchOpenReservations } from '@/lib/pmc-service'
+import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
 import type { MaterialReservation } from '@/lib/pmc-types'
@@ -268,8 +268,29 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     if (type === 'إرجاع' && !form.return_type) { toast.error('يجب تحديد نوع الإرجاع'); savingRef.current = false; return }
 
     const mapping = resolveVoucherMapping(type, isProjectWh, form.project_id, form.return_type)
-    if (mapping.requiresReservation && !form.reservation_id) {
-      toast.error('يجب اختيار حجز المواد لعمليات عهدة SEC'); savingRef.current = false; return
+
+    let reservationIdForSubmit = form.reservation_id
+    if (mapping.requiresReservation && !reservationIdForSubmit && form.booking_no?.trim() && form.project_id) {
+      const { data: ensured, error: ensureErr } = await ensureReservationByNumber(
+        tenantId,
+        Number(form.project_id),
+        form.booking_no.trim(),
+        form.client_name_recv || undefined,
+      )
+      if (ensureErr || !ensured) {
+        toast.error(ensureErr?.message || 'تعذّر ربط رقم الحجز')
+        savingRef.current = false
+        return
+      }
+      reservationIdForSubmit = String(ensured.id)
+      set('reservation_id', reservationIdForSubmit)
+      set('booking_no', ensured.reservation_no)
+    }
+
+    if (mapping.requiresReservation && !reservationIdForSubmit && !form.booking_no?.trim()) {
+      toast.error('أدخل رقم الحجز أو اختر حجزاً — لا يتطلب اكتمال التخطيط')
+      savingRef.current = false
+      return
     }
 
     setSaving(true)
@@ -291,7 +312,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     if (canUseAtomicVoucher(type, isProjectWh, form.project_id, form.return_type)) {
       const { data, error } = await submitOperationVoucher(
         type, tenantId, branchId,
-        { ...form, reservation_id: form.reservation_id },
+        { ...form, reservation_id: reservationIdForSubmit },
         finalRows,
         { isProjectWh, whName: wh?.name, attachmentUrl },
       )
@@ -567,12 +588,12 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
                 حجز المواد (Booking) <span style={{ color: '#c81e1e' }}>*</span>
               </label>
               {reservations.length === 0 ? (
-                <div style={{ padding: '10px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', fontSize: '0.8rem', color: '#92400e' }}>
-                  لا توجد حجوزات لهذا المشروع — أنشئ حجزاً من <strong>المخزون → حجوزات SEC</strong>
+                <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                  لا حجز مسجّل — أدخل <strong>رقم الحجز</strong> في الحقل أدناه (يُنشأ تلقائياً عند الحفظ)
                 </div>
               ) : (
                 <select value={form.reservation_id} onChange={e => handleReservationChange(e.target.value)} className="select">
-                  <option value="">— اختر رقم الحجز —</option>
+                  <option value="">— أو أدخل رقم الحجز يدوياً —</option>
                   {reservations.map(r => (
                     <option key={r.id} value={r.id}>{r.reservation_no} ({r.status})</option>
                   ))}
@@ -634,10 +655,10 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
                   <input value={form.exit_permit_no} onChange={e => set('exit_permit_no', e.target.value)} className="input" placeholder="رقم إذن خروج المواد" />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم الحجز</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم الحجز *</label>
                   <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)} className="input"
-                    placeholder="يُملأ تلقائياً من الحجز" readOnly={!!form.reservation_id}
-                    style={form.reservation_id ? { background: '#f8fafc', color: '#6b7280' } : undefined} />
+                    placeholder="رقم حجز SEC — يكفي للاستلام دون اكتمال التخطيط"
+                    dir="ltr" />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>

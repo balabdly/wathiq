@@ -13,6 +13,7 @@ export const PLANNING_SECTIONS = 7
 export function computePlanningProgress(
   planning: ProjectPlanning | null | undefined,
   costItemsCount = 0,
+  materialLinesCount = 0,
 ): PlanningProgress {
   if (!planning) {
     return { percent: 0, completed: 0, total: PLANNING_SECTIONS, label: 'لم يبدأ', isComplete: false }
@@ -22,7 +23,11 @@ export function computePlanningProgress(
   }
 
   const checks = [
-    !!(planning.material_reservation_date && planning.material_reservation_number && planning.material_availability),
+    !!(
+      planning.material_reservation_number?.trim()
+      || materialLinesCount > 0
+      || planning.materials_list_file_path
+    ),
     !!(planning.permit_number),
     !!(planning.timeline_start && planning.timeline_end),
     planning.safe_work_content === 'done',
