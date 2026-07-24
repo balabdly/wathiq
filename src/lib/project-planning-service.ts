@@ -248,7 +248,6 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   const boqCounts = await fetchProjectBoqCategoryCounts(tenantId, projectId)
 
   const isRevision = !!(planning as ProjectPlanning | null)?.cost_plan_notes?.includes('[تعديل مقايسة]')
-    || !!((planning as ProjectPlanning | null)?.boq_revision_snapshot as unknown[] | null)?.length
 
   if (isRevision && !(planning as ProjectPlanning)?.boq_revision_approval_file_path) {
     throw new Error('يجب إرفاق نموذج موافقة الكهرباء على تعديل المقايسة قبل الاعتماد')

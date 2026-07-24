@@ -25,8 +25,7 @@ export default function PlanningBoqPage() {
   const [loadingFw, setLoadingFw] = useState(true)
   const [uploadingApproval, setUploadingApproval] = useState(false)
 
-  const isRevision = planning?.planning_status === 'active'
-    && (!!planning?.cost_plan_notes?.includes('[تعديل مقايسة]') || !!(planning?.boq_revision_snapshot as unknown[] | null)?.length)
+  const isRevision = !!planning?.cost_plan_notes?.includes('[تعديل مقايسة]')
 
   const revisionSnapshot = (planning?.boq_revision_snapshot || []) as import('@/lib/project-planning-service').BoqRevisionSnapshotLine[]
 
@@ -95,7 +94,7 @@ export default function PlanningBoqPage() {
 
       {isRevision && !readOnly && (
         <div style={{ padding: '10px 14px', borderRadius: '10px', marginBottom: '16px', background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.82rem', color: '#92400e' }}>
-          <strong>تعديل مقايسة</strong> — عمود «الكمية السابقة» و«الكمية المعدّلة» للمواد والأعمال معاً.
+          <strong>تعديل مقايسة</strong> — عدّل الكميات للبنود الحالية، أو أضف مواد/أعمال جديدة يدوياً أو عبر Excel / PDF / صورة.
         </div>
       )}
 

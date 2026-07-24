@@ -19,7 +19,7 @@ import toast from 'react-hot-toast'
 
 export type BoqLineCategory = 'MATERIAL' | 'WORK'
 
-type LineRow = BoqImportLine & { qty_previous?: number; line_category: BoqLineCategory }
+type LineRow = BoqImportLine & { qty_previous?: number; line_category: BoqLineCategory; is_new?: boolean }
 
 const SECTION_STYLE = {
   MATERIAL: { headerBg: '#eef2ff', headerBorder: '#c7d2fe', titleColor: '#4338ca', rowTint: '#faf5ff' },
@@ -58,10 +58,49 @@ function parsePrevQty(notes?: string | null): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
-function buildNotes(category: BoqLineCategory, isRevision: boolean, qtyPrevious?: number): string | null {
+function buildNotes(category: BoqLineCategory, trackPrevQty: boolean, qtyPrevious?: number, isNew?: boolean): string | null {
   const parts: string[] = [`line_category:${category}`]
-  if (isRevision && qtyPrevious != null) parts.push(`prev_qty:${qtyPrevious}`)
+  if (isNew) parts.push('is_new:1')
+  if (trackPrevQty && qtyPrevious != null && !isNew) parts.push(`prev_qty:${qtyPrevious}`)
   return parts.join('|')
+}
+
+function isNewLineFromNotes(notes?: string | null): boolean {
+  return !!notes?.includes('is_new:1')
+}
+
+function mergeRevisionCategoryRows(
+  currentRows: LineRow[],
+  snapshotRows: BoqRevisionSnapshotLine[],
+  category: BoqLineCategory,
+): LineRow[] {
+  const snaps = snapshotRows.filter(s => (s.line_category || 'WORK') === category)
+  const byDesc = new Map(currentRows.map(r => [r.description.trim(), r]))
+  const merged: LineRow[] = []
+
+  for (const row of currentRows) {
+    const snap = snaps.find(s => s.description.trim() === row.description.trim())
+    merged.push({
+      ...row,
+      qty_previous: snap ? Number(snap.qty) : (row.qty_previous ?? Number(row.qty)),
+    })
+  }
+
+  for (const snap of snaps) {
+    const desc = snap.description.trim()
+    if (!desc || byDesc.has(desc)) continue
+    merged.push({
+      ...emptyLine(category),
+      description: snap.description,
+      unit: snap.unit,
+      qty: Number(snap.qty),
+      qty_previous: Number(snap.qty),
+      item_code: snap.catalog_no || '',
+      unit_price: Number(snap.unit_price || 0),
+    })
+  }
+
+  return merged.length ? merged : [emptyLine(category)]
 }
 
 type FrameworkBoqRow = {
@@ -98,7 +137,7 @@ function EstimateImportToolbar({
       background: '#f8fafc', border: '1px solid #e2e8f0',
     }}>
       <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text2)' }}>
-        استيراد من ملف (Excel / PDF / صورة)
+        استيراد من ملف (Excel / PDF / صورة) — {readOnly ? '' : 'يضيف بنوداً جديدة دون حذف الموجود'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {groups.map(g => (
@@ -189,10 +228,10 @@ function EstimateSectionTable({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
           <thead>
             <tr style={{ background: style.headerBg }}>
-              {!isRevision && category === 'WORK' && frameworkItems.length > 0 && (
+              {category === 'WORK' && frameworkItems.length > 0 && (
                 <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>من العقد</th>
               )}
-              {!isRevision && category === 'WORK' && (
+              {category === 'WORK' && (
                 <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الحالة</th>
               )}
               <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الوصف</th>
@@ -209,24 +248,35 @@ function EstimateSectionTable({
             {lines.map((line, localIdx) => {
               const globalIdx = lineIndices[localIdx]
               const qtyChanged = isRevision && line.qty_previous != null && line.qty !== line.qty_previous
+              const isNewRow = !!line.is_new
+              const canEditDetails = !readOnly && (!isRevision || isNewRow)
+              const canEditQty = !readOnly
+              const canEditPrice = canEditDetails && !(category === 'WORK' && line.matchStatus === 'matched' && line.unit_price > 0 && !isNewRow)
               return (
-                <tr key={globalIdx} style={{ borderTop: `1px solid ${style.headerBorder}`, background: qtyChanged ? '#fffbeb55' : undefined }}>
-                  {!isRevision && category === 'WORK' && frameworkItems.length > 0 && (
+                <tr key={globalIdx} style={{ borderTop: `1px solid ${style.headerBorder}`, background: qtyChanged ? '#fffbeb55' : isNewRow ? '#ecfdf533' : undefined }}>
+                  {category === 'WORK' && frameworkItems.length > 0 && (
                     <td style={{ padding: '6px 8px', minWidth: '140px' }}>
-                      <select value={line.item_code} onChange={e => onSelectFramework(globalIdx, e.target.value)} disabled={readOnly}
-                        style={{ width: '100%', padding: '4px 6px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
-                        <option value="">—</option>
-                        {frameworkItems.slice(0, 200).map(f => (
-                          <option key={f.item_code} value={f.item_code}>{f.item_code}</option>
-                        ))}
-                      </select>
+                      {(!isRevision || isNewRow) ? (
+                        <select value={line.item_code} onChange={e => onSelectFramework(globalIdx, e.target.value)} disabled={readOnly}
+                          style={{ width: '100%', padding: '4px 6px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                          <option value="">—</option>
+                          {frameworkItems.slice(0, 200).map(f => (
+                            <option key={f.item_code} value={f.item_code}>{f.item_code}</option>
+                          ))}
+                        </select>
+                      ) : null}
                     </td>
                   )}
-                  {!isRevision && category === 'WORK' && (
-                    <td style={{ padding: '6px 8px' }}><BoqLineStatusBadge status={line.matchStatus} /></td>
+                  {category === 'WORK' && (
+                    <td style={{ padding: '6px 8px' }}>
+                      {(!isRevision || isNewRow) ? <BoqLineStatusBadge status={line.matchStatus} /> : null}
+                    </td>
                   )}
                   <td style={{ padding: '6px 8px', minWidth: '160px' }}>
-                    <input value={line.description} onChange={e => onUpdate(globalIdx, 'description', e.target.value)} className="input" style={{ fontSize: '0.8rem' }} readOnly={readOnly || isRevision} placeholder={category === 'MATERIAL' ? 'المادة' : 'البند'} />
+                    {isNewRow && isRevision && (
+                      <span style={{ display: 'block', fontSize: '0.62rem', color: '#0ea77b', fontWeight: 700, marginBottom: '2px' }}>بند جديد</span>
+                    )}
+                    <input value={line.description} onChange={e => onUpdate(globalIdx, 'description', e.target.value)} className="input" style={{ fontSize: '0.8rem' }} readOnly={!canEditDetails} placeholder={category === 'MATERIAL' ? 'المادة' : 'البند'} />
                   </td>
                   {isRevision && (
                     <td style={{ padding: '6px 8px', width: '80px' }}>
@@ -236,20 +286,20 @@ function EstimateSectionTable({
                     </td>
                   )}
                   <td style={{ padding: '6px 8px', width: '80px' }}>
-                    <input type="number" min="0" step="0.01" value={line.qty} onChange={e => onUpdate(globalIdx, 'qty', Number(e.target.value))} className="input" style={{ fontSize: '0.8rem', borderColor: qtyChanged ? '#fcd34d' : undefined, fontWeight: qtyChanged ? 700 : 400 }} dir="ltr" readOnly={readOnly} />
+                    <input type="number" min="0" step="0.01" value={line.qty} onChange={e => onUpdate(globalIdx, 'qty', Number(e.target.value))} className="input" style={{ fontSize: '0.8rem', borderColor: qtyChanged ? '#fcd34d' : undefined, fontWeight: qtyChanged ? 700 : 400 }} dir="ltr" readOnly={!canEditQty} />
                   </td>
                   <td style={{ padding: '6px 8px', width: '64px' }}>
-                    <input value={line.unit} onChange={e => onUpdate(globalIdx, 'unit', e.target.value)} className="input" style={{ fontSize: '0.8rem' }} readOnly={readOnly || isRevision} />
+                    <input value={line.unit} onChange={e => onUpdate(globalIdx, 'unit', e.target.value)} className="input" style={{ fontSize: '0.8rem' }} readOnly={!canEditDetails} />
                   </td>
                   <td style={{ padding: '6px 8px', width: '80px' }}>
                     <input type="number" min="0" value={line.unit_price} onChange={e => onUpdate(globalIdx, 'unit_price', Number(e.target.value))} className="input" style={{ fontSize: '0.8rem' }} dir="ltr"
-                      readOnly={readOnly || isRevision || (category === 'WORK' && line.matchStatus === 'matched' && line.unit_price > 0)} />
+                      readOnly={!canEditPrice} />
                   </td>
                   <td style={{ padding: '6px 8px', fontWeight: 700, color: qtyChanged ? '#e6820a' : '#0ea77b', whiteSpace: 'nowrap' }}>
                     {(line.qty * line.unit_price).toLocaleString('ar-SA')}
                   </td>
                   <td style={{ padding: '6px 8px' }}>
-                    {!readOnly && !isRevision && (
+                    {!readOnly && (!isRevision || isNewRow) && (
                       <button type="button" onClick={() => onRemove(globalIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e' }}>
                         <Trash2 style={{ width: '14px', height: '14px' }} />
                       </button>
@@ -330,16 +380,18 @@ export default function ProjectEstimateEditor({
     const cat = resolveCategory(l)
     const code = l.catalog_no || ''
     const fw = code ? frameworkMap.get(code.replace(/\s+/g, '').toUpperCase()) : undefined
+    const isNew = isNewLineFromNotes(l.notes)
     return {
       item_code: code,
       description: l.description,
       unit: l.unit,
       qty: Number(l.qty_planned),
-      qty_previous: snap ? Number(snap.qty) : (isRevision ? (parsePrevQty(l.notes) ?? Number(l.qty_planned)) : undefined),
+      qty_previous: snap ? Number(snap.qty) : (isRevision && !isNew ? (parsePrevQty(l.notes) ?? Number(l.qty_planned)) : undefined),
       unit_price: fw ? Number(fw.unit_price) : 0,
       source: 'manual' as BoqLineSource,
       matchStatus: inferMatchStatus(code, frameworkMap),
       line_category: cat,
+      is_new: isNew || undefined,
     }
   }
 
@@ -377,16 +429,8 @@ export default function ProjectEstimateEditor({
     }
 
     if (isRevision && revisionSnapshot.length) {
-      const snapMats = revisionSnapshot.filter(s => s.line_category === 'MATERIAL')
-      const snapWorks = revisionSnapshot.filter(s => s.line_category !== 'MATERIAL')
-      materialRows = materialRows.map(r => {
-        const snap = snapMats.find(s => s.description === r.description)
-        return snap ? { ...r, qty_previous: Number(snap.qty) } : r
-      })
-      workRows = workRows.map(r => {
-        const snap = snapWorks.find(s => s.description === r.description)
-        return snap ? { ...r, qty_previous: Number(snap.qty) } : r
-      })
+      materialRows = mergeRevisionCategoryRows(materialRows, revisionSnapshot, 'MATERIAL')
+      workRows = mergeRevisionCategoryRows(workRows, revisionSnapshot, 'WORK')
     }
 
     if (!materialRows.length) materialRows = [emptyLine('MATERIAL')]
@@ -421,7 +465,13 @@ export default function ProjectEstimateEditor({
     })
   }
 
-  function addLine(category: BoqLineCategory) { setLines(l => [...l, emptyLine(category)]) }
+  function addLine(category: BoqLineCategory) {
+    setLines(l => [...l, {
+      ...emptyLine(category),
+      is_new: isRevision || undefined,
+      qty_previous: isRevision ? 0 : undefined,
+    }])
+  }
 
   function removeLine(idx: number) {
     const cat = lines[idx]?.line_category
@@ -429,7 +479,33 @@ export default function ProjectEstimateEditor({
     setLines(l => l.filter((_, i) => i !== idx))
   }
 
+  function appendImportedRows(category: BoqLineCategory, imported: BoqImportLine[]) {
+    const newRows = imported.filter(r => r.description.trim()).map(r => ({
+      ...r,
+      line_category: category,
+      unit: r.unit || (category === 'MATERIAL' ? 'قطعة' : 'EA'),
+      is_new: isRevision || undefined,
+      qty_previous: isRevision ? 0 : undefined,
+    }))
+    setLines(prev => {
+      const mats = prev.filter(l => l.line_category === 'MATERIAL')
+      const works = prev.filter(l => l.line_category === 'WORK')
+      if (category === 'MATERIAL') {
+        const kept = mats.filter(l => l.description.trim() || l.is_new)
+        return [...(kept.length ? kept : isRevision ? [] : [emptyLine('MATERIAL')]), ...newRows, ...works]
+      }
+      const kept = works.filter(l => l.description.trim() || l.is_new)
+      return [...mats, ...(kept.length ? kept : isRevision ? [] : [emptyLine('WORK')]), ...newRows]
+    })
+  }
+
   function handleImportApply(imported: BoqImportLine[]) {
+    if (isRevision) {
+      appendImportedRows(importTarget, imported)
+      setImportModalOpen(false)
+      toast.success(`تمت إضافة ${imported.length} ${importTarget === 'MATERIAL' ? 'مادة جديدة' : 'بند أعمال جديد'}`)
+      return
+    }
     setLines(prev => {
       const mats = prev.filter(l => l.line_category === 'MATERIAL')
       const works = prev.filter(l => l.line_category === 'WORK')
@@ -449,10 +525,6 @@ export default function ProjectEstimateEditor({
   }
 
   function openImport(category: BoqLineCategory, kind: BoqImportKind) {
-    if (isRevision) {
-      toast.error('الاستيراد غير متاح أثناء تعديل المقايسة — عدّل الكميات يدوياً')
-      return
-    }
     setImportTarget(category)
     if (category === 'MATERIAL' && kind === 'excel') {
       materialExcelRef.current?.click()
@@ -466,10 +538,6 @@ export default function ProjectEstimateEditor({
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    if (isRevision) {
-      toast.error('الاستيراد غير متاح أثناء تعديل المقايسة — عدّل الكميات يدوياً')
-      return
-    }
     try {
       const rows = await parseMaterialsSpreadsheet(file)
       const imported = rows.filter(r => r.description.trim()).map(r => ({
@@ -479,6 +547,11 @@ export default function ProjectEstimateEditor({
         qty: Number(r.qty_planned) || 0,
         item_code: r.catalog_no || '',
       }))
+      if (isRevision) {
+        appendImportedRows('MATERIAL', imported)
+        toast.success(`تمت إضافة ${imported.length} مادة جديدة من Excel`)
+        return
+      }
       setLines(prev => {
         const works = prev.filter(l => l.line_category === 'WORK')
         return [...(imported.length ? imported : [emptyLine('MATERIAL')]), ...works]
@@ -510,7 +583,7 @@ export default function ProjectEstimateEditor({
       description: l.description.trim(),
       unit: l.unit,
       qty_planned: l.qty,
-      notes: buildNotes(l.line_category, isRevision, l.qty_previous),
+      notes: buildNotes(l.line_category, isRevision, l.qty_previous, l.is_new),
       line_category: l.line_category,
     }))
 
