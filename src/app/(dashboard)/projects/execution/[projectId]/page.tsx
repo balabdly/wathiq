@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag, ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -10,13 +10,12 @@ import {
   fetchExecutionProject,
   fetchActiveTeams,
   assignExecutionTeam,
-  addTeamToSequence,
-  handoffExecutionTeam,
+  reassignExecutionTeam,
   clearProjectTeamSequence,
-  removePendingTeamAssignment,
   fetchProjectDailyLogs,
   submitDailyLog,
   formatTodayLabel,
+  formatAssignmentError,
   type ExecutionProjectDetail,
 } from '@/lib/project-execution-service'
 import { advanceProjectToClose } from '@/lib/project-execution-service'
@@ -24,9 +23,7 @@ import {
   formatTeamTypeLabel,
   TEAM_TYPE_STYLE,
   ASSIGNMENT_STATUS_LABEL,
-  ASSIGNMENT_STATUS_STYLE,
   type TeamProjectLog,
-  type ProjectTeamAssignment,
 } from '@/lib/project-teams'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -63,12 +60,10 @@ export default function ExecutionProjectPage() {
   const [advancing, setAdvancing] = useState(false)
   const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('')
   const [handoffNotes, setHandoffNotes] = useState('')
-  const [handingOff, setHandingOff] = useState(false)
 
   const assignments = project?.teamAssignments || []
-  const activeAssignment = assignments.find(a => a.status === 'active')
-  const nextPending = assignments.find(a => a.status === 'pending')
-  const completedCount = assignments.filter(a => a.status === 'completed').length
+  const completedAssignments = assignments.filter(a => a.status === 'completed')
+  const hasActiveTeam = !!project?.team_id
 
   const reload = useCallback(async () => {
     if (!tenant) return
@@ -96,68 +91,50 @@ export default function ExecutionProjectPage() {
     Promise.all([reload(), reloadLogs()]).finally(() => setLoading(false))
   }, [tenant?.id, projectId, reload, reloadLogs])
 
-  async function handleAddToSequence() {
+  async function handleAssignTeam() {
     if (!tenant || !project) return
     const teamId = selectedTeamId ? Number(selectedTeamId) : null
     if (!teamId) {
       toast.error('اختر فريقاً أولاً')
       return
     }
-    setAssigning(true)
-    try {
-      if (!project?.teamAssignments?.length) {
-        await assignExecutionTeam(tenant.id, projectId, teamId)
-      } else {
-        await addTeamToSequence(tenant.id, projectId, teamId)
-      }
-      toast.success(project?.teamAssignments?.length ? 'تمت إضافة الفريق للتسلسل ✅' : 'تم اعتماد الفريق الأول ✅')
-      setSelectedTeamId('')
-      await reload()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الإضافة')
-    }
-    setAssigning(false)
-  }
 
-  async function handleHandoff() {
-    if (!tenant || !project) return
-    if (!nextPending) {
-      toast.error('أضف الفريق التالي في التسلسل أولاً')
+    if (hasActiveTeam && teamId === project.team_id) {
+      toast.error('هذا الفريق مسند للمشروع بالفعل')
       return
     }
-    const msg = [
-      `تسليم المشروع من «${activeAssignment?.team?.name || 'الفريق الحالي'}» إلى «${nextPending.team?.name}»؟`,
-      '',
-      '• يُغلق سجل الفريق الحالي',
-      '• يبدأ الفريق التالي بتسجيل الإنجاز اليومي',
-    ].join('\n')
-    if (!confirm(msg)) return
-    setHandingOff(true)
+
+    if (hasActiveTeam) {
+      const currentName = project.team?.name || 'الفريق الحالي'
+      const nextName = teams.find(t => t.id === teamId)?.name || 'الفريق الجديد'
+      const msg = [
+        `إسناد المشروع من «${currentName}» إلى «${nextName}»؟`,
+        '',
+        '• يُغلق دور الفريق الحالي (مثلاً: انتهى الحفر والتمديد)',
+        '• يبدأ الفريق الجديد (مثلاً: الوصلات والربط)',
+        '• سجل الإنجاز السابق يبقى محفوظاً',
+      ].join('\n')
+      if (!confirm(msg)) return
+    }
+
+    setAssigning(true)
     try {
-      await handoffExecutionTeam(tenant.id, projectId, {
-        handoffNotes: handoffNotes,
-        progressAtHandoff: project.progress ?? 0,
-      })
-      toast.success('تم التسليم للفريق التالي ✅')
+      if (!hasActiveTeam) {
+        await assignExecutionTeam(tenant.id, projectId, teamId)
+        toast.success('تم اعتماد الفريق ✅')
+      } else {
+        await reassignExecutionTeam(tenant.id, projectId, teamId, {
+          handoffNotes: handoffNotes,
+          progressAtHandoff: project.progress ?? 0,
+        })
+        toast.success('تم إسناد المشروع للفريق التالي ✅')
+      }
+      setSelectedTeamId('')
       setHandoffNotes('')
       await reload()
       await reloadLogs()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل التسليم')
-    }
-    setHandingOff(false)
-  }
-
-  async function handleRemovePending(assignment: ProjectTeamAssignment) {
-    if (!tenant) return
-    if (!confirm(`حذف «${assignment.team?.name}» من قائمة الانتظار؟`)) return
-    setAssigning(true)
-    try {
-      await removePendingTeamAssignment(tenant.id, assignment.id)
-      toast.success('تم الحذف')
-      await reload()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الحذف')
+      toast.error(formatAssignmentError(e, 'فشل الإسناد'))
     }
     setAssigning(false)
   }
@@ -177,9 +154,7 @@ export default function ExecutionProjectPage() {
     setAssigning(false)
   }
 
-  const teamIdsInSequence = new Set(assignments.map(a => a.team_id))
-  const availableTeams = teams.filter(t => !teamIdsInSequence.has(t.id))
-  const hasApprovedTeam = !!project?.team_id
+  const availableTeams = teams.filter(t => t.id !== project?.team_id)
 
   async function handleSubmitLog() {
     if (!tenant || !project?.team_id) {
@@ -326,65 +301,41 @@ export default function ExecutionProjectPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-        {/* تسلسل فرق التنفيذ */}
-        <div className="card" style={{ padding: '16px 20px', gridColumn: assignments.length ? '1 / -1' : undefined }}>
+        {/* إسناد الفريق — فريق واحد نشط في كل مرة */}
+        <div className="card" style={{ padding: '16px 20px', gridColumn: '1 / -1' }}>
           <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <Users style={{ width: '16px', height: '16px', color: '#1a56db' }} />
-            تسلسل فرق التنفيذ
-            {assignments.length > 1 && (
-              <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 700 }}>
-                {completedCount + 1} / {assignments.length}
-              </span>
-            )}
-            {hasApprovedTeam && (
+            إسناد الفريق
+            {hasActiveTeam && (
               <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#0ea77b', fontWeight: 700 }}>
-                ✓ فريق نشط
+                ✓ {project.team?.name}
               </span>
             )}
           </div>
           <p style={{ fontSize: '0.72rem', color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 }}>
-            مثال: الفريق الميداني (تمديد كابلات وخرسانات) ← ثم الفريق الكهربائي (توصيل وربط الشبكة)
+            فريق واحد نشط في كل مرة — بعد انتهاء الفريق الميداني (حفر وتمديد) أعد الإسناد للفريق الكهربائي (وصلات وربط)
           </p>
 
-          {assignments.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
-              {assignments.map((a, idx) => {
-                const st = ASSIGNMENT_STATUS_STYLE[a.status]
-                const typeSt = TEAM_TYPE_STYLE[a.team?.team_type || ''] || TEAM_TYPE_STYLE['مختلط']
-                return (
-                  <div key={a.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                    padding: '10px 12px', borderRadius: '10px',
-                    border: `1px solid ${a.status === 'active' ? '#bfdbfe' : '#e5e7eb'}`,
-                    background: a.status === 'active' ? '#eff6ff' : '#fafafa',
-                  }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#9ca3af', minWidth: '24px' }}>{idx + 1}</span>
-                    {idx < assignments.length - 1 && a.status === 'completed' && (
-                      <ArrowLeft style={{ width: '14px', height: '14px', color: '#9ca3af', transform: 'rotate(180deg)' }} />
-                    )}
-                    <div style={{ flex: 1, minWidth: '140px' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{a.team?.name || `فريق #${a.team_id}`}</div>
-                      {a.team && (
-                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '6px', background: typeSt.bg, color: typeSt.color, fontWeight: 600 }}>
-                          {formatTeamTypeLabel(a.team)}
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: st.bg, color: st.color, fontWeight: 700 }}>
-                      {ASSIGNMENT_STATUS_LABEL[a.status]}
-                    </span>
-                    {a.status === 'completed' && a.completed_at && (
-                      <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>{formatDate(a.completed_at.slice(0, 10))}</span>
-                    )}
-                    {canEdit && a.status === 'pending' && (
-                      <button type="button" onClick={() => handleRemovePending(a)} disabled={assigning}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '4px' }}>
-                        <Trash2 style={{ width: '14px', height: '14px' }} />
-                      </button>
-                    )}
+          {hasActiveTeam && project.team && (
+            <div style={{ padding: '12px 14px', borderRadius: '10px', background: teamStyle.bg, border: `1px solid ${teamStyle.color}33`, marginBottom: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', color: teamStyle.color }}>الفريق الحالي: {project.team.name}</div>
+              <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '4px' }}>{formatTeamTypeLabel(project.team)}</div>
+            </div>
+          )}
+
+          {completedAssignments.length > 0 && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>فرق أنجزت دورها</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {completedAssignments.map((a, idx) => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', padding: '8px 10px', borderRadius: '8px', background: '#f9fafb', border: '1px solid #e5e7eb' }}>
+                    <span style={{ fontWeight: 700, color: '#9ca3af' }}>{idx + 1}.</span>
+                    <span style={{ flex: 1, fontWeight: 600 }}>{a.team?.name || '—'}</span>
+                    <span style={{ fontSize: '0.68rem', color: '#0ea77b', fontWeight: 700 }}>{ASSIGNMENT_STATUS_LABEL.completed}</span>
+                    {a.handoff_notes && <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{a.handoff_notes}</span>}
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
           )}
 
@@ -397,25 +348,38 @@ export default function ExecutionProjectPage() {
                 className="input"
                 style={{ width: '100%', marginBottom: '8px' }}
               >
-                <option value="">— {assignments.length ? 'اختر فريقاً للتسلسل' : 'اختر الفريق الأول'} —</option>
+                <option value="">
+                  — {hasActiveTeam ? 'اختر الفريق التالي' : 'اختر الفريق الأول'} —
+                </option>
                 {availableTeams.map(t => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({formatTeamTypeLabel(t)})
                   </option>
                 ))}
               </select>
+
+              {hasActiveTeam && (
+                <input
+                  value={handoffNotes}
+                  onChange={e => setHandoffNotes(e.target.value)}
+                  className="input"
+                  placeholder="ملاحظة التسليم (اختياري) — مثال: انتهى الحفر والتمديد"
+                  style={{ width: '100%', marginBottom: '8px', fontSize: '0.82rem' }}
+                />
+              )}
+
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  onClick={handleAddToSequence}
+                  onClick={handleAssignTeam}
                   disabled={assigning || !selectedTeamId}
                   className="btn btn-primary"
-                  style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId ? 0.55 : 1 }}
+                  style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId ? 0.55 : 1, background: hasActiveTeam ? '#e6820a' : undefined }}
                 >
-                  <Plus style={{ width: '14px', height: '14px' }} />
-                  {assigning ? 'جاري...' : assignments.length ? 'إضافة للتسلسل' : 'اعتماد الفريق الأول'}
+                  <ArrowLeft style={{ width: '14px', height: '14px' }} />
+                  {assigning ? 'جاري...' : hasActiveTeam ? 'إسناد للفريق التالي' : 'اعتماد الفريق'}
                 </button>
-                {assignments.length > 0 && (
+                {hasActiveTeam && (
                   <button
                     type="button"
                     onClick={handleClearTeam}
@@ -423,44 +387,15 @@ export default function ExecutionProjectPage() {
                     className="btn btn-ghost"
                     style={{ fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}
                   >
-                    إلغاء التسلسل
+                    إلغاء الإسناد
                   </button>
                 )}
               </div>
-
-              {activeAssignment && nextPending && (
-                <div style={{ marginTop: '14px', padding: '12px', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fcd34d' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#92400e', marginBottom: '8px' }}>
-                    تسليم للفريق التالي: {nextPending.team?.name}
-                  </div>
-                  <input
-                    value={handoffNotes}
-                    onChange={e => setHandoffNotes(e.target.value)}
-                    className="input"
-                    placeholder="ملاحظة التسليم (اختياري) — ما أنجزه الفريق الحالي..."
-                    style={{ marginBottom: '8px', fontSize: '0.82rem' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleHandoff}
-                    disabled={handingOff}
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.78rem', background: '#e6820a', width: '100%' }}
-                  >
-                    <ArrowLeft style={{ width: '14px', height: '14px' }} />
-                    {handingOff ? 'جاري التسليم...' : `تسليم من ${activeAssignment.team?.name} → ${nextPending.team?.name}`}
-                  </button>
-                </div>
-              )}
             </>
           ) : (
             <div style={{ fontSize: '0.85rem' }}>{project.team?.name || 'غير مسند'}</div>
           )}
-          {project.team && (
-            <span style={{ display: 'inline-block', marginTop: '8px', padding: '4px 10px', borderRadius: '8px', background: teamStyle.bg, color: teamStyle.color, fontSize: '0.78rem', fontWeight: 600 }}>
-              الفريق النشط: {formatTeamTypeLabel(project.team)}
-            </span>
-          )}
+
           {teams.length === 0 && canEdit && (
             <p style={{ fontSize: '0.75rem', color: 'var(--text3)', marginTop: '8px' }}>
               لا فرق نشطة — <Link href="/projects/teams" style={{ color: '#1a56db' }}>إنشاء فريق</Link>
@@ -528,9 +463,9 @@ export default function ExecutionProjectPage() {
             </div>
           ) : (
             <>
-              {activeAssignment && (
+              {hasActiveTeam && project.team && (
                 <div style={{ fontSize: '0.75rem', color: '#1a56db', marginBottom: '10px', fontWeight: 600 }}>
-                  تسجيل إنجاز: {activeAssignment.team?.name} ({formatTeamTypeLabel(activeAssignment.team || { team_type: '' })})
+                  تسجيل إنجاز: {project.team.name} ({formatTeamTypeLabel(project.team)})
                 </div>
               )}
               <div style={{ marginBottom: '10px' }}>

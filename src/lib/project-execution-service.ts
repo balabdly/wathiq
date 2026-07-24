@@ -49,6 +49,23 @@ async function resolveTeamLead(teamId: number): Promise<{ leadName: string | nul
   return { leadName: leadEmp?.name || null, leadId: team.lead_id }
 }
 
+async function assignTeamDirectToProject(tenantId: string, projectId: number, teamId: number) {
+  const { leadName, leadId } = await resolveTeamLead(teamId)
+  const { error } = await supabase.from('projects').update({
+    team_id: teamId,
+    lead_id: leadId,
+    engineer: leadName,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+  if (error) throw error
+}
+
+function formatAssignmentError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message
+  if (error && typeof error === 'object' && 'message' in error) return String((error as { message: string }).message)
+  return fallback
+}
+
 async function syncProjectFromActiveAssignment(tenantId: string, projectId: number) {
   const { data: active } = await supabase
     .from('project_team_assignments')
@@ -129,60 +146,135 @@ export async function fetchProjectTeamAssignments(
   })) as ProjectTeamAssignment[]
 }
 
-export async function addTeamToSequence(tenantId: string, projectId: number, teamId: number) {
-  const existing = await fetchProjectTeamAssignments(tenantId, projectId)
-  if (existing.some(a => a.team_id === teamId)) {
-    throw new Error('هذا الفريق مضاف مسبقاً في التسلسل')
+export async function assignExecutionTeam(
+  tenantId: string,
+  projectId: number,
+  teamId: number | null,
+  _leadName?: string | null,
+  _leadId?: number | null,
+) {
+  if (!teamId) {
+    await clearProjectTeamSequence(tenantId, projectId)
+    return
   }
 
-  const maxOrder = existing.reduce((m, a) => Math.max(m, a.sequence_order), 0)
-  const status: TeamAssignmentStatus = existing.length === 0 ? 'active' : 'pending'
-
-  const { error } = await supabase.from('project_team_assignments').insert({
+  const { error: insErr } = await supabase.from('project_team_assignments').insert({
     tenant_id: tenantId,
     project_id: projectId,
     team_id: teamId,
-    sequence_order: maxOrder + 1,
-    status,
-    started_at: status === 'active' ? new Date().toISOString() : null,
+    sequence_order: 1,
+    status: 'active',
+    started_at: new Date().toISOString(),
   })
-  if (error) throw error
 
-  if (status === 'active') {
-    await syncProjectFromActiveAssignment(tenantId, projectId)
+  if (insErr) {
+    if (isMissingAssignmentTableError(insErr)) {
+      await assignTeamDirectToProject(tenantId, projectId, teamId)
+      return
+    }
+    throw insErr
   }
+
+  await syncProjectFromActiveAssignment(tenantId, projectId)
 }
 
+/** إنهاء دور الفريق الحالي وإسناد المشروع لفريق تالي (ميداني ← كهربائي ...) */
+export async function reassignExecutionTeam(
+  tenantId: string,
+  projectId: number,
+  newTeamId: number,
+  options?: { handoffNotes?: string; progressAtHandoff?: number },
+) {
+  if (!newTeamId) throw new Error('اختر الفريق التالي')
+
+  const { data: project, error: pErr } = await supabase
+    .from('projects')
+    .select('team_id')
+    .eq('tenant_id', tenantId)
+    .eq('id', projectId)
+    .single()
+  if (pErr) throw pErr
+
+  if (project.team_id === newTeamId) {
+    throw new Error('هذا الفريق مسند للمشروع بالفعل')
+  }
+
+  const { error: probeErr } = await supabase.from('project_team_assignments').select('id').limit(1)
+  if (probeErr && isMissingAssignmentTableError(probeErr)) {
+    await assignTeamDirectToProject(tenantId, projectId, newTeamId)
+    return
+  }
+
+  const now = new Date().toISOString()
+  let assignments = await fetchProjectTeamAssignments(tenantId, projectId)
+  const active = assignments.find(a => a.status === 'active')
+
+  if (!assignments.length && project.team_id) {
+    const { error: legacyErr } = await supabase.from('project_team_assignments').insert({
+      tenant_id: tenantId,
+      project_id: projectId,
+      team_id: project.team_id,
+      sequence_order: 1,
+      status: 'completed',
+      started_at: now,
+      completed_at: now,
+      progress_at_handoff: options?.progressAtHandoff ?? null,
+      handoff_notes: options?.handoffNotes?.trim() || null,
+    })
+    if (legacyErr && !isMissingAssignmentTableError(legacyErr)) throw legacyErr
+    if (!legacyErr) {
+      assignments = await fetchProjectTeamAssignments(tenantId, projectId)
+    }
+  } else if (active) {
+    const { error: completeErr } = await supabase.from('project_team_assignments').update({
+      status: 'completed',
+      completed_at: now,
+      progress_at_handoff: options?.progressAtHandoff ?? null,
+      handoff_notes: options?.handoffNotes?.trim() || null,
+    }).eq('id', active.id).eq('tenant_id', tenantId)
+    if (completeErr) throw completeErr
+  }
+
+  const maxOrder = assignments.reduce((m, a) => Math.max(m, a.sequence_order), 0)
+  const { error: insErr } = await supabase.from('project_team_assignments').insert({
+    tenant_id: tenantId,
+    project_id: projectId,
+    team_id: newTeamId,
+    sequence_order: maxOrder + 1,
+    status: 'active',
+    started_at: now,
+  })
+  if (insErr) {
+    if (isMissingAssignmentTableError(insErr)) {
+      await assignTeamDirectToProject(tenantId, projectId, newTeamId)
+      return
+    }
+    throw insErr
+  }
+
+  await syncProjectFromActiveAssignment(tenantId, projectId)
+}
+
+/** @deprecated استخدم reassignExecutionTeam */
 export async function handoffExecutionTeam(
   tenantId: string,
   projectId: number,
   options?: { handoffNotes?: string; progressAtHandoff?: number },
 ) {
   const assignments = await fetchProjectTeamAssignments(tenantId, projectId)
-  const active = assignments.find(a => a.status === 'active')
   const next = assignments.find(a => a.status === 'pending')
+  if (!next) throw new Error('اختر الفريق التالي من القائمة')
+  await reassignExecutionTeam(tenantId, projectId, next.team_id, options)
+}
 
-  if (!active) throw new Error('لا يوجد فريق نشط حالياً')
-  if (!next) throw new Error('لا يوجد فريق تالي في التسلسل — أضف الفريق التالي أولاً')
-
-  const now = new Date().toISOString()
-  const progress = options?.progressAtHandoff ?? null
-
-  const { error: completeErr } = await supabase.from('project_team_assignments').update({
-    status: 'completed',
-    completed_at: now,
-    progress_at_handoff: progress,
-    handoff_notes: options?.handoffNotes?.trim() || null,
-  }).eq('id', active.id).eq('tenant_id', tenantId)
-  if (completeErr) throw completeErr
-
-  const { error: activateErr } = await supabase.from('project_team_assignments').update({
-    status: 'active',
-    started_at: now,
-  }).eq('id', next.id).eq('tenant_id', tenantId)
-  if (activateErr) throw activateErr
-
-  await syncProjectFromActiveAssignment(tenantId, projectId)
+/** @deprecated استخدم assignExecutionTeam أو reassignExecutionTeam */
+export async function addTeamToSequence(tenantId: string, projectId: number, teamId: number) {
+  const { data: project } = await supabase.from('projects').select('team_id').eq('id', projectId).eq('tenant_id', tenantId).single()
+  if (project?.team_id) {
+    await reassignExecutionTeam(tenantId, projectId, teamId)
+    return
+  }
+  await assignExecutionTeam(tenantId, projectId, teamId)
 }
 
 export async function removePendingTeamAssignment(tenantId: string, assignmentId: number) {
@@ -214,6 +306,8 @@ export async function clearProjectTeamSequence(tenantId: string, projectId: numb
     updated_at: new Date().toISOString(),
   }).eq('id', projectId).eq('tenant_id', tenantId)
 }
+
+export { formatAssignmentError }
 
 function todayDateStr(): string {
   return new Date().toISOString().slice(0, 10)
@@ -364,40 +458,6 @@ export async function fetchExecutionProject(tenantId: string, projectId: number)
       teamAssignments,
     } as ExecutionProjectDetail,
   }
-}
-
-export async function assignExecutionTeam(
-  tenantId: string,
-  projectId: number,
-  teamId: number | null,
-  _leadName?: string | null,
-  _leadId?: number | null,
-) {
-  if (!teamId) {
-    await clearProjectTeamSequence(tenantId, projectId)
-    return
-  }
-
-  const assignments = await fetchProjectTeamAssignments(tenantId, projectId)
-  const active = assignments.find(a => a.status === 'active')
-
-  if (!assignments.length) {
-    await addTeamToSequence(tenantId, projectId, teamId)
-    return
-  }
-
-  if (active && assignments.length === 1 && active.team_id !== teamId) {
-    const { error } = await supabase.from('project_team_assignments').update({
-      team_id: teamId,
-    }).eq('id', active.id).eq('tenant_id', tenantId)
-    if (error) throw error
-    await syncProjectFromActiveAssignment(tenantId, projectId)
-    return
-  }
-
-  if (active?.team_id === teamId) return
-
-  throw new Error('لتغيير الفريق استخدم «إضافة للتسلسل» أو «تسليم للفريق التالي»')
 }
 
 export async function fetchActiveTeams(tenantId: string, branchId: number): Promise<ProjectTeam[]> {
