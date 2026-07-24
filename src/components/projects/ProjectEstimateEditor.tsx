@@ -1,19 +1,20 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { fetchBoqVersions, createBoqVersion, activateBoqVersion } from '@/lib/pmc-service'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
-import type { BoqRevisionSnapshotLine } from '@/lib/project-planning-service'
-import { fetchPlanningMaterialLines } from '@/lib/planning-material-lines-service'
+import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
+import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
 import ImportQuantitiesModal, { BoqLineStatusBadge, type BoqImportKind } from '@/components/projects/ImportQuantitiesModal'
+import { MaterialsReservationBlock } from '@/components/projects/BoqReservationPanel'
 import {
   type BoqImportLine,
   type BoqLineSource,
   type BoqMatchStatus,
   buildFrameworkMap,
 } from '@/lib/project-boq-import'
-import { Plus, Save, Trash2, FileSpreadsheet, FileText, Package, HardHat } from 'lucide-react'
+import { Plus, Save, Trash2, FileSpreadsheet, FileText, Image, Package, HardHat } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export type BoqLineCategory = 'MATERIAL' | 'WORK'
@@ -87,6 +88,7 @@ function EstimateSectionTable({
   onAdd,
   showImport,
   onImport,
+  reservationSlot,
 }: {
   category: BoqLineCategory
   title: string
@@ -103,6 +105,7 @@ function EstimateSectionTable({
   onAdd: () => void
   showImport: boolean
   onImport: (kind: BoqImportKind) => void
+  reservationSlot?: React.ReactNode
 }) {
   const style = SECTION_STYLE[category]
   const qtyHeaders = isRevision ? ['الكمية السابقة', 'الكمية المعدّلة'] : ['الكمية']
@@ -120,10 +123,11 @@ function EstimateSectionTable({
         </div>
         {!readOnly && (
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {showImport && category === 'WORK' && (
+            {showImport && (
               <>
                 <button type="button" onClick={() => onImport('excel')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><FileSpreadsheet style={{ width: '12px', height: '12px' }} /> Excel</button>
                 <button type="button" onClick={() => onImport('pdf')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><FileText style={{ width: '12px', height: '12px' }} /> PDF</button>
+                <button type="button" onClick={() => onImport('image')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><Image style={{ width: '12px', height: '12px' }} /> صورة</button>
               </>
             )}
             <button type="button" onClick={onAdd} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: style.titleColor, border: `1px solid ${style.headerBorder}` }}>
@@ -132,6 +136,8 @@ function EstimateSectionTable({
           </div>
         )}
       </div>
+
+      {reservationSlot}
 
       <div style={{ overflow: 'auto', background: style.rowTint }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -229,6 +235,11 @@ export default function ProjectEstimateEditor({
   isRevision = false,
   revisionSnapshot = [],
   saveLabel = 'حفظ المقايسة',
+  tenantId,
+  projectName,
+  clientName,
+  planning,
+  onPlanningSaved,
 }: {
   projectId: number
   frameworkItems: FrameworkBoqRow[]
@@ -237,6 +248,11 @@ export default function ProjectEstimateEditor({
   isRevision?: boolean
   revisionSnapshot?: BoqRevisionSnapshotLine[]
   saveLabel?: string
+  tenantId?: string
+  projectName?: string
+  clientName?: string
+  planning?: ProjectPlanning | null
+  onPlanningSaved?: () => void
 }) {
   const { tenant, currentUser } = useStore()
   const [lines, setLines] = useState<LineRow[]>([emptyLine('MATERIAL'), emptyLine('WORK')])
@@ -245,6 +261,8 @@ export default function ProjectEstimateEditor({
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [importKind, setImportKind] = useState<BoqImportKind>('excel')
+  const [importTarget, setImportTarget] = useState<BoqLineCategory>('WORK')
+  const materialExcelRef = useRef<HTMLInputElement>(null)
 
   const frameworkMap = useMemo(() => buildFrameworkMap(frameworkItems), [frameworkItems])
 
@@ -368,11 +386,53 @@ export default function ProjectEstimateEditor({
   function handleImportApply(imported: BoqImportLine[]) {
     setLines(prev => {
       const mats = prev.filter(l => l.line_category === 'MATERIAL')
-      const works = imported.length ? imported.map(r => ({ ...r, line_category: 'WORK' as const })) : [emptyLine('WORK')]
-      return [...mats, ...works]
+      const works = prev.filter(l => l.line_category === 'WORK')
+      if (importTarget === 'MATERIAL') {
+        const newMats = imported.length
+          ? imported.map(r => ({ ...r, line_category: 'MATERIAL' as const, unit: r.unit || 'قطعة' }))
+          : [emptyLine('MATERIAL')]
+        return [...newMats, ...works]
+      }
+      const newWorks = imported.length
+        ? imported.map(r => ({ ...r, line_category: 'WORK' as const }))
+        : [emptyLine('WORK')]
+      return [...mats, ...newWorks]
     })
     setShowImport(false)
-    toast.success(`تم استيراد ${imported.length} بند أعمال`)
+    toast.success(`تم استيراد ${imported.length} ${importTarget === 'MATERIAL' ? 'مادة' : 'بند أعمال'}`)
+  }
+
+  function openImport(category: BoqLineCategory, kind: BoqImportKind) {
+    setImportTarget(category)
+    if (category === 'MATERIAL' && kind === 'excel') {
+      materialExcelRef.current?.click()
+      return
+    }
+    setImportKind(kind)
+    setShowImport(true)
+  }
+
+  async function handleMaterialExcelPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const rows = await parseMaterialsSpreadsheet(file)
+      const imported = rows.filter(r => r.description.trim()).map(r => ({
+        ...emptyLine('MATERIAL'),
+        description: r.description,
+        unit: r.unit || 'قطعة',
+        qty: Number(r.qty_planned) || 0,
+        item_code: r.catalog_no || '',
+      }))
+      setLines(prev => {
+        const works = prev.filter(l => l.line_category === 'WORK')
+        return [...(imported.length ? imported : [emptyLine('MATERIAL')]), ...works]
+      })
+      toast.success(`تم استيراد ${imported.length} مادة من Excel`)
+    } catch {
+      toast.error('تعذّر قراءة ملف Excel')
+    }
   }
 
   const totalMaterials = materialLines.reduce((s, l) => s + l.qty * l.unit_price, 0)
@@ -437,10 +497,25 @@ export default function ProjectEstimateEditor({
 
   return (
     <>
+      <input ref={materialExcelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleMaterialExcelPick} />
+
       <EstimateSectionTable category="MATERIAL" title="المواد" icon={<Package style={{ width: '18px', height: '18px' }} />}
         lines={materialLines} lineIndices={materialIndices} frameworkItems={[]} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
-        onRemove={removeLine} onAdd={() => addLine('MATERIAL')} showImport={false} onImport={k => { setImportKind(k); setShowImport(true) }} />
+        onRemove={removeLine} onAdd={() => addLine('MATERIAL')} showImport={!isRevision && !readOnly}
+        onImport={k => openImport('MATERIAL', k)}
+        reservationSlot={tenantId && projectName ? (
+          <MaterialsReservationBlock
+            embedded
+            tenantId={tenantId}
+            projectId={projectId}
+            projectName={projectName}
+            clientName={clientName}
+            planning={planning ?? null}
+            readOnly={readOnly}
+            onSaved={onPlanningSaved}
+          />
+        ) : undefined} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0' }}>
         <div style={{ flex: 1, height: '2px', background: 'linear-gradient(to left, #c7d2fe, #bfdbfe, #e5e7eb)' }} />
@@ -451,7 +526,8 @@ export default function ProjectEstimateEditor({
       <EstimateSectionTable category="WORK" title="الأعمال" icon={<HardHat style={{ width: '18px', height: '18px' }} />}
         lines={workLines} lineIndices={workIndices} frameworkItems={frameworkItems} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
-        onRemove={removeLine} onAdd={() => addLine('WORK')} showImport={!isRevision} onImport={k => { setImportKind(k); setShowImport(true) }} />
+        onRemove={removeLine} onAdd={() => addLine('WORK')} showImport={!isRevision && !readOnly}
+        onImport={k => openImport('WORK', k)} />
 
       <div style={{ marginTop: '16px', padding: '14px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #eef2ff, #eff6ff)', border: '2px solid #c7d2fe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.82rem' }}>
@@ -467,7 +543,8 @@ export default function ProjectEstimateEditor({
       </div>
 
       {showImport && (
-        <ImportQuantitiesModal importKind={importKind} frameworkItems={frameworkItems} existingLines={workLines}
+        <ImportQuantitiesModal importKind={importKind} frameworkItems={frameworkItems}
+          existingLines={importTarget === 'MATERIAL' ? materialLines : workLines}
           onClose={() => setShowImport(false)} onApply={handleImportApply} />
       )}
     </>

@@ -7,7 +7,6 @@ import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-work
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
 import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
 import ProjectEstimateEditor from '@/components/projects/ProjectEstimateEditor'
-import BoqReservationPanel from '@/components/projects/BoqReservationPanel'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import { supabase } from '@/lib/supabase'
 
@@ -148,17 +147,12 @@ export default function PlanningBoqPage() {
         isRevision={isRevision}
         revisionSnapshot={revisionSnapshot}
         saveLabel={isRevision ? 'حفظ تعديل المقايسة' : 'حفظ المقايسة'}
-        onSaved={() => reload()}
-      />
-
-      <BoqReservationPanel
         tenantId={tenantId}
-        projectId={projectId}
         projectName={project.name}
         clientName={project.client_name}
         planning={planning}
-        readOnly={readOnly}
         onSaved={() => reload()}
+        onPlanningSaved={() => reload()}
       />
     </div>
   )

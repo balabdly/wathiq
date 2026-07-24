@@ -23,7 +23,7 @@ const AVAILABILITY_OPTIONS: { value: MaterialAvailability; label: string }[] = [
   { value: 'not_available', label: 'غير متوفرة' },
 ]
 
-export default function BoqReservationPanel({
+export function MaterialsReservationBlock({
   tenantId,
   projectId,
   projectName,
@@ -31,6 +31,7 @@ export default function BoqReservationPanel({
   planning,
   readOnly,
   onSaved,
+  embedded = false,
 }: {
   tenantId: string
   projectId: number
@@ -39,6 +40,7 @@ export default function BoqReservationPanel({
   planning: import('@/lib/project-planning-service').ProjectPlanning | null
   readOnly?: boolean
   onSaved?: () => void
+  embedded?: boolean
 }) {
   const [saving, setSaving] = useState(false)
   const [loadingWh, setLoadingWh] = useState(false)
@@ -129,9 +131,11 @@ export default function BoqReservationPanel({
   const matRows = warehouse?.rows.filter(r => r.qty_planned > 0) || []
 
   return (
-    <div style={{ marginTop: '24px', padding: '16px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+    <div style={embedded
+      ? { padding: '12px 16px', background: '#faf5ff', borderBottom: '1px solid #c7d2fe' }
+      : { marginTop: '24px', padding: '16px', borderRadius: '12px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-        <div style={{ fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#4338ca' }}>
+        <div style={{ fontWeight: 700, fontSize: embedded ? '0.8rem' : '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#4338ca' }}>
           <Package style={{ width: '16px', height: '16px' }} /> حجز المواد (SEC)
         </div>
         <Link href="/inventory/pmc" className="btn btn-ghost" style={{ fontSize: '0.72rem' }}>
@@ -201,4 +205,8 @@ export default function BoqReservationPanel({
       ) : null}
     </div>
   )
+}
+
+export default function BoqReservationPanel(props: Parameters<typeof MaterialsReservationBlock>[0]) {
+  return <MaterialsReservationBlock {...props} />
 }
