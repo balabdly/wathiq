@@ -359,6 +359,74 @@ export default function MaterialsTabPage() {
         </div>
       )}
 
+      {!warehouse?.has_boq_lines && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e40af' }}>📦 المواد المحجوزة (إدخال يدوي)</div>
+            {!readOnly && (
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <label className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '4px 10px', cursor: importing ? 'wait' : 'pointer', margin: 0 }}>
+                  <FileSpreadsheet style={{ width: '13px', height: '13px' }} /> {importing ? 'جاري...' : 'استيراد Excel'}
+                  <input type="file" accept=".xlsx,.xls,.csv" hidden disabled={importing}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleImportExcel(f); e.target.value = '' }} />
+                </label>
+                <button type="button" onClick={addMatLine} className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>
+                  <Plus style={{ width: '13px', height: '13px' }} /> سطر
+                </button>
+              </div>
+            )}
+          </div>
+          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0 0 10px' }}>
+            أعمدة Excel: المادة، الكمية، الوحدة (اختياري). يُستخدم للجدول محجوز/مصروف/متبقي عند عدم وجود BOQ.
+          </p>
+          <div style={{ overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', background: 'white', borderRadius: '8px' }}>
+              <thead>
+                <tr style={{ background: '#dbeafe' }}>
+                  {['المادة *', 'الوحدة', 'محجوز *', 'رقم كتalog', 'ملاحظات', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: '#1e40af', fontSize: '0.72rem' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matLines.map((line, idx) => (
+                  <tr key={idx} style={{ borderTop: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '6px 8px' }}>
+                      <input value={line.description} onChange={e => updateMatLine(idx, { description: e.target.value })}
+                        className="input" style={{ fontSize: '0.78rem' }} disabled={readOnly} placeholder="اسم المادة" />
+                    </td>
+                    <td style={{ padding: '6px 8px', minWidth: '90px' }}>
+                      <select value={line.unit} onChange={e => updateMatLine(idx, { unit: e.target.value })} className="select" style={{ fontSize: '0.78rem' }} disabled={readOnly}>
+                        {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '6px 8px', width: '90px' }}>
+                      <input type="number" min={0} value={line.qty_planned || ''} onChange={e => updateMatLine(idx, { qty_planned: Number(e.target.value) })}
+                        className="input" style={{ fontSize: '0.78rem' }} dir="ltr" disabled={readOnly} />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <input value={line.catalog_no || ''} onChange={e => updateMatLine(idx, { catalog_no: e.target.value })}
+                        className="input" style={{ fontSize: '0.78rem' }} dir="ltr" disabled={readOnly} />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <input value={line.notes || ''} onChange={e => updateMatLine(idx, { notes: e.target.value })}
+                        className="input" style={{ fontSize: '0.78rem' }} disabled={readOnly} />
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      {!readOnly && (
+                        <button type="button" onClick={() => removeMatLine(idx)} className="btn btn-ghost" style={{ padding: '4px 8px', color: '#c81e1e' }}>
+                          <Trash2 style={{ width: '14px', height: '14px' }} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div style={{ background: '#f5f3ff', border: '1px solid #c7d2fe', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
           <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#4338ca', display: 'flex', alignItems: 'center', gap: '8px' }}>
