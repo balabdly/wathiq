@@ -117,7 +117,7 @@ export function parseMaterialsSpreadsheet(file: File): Promise<PlanningMaterialL
           }
         }
 
-        const hasDescription = [...colMap.values()].includes('description')
+        const hasDescription = Array.from(colMap.values()).includes('description')
         const lines: PlanningMaterialLine[] = []
 
         for (const row of rows) {
