@@ -3,7 +3,7 @@ import { statusForPhase } from '@/lib/sec-workflow'
 import { fetchProjectBoqCategoryCounts } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
-import type { ProjectTeam, TeamProjectLog } from '@/lib/project-teams'
+import type { ProjectTeam, TeamProjectLog, ProjectTeamAssignment, TeamAssignmentStatus } from '@/lib/project-teams'
 
 export type ExecutionProject = {
   id: number
@@ -24,10 +24,195 @@ export type ExecutionProject = {
   planningProgress?: PlanningProgress
   logCount?: number
   lastLogDate?: string | null
+  teamSequenceTotal?: number
+  teamSequenceActive?: number | null
+  teamSequenceCompleted?: number
 }
 
 export type ExecutionProjectDetail = ExecutionProject & {
   description?: string | null
+  teamAssignments?: ProjectTeamAssignment[]
+}
+
+function isMissingAssignmentTableError(error: { message?: string; code?: string } | null): boolean {
+  if (!error?.message) return false
+  return error.code === 'PGRST204'
+    || error.code === '42P01'
+    || error.message.includes('project_team_assignments')
+    || error.message.includes('schema cache')
+}
+
+async function resolveTeamLead(teamId: number): Promise<{ leadName: string | null; leadId: number | null }> {
+  const { data: team } = await supabase.from('teams').select('lead_id').eq('id', teamId).maybeSingle()
+  if (!team?.lead_id) return { leadName: null, leadId: null }
+  const { data: leadEmp } = await supabase.from('hr_employees').select('name').eq('id', team.lead_id).maybeSingle()
+  return { leadName: leadEmp?.name || null, leadId: team.lead_id }
+}
+
+async function syncProjectFromActiveAssignment(tenantId: string, projectId: number) {
+  const { data: active } = await supabase
+    .from('project_team_assignments')
+    .select('team_id')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!active?.team_id) {
+    await supabase.from('projects').update({
+      team_id: null,
+      lead_id: null,
+      engineer: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId).eq('tenant_id', tenantId)
+    return
+  }
+
+  const { leadName, leadId } = await resolveTeamLead(active.team_id)
+  await supabase.from('projects').update({
+    team_id: active.team_id,
+    lead_id: leadId,
+    engineer: leadName,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
+}
+
+export async function fetchProjectTeamAssignments(
+  tenantId: string,
+  projectId: number,
+  legacyTeamId?: number | null,
+): Promise<ProjectTeamAssignment[]> {
+  const { data, error } = await supabase
+    .from('project_team_assignments')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .order('sequence_order', { ascending: true })
+
+  if (error) {
+    if (isMissingAssignmentTableError(error)) return []
+    throw error
+  }
+
+  let rows = data || []
+
+  if (!rows.length && legacyTeamId) {
+    const { error: insErr } = await supabase.from('project_team_assignments').insert({
+      tenant_id: tenantId,
+      project_id: projectId,
+      team_id: legacyTeamId,
+      sequence_order: 1,
+      status: 'active',
+      started_at: new Date().toISOString(),
+    })
+    if (!insErr) {
+      const { data: refreshed } = await supabase
+        .from('project_team_assignments')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('project_id', projectId)
+        .order('sequence_order', { ascending: true })
+      rows = refreshed || []
+    }
+  }
+
+  const teamIds = Array.from(new Set(rows.map(r => r.team_id)))
+  const { data: teams } = teamIds.length
+    ? await supabase.from('teams').select('id, name, team_type, specialization').in('id', teamIds)
+    : { data: [] }
+  const teamMap = new Map((teams || []).map(t => [t.id, t]))
+
+  return rows.map(r => ({
+    ...r,
+    status: r.status as TeamAssignmentStatus,
+    team: teamMap.get(r.team_id) || undefined,
+  })) as ProjectTeamAssignment[]
+}
+
+export async function addTeamToSequence(tenantId: string, projectId: number, teamId: number) {
+  const existing = await fetchProjectTeamAssignments(tenantId, projectId)
+  if (existing.some(a => a.team_id === teamId)) {
+    throw new Error('هذا الفريق مضاف مسبقاً في التسلسل')
+  }
+
+  const maxOrder = existing.reduce((m, a) => Math.max(m, a.sequence_order), 0)
+  const status: TeamAssignmentStatus = existing.length === 0 ? 'active' : 'pending'
+
+  const { error } = await supabase.from('project_team_assignments').insert({
+    tenant_id: tenantId,
+    project_id: projectId,
+    team_id: teamId,
+    sequence_order: maxOrder + 1,
+    status,
+    started_at: status === 'active' ? new Date().toISOString() : null,
+  })
+  if (error) throw error
+
+  if (status === 'active') {
+    await syncProjectFromActiveAssignment(tenantId, projectId)
+  }
+}
+
+export async function handoffExecutionTeam(
+  tenantId: string,
+  projectId: number,
+  options?: { handoffNotes?: string; progressAtHandoff?: number },
+) {
+  const assignments = await fetchProjectTeamAssignments(tenantId, projectId)
+  const active = assignments.find(a => a.status === 'active')
+  const next = assignments.find(a => a.status === 'pending')
+
+  if (!active) throw new Error('لا يوجد فريق نشط حالياً')
+  if (!next) throw new Error('لا يوجد فريق تالي في التسلسل — أضف الفريق التالي أولاً')
+
+  const now = new Date().toISOString()
+  const progress = options?.progressAtHandoff ?? null
+
+  const { error: completeErr } = await supabase.from('project_team_assignments').update({
+    status: 'completed',
+    completed_at: now,
+    progress_at_handoff: progress,
+    handoff_notes: options?.handoffNotes?.trim() || null,
+  }).eq('id', active.id).eq('tenant_id', tenantId)
+  if (completeErr) throw completeErr
+
+  const { error: activateErr } = await supabase.from('project_team_assignments').update({
+    status: 'active',
+    started_at: now,
+  }).eq('id', next.id).eq('tenant_id', tenantId)
+  if (activateErr) throw activateErr
+
+  await syncProjectFromActiveAssignment(tenantId, projectId)
+}
+
+export async function removePendingTeamAssignment(tenantId: string, assignmentId: number) {
+  const { data: row, error: fetchErr } = await supabase
+    .from('project_team_assignments')
+    .select('id, status')
+    .eq('tenant_id', tenantId)
+    .eq('id', assignmentId)
+    .single()
+  if (fetchErr) throw fetchErr
+  if (row.status !== 'pending') throw new Error('يمكن حذف الفرق بالانتظار فقط')
+
+  const { error } = await supabase.from('project_team_assignments').delete().eq('id', assignmentId).eq('tenant_id', tenantId)
+  if (error) throw error
+}
+
+export async function clearProjectTeamSequence(tenantId: string, projectId: number) {
+  const { error: delErr } = await supabase
+    .from('project_team_assignments')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+  if (delErr && !isMissingAssignmentTableError(delErr)) throw delErr
+
+  await supabase.from('projects').update({
+    team_id: null,
+    lead_id: null,
+    engineer: null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', projectId).eq('tenant_id', tenantId)
 }
 
 function todayDateStr(): string {
@@ -90,13 +275,14 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
 
   const teamIds = Array.from(new Set((projects || []).map(p => p.team_id).filter(Boolean))) as number[]
 
-  const [planningRes, costRes, logsRes, teamsRes] = await Promise.all([
+  const [planningRes, costRes, logsRes, teamsRes, assignmentsRes] = await Promise.all([
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).in('project_id', ids),
     supabase.from('project_planning_cost_items').select('project_id, planned_amount').eq('tenant_id', tenantId).in('project_id', ids),
     supabase.from('team_project_logs').select('project_id, log_date, created_at').eq('tenant_id', tenantId).in('project_id', ids),
     teamIds.length
       ? supabase.from('teams').select('id, name, team_type').eq('tenant_id', tenantId).in('id', teamIds)
       : Promise.resolve({ data: [] }),
+    supabase.from('project_team_assignments').select('project_id, sequence_order, status, team_id').eq('tenant_id', tenantId).in('project_id', ids).order('sequence_order'),
   ])
 
   const planningMap = new Map((planningRes.data || []).map(p => [p.project_id, p as ProjectPlanning]))
@@ -105,6 +291,16 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
     if (Number(row.planned_amount) > 0) costComplete.add(row.project_id)
   }
   const teamMap = new Map((teamsRes.data || []).map(t => [t.id, t]))
+  const assignmentStats = new Map<number, { total: number; activeOrder: number | null; completed: number }>()
+  if (!assignmentsRes.error) {
+    for (const row of assignmentsRes.data || []) {
+      const cur = assignmentStats.get(row.project_id) || { total: 0, activeOrder: null, completed: 0 }
+      cur.total++
+      if (row.status === 'active') cur.activeOrder = row.sequence_order
+      if (row.status === 'completed') cur.completed++
+      assignmentStats.set(row.project_id, cur)
+    }
+  }
   const logStats = new Map<number, { count: number; lastDate: string | null }>()
   for (const log of logsRes.data || []) {
     const cur = logStats.get(log.project_id) || { count: 0, lastDate: null }
@@ -118,6 +314,7 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
     const planning = planningMap.get(p.id) || null
     const stats = logStats.get(p.id)
     const team = p.team_id ? teamMap.get(p.team_id) || null : null
+    const aStats = assignmentStats.get(p.id)
     return {
       ...p,
       planning,
@@ -125,6 +322,9 @@ export async function fetchExecutionProjects(tenantId: string, branchId?: number
       team,
       logCount: stats?.count || 0,
       lastLogDate: stats?.lastDate || null,
+      teamSequenceTotal: aStats?.total || (p.team_id ? 1 : 0),
+      teamSequenceActive: aStats?.activeOrder || (p.team_id ? 1 : null),
+      teamSequenceCompleted: aStats?.completed || 0,
     }
   })
 
@@ -153,12 +353,15 @@ export async function fetchExecutionProject(tenantId: string, projectId: number)
   ])
 
   const pl = planning as ProjectPlanning | null
+  const teamAssignments = await fetchProjectTeamAssignments(tenantId, projectId, project.team_id)
+
   return {
     project: {
       ...project,
       planning: pl,
       planningProgress: computePlanningProgress(pl, (costRows || []).some(r => Number(r.planned_amount) > 0) ? 1 : 0),
       team: team || null,
+      teamAssignments,
     } as ExecutionProjectDetail,
   }
 }
@@ -167,16 +370,34 @@ export async function assignExecutionTeam(
   tenantId: string,
   projectId: number,
   teamId: number | null,
-  leadName?: string | null,
-  leadId?: number | null,
+  _leadName?: string | null,
+  _leadId?: number | null,
 ) {
-  const { error } = await supabase.from('projects').update({
-    team_id: teamId,
-    lead_id: leadId || null,
-    engineer: leadName || null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (error) throw error
+  if (!teamId) {
+    await clearProjectTeamSequence(tenantId, projectId)
+    return
+  }
+
+  const assignments = await fetchProjectTeamAssignments(tenantId, projectId)
+  const active = assignments.find(a => a.status === 'active')
+
+  if (!assignments.length) {
+    await addTeamToSequence(tenantId, projectId, teamId)
+    return
+  }
+
+  if (active && assignments.length === 1 && active.team_id !== teamId) {
+    const { error } = await supabase.from('project_team_assignments').update({
+      team_id: teamId,
+    }).eq('id', active.id).eq('tenant_id', tenantId)
+    if (error) throw error
+    await syncProjectFromActiveAssignment(tenantId, projectId)
+    return
+  }
+
+  if (active?.team_id === teamId) return
+
+  throw new Error('لتغيير الفريق استخدم «إضافة للتسلسل» أو «تسليم للفريق التالي»')
 }
 
 export async function fetchActiveTeams(tenantId: string, branchId: number): Promise<ProjectTeam[]> {
@@ -201,13 +422,24 @@ export async function fetchProjectDailyLogs(tenantId: string, projectId: number)
     .order('created_at', { ascending: true })
 
   const rows = logRows || []
+  const teamIds = Array.from(new Set(rows.map((l: TeamProjectLog) => l.team_id)))
+  const { data: teams } = teamIds.length
+    ? await supabase.from('teams').select('id, name, team_type, specialization').in('id', teamIds)
+    : { data: [] }
+  const teamMap = new Map((teams || []).map(t => [t.id, t]))
+
   const withFiles = await Promise.all(rows.map(async (log: TeamProjectLog) => {
     const { data: f } = await supabase.from('team_project_log_files').select('*').eq('log_id', log.id)
     const filesWithUrls = await Promise.all((f || []).map(async file => {
       const { data: urlData } = await supabase.storage.from('project-attachments').createSignedUrl(file.file_path, 3600)
       return { ...file, public_url: urlData?.signedUrl }
     }))
-    return { ...log, files: filesWithUrls }
+    return {
+      ...log,
+      files: filesWithUrls,
+      team_name: teamMap.get(log.team_id)?.name,
+      team_type: teamMap.get(log.team_id)?.team_type,
+    }
   }))
   return withFiles
 }

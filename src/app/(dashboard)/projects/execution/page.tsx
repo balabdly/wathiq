@@ -76,10 +76,18 @@ export default function ExecutionListPage() {
                     <td style={{ padding: '10px 12px', color: '#1a56db' }}>{p.client_name || '—'}</td>
                     <td style={{ padding: '10px 12px' }}>
                       {p.team ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', padding: '3px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1a56db' }}>
-                          <Users style={{ width: '12px', height: '12px' }} />
-                          {p.team.name}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', padding: '3px 8px', borderRadius: '6px', background: '#eff6ff', color: '#1a56db', width: 'fit-content' }}>
+                            <Users style={{ width: '12px', height: '12px' }} />
+                            {p.team.name}
+                          </span>
+                          {(p.teamSequenceTotal ?? 0) > 1 && (
+                            <span style={{ fontSize: '0.68rem', color: '#7c3aed' }}>
+                              فريق {(p.teamSequenceActive ?? 1)} من {p.teamSequenceTotal}
+                              {(p.teamSequenceCompleted ?? 0) > 0 ? ` · ${p.teamSequenceCompleted} أنجز` : ''}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ fontSize: '0.78rem', color: '#c81e1e' }}>غير مسند</span>
                       )}

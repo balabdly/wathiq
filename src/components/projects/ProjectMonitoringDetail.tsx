@@ -5,12 +5,15 @@ import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { fetchProjectPlanning } from '@/lib/project-planning-service'
 import { fetchBoqVersions } from '@/lib/pmc-service'
+import { fetchProjectTeamAssignments } from '@/lib/project-execution-service'
 import { fetchTeamWithMembers } from '@/lib/project-teams'
 import { phaseLabel } from '@/lib/sec-workflow'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import {
   ArrowRight, Download, FileText, Image, File, ClipboardList, HardHat, Archive, Rocket,
 } from 'lucide-react'
+import { formatTeamTypeLabel, ASSIGNMENT_STATUS_LABEL, ASSIGNMENT_STATUS_STYLE } from '@/lib/project-teams'
+import type { ProjectTeamAssignment } from '@/lib/project-teams'
 import type { Project } from '@/types'
 
 type Attachment = {
@@ -85,6 +88,7 @@ export default function ProjectMonitoringDetail({
   const [execution, setExecution] = useState<any>(null)
   const [closure, setClosure] = useState<any>(null)
   const [boqSummary, setBoqSummary] = useState({ materials: 0, works: 0, lines: 0 })
+  const [teamAssignments, setTeamAssignments] = useState<ProjectTeamAssignment[]>([])
 
   useEffect(() => {
     if (!tenant) return
@@ -94,7 +98,7 @@ export default function ProjectMonitoringDetail({
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [planRes, attachRes, visitsRes, boqRes, closureRes, logsRes, logCountRes, teamRes] = await Promise.all([
+    const [planRes, attachRes, visitsRes, boqRes, closureRes, logsRes, logCountRes, teamRes, assignRes] = await Promise.all([
       fetchProjectPlanning(tenant.id, project.id),
       supabase.from('project_attachments').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('created_at', { ascending: false }),
       supabase.from('visits').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('date', { ascending: false }),
@@ -105,10 +109,12 @@ export default function ProjectMonitoringDetail({
       (project as Project & { team_id?: number }).team_id
         ? fetchTeamWithMembers(supabase, tenant.id, (project as Project & { team_id?: number }).team_id!)
         : Promise.resolve({ team: null, members: [] }),
+      fetchProjectTeamAssignments(tenant.id, project.id, (project as Project & { team_id?: number }).team_id),
     ])
 
     setPlanning(planRes.planning)
     setClosure(closureRes.data)
+    setTeamAssignments(assignRes)
     setExecution({
       team: teamRes.team,
       engineer: (project as Project & { engineer?: string }).engineer,
@@ -245,8 +251,28 @@ export default function ProjectMonitoringDetail({
                 <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم يبدأ التنفيذ بعد</p>
               ) : (
                 <>
-                  <InfoRow label="الفريق" value={execution.team?.name} />
+                  <InfoRow label="الفريق النشط" value={execution.team?.name} />
                   <InfoRow label="المهندس" value={execution.engineer} />
+                  {teamAssignments.length > 0 && (
+                    <div style={{ margin: '12px 0' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px' }}>تسلسل الفرق</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {teamAssignments.map((a, idx) => {
+                          const st = ASSIGNMENT_STATUS_STYLE[a.status]
+                          return (
+                            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', padding: '6px 10px', borderRadius: '8px', background: st.bg }}>
+                              <span style={{ fontWeight: 700, color: '#9ca3af' }}>{idx + 1}.</span>
+                              <span style={{ flex: 1, fontWeight: 600 }}>{a.team?.name || '—'}</span>
+                              <span style={{ fontSize: '0.68rem', color: st.color, fontWeight: 700 }}>{ASSIGNMENT_STATUS_LABEL[a.status]}</span>
+                              {a.team && (
+                                <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{formatTeamTypeLabel(a.team)}</span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <InfoRow label="سجلات يومية" value={String(execution.logCount ?? 0)} />
                   <InfoRow label="آخر سجل" value={execution.lastLogDate} />
                 </>

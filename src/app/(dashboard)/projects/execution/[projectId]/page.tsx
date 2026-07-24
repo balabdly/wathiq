@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag, CheckCircle2 } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag, ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -10,13 +10,24 @@ import {
   fetchExecutionProject,
   fetchActiveTeams,
   assignExecutionTeam,
+  addTeamToSequence,
+  handoffExecutionTeam,
+  clearProjectTeamSequence,
+  removePendingTeamAssignment,
   fetchProjectDailyLogs,
   submitDailyLog,
   formatTodayLabel,
   type ExecutionProjectDetail,
 } from '@/lib/project-execution-service'
 import { advanceProjectToClose } from '@/lib/project-execution-service'
-import { formatTeamTypeLabel, TEAM_TYPE_STYLE, type TeamProjectLog } from '@/lib/project-teams'
+import {
+  formatTeamTypeLabel,
+  TEAM_TYPE_STYLE,
+  ASSIGNMENT_STATUS_LABEL,
+  ASSIGNMENT_STATUS_STYLE,
+  type TeamProjectLog,
+  type ProjectTeamAssignment,
+} from '@/lib/project-teams'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 
@@ -51,13 +62,20 @@ export default function ExecutionProjectPage() {
   const [reopening, setReopening] = useState(false)
   const [advancing, setAdvancing] = useState(false)
   const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('')
+  const [handoffNotes, setHandoffNotes] = useState('')
+  const [handingOff, setHandingOff] = useState(false)
+
+  const assignments = project?.teamAssignments || []
+  const activeAssignment = assignments.find(a => a.status === 'active')
+  const nextPending = assignments.find(a => a.status === 'pending')
+  const completedCount = assignments.filter(a => a.status === 'completed').length
 
   const reload = useCallback(async () => {
     if (!tenant) return
     const { project: p } = await fetchExecutionProject(tenant.id, projectId)
     setProject(p)
     setProgressPct(p?.progress ?? 0)
-    setSelectedTeamId(p?.team_id || '')
+    setSelectedTeamId('')
     if (activeBranch) {
       const t = await fetchActiveTeams(tenant.id, activeBranch.id)
       setTeams(t)
@@ -78,7 +96,7 @@ export default function ExecutionProjectPage() {
     Promise.all([reload(), reloadLogs()]).finally(() => setLoading(false))
   }, [tenant?.id, projectId, reload, reloadLogs])
 
-  async function handleApproveTeam() {
+  async function handleAddToSequence() {
     if (!tenant || !project) return
     const teamId = selectedTeamId ? Number(selectedTeamId) : null
     if (!teamId) {
@@ -87,35 +105,70 @@ export default function ExecutionProjectPage() {
     }
     setAssigning(true)
     try {
-      const team = teams.find(t => t.id === teamId)
-      let leadName: string | null = null
-      if (team?.lead_id) {
-        const { supabase } = await import('@/lib/supabase')
-        const { data: leadEmp } = await supabase.from('hr_employees').select('name').eq('id', team.lead_id).maybeSingle()
-        leadName = leadEmp?.name || null
+      if (!project?.teamAssignments?.length) {
+        await assignExecutionTeam(tenant.id, projectId, teamId)
+      } else {
+        await addTeamToSequence(tenant.id, projectId, teamId)
       }
-      await assignExecutionTeam(
-        tenant.id,
-        projectId,
-        teamId,
-        leadName,
-        team?.lead_id || null,
-      )
-      toast.success('تم اعتماد الفريق ✅')
+      toast.success(project?.teamAssignments?.length ? 'تمت إضافة الفريق للتسلسل ✅' : 'تم اعتماد الفريق الأول ✅')
+      setSelectedTeamId('')
       await reload()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الاعتماد')
+      toast.error(e instanceof Error ? e.message : 'فشل الإضافة')
+    }
+    setAssigning(false)
+  }
+
+  async function handleHandoff() {
+    if (!tenant || !project) return
+    if (!nextPending) {
+      toast.error('أضف الفريق التالي في التسلسل أولاً')
+      return
+    }
+    const msg = [
+      `تسليم المشروع من «${activeAssignment?.team?.name || 'الفريق الحالي'}» إلى «${nextPending.team?.name}»؟`,
+      '',
+      '• يُغلق سجل الفريق الحالي',
+      '• يبدأ الفريق التالي بتسجيل الإنجاز اليومي',
+    ].join('\n')
+    if (!confirm(msg)) return
+    setHandingOff(true)
+    try {
+      await handoffExecutionTeam(tenant.id, projectId, {
+        handoffNotes: handoffNotes,
+        progressAtHandoff: project.progress ?? 0,
+      })
+      toast.success('تم التسليم للفريق التالي ✅')
+      setHandoffNotes('')
+      await reload()
+      await reloadLogs()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التسليم')
+    }
+    setHandingOff(false)
+  }
+
+  async function handleRemovePending(assignment: ProjectTeamAssignment) {
+    if (!tenant) return
+    if (!confirm(`حذف «${assignment.team?.name}» من قائمة الانتظار؟`)) return
+    setAssigning(true)
+    try {
+      await removePendingTeamAssignment(tenant.id, assignment.id)
+      toast.success('تم الحذف')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الحذف')
     }
     setAssigning(false)
   }
 
   async function handleClearTeam() {
     if (!tenant || !project) return
-    if (!confirm('إلغاء إسناد الفريق المعتمد؟')) return
+    if (!confirm('إلغاء تسلسل الفرق بالكامل؟ (سجل الإنجاز يبقى محفوظاً)')) return
     setAssigning(true)
     try {
-      await assignExecutionTeam(tenant.id, projectId, null, null, null)
-      toast.success('تم إلغاء الإسناد')
+      await clearProjectTeamSequence(tenant.id, projectId)
+      toast.success('تم إلغاء التسلسل')
       setSelectedTeamId('')
       await reload()
     } catch (e: unknown) {
@@ -124,7 +177,8 @@ export default function ExecutionProjectPage() {
     setAssigning(false)
   }
 
-  const teamPendingApproval = canEdit && selectedTeamId !== '' && selectedTeamId !== (project?.team_id || '')
+  const teamIdsInSequence = new Set(assignments.map(a => a.team_id))
+  const availableTeams = teams.filter(t => !teamIdsInSequence.has(t.id))
   const hasApprovedTeam = !!project?.team_id
 
   async function handleSubmitLog() {
@@ -272,68 +326,139 @@ export default function ExecutionProjectPage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-        {/* إسناد الفريق */}
-        <div className="card" style={{ padding: '16px 20px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {/* تسلسل فرق التنفيذ */}
+        <div className="card" style={{ padding: '16px 20px', gridColumn: assignments.length ? '1 / -1' : undefined }}>
+          <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
             <Users style={{ width: '16px', height: '16px', color: '#1a56db' }} />
-            إسناد الفريق
+            تسلسل فرق التنفيذ
+            {assignments.length > 1 && (
+              <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 700 }}>
+                {completedCount + 1} / {assignments.length}
+              </span>
+            )}
             {hasApprovedTeam && (
               <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#0ea77b', fontWeight: 700 }}>
-                ✓ معتمد
+                ✓ فريق نشط
               </span>
             )}
           </div>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text3)', margin: '0 0 12px', lineHeight: 1.5 }}>
+            مثال: الفريق الميداني (تمديد كابلات وخرسانات) ← ثم الفريق الكهربائي (توصيل وربط الشبكة)
+          </p>
+
+          {assignments.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+              {assignments.map((a, idx) => {
+                const st = ASSIGNMENT_STATUS_STYLE[a.status]
+                const typeSt = TEAM_TYPE_STYLE[a.team?.team_type || ''] || TEAM_TYPE_STYLE['مختلط']
+                return (
+                  <div key={a.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                    padding: '10px 12px', borderRadius: '10px',
+                    border: `1px solid ${a.status === 'active' ? '#bfdbfe' : '#e5e7eb'}`,
+                    background: a.status === 'active' ? '#eff6ff' : '#fafafa',
+                  }}>
+                    <span style={{ fontWeight: 800, fontSize: '0.75rem', color: '#9ca3af', minWidth: '24px' }}>{idx + 1}</span>
+                    {idx < assignments.length - 1 && a.status === 'completed' && (
+                      <ArrowLeft style={{ width: '14px', height: '14px', color: '#9ca3af', transform: 'rotate(180deg)' }} />
+                    )}
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{a.team?.name || `فريق #${a.team_id}`}</div>
+                      {a.team && (
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '6px', background: typeSt.bg, color: typeSt.color, fontWeight: 600 }}>
+                          {formatTeamTypeLabel(a.team)}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: '6px', background: st.bg, color: st.color, fontWeight: 700 }}>
+                      {ASSIGNMENT_STATUS_LABEL[a.status]}
+                    </span>
+                    {a.status === 'completed' && a.completed_at && (
+                      <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>{formatDate(a.completed_at.slice(0, 10))}</span>
+                    )}
+                    {canEdit && a.status === 'pending' && (
+                      <button type="button" onClick={() => handleRemovePending(a)} disabled={assigning}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '4px' }}>
+                        <Trash2 style={{ width: '14px', height: '14px' }} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {canEdit ? (
             <>
-            <select
-              value={selectedTeamId}
-              disabled={assigning}
-              onChange={e => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
-              className="input"
-              style={{ width: '100%', marginBottom: '8px' }}
-            >
-              <option value="">— اختر فريق —</option>
-              {teams.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({formatTeamTypeLabel(t)})
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={handleApproveTeam}
-                disabled={assigning || !selectedTeamId || selectedTeamId === (project.team_id || '')}
-                className="btn btn-primary"
-                style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId || selectedTeamId === (project.team_id || '') ? 0.55 : 1 }}
+              <select
+                value={selectedTeamId}
+                disabled={assigning || !availableTeams.length}
+                onChange={e => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
+                className="input"
+                style={{ width: '100%', marginBottom: '8px' }}
               >
-                <CheckCircle2 style={{ width: '14px', height: '14px' }} />
-                {assigning ? 'جاري الاعتماد...' : 'اعتماد الفريق'}
-              </button>
-              {hasApprovedTeam && (
+                <option value="">— {assignments.length ? 'اختر فريقاً للتسلسل' : 'اختر الفريق الأول'} —</option>
+                {availableTeams.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({formatTeamTypeLabel(t)})
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  onClick={handleClearTeam}
-                  disabled={assigning}
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}
+                  onClick={handleAddToSequence}
+                  disabled={assigning || !selectedTeamId}
+                  className="btn btn-primary"
+                  style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId ? 0.55 : 1 }}
                 >
-                  إلغاء الإسناد
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                  {assigning ? 'جاري...' : assignments.length ? 'إضافة للتسلسل' : 'اعتماد الفريق الأول'}
                 </button>
+                {assignments.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearTeam}
+                    disabled={assigning}
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}
+                  >
+                    إلغاء التسلسل
+                  </button>
+                )}
+              </div>
+
+              {activeAssignment && nextPending && (
+                <div style={{ marginTop: '14px', padding: '12px', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fcd34d' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#92400e', marginBottom: '8px' }}>
+                    تسليم للفريق التالي: {nextPending.team?.name}
+                  </div>
+                  <input
+                    value={handoffNotes}
+                    onChange={e => setHandoffNotes(e.target.value)}
+                    className="input"
+                    placeholder="ملاحظة التسليم (اختياري) — ما أنجزه الفريق الحالي..."
+                    style={{ marginBottom: '8px', fontSize: '0.82rem' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleHandoff}
+                    disabled={handingOff}
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.78rem', background: '#e6820a', width: '100%' }}
+                  >
+                    <ArrowLeft style={{ width: '14px', height: '14px' }} />
+                    {handingOff ? 'جاري التسليم...' : `تسليم من ${activeAssignment.team?.name} → ${nextPending.team?.name}`}
+                  </button>
+                </div>
               )}
-            </div>
-            {teamPendingApproval && (
-              <p style={{ fontSize: '0.72rem', color: '#e6820a', marginTop: '8px', marginBottom: 0 }}>
-                تم اختيار فريق — اضغط «اعتماد الفريق» للتفعيل
-              </p>
-            )}
             </>
           ) : (
             <div style={{ fontSize: '0.85rem' }}>{project.team?.name || 'غير مسند'}</div>
           )}
           {project.team && (
-            <span style={{ display: 'inline-block', marginTop: '6px', padding: '4px 10px', borderRadius: '8px', background: teamStyle.bg, color: teamStyle.color, fontSize: '0.78rem', fontWeight: 600 }}>
-              {formatTeamTypeLabel(project.team)}
+            <span style={{ display: 'inline-block', marginTop: '8px', padding: '4px 10px', borderRadius: '8px', background: teamStyle.bg, color: teamStyle.color, fontSize: '0.78rem', fontWeight: 600 }}>
+              الفريق النشط: {formatTeamTypeLabel(project.team)}
             </span>
           )}
           {teams.length === 0 && canEdit && (
@@ -399,10 +524,15 @@ export default function ExecutionProjectPage() {
           </div>
           {!project.team_id ? (
             <div style={{ fontSize: '0.82rem', color: '#c81e1e', padding: '12px', background: '#fef2f2', borderRadius: '8px' }}>
-              يجب اعتماد فريق للمشروع قبل تسجيل الإنجاز اليومي
+              يجب اعتماد فريق (أو تسليم للفريق التالي) قبل تسجيل الإنجاز اليومي
             </div>
           ) : (
             <>
+              {activeAssignment && (
+                <div style={{ fontSize: '0.75rem', color: '#1a56db', marginBottom: '10px', fontWeight: 600 }}>
+                  تسجيل إنجاز: {activeAssignment.team?.name} ({formatTeamTypeLabel(activeAssignment.team || { team_type: '' })})
+                </div>
+              )}
               <div style={{ marginBottom: '10px' }}>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#92400e', marginBottom: '6px' }}>
                   نسبة الإنجاز التراكمية (%)
@@ -450,14 +580,19 @@ export default function ExecutionProjectPage() {
   )
 }
 
-function DailyLogEntry({ log }: { log: TeamProjectLog }) {
+function DailyLogEntry({ log }: { log: TeamProjectLog & { team_name?: string; team_type?: string } }) {
   const dateLabel = log.log_date ? formatDate(log.log_date) : formatDate(log.created_at)
 
   return (
     <div style={{ padding: '14px 16px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e5e7eb' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>📅 {dateLabel}</span>
+          {log.team_name && (
+            <span style={{ fontSize: '0.68rem', padding: '2px 7px', borderRadius: '6px', background: '#eff6ff', color: '#1a56db', fontWeight: 600 }}>
+              👥 {log.team_name}
+            </span>
+          )}
           {log.progress_percent != null && (
             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#fffbeb', color: '#e6820a' }}>
               {Number(log.progress_percent)}%

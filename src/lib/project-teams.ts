@@ -86,6 +86,35 @@ export type TeamProjectLogFile = {
   file_size?: number
 }
 
+export type TeamAssignmentStatus = 'pending' | 'active' | 'completed'
+
+export type ProjectTeamAssignment = {
+  id: number
+  tenant_id: string
+  project_id: number
+  team_id: number
+  sequence_order: number
+  status: TeamAssignmentStatus
+  assigned_at?: string
+  started_at?: string | null
+  completed_at?: string | null
+  progress_at_handoff?: number | null
+  handoff_notes?: string | null
+  team?: { id: number; name: string; team_type: string; specialization?: string | null }
+}
+
+export const ASSIGNMENT_STATUS_LABEL: Record<TeamAssignmentStatus, string> = {
+  pending: 'بالانتظار',
+  active: 'يعمل حالياً',
+  completed: 'أنجز دوره',
+}
+
+export const ASSIGNMENT_STATUS_STYLE: Record<TeamAssignmentStatus, { color: string; bg: string }> = {
+  pending: { color: '#6b7280', bg: '#f3f4f6' },
+  active: { color: '#1a56db', bg: '#eff6ff' },
+  completed: { color: '#0ea77b', bg: '#ecfdf5' },
+}
+
 export const TEAM_TYPE_STYLE: Record<string, { color: string; bg: string }> = {
   'ميداني':   { color: '#1a56db', bg: '#eff6ff' },
   'كهربائي':  { color: '#e6820a', bg: '#fffbeb' },
