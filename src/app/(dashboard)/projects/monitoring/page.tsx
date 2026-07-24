@@ -42,6 +42,8 @@ const PROJECT_TYPES: { code: string; name: string }[] = [
   { code: 'CIVIL', name: 'أعمال مدنية' },
   { code: 'OTHER', name: 'أخرى' },
 ]
+const TYPE_NAME: Record<string, string> = Object.fromEntries(PROJECT_TYPES.map(t => [t.code, t.name]))
+
 const PHASE_FILTER_OPTIONS = [
   ...PMO_PHASES_FULL,
   ...PMO_PHASES_OM,
