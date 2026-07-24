@@ -2,8 +2,8 @@ import type { PmoPhase } from '@/lib/sec-workflow'
 
 export const SEC_PMO_PHASES: PmoPhase[] = ['1_RECEIPT', '2_PREP', '3_EXEC', '4_MEASURE', '5_CLOSE']
 
-/** مراحل تظهر في لوحة المتابعة (بعد اعتماد التخطيط) */
-export const MONITOR_PMO_PHASES: PmoPhase[] = ['3_EXEC', '4_MEASURE', '5_CLOSE']
+/** @deprecated لوحة المتابعة تعرض كل المشاريع — استخدم فلتر المرحلة في الواجهة */
+export const MONITOR_PMO_PHASES: PmoPhase[] = ['1_RECEIPT', '2_PREP', '3_EXEC', '4_MEASURE', '5_CLOSE']
 
 export function isMonitorPhase(phase?: string | null): boolean {
   return !!phase && (MONITOR_PMO_PHASES as string[]).includes(phase)

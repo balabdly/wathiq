@@ -9,9 +9,7 @@ import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-import { phaseLabel, WORKFLOW_TYPES, statusForPhase } from '@/lib/sec-workflow'
-import type { PmoPhase } from '@/lib/sec-workflow'
-import { isMonitorPhase } from '@/lib/project-phase-display'
+import { phaseLabel, WORKFLOW_TYPES, statusForPhase, PMO_PHASES_FULL, PMO_PHASES_OM } from '@/lib/sec-workflow'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
@@ -44,7 +42,10 @@ const PROJECT_TYPES: { code: string; name: string }[] = [
   { code: 'CIVIL', name: 'أعمال مدنية' },
   { code: 'OTHER', name: 'أخرى' },
 ]
-const TYPE_NAME: Record<string, string> = Object.fromEntries(PROJECT_TYPES.map(t => [t.code, t.name]))
+const PHASE_FILTER_OPTIONS = [
+  ...PMO_PHASES_FULL,
+  ...PMO_PHASES_OM,
+]
 
 const COLUMNS = [
   { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb',  border: '#e5e7eb', autoProgress: 0   },
@@ -719,6 +720,7 @@ export default function ProjectsPage() {
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
+  const [phaseFilter, setPhaseFilter] = useState('')
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
@@ -800,7 +802,7 @@ export default function ProjectsPage() {
       projectsApi.getAll(tenant.id, activeBranch.id),
       supabase.from('teams').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
     ])
-    const loaded = (data || []).filter((p: Project & { pmo_phase?: string }) => isMonitorPhase(p.pmo_phase))
+    const loaded = (data || []) as Project[]
     const tMap: Record<number, string> = {}
     ;(teamsData || []).forEach((t: { id: number; name: string }) => { tMap[t.id] = t.name })
     setTeamNames(tMap)
@@ -926,7 +928,11 @@ export default function ProjectsPage() {
 
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
+    const phase = (p as Project & { pmo_phase?: string }).pmo_phase
+    const phaseMatch = !phaseFilter
+      || (phaseFilter === '__none__' ? !phase : phase === phaseFilter)
     return (
+      phaseMatch &&
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
       (!statusFilter || p.status === statusFilter) &&
       (!typeFilter   || p.type   === typeFilter)  &&
@@ -957,7 +963,9 @@ export default function ProjectsPage() {
       {/* أدوات اللوحة */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
-          {projects.length} مشروع في التنفيذ والإغلاق — للمتابعة والاستعراض فقط
+          {filtered.length !== projects.length
+            ? `${filtered.length} من ${projects.length} مشروع — استخدم الفلاتر لتضييق العرض`
+            : `${projects.length} مشروع — كل المراحل — للمتابعة والاستعراض`}
         </p>
       </div>
 
@@ -984,6 +992,14 @@ export default function ProjectsPage() {
             placeholder="بحث باسم أو رقم المشروع..." className="input"
             style={{ paddingRight: '32px', width: '220px' }} />
         </div>
+
+        <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
+          <option value="">كل المراحل</option>
+          {PHASE_FILTER_OPTIONS.map(ph => (
+            <option key={ph.id} value={ph.id}>{ph.label}</option>
+          ))}
+          <option value="__none__">— بدون مرحلة —</option>
+        </select>
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
           <option value="">كل الحالات</option>
@@ -1022,8 +1038,8 @@ export default function ProjectsPage() {
           </button>
         )}
 
-        {(search || statusFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
-          <button onClick={() => { setSearch(''); setStatus(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
+        {(search || phaseFilter || statusFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
+          <button onClick={() => { setSearch(''); setPhaseFilter(''); setStatus(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
             className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>مسح الفلاتر</button>
         )}
 
