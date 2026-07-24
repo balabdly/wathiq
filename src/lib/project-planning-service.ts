@@ -3,6 +3,14 @@ import { statusForPhase } from '@/lib/sec-workflow'
 import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
 import { buildTenantStoragePath } from '@/lib/storage-path'
+import {
+  applyBoqRevisionFallbackPatch,
+  enrichPlanningBoqRevision,
+  isMissingPlanningColumnError,
+  type BoqRevisionSnapshotLine,
+} from '@/lib/planning-boq-revision-fallback'
+
+export type { BoqRevisionSnapshotLine } from '@/lib/planning-boq-revision-fallback'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
 export type MaterialReceiptType = 'full' | 'partial'
@@ -54,15 +62,6 @@ export type ProjectPlanning = {
   updated_at?: string | null
 }
 
-export type BoqRevisionSnapshotLine = {
-  line_no?: number
-  catalog_no?: string | null
-  description: string
-  unit: string
-  qty: number
-  unit_price?: number
-  line_category?: 'MATERIAL' | 'WORK'
-}
 
 function resolveLineCategoryFromRow(line: { line_category?: string | null; notes?: string | null; material_id?: number | null }): 'MATERIAL' | 'WORK' {
   if (line.line_category === 'MATERIAL' || line.line_category === 'WORK') return line.line_category
@@ -213,7 +212,10 @@ export async function fetchProjectPlanning(tenantId: string, projectId: number) 
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
   ])
   if (pErr) throw pErr
-  return { project, planning: planning as ProjectPlanning | null }
+  return {
+    project,
+    planning: enrichPlanningBoqRevision(planning as ProjectPlanning | null),
+  }
 }
 
 export async function updateProjectPlanning(tenantId: string, projectId: number, payload: Partial<ProjectPlanning>) {
@@ -227,10 +229,20 @@ export async function updateProjectPlanning(tenantId: string, projectId: number,
     throw new Error('التخطيط معتمد — للعرض فقط')
   }
 
-  const { error } = await supabase.from('project_planning')
-    .update({ ...payload, updated_at: new Date().toISOString() })
+  const patch = { ...payload, updated_at: new Date().toISOString() }
+  let { error } = await supabase.from('project_planning')
+    .update(patch)
     .eq('tenant_id', tenantId)
     .eq('project_id', projectId)
+
+  if (error && isMissingPlanningColumnError(error)) {
+    const fallbackPatch = applyBoqRevisionFallbackPatch(patch)
+    ;({ error } = await supabase.from('project_planning')
+      .update(fallbackPatch)
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId))
+  }
+
   if (error) throw error
 }
 
@@ -337,9 +349,7 @@ export async function reopenProjectPlanning(
     }
   }
 
-  const { error: planErr } = await supabase.from('project_planning').update(planPatch)
-    .eq('tenant_id', tenantId).eq('project_id', projectId)
-  if (planErr) throw planErr
+  await updateProjectPlanning(tenantId, projectId, planPatch as Partial<ProjectPlanning>)
 }
 
 export async function fetchCostItems(tenantId: string, projectId: number) {
