@@ -93,6 +93,94 @@ export async function closeReservation(id: number) {
 
 // ── BOQ ──
 
+export type BoqLineWritePayload = {
+  line_no: number
+  catalog_no?: string | null
+  description: string
+  unit: string
+  qty_planned: number
+  notes?: string | null
+  line_category?: 'MATERIAL' | 'WORK'
+  material_id?: number | null
+}
+
+function isMissingColumnError(error: { message?: string; code?: string } | null, column: string): boolean {
+  if (!error?.message) return false
+  const msg = error.message.toLowerCase()
+  const col = column.toLowerCase()
+  return (
+    error.code === 'PGRST204'
+    || (msg.includes(col) && (msg.includes('column') || msg.includes('schema cache')))
+  )
+}
+
+function buildBoqLineRows(
+  tenantId: string,
+  boqVersionId: number,
+  lines: BoqLineWritePayload[],
+  includeCategory: boolean,
+) {
+  return lines.map((l, i) => {
+    const row: Record<string, unknown> = {
+      tenant_id: tenantId,
+      boq_version_id: boqVersionId,
+      line_no: l.line_no || i + 1,
+      material_id: l.material_id ?? null,
+      catalog_no: l.catalog_no ?? null,
+      description: l.description.trim(),
+      unit: l.unit || 'قطعة',
+      qty_planned: Number.isFinite(Number(l.qty_planned)) ? Number(l.qty_planned) : 0,
+      notes: l.notes ?? null,
+    }
+    if (includeCategory) row.line_category = l.line_category || 'WORK'
+    return row
+  })
+}
+
+async function insertBoqLineRows(
+  tenantId: string,
+  boqVersionId: number,
+  lines: BoqLineWritePayload[],
+) {
+  if (!lines.length) return { error: null as { message?: string; code?: string } | null }
+
+  let { error } = await supabase
+    .from('project_boq_lines')
+    .insert(buildBoqLineRows(tenantId, boqVersionId, lines, true))
+
+  if (error && isMissingColumnError(error, 'line_category')) {
+    ({ error } = await supabase
+      .from('project_boq_lines')
+      .insert(buildBoqLineRows(tenantId, boqVersionId, lines, false)))
+  }
+
+  return { error }
+}
+
+/** استبدال بنود نسخة BOQ — مع fallback إذا عمود line_category غير موجود */
+export async function replaceBoqVersionLines(
+  tenantId: string,
+  boqVersionId: number,
+  lines: BoqLineWritePayload[],
+) {
+  const { error: delErr } = await supabase
+    .from('project_boq_lines')
+    .delete()
+    .eq('boq_version_id', boqVersionId)
+  if (delErr) return { error: delErr }
+
+  return insertBoqLineRows(tenantId, boqVersionId, lines)
+}
+
+export function formatSupabaseError(error: unknown, fallback = 'فشل الحفظ'): string {
+  if (error instanceof Error && error.message) return error.message
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message?: unknown }).message
+    if (typeof msg === 'string' && msg.trim()) return msg
+  }
+  return fallback
+}
+
 export async function fetchBoqVersions(tenantId: string, projectId: number) {
   const { data, error } = await supabase
     .from('project_boq_versions')
@@ -124,19 +212,20 @@ export async function createBoqVersion(payload: {
   if (vErr || !version) return { data: null, error: vErr }
 
   if (lines.length > 0) {
-    const lineRows = lines.map((l, i) => ({
-      tenant_id: payload.tenant_id,
-      boq_version_id: version.id,
-      line_no: l.line_no || i + 1,
-      material_id: l.material_id || null,
-      catalog_no: l.catalog_no || null,
-      description: l.description,
-      unit: l.unit || 'قطعة',
-      qty_planned: l.qty_planned,
-      notes: l.notes || null,
-      line_category: (l as ProjectBoqLine & { line_category?: string }).line_category || 'WORK',
-    }))
-    const { error: lErr } = await supabase.from('project_boq_lines').insert(lineRows)
+    const { error: lErr } = await insertBoqLineRows(
+      payload.tenant_id,
+      version.id,
+      lines.map((l, i) => ({
+        line_no: l.line_no || i + 1,
+        material_id: l.material_id ?? null,
+        catalog_no: l.catalog_no ?? null,
+        description: l.description,
+        unit: l.unit || 'قطعة',
+        qty_planned: l.qty_planned,
+        notes: l.notes ?? null,
+        line_category: (l as ProjectBoqLine & { line_category?: string }).line_category || 'WORK',
+      })),
+    )
     if (lErr) return { data: null, error: lErr }
   }
 

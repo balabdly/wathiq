@@ -1,8 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
-import { supabase } from '@/lib/supabase'
-import { fetchBoqVersions, createBoqVersion, activateBoqVersion } from '@/lib/pmc-service'
+import { fetchBoqVersions, createBoqVersion, activateBoqVersion, replaceBoqVersionLines, formatSupabaseError } from '@/lib/pmc-service'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
 import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
@@ -589,14 +588,10 @@ export default function ProjectEstimateEditor({
 
     try {
       if (versionId) {
-        await supabase.from('project_boq_lines').delete().eq('boq_version_id', versionId)
-        const { error } = await supabase.from('project_boq_lines').insert(boqLines.map(l => ({
-          tenant_id: tenant.id,
-          boq_version_id: versionId,
-          ...l,
-        })))
+        const { error } = await replaceBoqVersionLines(tenant.id, versionId, boqLines)
         if (error) throw error
-        await activateBoqVersion(tenant.id, versionId, projectId)
+        const { error: actErr } = await activateBoqVersion(tenant.id, versionId, projectId)
+        if (actErr) throw actErr
       } else {
         const { data, error } = await createBoqVersion({
           tenant_id: tenant.id,
@@ -609,13 +604,17 @@ export default function ProjectEstimateEditor({
         })
         if (error) throw error
         const initial = (data || []).find(v => v.version_type === 'INITIAL')
-        if (initial?.id) await activateBoqVersion(tenant.id, initial.id, projectId)
+        if (initial?.id) {
+          const { error: actErr } = await activateBoqVersion(tenant.id, initial.id, projectId)
+          if (actErr) throw actErr
+        }
       }
       toast.success(isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅')
       await loadBoq()
       onSaved?.()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الحفظ')
+      toast.error(formatSupabaseError(e, 'فشل الحفظ'))
+      await loadBoq()
     }
     setSaving(false)
   }
