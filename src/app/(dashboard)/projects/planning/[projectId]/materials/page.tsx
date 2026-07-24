@@ -335,7 +335,7 @@ export default function MaterialsTabPage() {
 
       {warehouse?.has_boq_lines && reservedRows.length > 0 && (
         <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e40af', marginBottom: '10px' }}>📦 المواد المحجوزة (من BOQ)</div>
+          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e40af', marginBottom: '10px' }}>📦 المواد المحجوزة (من BOQ — PMC)</div>
           <div style={{ overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', background: 'white', borderRadius: '8px' }}>
               <thead>
