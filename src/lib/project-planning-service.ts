@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
 import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
+import { buildTenantStoragePath } from '@/lib/storage-path'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
 export type MaterialReceiptType = 'full' | 'partial'
@@ -377,10 +378,10 @@ export async function saveCostItems(tenantId: string, projectId: number, items: 
 }
 
 export async function uploadPlanningFile(tenantId: string, projectId: number, file: File, prefix: string) {
-  const path = `${tenantId}/planning/${projectId}/${prefix}_${Date.now()}_${file.name}`
-  const { error } = await supabase.storage.from('project-attachments').upload(path, file)
+  const { path, name } = buildTenantStoragePath(tenantId, [`planning`, String(projectId)], prefix, file)
+  const { error } = await supabase.storage.from('project-attachments').upload(path, file, { upsert: true })
   if (error) throw error
-  return { path, name: file.name }
+  return { path, name }
 }
 
 export async function notifyWarehouseMaterialPickup(

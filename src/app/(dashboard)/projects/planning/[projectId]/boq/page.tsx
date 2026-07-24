@@ -6,6 +6,7 @@ import { useStore } from '@/hooks/useStore'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
 import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
+import { formatSupabaseError } from '@/lib/pmc-service'
 import ProjectEstimateEditor from '@/components/projects/ProjectEstimateEditor'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import { supabase } from '@/lib/supabase'
@@ -59,7 +60,7 @@ export default function PlanningBoqPage() {
       toast.success('تم رفع نموذج الموافقة ✅')
       await reload()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الرفع')
+      toast.error(formatSupabaseError(e, 'فشل الرفع'))
     }
     setUploadingApproval(false)
   }

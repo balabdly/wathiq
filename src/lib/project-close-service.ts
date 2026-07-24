@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { buildTenantStoragePath } from '@/lib/storage-path'
 import { computeClosureProgress, type ClosureProgress } from '@/lib/closure-progress'
 import { getMissingClosureDocs } from '@/lib/project-tasks'
 import { isTaskOpen } from '@/lib/project-tasks'
@@ -285,8 +286,8 @@ export async function reopenProjectToMeasure(tenantId: string, projectId: number
 }
 
 export async function uploadClosureFile(tenantId: string, projectId: number, file: File, prefix: string) {
-  const path = `${tenantId}/closure/${projectId}/${prefix}_${Date.now()}_${file.name}`
-  const { error } = await supabase.storage.from('project-attachments').upload(path, file)
+  const { path, name } = buildTenantStoragePath(tenantId, [`closure`, String(projectId)], prefix, file)
+  const { error } = await supabase.storage.from('project-attachments').upload(path, file, { upsert: true })
   if (error) throw error
-  return { path, name: file.name }
+  return { path, name }
 }

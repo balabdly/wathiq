@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { buildTenantStoragePath } from '@/lib/storage-path'
 import { fetchBoqVersions } from '@/lib/pmc-service'
 import { computeMeasureProgress, type MeasureProgress } from '@/lib/measure-progress'
 import { statusForPhase } from '@/lib/sec-workflow'
@@ -260,8 +261,8 @@ export async function reopenProjectToExecution(tenantId: string, projectId: numb
 }
 
 export async function uploadMeasureFile(tenantId: string, projectId: number, file: File, prefix: string) {
-  const path = `${tenantId}/measure/${projectId}/${prefix}_${Date.now()}_${file.name}`
-  const { error } = await supabase.storage.from('project-attachments').upload(path, file)
+  const { path, name } = buildTenantStoragePath(tenantId, [`measure`, String(projectId)], prefix, file)
+  const { error } = await supabase.storage.from('project-attachments').upload(path, file, { upsert: true })
   if (error) throw error
-  return { path, name: file.name }
+  return { path, name }
 }
