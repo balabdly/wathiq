@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
-import { fetchBoqVersions, createBoqVersion, activateBoqVersion, replaceBoqVersionLines, formatSupabaseError } from '@/lib/pmc-service'
+import { fetchBoqVersions, createBoqVersion, activateBoqVersion, replaceBoqVersionLines, formatSupabaseError, resolveBoqVersionForSave } from '@/lib/pmc-service'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
 import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
@@ -403,15 +403,19 @@ export default function ProjectEstimateEditor({
     let materialRows: LineRow[] = []
     let workRows: LineRow[] = []
 
-    if (active?.lines?.length) {
+    if (active) {
       setVersionId(active.id)
-      for (const l of active.lines) {
-        const cat = resolveCategory(l)
-        const snap = snapshotByKey.get(`${cat}:${l.description}:${l.line_no || 0}`)
-        const row = mapDbLine(l, snap)
-        if (cat === 'MATERIAL') materialRows.push(row)
-        else workRows.push(row)
+      if (active.lines?.length) {
+        for (const l of active.lines) {
+          const cat = resolveCategory(l)
+          const snap = snapshotByKey.get(`${cat}:${l.description}:${l.line_no || 0}`)
+          const row = mapDbLine(l, snap)
+          if (cat === 'MATERIAL') materialRows.push(row)
+          else workRows.push(row)
+        }
       }
+    } else {
+      setVersionId(null)
     }
 
     if (!materialRows.length) {
@@ -587,26 +591,35 @@ export default function ProjectEstimateEditor({
     }))
 
     try {
-      if (versionId) {
-        const { error } = await replaceBoqVersionLines(tenant.id, versionId, boqLines)
+      const { versionId: targetVersionId, nextVersionNo } = await resolveBoqVersionForSave(
+        tenant.id,
+        projectId,
+        versionId,
+      )
+
+      if (targetVersionId) {
+        const { error } = await replaceBoqVersionLines(tenant.id, targetVersionId, boqLines)
         if (error) throw error
-        const { error: actErr } = await activateBoqVersion(tenant.id, versionId, projectId)
+        const { error: actErr } = await activateBoqVersion(tenant.id, targetVersionId, projectId)
         if (actErr) throw actErr
+        setVersionId(targetVersionId)
       } else {
         const { data, error } = await createBoqVersion({
           tenant_id: tenant.id,
           project_id: projectId,
           version_type: 'INITIAL',
-          version_no: 1,
+          version_no: nextVersionNo,
           notes: isRevision ? 'تعديل مقايسة' : 'مقايسة SEC',
           created_by: currentUser?.name,
           lines: boqLines,
         })
         if (error) throw error
-        const initial = (data || []).find(v => v.version_type === 'INITIAL')
-        if (initial?.id) {
-          const { error: actErr } = await activateBoqVersion(tenant.id, initial.id, projectId)
+        const created = (data || []).find(v => v.version_no === nextVersionNo)
+          || (data || []).find(v => v.version_type === 'INITIAL')
+        if (created?.id) {
+          const { error: actErr } = await activateBoqVersion(tenant.id, created.id, projectId)
           if (actErr) throw actErr
+          setVersionId(created.id)
         }
       }
       toast.success(isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅')

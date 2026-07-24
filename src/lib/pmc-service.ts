@@ -181,6 +181,28 @@ export function formatSupabaseError(error: unknown, fallback = 'فشل الحف�
   return fallback
 }
 
+export async function resolveBoqVersionForSave(
+  tenantId: string,
+  projectId: number,
+  currentVersionId: number | null,
+) {
+  const { data } = await fetchBoqVersions(tenantId, projectId)
+  const versions = data || []
+  if (currentVersionId) {
+    return {
+      versionId: currentVersionId,
+      nextVersionNo: versions.reduce((m, v) => Math.max(m, v.version_no), 0) + 1,
+    }
+  }
+  const existing = versions.find(v => v.status === 'ACTIVE')
+    || versions.find(v => v.version_type === 'INITIAL')
+    || [...versions].sort((a, b) => b.version_no - a.version_no)[0]
+  return {
+    versionId: existing?.id ?? null,
+    nextVersionNo: versions.reduce((m, v) => Math.max(m, v.version_no), 0) + 1,
+  }
+}
+
 export async function fetchBoqVersions(tenantId: string, projectId: number) {
   const { data, error } = await supabase
     .from('project_boq_versions')
