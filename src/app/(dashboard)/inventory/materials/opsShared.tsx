@@ -830,7 +830,22 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
     const validRows = Object.entries(returnQtys).filter(([, qty]) => Number(qty) > 0)
     if (validRows.length === 0) { toast.error('أدخل كمية مرتجعة لمادة واحدة على الأقل'); return }
     if (!projectId) { toast.error('اختر المشروع'); return }
-    if (!reservationId) { toast.error('يجب اختيار حجز المواد'); return }
+
+    let resolvedResId = reservationId ? Number(reservationId) : null
+    if (!resolvedResId && bookingNo.trim()) {
+      const { data: ensured, error: ensureErr } = await ensureReservationByNumber(
+        tenantId, Number(projectId), bookingNo.trim(),
+      )
+      if (ensureErr || !ensured) {
+        toast.error(ensureErr?.message || 'تعذّر ربط رقم الحجز')
+        return
+      }
+      resolvedResId = ensured.id
+      setReservationId(String(ensured.id))
+      setBookingNo(ensured.reservation_no)
+    }
+    if (!resolvedResId) { toast.error('أدخل رقم الحجز أو اختر حجزاً'); return }
+
     setSaving(true)
 
     const wh = warehouses.find(w => w.id === Number(warehouseId))
@@ -854,7 +869,7 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
       whName: wh?.name,
       projectId: Number(projectId),
       projectName,
-      reservationId: Number(reservationId),
+      reservationId: resolvedResId,
       bookingNo: bookingNo || undefined,
       notes: notes || undefined,
       lines,
