@@ -72,6 +72,63 @@ type FrameworkBoqRow = {
   unit_price: number
 }
 
+const IMPORT_BTN = {
+  excel: { border: '1px solid #bfdbfe', color: '#1a56db', label: 'Excel / CSV' },
+  pdf: { border: '1px solid #fecaca', color: '#c81e1e', label: 'PDF' },
+  image: { border: '1px solid #ddd6fe', color: '#7c3aed', label: 'صورة UDS' },
+} as const
+
+function EstimateImportToolbar({
+  readOnly,
+  onImport,
+}: {
+  readOnly: boolean
+  onImport: (category: BoqLineCategory, kind: BoqImportKind) => void
+}) {
+  if (readOnly) return null
+
+  const groups: { category: BoqLineCategory; label: string; color: string; bg: string }[] = [
+    { category: 'MATERIAL', label: 'استيراد المواد', color: '#4338ca', bg: '#eef2ff' },
+    { category: 'WORK', label: 'استيراد الأعمال', color: '#1a56db', bg: '#eff6ff' },
+  ]
+
+  return (
+    <div style={{
+      marginBottom: '16px', padding: '12px 14px', borderRadius: '12px',
+      background: '#f8fafc', border: '1px solid #e2e8f0',
+    }}>
+      <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text2)' }}>
+        استيراد من ملف (Excel / PDF / صورة)
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {groups.map(g => (
+          <div key={g.category} style={{
+            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+            padding: '8px 10px', borderRadius: '10px', background: g.bg, border: `1px solid ${g.color}33`,
+          }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: g.color, minWidth: '110px' }}>{g.label}</span>
+            {(Object.keys(IMPORT_BTN) as BoqImportKind[]).map(kind => {
+              const cfg = IMPORT_BTN[kind]
+              const Icon = kind === 'excel' ? FileSpreadsheet : kind === 'pdf' ? FileText : Image
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => onImport(g.category, kind)}
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.78rem', padding: '5px 10px', border: cfg.border, color: cfg.color, background: 'white' }}
+                >
+                  <Icon style={{ width: '13px', height: '13px' }} /> {cfg.label}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function EstimateSectionTable({
   category,
   title,
@@ -86,8 +143,6 @@ function EstimateSectionTable({
   onSelectFramework,
   onRemove,
   onAdd,
-  showImport,
-  onImport,
   reservationSlot,
 }: {
   category: BoqLineCategory
@@ -103,8 +158,6 @@ function EstimateSectionTable({
   onSelectFramework: (globalIdx: number, code: string) => void
   onRemove: (globalIdx: number) => void
   onAdd: () => void
-  showImport: boolean
-  onImport: (kind: BoqImportKind) => void
   reservationSlot?: React.ReactNode
 }) {
   const style = SECTION_STYLE[category]
@@ -123,14 +176,7 @@ function EstimateSectionTable({
         </div>
         {!readOnly && (
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {showImport && (
-              <>
-                <button type="button" onClick={() => onImport('excel')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><FileSpreadsheet style={{ width: '12px', height: '12px' }} /> Excel</button>
-                <button type="button" onClick={() => onImport('pdf')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><FileText style={{ width: '12px', height: '12px' }} /> PDF</button>
-                <button type="button" onClick={() => onImport('image')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 8px' }}><Image style={{ width: '12px', height: '12px' }} /> صورة</button>
-              </>
-            )}
-            <button type="button" onClick={onAdd} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: style.titleColor, border: `1px solid ${style.headerBorder}` }}>
+            <button type="button" onClick={onAdd} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: style.titleColor, border: `1px solid ${style.headerBorder}`, background: 'white' }}>
               <Plus style={{ width: '12px', height: '12px' }} /> بند
             </button>
           </div>
@@ -259,7 +305,7 @@ export default function ProjectEstimateEditor({
   const [versionId, setVersionId] = useState<number | null>(null)
   const [loadingBoq, setLoadingBoq] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [showImport, setShowImport] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
   const [importKind, setImportKind] = useState<BoqImportKind>('excel')
   const [importTarget, setImportTarget] = useState<BoqLineCategory>('WORK')
   const materialExcelRef = useRef<HTMLInputElement>(null)
@@ -398,24 +444,32 @@ export default function ProjectEstimateEditor({
         : [emptyLine('WORK')]
       return [...mats, ...newWorks]
     })
-    setShowImport(false)
+    setImportModalOpen(false)
     toast.success(`تم استيراد ${imported.length} ${importTarget === 'MATERIAL' ? 'مادة' : 'بند أعمال'}`)
   }
 
   function openImport(category: BoqLineCategory, kind: BoqImportKind) {
+    if (isRevision) {
+      toast.error('الاستيراد غير متاح أثناء تعديل المقايسة — عدّل الكميات يدوياً')
+      return
+    }
     setImportTarget(category)
     if (category === 'MATERIAL' && kind === 'excel') {
       materialExcelRef.current?.click()
       return
     }
     setImportKind(kind)
-    setShowImport(true)
+    setImportModalOpen(true)
   }
 
   async function handleMaterialExcelPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    if (isRevision) {
+      toast.error('الاستيراد غير متاح أثناء تعديل المقايسة — عدّل الكميات يدوياً')
+      return
+    }
     try {
       const rows = await parseMaterialsSpreadsheet(file)
       const imported = rows.filter(r => r.description.trim()).map(r => ({
@@ -499,11 +553,12 @@ export default function ProjectEstimateEditor({
     <>
       <input ref={materialExcelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleMaterialExcelPick} />
 
+      <EstimateImportToolbar readOnly={!!readOnly} onImport={openImport} />
+
       <EstimateSectionTable category="MATERIAL" title="المواد" icon={<Package style={{ width: '18px', height: '18px' }} />}
         lines={materialLines} lineIndices={materialIndices} frameworkItems={[]} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
-        onRemove={removeLine} onAdd={() => addLine('MATERIAL')} showImport={!isRevision && !readOnly}
-        onImport={k => openImport('MATERIAL', k)}
+        onRemove={removeLine} onAdd={() => addLine('MATERIAL')}
         reservationSlot={tenantId && projectName ? (
           <MaterialsReservationBlock
             embedded
@@ -526,8 +581,7 @@ export default function ProjectEstimateEditor({
       <EstimateSectionTable category="WORK" title="الأعمال" icon={<HardHat style={{ width: '18px', height: '18px' }} />}
         lines={workLines} lineIndices={workIndices} frameworkItems={frameworkItems} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
-        onRemove={removeLine} onAdd={() => addLine('WORK')} showImport={!isRevision && !readOnly}
-        onImport={k => openImport('WORK', k)} />
+        onRemove={removeLine} onAdd={() => addLine('WORK')} />
 
       <div style={{ marginTop: '16px', padding: '14px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #eef2ff, #eff6ff)', border: '2px solid #c7d2fe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.82rem' }}>
@@ -542,10 +596,10 @@ export default function ProjectEstimateEditor({
         )}
       </div>
 
-      {showImport && (
+      {importModalOpen && (
         <ImportQuantitiesModal importKind={importKind} frameworkItems={frameworkItems}
           existingLines={importTarget === 'MATERIAL' ? materialLines : workLines}
-          onClose={() => setShowImport(false)} onApply={handleImportApply} />
+          onClose={() => setImportModalOpen(false)} onApply={handleImportApply} />
       )}
     </>
   )
