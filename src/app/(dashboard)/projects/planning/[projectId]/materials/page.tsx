@@ -587,7 +587,7 @@ export default function MaterialsTabPage() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={handleSave} disabled={saving || uploading} className="btn btn-primary" style={{ background: '#6366f1' }}>
+        <button onClick={handleSave} disabled={saving || uploading || readOnly} className="btn btn-primary" style={{ background: '#6366f1' }}>
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
       </div>
