@@ -12,6 +12,7 @@ export type InitiationBasketProject = {
   status?: string
   pmo_phase?: string
   estimated_value?: number
+  responsible_consultant?: string
   start_date?: string
   end_date?: string
   description?: string
@@ -22,7 +23,7 @@ export type InitiationBasketProject = {
 export async function fetchInitiationBasketProjects(tenantId: string) {
   const { data: projects, error } = await supabase
     .from('projects')
-    .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, start_date, end_date, description, created_at')
+    .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, responsible_consultant, start_date, end_date, description, created_at')
     .eq('tenant_id', tenantId)
     .eq('pmo_phase', '1_RECEIPT')
     .order('created_at', { ascending: false })

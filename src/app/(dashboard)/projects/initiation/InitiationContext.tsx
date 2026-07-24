@@ -12,6 +12,7 @@ export type InitiationProject = {
   status?: string
   pmo_phase?: string
   estimated_value?: number
+  responsible_consultant?: string
   start_date?: string
   end_date?: string
   description?: string

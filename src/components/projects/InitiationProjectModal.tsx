@@ -45,6 +45,7 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
     name: project?.name || '',
     client_id: project?.client_id ? String(project.client_id) : '',
     type: project?.type || '',
+    responsible_consultant: project?.responsible_consultant || '',
     estimated_value: project?.estimated_value?.toString() || '',
     start_date: project?.start_date || '',
     end_date: project?.end_date || '',
@@ -140,7 +141,8 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
       client_id: Number(form.client_id),
       client_name: selectedClient?.name || null,
       type: form.type,
-      estimated_value: form.estimated_value ? parseFloat(form.estimated_value) : null,
+      responsible_consultant: form.responsible_consultant.trim() || null,
+      estimated_value: project?.hasBoq ? (project.estimated_value ?? null) : (form.estimated_value ? parseFloat(form.estimated_value) : null),
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       description: form.description.trim() || null,
@@ -252,8 +254,37 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
             </div>
 
             <div>
+              <label style={lbl}>الاستشاري المسؤول</label>
+              <input
+                value={form.responsible_consultant}
+                onChange={e => set('responsible_consultant', e.target.value)}
+                className="input"
+                placeholder="اسم الاستشاري أو الشركة الاستشارية"
+              />
+            </div>
+
+            <div>
               <label style={lbl}>القيمة التقديرية (ريال)</label>
-              <input type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => set('estimated_value', e.target.value)} className="input" dir="ltr" placeholder="0.00" />
+              {project?.hasBoq ? (
+                <div style={{ padding: '10px 12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0ea77b', direction: 'ltr', textAlign: 'right' }}>
+                    {project.estimated_value != null
+                      ? Number(project.estimated_value).toLocaleString('ar-SA')
+                      : '—'}{' '}
+                    ر.س
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: '#059669' }}>
+                    تُحدّث تلقائياً من إجمالي المقايسة — عدّلها من تبويب المقايسة في التخطيط
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <input type="number" min="0" step="0.01" value={form.estimated_value} onChange={e => set('estimated_value', e.target.value)} className="input" dir="ltr" placeholder="0.00" />
+                  <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: '#6b7280' }}>
+                    تقدير أولي — بعد حفظ المقايسة تُستبدل بالإجمالي المعتمد
+                  </p>
+                </>
+              )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

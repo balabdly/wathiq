@@ -59,6 +59,8 @@ export type ProjectPlanning = {
   boq_revision_snapshot?: BoqRevisionSnapshotLine[] | null
   boq_revision_approval_file_path?: string | null
   boq_revision_approval_file_name?: string | null
+  estimate_total_override?: number | null
+  estimate_total_note?: string | null
   updated_at?: string | null
 }
 

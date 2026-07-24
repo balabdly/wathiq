@@ -2,6 +2,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { fetchBoqVersions, createBoqVersion, activateBoqVersion, replaceBoqVersionLines, formatSupabaseError, resolveBoqVersionForSave } from '@/lib/pmc-service'
+import { updateProjectPlanning } from '@/lib/project-planning-service'
+import { supabase } from '@/lib/supabase'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
 import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
@@ -358,6 +360,9 @@ export default function ProjectEstimateEditor({
   const [importKind, setImportKind] = useState<BoqImportKind>('excel')
   const [importTarget, setImportTarget] = useState<BoqLineCategory>('WORK')
   const materialExcelRef = useRef<HTMLInputElement>(null)
+  const [totalOverride, setTotalOverride] = useState<string>('')
+  const [totalNote, setTotalNote] = useState('')
+  const [useOverride, setUseOverride] = useState(false)
 
   const frameworkMap = useMemo(() => buildFrameworkMap(frameworkItems), [frameworkItems])
 
@@ -369,6 +374,21 @@ export default function ProjectEstimateEditor({
     }
     return map
   }, [revisionSnapshot])
+
+  useEffect(() => {
+    if (!planning) return
+    const ov = (planning as { estimate_total_override?: number | null }).estimate_total_override
+    const note = (planning as { estimate_total_note?: string | null }).estimate_total_note
+    if (ov != null && Number(ov) > 0) {
+      setUseOverride(true)
+      setTotalOverride(String(ov))
+      setTotalNote(note || '')
+    } else {
+      setUseOverride(false)
+      setTotalOverride('')
+      setTotalNote('')
+    }
+  }, [planning?.id, planning?.updated_at])
 
   useEffect(() => {
     if (!tenant || !projectId) return
@@ -568,6 +588,9 @@ export default function ProjectEstimateEditor({
   const totalMaterials = materialLines.reduce((s, l) => s + l.qty * l.unit_price, 0)
   const totalWorks = workLines.reduce((s, l) => s + l.qty * l.unit_price, 0)
   const grandTotal = totalMaterials + totalWorks
+  const overrideNum = useOverride && totalOverride.trim() ? parseFloat(totalOverride) : null
+  const effectiveTotal = overrideNum != null && !Number.isNaN(overrideNum) ? overrideNum : grandTotal
+  const totalDiffersFromLines = useOverride && overrideNum != null && Math.abs(overrideNum - grandTotal) > 0.01
 
   async function handleSave() {
     if (!tenant || readOnly) return
@@ -575,6 +598,10 @@ export default function ProjectEstimateEditor({
     const validWorks = workLines.filter(l => l.description.trim() && l.qty > 0)
     if (!validMats.some(l => l.qty > 0) && !validWorks.length) {
       toast.error('أضف مواد أو أعمال على الأقل')
+      return
+    }
+    if (totalDiffersFromLines && !totalNote.trim()) {
+      toast.error('أدخل ملاحظة عند تعديل الإجمالي ليتعارض مع مجموع البنود')
       return
     }
 
@@ -622,6 +649,16 @@ export default function ProjectEstimateEditor({
           setVersionId(created.id)
         }
       }
+
+      await updateProjectPlanning(tenant.id, projectId, {
+        estimate_total_override: totalDiffersFromLines ? effectiveTotal : null,
+        estimate_total_note: totalDiffersFromLines ? totalNote.trim() : null,
+      })
+      await supabase.from('projects').update({
+        estimated_value: effectiveTotal,
+        updated_at: new Date().toISOString(),
+      }).eq('tenant_id', tenant.id).eq('id', projectId)
+
       toast.success(isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅')
       await loadBoq()
       onSaved?.()
@@ -668,16 +705,73 @@ export default function ProjectEstimateEditor({
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
         onRemove={removeLine} onAdd={() => addLine('WORK')} />
 
-      <div style={{ marginTop: '16px', padding: '14px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #eef2ff, #eff6ff)', border: '2px solid #c7d2fe', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.82rem' }}>
-          <span style={{ color: '#4338ca' }}>مواد: <strong>{totalMaterials.toLocaleString('ar-SA')}</strong> ر.س</span>
-          <span style={{ color: '#1a56db' }}>أعمال: <strong>{totalWorks.toLocaleString('ar-SA')}</strong> ر.س</span>
+      <div style={{ marginTop: '16px', padding: '14px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #eef2ff, #eff6ff)', border: '2px solid #c7d2fe', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+            <span style={{ color: '#4338ca' }}>مواد: <strong>{totalMaterials.toLocaleString('ar-SA')}</strong> ر.س</span>
+            <span style={{ color: '#1a56db' }}>أعمال: <strong>{totalWorks.toLocaleString('ar-SA')}</strong> ر.س</span>
+            <span style={{ color: '#6b7280' }}>مجموع البنود: <strong>{grandTotal.toLocaleString('ar-SA')}</strong> ر.س</span>
+          </div>
+          <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
+            الإجمالي المعتمد: {effectiveTotal.toLocaleString('ar-SA')} ر.س
+          </div>
+          {!readOnly && (
+            <button onClick={handleSave} disabled={saving} className="btn btn-primary">
+              <Save style={{ width: '16px', height: '16px' }} /> {saving ? 'جاري الحفظ...' : saveLabel}
+            </button>
+          )}
         </div>
-        <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>الإجمالي: {grandTotal.toLocaleString('ar-SA')} ر.س</div>
+
         {!readOnly && (
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary">
-            <Save style={{ width: '16px', height: '16px' }} /> {saving ? 'جاري الحفظ...' : saveLabel}
-          </button>
+          <div style={{ padding: '12px', borderRadius: '10px', background: 'white', border: '1px solid #c7d2fe' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', marginBottom: useOverride ? '10px' : 0 }}>
+              <input
+                type="checkbox"
+                checked={useOverride}
+                onChange={e => {
+                  setUseOverride(e.target.checked)
+                  if (e.target.checked && !totalOverride) setTotalOverride(String(grandTotal))
+                }}
+              />
+              تعديل الإجمالي يدوياً (يُحدّث القيمة التقديرية في مرحلة البدء)
+            </label>
+            {useOverride && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: '4px' }}>المبلغ الإجمالي (ر.س)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={totalOverride}
+                    onChange={e => setTotalOverride(e.target.value)}
+                    className="input"
+                    dir="ltr"
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: totalDiffersFromLines ? '#c81e1e' : '#6b7280', display: 'block', marginBottom: '4px' }}>
+                    ملاحظة {totalDiffersFromLines ? '(مطلوبة — يختلف عن مجموع البنود)' : '(اختياري)'}
+                  </label>
+                  <input
+                    value={totalNote}
+                    onChange={e => setTotalNote(e.target.value)}
+                    className="input"
+                    placeholder="سبب تعديل الإجمالي..."
+                  />
+                </div>
+              </div>
+            )}
+            <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: '#6b7280' }}>
+              القيمة التقديرية في مرحلة البدء = إجمالي المقايسة — لا حاجة لإدخالها مرتين
+            </p>
+          </div>
+        )}
+
+        {readOnly && totalDiffersFromLines && totalNote && (
+          <p style={{ margin: 0, fontSize: '0.78rem', color: '#92400e', background: '#fffbeb', padding: '8px 10px', borderRadius: '8px' }}>
+            ملاحظة الإجمالي: {totalNote}
+          </p>
         )}
       </div>
 

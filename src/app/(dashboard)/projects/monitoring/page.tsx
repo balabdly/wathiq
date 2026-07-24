@@ -2,7 +2,8 @@
 import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import ProjectModal  from '@/components/projects/ProjectModal'
-import ProjectDetail from '@/components/projects/ProjectDetail'
+import ProjectMonitoringDetail from '@/components/projects/ProjectMonitoringDetail'
+import { cleanupLegacyMonitoringProjects, isLifecycleProject } from '@/lib/project-monitoring-cleanup'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi, visitsApi } from '@/lib/db'
 import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
@@ -723,7 +724,7 @@ export default function ProjectsPage() {
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
-  const [phaseFilter, setPhaseFilter] = useState('')
+  const [phaseFilter, setPhaseFilter] = useState('__lifecycle__')
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
@@ -801,11 +802,16 @@ export default function ProjectsPage() {
   async function loadProjects() {
     if (!tenant || !activeBranch) return
     if (projects.length === 0) setLoading(true)
+    try {
+      await cleanupLegacyMonitoringProjects(tenant.id, activeBranch.id, 2)
+    } catch {
+      // تجاهل — قد تفشل بسبب صلاحيات RLS
+    }
     const [{ data }, { data: teamsData }] = await Promise.all([
       projectsApi.getAll(tenant.id, activeBranch.id),
       supabase.from('teams').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
     ])
-    const loaded = (data || []) as Project[]
+    const loaded = ((data || []) as Project[]).filter(isLifecycleProject)
     const tMap: Record<number, string> = {}
     ;(teamsData || []).forEach((t: { id: number; name: string }) => { tMap[t.id] = t.name })
     setTeamNames(tMap)
@@ -933,7 +939,7 @@ export default function ProjectsPage() {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = !phaseFilter
-      || (phaseFilter === '__none__' ? !phase : phase === phaseFilter)
+      || (phaseFilter === '__lifecycle__' ? !!phase : phaseFilter === '__none__' ? !phase : phase === phaseFilter)
     return (
       phaseMatch &&
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
@@ -952,11 +958,9 @@ export default function ProjectsPage() {
 
   if (detailProject) {
     return (
-      <ProjectDetail
+      <ProjectMonitoringDetail
         project={projects.find(p => p.id === detailProject.id) || detailProject}
         onBack={() => setDetail(null)}
-        onEdit={(p) => { setEditProject(p); setShowModal(true) }}
-        onRefresh={loadProjects}
       />
     )
   }
@@ -964,13 +968,11 @@ export default function ProjectsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
       {/* أدوات اللوحة */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
-          {filtered.length !== projects.length
-            ? `${filtered.length} من ${projects.length} مشروع — استخدم الفلاتر لتضييق العرض`
-            : `${projects.length} مشروع — كل المراحل — للمتابعة والاستعراض`}
-        </p>
-      </div>
+      <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
+        {filtered.length !== projects.length
+          ? `${filtered.length} من ${projects.length} مشروع — استخدم الفلاتر لتضييق العرض`
+          : `${projects.length} مشروع lifecycle — للمتابعة والاطلاع فقط`}
+      </p>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
@@ -997,6 +999,7 @@ export default function ProjectsPage() {
         </div>
 
         <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
+          <option value="__lifecycle__">مشاريع lifecycle (الجديدة)</option>
           <option value="">كل المراحل</option>
           {PHASE_FILTER_OPTIONS.map(ph => (
             <option key={ph.id} value={ph.id}>{ph.label}</option>

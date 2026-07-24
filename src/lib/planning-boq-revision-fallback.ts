@@ -38,6 +38,36 @@ export function parseBoqApprovalFromNotes(notes?: string | null): { path?: strin
   return { path: pathM?.[1], name: nameM?.[1] }
 }
 
+export function clearEstimateFromNotes(notes: string | null | undefined): string {
+  return (notes || '')
+    .replace(/\[estimate_total_override:[^\]]*\]/g, '')
+    .replace(/\[estimate_total_note:[^\]]*\]/g, '')
+    .trim()
+}
+
+export function embedEstimateInNotes(
+  notes: string | null | undefined,
+  override: number | null | undefined,
+  note: string | null | undefined,
+): string {
+  let cleaned = clearEstimateFromNotes(notes)
+  if (override != null && Number(override) > 0) {
+    cleaned = `${cleaned} [estimate_total_override:${override}]`.trim()
+    if (note?.trim()) cleaned = `${cleaned} [estimate_total_note:${note.trim()}]`.trim()
+  }
+  return cleaned
+}
+
+export function parseEstimateFromNotes(notes?: string | null): { override?: number; note?: string } {
+  const ovM = notes?.match(/\[estimate_total_override:([^\]]+)\]/)
+  const noteM = notes?.match(/\[estimate_total_note:([^\]]+)\]/)
+  const override = ovM?.[1] != null ? Number(ovM[1]) : undefined
+  return {
+    override: override != null && !Number.isNaN(override) ? override : undefined,
+    note: noteM?.[1],
+  }
+}
+
 function encodeSnapshot(snapshot: BoqRevisionSnapshotLine[]): string {
   return btoa(unescape(encodeURIComponent(JSON.stringify(snapshot))))
 }
@@ -76,6 +106,8 @@ export type PlanningBoqRevisionPatch = {
   boq_revision_approval_file_path?: string | null
   boq_revision_approval_file_name?: string | null
   boq_revision_snapshot?: BoqRevisionSnapshotLine[] | null
+  estimate_total_override?: number | null
+  estimate_total_note?: string | null
   [key: string]: unknown
 }
 
@@ -106,6 +138,14 @@ export function applyBoqRevisionFallbackPatch(patch: PlanningBoqRevisionPatch): 
     next.timeline_revision_reason = reason || null
   }
 
+  if ('estimate_total_override' in patch || 'estimate_total_note' in patch) {
+    let notes = next.cost_plan_notes
+    notes = embedEstimateInNotes(notes, patch.estimate_total_override as number | null, patch.estimate_total_note as string | null)
+    delete next.estimate_total_override
+    delete next.estimate_total_note
+    next.cost_plan_notes = notes || null
+  }
+
   return next
 }
 
@@ -123,6 +163,13 @@ export function enrichPlanningBoqRevision<T extends PlanningBoqRevisionPatch>(pl
   if (!snapCol?.length) {
     const fromReason = parseSnapshotFromReason(enriched.timeline_revision_reason)
     if (fromReason.length) enriched.boq_revision_snapshot = fromReason
+  }
+
+  const fromEstimate = parseEstimateFromNotes(enriched.cost_plan_notes)
+  const enrichedPatch = enriched as PlanningBoqRevisionPatch
+  if (enrichedPatch.estimate_total_override == null && fromEstimate.override != null) {
+    enrichedPatch.estimate_total_override = fromEstimate.override
+    enrichedPatch.estimate_total_note = fromEstimate.note || null
   }
 
   return enriched
