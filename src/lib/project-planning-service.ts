@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
-import { fetchProjectsWithBoqLines, projectHasActiveBoqLines } from '@/lib/pmc-service'
+import { fetchBoqVersions, fetchProjectsWithBoqLines, projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 
 export type MaterialAvailability = 'pending' | 'available' | 'not_available'
@@ -47,7 +47,19 @@ export type ProjectPlanning = {
   quality_plan_file_path?: string | null
   quality_plan_file_name?: string | null
   cost_plan_notes?: string | null
+  boq_revision_snapshot?: BoqRevisionSnapshotLine[] | null
+  boq_revision_approval_file_path?: string | null
+  boq_revision_approval_file_name?: string | null
   updated_at?: string | null
+}
+
+export type BoqRevisionSnapshotLine = {
+  line_no?: number
+  catalog_no?: string | null
+  description: string
+  unit: string
+  qty: number
+  unit_price?: number
 }
 
 export type PlanningCostItem = {
@@ -229,12 +241,33 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
 
   const costComplete = (costRows || []).some(r => Number(r.planned_amount) > 0)
   const hasBoq = await projectHasActiveBoqLines(tenantId, projectId)
+  if (!hasBoq) {
+    throw new Error('يجب حفظ المقايسة (بنود BOQ) قبل اعتماد التخطيط')
+  }
+
+  const isRevision = !!(planning as ProjectPlanning | null)?.cost_plan_notes?.includes('[تعديل مقايسة]')
+    || !!((planning as ProjectPlanning | null)?.boq_revision_snapshot as unknown[] | null)?.length
+
+  if (isRevision && !(planning as ProjectPlanning)?.boq_revision_approval_file_path) {
+    throw new Error('يجب إرفاق نموذج موافقة الكهرباء على تعديل المقايسة قبل الاعتماد')
+  }
+
   const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0, 0, hasBoq)
   if (!progress.isComplete) {
     throw new Error(`يجب إكمال جميع أقسام التخطيط (${progress.completed}/${progress.total}) قبل الاعتماد`)
   }
 
-  await updateProjectPlanning(tenantId, projectId, { planning_status: 'closed' })
+  const closePatch: Partial<ProjectPlanning> = { planning_status: 'closed' }
+  if (isRevision) {
+    closePatch.boq_revision_snapshot = null
+    closePatch.boq_revision_approval_file_path = null
+    closePatch.boq_revision_approval_file_name = null
+    const notes = (planning as ProjectPlanning)?.cost_plan_notes?.replace(/\[تعديل مقايسة\]\s*/g, '').trim()
+    closePatch.cost_plan_notes = notes || null
+  }
+
+  await updateProjectPlanning(tenantId, projectId, closePatch)
+
   const { startProjectExecution } = await import('@/lib/project-execution-service')
   await startProjectExecution(tenantId, projectId)
 }
@@ -284,6 +317,21 @@ export async function reopenProjectPlanning(
   }
   if (options?.reason?.trim()) {
     planPatch.cost_plan_notes = `[تعديل مقايسة] ${options.reason.trim()}`
+  }
+
+  if (options?.preserveTeam) {
+    const { data: versions } = await fetchBoqVersions(tenantId, projectId)
+    const active = (versions || []).find(v => v.status === 'ACTIVE')
+      || (versions || []).find(v => v.version_type === 'INITIAL')
+    if (active?.lines?.length) {
+      planPatch.boq_revision_snapshot = active.lines.map(l => ({
+        line_no: l.line_no,
+        catalog_no: l.catalog_no,
+        description: l.description,
+        unit: l.unit,
+        qty: Number(l.qty_planned),
+      }))
+    }
   }
 
   const { error: planErr } = await supabase.from('project_planning').update(planPatch)

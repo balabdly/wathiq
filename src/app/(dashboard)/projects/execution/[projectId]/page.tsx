@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag } from 'lucide-react'
+import { ArrowRight, ClipboardList, FileText, HardHat, Image, Paperclip, Undo2, Send, Upload, Users, Flag, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -51,12 +51,14 @@ export default function ExecutionProjectPage() {
   const [saving, setSaving] = useState(false)
   const [reopening, setReopening] = useState(false)
   const [advancing, setAdvancing] = useState(false)
+  const [selectedTeamId, setSelectedTeamId] = useState<number | ''>('')
 
   const reload = useCallback(async () => {
     if (!tenant) return
     const { project: p } = await fetchExecutionProject(tenant.id, projectId)
     setProject(p)
     setProgressPct(p?.progress ?? 0)
+    setSelectedTeamId(p?.team_id || '')
     if (activeBranch) {
       const t = await fetchActiveTeams(tenant.id, activeBranch.id)
       setTeams(t)
@@ -77,8 +79,13 @@ export default function ExecutionProjectPage() {
     Promise.all([reload(), reloadLogs()]).finally(() => setLoading(false))
   }, [tenant?.id, projectId, reload, reloadLogs])
 
-  async function handleAssignTeam(teamId: number | null) {
+  async function handleApproveTeam() {
     if (!tenant || !project) return
+    const teamId = selectedTeamId ? Number(selectedTeamId) : null
+    if (!teamId) {
+      toast.error('اختر فريقاً أولاً')
+      return
+    }
     setAssigning(true)
     try {
       const team = teams.find(t => t.id === teamId)
@@ -95,17 +102,35 @@ export default function ExecutionProjectPage() {
         leadName,
         team?.lead_id || null,
       )
-      toast.success(teamId ? 'تم إسناد الفريق ✅' : 'تم إلغاء الإسناد')
+      toast.success('تم اعتماد الفريق ✅')
       await reload()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الإسناد')
+      toast.error(e instanceof Error ? e.message : 'فشل الاعتماد')
     }
     setAssigning(false)
   }
 
+  async function handleClearTeam() {
+    if (!tenant || !project) return
+    if (!confirm('إلغاء إسناد الفريق المعتمد؟')) return
+    setAssigning(true)
+    try {
+      await assignExecutionTeam(tenant.id, projectId, null, null, null)
+      toast.success('تم إلغاء الإسناد')
+      setSelectedTeamId('')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الإلغاء')
+    }
+    setAssigning(false)
+  }
+
+  const teamPendingApproval = canEdit && selectedTeamId !== '' && selectedTeamId !== (project?.team_id || '')
+  const hasApprovedTeam = !!project?.team_id
+
   async function handleSubmitLog() {
     if (!tenant || !project?.team_id) {
-      toast.error('يجب إسناد فريق أولاً')
+      toast.error('يجب اعتماد الفريق أولاً')
       return
     }
     if (!notes.trim() && files.length === 0) {
@@ -253,12 +278,18 @@ export default function ExecutionProjectPage() {
           <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Users style={{ width: '16px', height: '16px', color: '#1a56db' }} />
             إسناد الفريق
+            {hasApprovedTeam && (
+              <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#0ea77b', fontWeight: 700 }}>
+                ✓ معتمد
+              </span>
+            )}
           </div>
           {canEdit ? (
+            <>
             <select
-              value={project.team_id || ''}
+              value={selectedTeamId}
               disabled={assigning}
-              onChange={e => handleAssignTeam(e.target.value ? Number(e.target.value) : null)}
+              onChange={e => setSelectedTeamId(e.target.value ? Number(e.target.value) : '')}
               className="input"
               style={{ width: '100%', marginBottom: '8px' }}
             >
@@ -269,6 +300,35 @@ export default function ExecutionProjectPage() {
                 </option>
               ))}
             </select>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleApproveTeam}
+                disabled={assigning || !selectedTeamId || selectedTeamId === (project.team_id || '')}
+                className="btn btn-primary"
+                style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId || selectedTeamId === (project.team_id || '') ? 0.55 : 1 }}
+              >
+                <CheckCircle2 style={{ width: '14px', height: '14px' }} />
+                {assigning ? 'جاري الاعتماد...' : 'اعتماد الفريق'}
+              </button>
+              {hasApprovedTeam && (
+                <button
+                  type="button"
+                  onClick={handleClearTeam}
+                  disabled={assigning}
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}
+                >
+                  إلغاء الإسناد
+                </button>
+              )}
+            </div>
+            {teamPendingApproval && (
+              <p style={{ fontSize: '0.72rem', color: '#e6820a', marginTop: '8px', marginBottom: 0 }}>
+                تم اختيار فريق — اضغط «اعتماد الفريق» للتفعيل
+              </p>
+            )}
+            </>
           ) : (
             <div style={{ fontSize: '0.85rem' }}>{project.team?.name || 'غير مسند'}</div>
           )}
@@ -340,7 +400,7 @@ export default function ExecutionProjectPage() {
           </div>
           {!project.team_id ? (
             <div style={{ fontSize: '0.82rem', color: '#c81e1e', padding: '12px', background: '#fef2f2', borderRadius: '8px' }}>
-              يجب إسناد فريق للمشروع قبل تسجيل الإنجاز اليومي
+              يجب اعتماد فريق للمشروع قبل تسجيل الإنجاز اليومي
             </div>
           ) : (
             <>

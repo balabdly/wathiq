@@ -194,7 +194,10 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
 
         {!readOnly && planning?.cost_plan_notes?.includes('[تعديل مقايسة]') && (
           <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.8rem', color: '#92400e' }}>
-            وضع تعديل المقايسة — عدّل البنود في تبويب المقايسة ثم أعد اعتماد التخطيط
+            وضع تعديل المقايسة — عدّل الكميات المعدّلة في تبويب المقايسة، أرفق موافقة SEC، ثم أعد اعتماد التخطيط
+            {!planning.boq_revision_approval_file_path && (
+              <span style={{ display: 'block', marginTop: '4px', color: '#c81e1e', fontWeight: 600 }}>⚠ موافقة الكهرباء مطلوبة قبل الاعتماد</span>
+            )}
           </div>
         )}
 
