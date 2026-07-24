@@ -78,6 +78,10 @@ const HEADER_ALIASES: Record<string, keyof PlanningMaterialLine> = {
   'رقم': 'catalog_no',
   'catalog': 'catalog_no',
   'catalog_no': 'catalog_no',
+  'sec': 'catalog_no',
+  'sec#': 'catalog_no',
+  'sec_number': 'catalog_no',
+  'رقم sec': 'catalog_no',
   'ملاحظات': 'notes',
   'notes': 'notes',
 }

@@ -112,60 +112,48 @@ type FrameworkBoqRow = {
   unit_price: number
 }
 
+type MaterialCatalogRow = {
+  id: number
+  name: string
+  unit: string
+  catalog_no?: string | null
+  sec_number?: string | null
+}
+
+function normalizeItemCode(v: string): string {
+  return v.replace(/\s+/g, '').toUpperCase()
+}
+
 const IMPORT_BTN = {
   excel: { border: '1px solid #bfdbfe', color: '#1a56db', label: 'Excel / CSV' },
   pdf: { border: '1px solid #fecaca', color: '#c81e1e', label: 'PDF' },
   image: { border: '1px solid #ddd6fe', color: '#7c3aed', label: 'صورة UDS' },
 } as const
 
-function EstimateImportToolbar({
-  readOnly,
+function SectionImportButtons({
   onImport,
 }: {
-  readOnly: boolean
-  onImport: (category: BoqLineCategory, kind: BoqImportKind) => void
+  onImport: (kind: BoqImportKind) => void
 }) {
-  if (readOnly) return null
-
-  const groups: { category: BoqLineCategory; label: string; color: string; bg: string }[] = [
-    { category: 'MATERIAL', label: 'استيراد المواد', color: '#4338ca', bg: '#eef2ff' },
-    { category: 'WORK', label: 'استيراد الأعمال', color: '#1a56db', bg: '#eff6ff' },
-  ]
-
   return (
-    <div style={{
-      marginBottom: '16px', padding: '12px 14px', borderRadius: '12px',
-      background: '#f8fafc', border: '1px solid #e2e8f0',
-    }}>
-      <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '10px', color: 'var(--text2)' }}>
-        استيراد من ملف (Excel / PDF / صورة) — {readOnly ? '' : 'يضيف بنوداً جديدة دون حذف الموجود'}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {groups.map(g => (
-          <div key={g.category} style={{
-            display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-            padding: '8px 10px', borderRadius: '10px', background: g.bg, border: `1px solid ${g.color}33`,
-          }}>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: g.color, minWidth: '110px' }}>{g.label}</span>
-            {(Object.keys(IMPORT_BTN) as BoqImportKind[]).map(kind => {
-              const cfg = IMPORT_BTN[kind]
-              const Icon = kind === 'excel' ? FileSpreadsheet : kind === 'pdf' ? FileText : Image
-              return (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() => onImport(g.category, kind)}
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.78rem', padding: '5px 10px', border: cfg.border, color: cfg.color, background: 'white' }}
-                >
-                  <Icon style={{ width: '13px', height: '13px' }} /> {cfg.label}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-      </div>
-    </div>
+    <>
+      {(Object.keys(IMPORT_BTN) as BoqImportKind[]).map(kind => {
+        const cfg = IMPORT_BTN[kind]
+        const Icon = kind === 'excel' ? FileSpreadsheet : kind === 'pdf' ? FileText : Image
+        return (
+          <button
+            key={kind}
+            type="button"
+            onClick={() => onImport(kind)}
+            className="btn btn-ghost"
+            style={{ fontSize: '0.72rem', padding: '4px 8px', border: cfg.border, color: cfg.color, background: 'white' }}
+            title={`استيراد ${cfg.label}`}
+          >
+            <Icon style={{ width: '12px', height: '12px' }} /> {cfg.label}
+          </button>
+        )
+      })}
+    </>
   )
 }
 
@@ -183,6 +171,8 @@ function EstimateSectionTable({
   onSelectFramework,
   onRemove,
   onAdd,
+  onImport,
+  onMaterialSecLookup,
   reservationSlot,
 }: {
   category: BoqLineCategory
@@ -198,6 +188,8 @@ function EstimateSectionTable({
   onSelectFramework: (globalIdx: number, code: string) => void
   onRemove: (globalIdx: number) => void
   onAdd: () => void
+  onImport?: (kind: BoqImportKind) => void
+  onMaterialSecLookup?: (globalIdx: number, query: string) => void
   reservationSlot?: React.ReactNode
 }) {
   const style = SECTION_STYLE[category]
@@ -215,7 +207,10 @@ function EstimateSectionTable({
           {icon} {title}
         </div>
         {!readOnly && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {onImport && (
+              <SectionImportButtons onImport={onImport} />
+            )}
             <button type="button" onClick={onAdd} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: style.titleColor, border: `1px solid ${style.headerBorder}`, background: 'white' }}>
               <Plus style={{ width: '12px', height: '12px' }} /> بند
             </button>
@@ -234,6 +229,9 @@ function EstimateSectionTable({
               )}
               {category === 'WORK' && (
                 <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الحالة</th>
+              )}
+              {category === 'MATERIAL' && (
+                <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right', minWidth: '110px' }}>SEC#</th>
               )}
               <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الوصف</th>
               {qtyHeaders.map(h => (
@@ -271,6 +269,24 @@ function EstimateSectionTable({
                   {category === 'WORK' && (
                     <td style={{ padding: '6px 8px' }}>
                       {(!isRevision || isNewRow) ? <BoqLineStatusBadge status={line.matchStatus} /> : null}
+                    </td>
+                  )}
+                  {category === 'MATERIAL' && (
+                    <td style={{ padding: '6px 8px', minWidth: '110px' }}>
+                      {canEditDetails ? (
+                        <input
+                          list="sec-material-catalog"
+                          value={line.item_code}
+                          onChange={e => onUpdate(globalIdx, 'item_code', e.target.value)}
+                          onBlur={e => onMaterialSecLookup?.(globalIdx, e.target.value)}
+                          className="input"
+                          style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}
+                          placeholder="SEC#"
+                          dir="ltr"
+                        />
+                      ) : (
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.78rem', color: '#6b7280' }} dir="ltr">{line.item_code || '—'}</span>
+                      )}
                     </td>
                   )}
                   <td style={{ padding: '6px 8px', minWidth: '160px' }}>
@@ -363,6 +379,7 @@ export default function ProjectEstimateEditor({
   const [totalOverride, setTotalOverride] = useState<string>('')
   const [totalNote, setTotalNote] = useState('')
   const [useOverride, setUseOverride] = useState(false)
+  const [materialCatalog, setMaterialCatalog] = useState<MaterialCatalogRow[]>([])
 
   const frameworkMap = useMemo(() => buildFrameworkMap(frameworkItems), [frameworkItems])
 
@@ -374,6 +391,16 @@ export default function ProjectEstimateEditor({
     }
     return map
   }, [revisionSnapshot])
+
+  useEffect(() => {
+    if (!tenant) return
+    supabase.from('materials')
+      .select('id, name, unit, catalog_no, sec_number')
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => setMaterialCatalog((data || []) as MaterialCatalogRow[]))
+  }, [tenant?.id])
 
   useEffect(() => {
     if (!planning) return
@@ -484,6 +511,33 @@ export default function ProjectEstimateEditor({
     setLines(prev => {
       const next = [...prev]
       next[idx] = { ...next[idx], item_code: item.item_code, description: item.description_ar || item.item_code, unit: item.unit, unit_price: item.unit_price, matchStatus: 'matched' }
+      return next
+    })
+  }
+
+  function applyMaterialSecLookup(idx: number, query: string) {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      updateLine(idx, 'item_code', '')
+      return
+    }
+    const q = normalizeItemCode(trimmed)
+    const mat = materialCatalog.find(m =>
+      normalizeItemCode(m.sec_number || '') === q ||
+      normalizeItemCode(m.catalog_no || '') === q,
+    )
+    if (!mat) {
+      updateLine(idx, 'item_code', trimmed)
+      return
+    }
+    setLines(prev => {
+      const next = [...prev]
+      next[idx] = {
+        ...next[idx],
+        item_code: mat.sec_number || mat.catalog_no || trimmed,
+        description: mat.name,
+        unit: mat.unit || next[idx].unit,
+      }
       return next
     })
   }
@@ -675,12 +729,20 @@ export default function ProjectEstimateEditor({
     <>
       <input ref={materialExcelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleMaterialExcelPick} />
 
-      <EstimateImportToolbar readOnly={!!readOnly} onImport={openImport} />
+      {materialCatalog.length > 0 && (
+        <datalist id="sec-material-catalog">
+          {materialCatalog.filter(m => m.sec_number || m.catalog_no).map(m => (
+            <option key={m.id} value={m.sec_number || m.catalog_no || ''}>{m.name}</option>
+          ))}
+        </datalist>
+      )}
 
       <EstimateSectionTable category="MATERIAL" title="المواد" icon={<Package style={{ width: '18px', height: '18px' }} />}
         lines={materialLines} lineIndices={materialIndices} frameworkItems={[]} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
         onRemove={removeLine} onAdd={() => addLine('MATERIAL')}
+        onImport={readOnly ? undefined : kind => openImport('MATERIAL', kind)}
+        onMaterialSecLookup={applyMaterialSecLookup}
         reservationSlot={tenantId && projectName ? (
           <MaterialsReservationBlock
             embedded
@@ -703,7 +765,8 @@ export default function ProjectEstimateEditor({
       <EstimateSectionTable category="WORK" title="الأعمال" icon={<HardHat style={{ width: '18px', height: '18px' }} />}
         lines={workLines} lineIndices={workIndices} frameworkItems={frameworkItems} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
-        onRemove={removeLine} onAdd={() => addLine('WORK')} />
+        onRemove={removeLine} onAdd={() => addLine('WORK')}
+        onImport={readOnly ? undefined : kind => openImport('WORK', kind)} />
 
       <div style={{ marginTop: '16px', padding: '14px 18px', borderRadius: '12px', background: 'linear-gradient(135deg, #eef2ff, #eff6ff)', border: '2px solid #c7d2fe', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
@@ -713,7 +776,7 @@ export default function ProjectEstimateEditor({
             <span style={{ color: '#6b7280' }}>مجموع البنود: <strong>{grandTotal.toLocaleString('ar-SA')}</strong> ر.س</span>
           </div>
           <div style={{ fontWeight: 900, fontSize: '1.05rem' }}>
-            الإجمالي المعتمد: {effectiveTotal.toLocaleString('ar-SA')} ر.س
+            الإجمالي المعتمد للمستخلص: {effectiveTotal.toLocaleString('ar-SA')} ر.س
           </div>
           {!readOnly && (
             <button onClick={handleSave} disabled={saving} className="btn btn-primary">
@@ -733,7 +796,7 @@ export default function ProjectEstimateEditor({
                   if (e.target.checked && !totalOverride) setTotalOverride(String(grandTotal))
                 }}
               />
-              تعديل الإجمالي يدوياً (يُحدّث القيمة التقديرية في مرحلة البدء)
+              تعديل الإجمالي يدوياً (يُحدّث القيمة التقديرية والمستخلص)
             </label>
             {useOverride && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
@@ -763,9 +826,15 @@ export default function ProjectEstimateEditor({
               </div>
             )}
             <p style={{ margin: '8px 0 0', fontSize: '0.72rem', color: '#6b7280' }}>
-              القيمة التقديرية في مرحلة البدء = إجمالي المقايسة — لا حاجة لإدخالها مرتين
+              الإجمالي المعتمد (تلقائي من البنود أو معدّل يدوياً) هو أساس المستخلص والقيمة التقديرية في مرحلة البدء
             </p>
           </div>
+        )}
+
+        {!readOnly && !useOverride && (
+          <p style={{ margin: 0, fontSize: '0.72rem', color: '#4338ca' }}>
+            الإجمالي المعتمد للمستخلص = مجموع البنود ({grandTotal.toLocaleString('ar-SA')} ر.س)
+          </p>
         )}
 
         {readOnly && totalDiffersFromLines && totalNote && (
