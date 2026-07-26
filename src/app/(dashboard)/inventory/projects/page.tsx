@@ -4,21 +4,32 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
-import { supabase } from '@/lib/supabase'
-import { fetchCustodyProjectIds } from '@/lib/project-custody-service'
+import { fetchCustodyProjectsList, type CustodyProjectListRow } from '@/lib/project-custody-service'
 import { FolderOpen, Search, RotateCcw, Eye } from 'lucide-react'
 
-type Project = {
-  id: number
-  name: string
-  code?: string | null
-  status?: string
+const COUNT_COL: Record<string, string> = {
+  receive: '#0ea77b',
+  issue: '#c81e1e',
+  return_client: '#e6820a',
+  return_site: '#1a56db',
+}
+
+function CountCell({ value, color }: { value: number; color: string }) {
+  return (
+    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+      {value > 0 ? (
+        <span style={{ fontWeight: 800, color }} dir="ltr">{value}</span>
+      ) : (
+        <span style={{ color: '#cbd5e1' }}>—</span>
+      )}
+    </td>
+  )
 }
 
 export default function InventoryProjectsPage() {
   const { tenant, activeBranch } = useStore()
 
-  const [projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<CustodyProjectListRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
@@ -27,35 +38,8 @@ export default function InventoryProjectsPage() {
   async function loadBase() {
     if (!tenant) return
     setLoading(true)
-
-    const custodyProjectIds = await fetchCustodyProjectIds(tenant.id)
-    const custodyIds = new Set(custodyProjectIds)
-
-    const { data: allProjects } = await supabase.from('projects')
-      .select('id, name, code, status, branch_id')
-      .eq('tenant_id', tenant.id).order('name')
-
-    let filtered = allProjects || []
-    if (activeBranch?.id) {
-      filtered = filtered.filter(p => p.branch_id === activeBranch.id || custodyIds.has(p.id))
-    }
-
-    const projList = filtered
-      .filter(p => custodyIds.has(p.id) || p.status !== 'مكتمل')
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        code: p.code,
-        status: p.status,
-      }))
-      .sort((a, b) => {
-        const aC = custodyIds.has(a.id) ? 1 : 0
-        const bC = custodyIds.has(b.id) ? 1 : 0
-        if (bC !== aC) return bC - aC
-        return (a.code || a.name).localeCompare(b.code || b.name, 'ar')
-      })
-
-    setProjects(projList)
+    const list = await fetchCustodyProjectsList(tenant.id, activeBranch?.id ?? null)
+    setProjects(list)
     setLoading(false)
   }
 
@@ -71,6 +55,8 @@ export default function InventoryProjectsPage() {
     </div>
   )
 
+  const headers = ['رقم المشروع', 'استلام', 'صرف', 'إرجاع', 'مرتجع', '']
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
@@ -78,7 +64,7 @@ export default function InventoryProjectsPage() {
           <FolderOpen style={{ width: '22px', height: '22px', color: '#0f766e' }} /> عهدة المشاريع
         </h1>
         <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>
-          اضغط 👁 لعرض عهدة المشروع وأذوناته
+          اضغط 👁 لعرض تفاصيل العهدة والأذون
         </p>
       </div>
 
@@ -99,12 +85,15 @@ export default function InventoryProjectsPage() {
           <div style={{ fontWeight: 600 }}>لا توجد مشاريع عليها عهدة</div>
         </div>
       ) : (
-        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '620px' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['رقم المشروع', 'الحالة', ''].map(h => (
-                  <th key={h || 'action'} style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                {headers.map(h => (
+                  <th key={h || 'action'} style={{
+                    padding: '11px 12px', textAlign: h && h !== 'رقم المشروع' ? 'center' : 'right',
+                    fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
+                  }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -119,11 +108,10 @@ export default function InventoryProjectsPage() {
                       <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{proj.name}</div>
                     )}
                   </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    {proj.status ? (
-                      <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>{proj.status}</span>
-                    ) : '—'}
-                  </td>
+                  <CountCell value={proj.voucher_counts.receive} color={COUNT_COL.receive} />
+                  <CountCell value={proj.voucher_counts.issue} color={COUNT_COL.issue} />
+                  <CountCell value={proj.voucher_counts.return_client} color={COUNT_COL.return_client} />
+                  <CountCell value={proj.voucher_counts.return_site} color={COUNT_COL.return_site} />
                   <td style={{ padding: '12px 16px', textAlign: 'left', width: '56px' }}>
                     <Link href={`/inventory/projects/${proj.id}`} title="عرض العهدة"
                       style={{

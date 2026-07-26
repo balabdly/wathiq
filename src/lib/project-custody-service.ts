@@ -137,6 +137,8 @@ type PlannedLine = {
 
 type LedgerRow = {
   id: number
+  project_id?: number | null
+  project_name?: string | null
   type: string
   movement_category?: string | null
   mat_name: string
@@ -476,6 +478,83 @@ export async function fetchCustodyProjectIds(tenantId: string): Promise<number[]
   for (const row of pmRows || []) ids.add(row.project_id as number)
   for (const row of ledgerRows || []) if (row.project_id) ids.add(row.project_id as number)
   return Array.from(ids)
+}
+
+export type CustodyProjectListRow = {
+  id: number
+  name: string
+  code?: string | null
+  voucher_counts: CustodyVoucherSummary['counts']
+}
+
+const LEDGER_VOUCHER_SELECT = 'id, project_id, project_name, type, movement_category, is_loan, txn_number, created_at, wh_name, mat_name, unit, qty, booking_no, exit_permit_no'
+
+function resolveLedgerProjectId(
+  row: { project_id?: number | null; project_name?: string | null },
+  nameToId: Map<string, number>,
+): number | null {
+  if (row.project_id) return row.project_id as number
+  if (row.project_name) return nameToId.get(row.project_name) ?? null
+  return null
+}
+
+/** قائمة المشاريع مع عدّادات الأذون — للصفحة الرئيسية */
+export async function fetchCustodyProjectsList(
+  tenantId: string,
+  branchId?: number | null,
+): Promise<CustodyProjectListRow[]> {
+  const custodyIds = await fetchCustodyProjectIds(tenantId)
+  const custodyIdSet = new Set(custodyIds)
+
+  const { data: allProjects } = await supabase.from('projects')
+    .select('id, name, code, status, branch_id')
+    .eq('tenant_id', tenantId)
+    .order('name')
+
+  let filtered = allProjects || []
+  if (branchId) {
+    filtered = filtered.filter(p => p.branch_id === branchId || custodyIdSet.has(p.id))
+  }
+
+  const projects = filtered.filter(p => custodyIdSet.has(p.id) || p.status !== 'مكتمل')
+  if (projects.length === 0) return []
+
+  const projectIds = projects.map(p => p.id)
+  const projectNames = projects.map(p => p.name)
+  const nameToId = new Map(projects.map(p => [p.name, p.id]))
+
+  const [{ data: byId }, { data: byName }] = await Promise.all([
+    supabase.from('stock_ledger').select(LEDGER_VOUCHER_SELECT)
+      .eq('tenant_id', tenantId).in('project_id', projectIds),
+    supabase.from('stock_ledger').select(LEDGER_VOUCHER_SELECT)
+      .eq('tenant_id', tenantId).in('project_name', projectNames).is('project_id', null),
+  ])
+
+  const ledgerByProject = new Map<number, LedgerRow[]>()
+  const seen = new Set<number>()
+  for (const row of [...(byId || []), ...(byName || [])] as LedgerRow[]) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    const pid = resolveLedgerProjectId(row, nameToId)
+    if (!pid) continue
+    const list = ledgerByProject.get(pid) || []
+    list.push(row)
+    ledgerByProject.set(pid, list)
+  }
+
+  return projects
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      voucher_counts: buildCustodyVouchersFromLedger(ledgerByProject.get(p.id) || []).counts,
+    }))
+    .sort((a, b) => {
+      const aHas = custodyIdSet.has(a.id) ? 1 : 0
+      const bHas = custodyIdSet.has(b.id) ? 1 : 0
+      if (bHas !== aHas) return bHas - aHas
+      return (a.code || a.name).localeCompare(b.code || b.name, 'ar')
+    })
 }
 
 export async function fetchProjectCustodyPageData(

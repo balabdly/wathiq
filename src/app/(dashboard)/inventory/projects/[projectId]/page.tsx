@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, ChevronDown, ChevronUp, Download, X } from 'lucide-react'
+import { ArrowRight, Download, Eye, Printer, X } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
+import { printOperationReceipt } from '@/app/(dashboard)/inventory/materials/opsShared'
 import {
   fetchProjectCustodyPageData,
   type CustodyVoucherDoc,
@@ -24,11 +25,25 @@ const TD: React.CSSProperties = {
   padding: '10px 14px', borderBottom: '1px solid #f1f5f9',
 }
 
-const VOUCHER_KIND_UI: Record<CustodyVoucherKind, { label: string; short: string; color: string; bg: string }> = {
-  receive: { label: 'أذون الاستلام', short: 'استلام', color: '#0ea77b', bg: '#ecfdf5' },
-  issue: { label: 'أذون الصرف', short: 'صرف', color: '#c81e1e', bg: '#fef2f2' },
-  return_client: { label: 'أذون الإرجاع', short: 'إرجاع', color: '#e6820a', bg: '#fffbeb' },
-  return_site: { label: 'مرتجع من الموقع', short: 'مرتجع', color: '#1a56db', bg: '#eff6ff' },
+const VOUCHER_KIND_UI: Record<CustodyVoucherKind, { label: string; short: string; color: string; bg: string; printType: string }> = {
+  receive: { label: 'أذون الاستلام', short: 'استلام', color: '#0ea77b', bg: '#ecfdf5', printType: 'استلام' },
+  issue: { label: 'أذون الصرف', short: 'صرف', color: '#c81e1e', bg: '#fef2f2', printType: 'صرف' },
+  return_client: { label: 'أذون الإرجاع', short: 'إرجاع', color: '#e6820a', bg: '#fffbeb', printType: 'إرجاع للعميل' },
+  return_site: { label: 'مرتجع من الموقع', short: 'مرتجع', color: '#1a56db', bg: '#eff6ff', printType: 'مرتجع موقع' },
+}
+
+function printCustodyVoucher(doc: CustodyVoucherDoc, projectName: string) {
+  const ui = VOUCHER_KIND_UI[doc.kind]
+  printOperationReceipt({
+    type: ui.printType,
+    warehouseName: doc.wh_name,
+    projectName,
+    date: doc.date.split('T')[0],
+    rows: doc.lines.map(l => ({ name: l.mat_name, unit: l.unit, qty: l.qty, note: '' })),
+    bookingNo: doc.booking_no || '',
+    exitPermitNo: doc.exit_permit_no || '',
+    txnNumber: doc.legacy ? '' : doc.no,
+  })
 }
 
 function VoucherCountChip({
@@ -39,11 +54,11 @@ function VoucherCountChip({
     <button type="button" onClick={onClick} disabled={count === 0}
       style={{
         display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-        padding: '8px 12px', borderRadius: '10px', cursor: count > 0 ? 'pointer' : 'default',
+        padding: '8px 14px', borderRadius: '10px', cursor: count > 0 ? 'pointer' : 'default',
         border: `1px solid ${active ? ui.color : '#e2e8f0'}`,
         background: active ? ui.bg : 'white',
         opacity: count > 0 ? 1 : 0.45,
-        minWidth: '88px',
+        minWidth: '80px',
       }}>
       <span style={{ fontSize: '0.65rem', color: 'var(--text3)', fontWeight: 600 }}>{ui.short}</span>
       <span style={{ fontSize: '1.1rem', fontWeight: 800, color: ui.color }} dir="ltr">{count}</span>
@@ -52,14 +67,14 @@ function VoucherCountChip({
 }
 
 function VouchersPanel({
-  title, docs, color, onClose,
-}: { title: string; docs: CustodyVoucherDoc[]; color: string; onClose: () => void }) {
-  const [openDoc, setOpenDoc] = useState<string | null>(docs[0]?.no ?? null)
+  title, docs, color, projectName, onClose,
+}: { title: string; docs: CustodyVoucherDoc[]; color: string; projectName: string; onClose: () => void }) {
+  const [viewDoc, setViewDoc] = useState<string | null>(null)
 
   return (
     <div style={{
       background: 'white', border: '1px solid var(--border)', borderRadius: '12px',
-      overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
+      overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
     }}>
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -73,25 +88,44 @@ function VouchersPanel({
       {docs.length === 0 ? (
         <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.82rem' }}>لا توجد أذون</div>
       ) : (
-        <div style={{ maxHeight: '360px', overflow: 'auto' }}>
+        <div style={{ maxHeight: '420px', overflow: 'auto' }}>
           {docs.map(doc => {
-            const open = openDoc === doc.no
+            const viewing = viewDoc === doc.no
             return (
               <div key={doc.no} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <button type="button" onClick={() => setOpenDoc(open ? null : doc.no)}
-                  style={{
-                    width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '12px 16px', background: open ? '#fafbff' : 'white', border: 'none', cursor: 'pointer', textAlign: 'right',
-                  }}>
-                  <div>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 16px', background: viewing ? '#fafbff' : 'white', gap: '10px',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: '0.82rem' }} dir="ltr">{doc.no}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '3px' }}>
                       {fmtDate(doc.date)} · {doc.wh_name} · {doc.lines.length} مادة
                     </div>
                   </div>
-                  {open ? <ChevronUp style={{ width: '16px', color: 'var(--text3)' }} /> : <ChevronDown style={{ width: '16px', color: 'var(--text3)' }} />}
-                </button>
-                {open && (
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                    <button type="button" title="عرض" onClick={() => setViewDoc(viewing ? null : doc.no)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '32px', height: '32px', borderRadius: '8px',
+                        border: `1px solid ${viewing ? color : '#e2e8f0'}`,
+                        background: viewing ? `${color}11` : 'white',
+                        color: viewing ? color : 'var(--text3)', cursor: 'pointer',
+                      }}>
+                      <Eye style={{ width: '15px', height: '15px' }} />
+                    </button>
+                    <button type="button" title="طباعة" onClick={() => printCustodyVoucher(doc, projectName)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '32px', height: '32px', borderRadius: '8px',
+                        border: '1px solid #e2e8f0', background: 'white',
+                        color: 'var(--text3)', cursor: 'pointer',
+                      }}>
+                      <Printer style={{ width: '15px', height: '15px' }} />
+                    </button>
+                  </div>
+                </div>
+                {viewing && (
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', background: '#fafbff' }}>
                     <thead>
                       <tr>
@@ -202,14 +236,9 @@ export default function ProjectCustodyDetailPage() {
             {data.project.client_name && <span>العميل: <strong>{data.project.client_name}</strong></span>}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <Link href="/inventory/movements" className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
-            سجل الحركات ←
-          </Link>
-          <button onClick={exportCsv} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
-            <Download style={{ width: '14px', height: '14px' }} /> Excel
-          </button>
-        </div>
+        <button onClick={exportCsv} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+          <Download style={{ width: '14px', height: '14px' }} /> Excel
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -229,6 +258,7 @@ export default function ProjectCustodyDetailPage() {
           title={openTitle}
           docs={openDocs}
           color={openColor}
+          projectName={data.project.name}
           onClose={() => setOpenVoucherKind(null)}
         />
       )}
@@ -308,10 +338,6 @@ export default function ProjectCustodyDetailPage() {
           </div>
         </>
       )}
-
-      <p style={{ fontSize: '0.72rem', color: 'var(--text3)', margin: 0 }}>
-        التواريخ والتفاصيل الكاملة → <Link href="/inventory/movements" style={{ color: '#1a56db' }}>حركات المخزون</Link>
-      </p>
     </div>
   )
 }
