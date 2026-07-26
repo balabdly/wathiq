@@ -150,6 +150,32 @@ export function resolveWarehouseMaterialId(
   return null
 }
 
+export type WarehouseMaterialMatchResult = {
+  material_id: number | null
+  matched: boolean
+  note: string | null
+}
+
+const WAREHOUSE_MISSING_NOTE = '⚠ المادة غير مضافة مسبقاً في المستودع'
+
+/** مقارنة سطر مواد (مقايسة / استيراد) مع كatalog المستودع */
+export function matchLineToWarehouseMaterial(
+  materials: WarehouseMaterialLookup[],
+  line: { material_id?: number | null; description: string; catalog_no?: string | null; item_code?: string | null },
+): WarehouseMaterialMatchResult {
+  const catalogNo = line.catalog_no ?? line.item_code ?? null
+  if (!line.description.trim() && !String(catalogNo || '').trim()) {
+    return { material_id: null, matched: false, note: null }
+  }
+  const materialId = resolveWarehouseMaterialId(materials, {
+    material_id: line.material_id ?? null,
+    description: line.description,
+    catalog_no: catalogNo,
+  })
+  if (materialId) return { material_id: materialId, matched: true, note: null }
+  return { material_id: null, matched: false, note: WAREHOUSE_MISSING_NOTE }
+}
+
 export async function fetchPlanningMaterialsWarehouseStatus(
   tenantId: string,
   projectId: number,

@@ -11,6 +11,7 @@ import {
   boqImportSummary,
   mergeBoqLines,
 } from '@/lib/project-boq-import'
+import { matchLineToWarehouseMaterial, type WarehouseMaterialLookup } from '@/lib/planning-materials-warehouse'
 
 export type BoqImportKind = 'excel' | 'pdf' | 'image'
 
@@ -58,16 +59,40 @@ const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }>
   manual:  { label: 'يدوي', color: '#6b7280', bg: '#f3f4f6' },
 }
 
+const WAREHOUSE_STYLE = {
+  found: { label: '✓ موجود بالمستودع', color: '#0ea77b', bg: '#ecfdf5' },
+  missing: { label: 'غير مضافة', color: '#c81e1e', bg: '#fef2f2' },
+}
+
+function enrichImportLinesWithWarehouse(lines: BoqImportLine[], materials: WarehouseMaterialLookup[]): BoqImportLine[] {
+  return lines.map(line => {
+    const match = matchLineToWarehouseMaterial(materials, {
+      description: line.description,
+      item_code: line.item_code,
+      material_id: line.warehouse_material_id,
+    })
+    return {
+      ...line,
+      warehouse_material_id: match.material_id,
+      warehouse_note: match.note,
+    }
+  })
+}
+
 export default function ImportQuantitiesModal({
   importKind,
   frameworkItems,
   existingLines,
+  lineCategory = 'WORK',
+  warehouseMaterials,
   onClose,
   onApply,
 }: {
   importKind: BoqImportKind
   frameworkItems: FrameworkItemRef[]
   existingLines: BoqImportLine[]
+  lineCategory?: 'MATERIAL' | 'WORK'
+  warehouseMaterials?: WarehouseMaterialLookup[]
   onClose: () => void
   onApply: (lines: BoqImportLine[]) => void
 }) {
@@ -99,13 +124,21 @@ export default function ImportQuantitiesModal({
         setProgress(pct)
         setProgressStatus(status)
       })
-      const valid = lines.filter(l => !l.importErrors?.length || l.item_code || l.description)
+      let valid = lines.filter(l => !l.importErrors?.length || l.item_code || l.description)
+      if (lineCategory === 'MATERIAL' && warehouseMaterials?.length) {
+        valid = enrichImportLinesWithWarehouse(valid, warehouseMaterials)
+      }
       if (valid.length === 0) {
         toast.error('لم يُعثر على بنود صالحة')
         setPreview([])
       } else {
         setPreview(valid)
-        toast.success(`تم استخراج ${valid.length} بند — راجع قبل التطبيق`)
+        const missingWh = valid.filter(l => l.warehouse_note).length
+        if (lineCategory === 'MATERIAL' && missingWh > 0) {
+          toast(`تم استخراج ${valid.length} مادة — ⚠ ${missingWh} غير مضافة في المستودع`, { duration: 6000, icon: '⚠️' })
+        } else {
+          toast.success(`تم استخراج ${valid.length} بند — راجع قبل التطبيق`)
+        }
       }
     } catch (err: any) {
       toast.error(err.message || 'فشل قراءة الملف')
@@ -148,7 +181,10 @@ export default function ImportQuantitiesModal({
 
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem', color: '#1a56db', lineHeight: 1.6 }}>
-            {cfg.hint} البنود الناقصة يمكن إضافتها يدوياً بعد التطبيق.
+            {lineCategory === 'MATERIAL'
+              ? 'يُقارن كل بند مواد مع كatalog المستودع — المواد غير المضافة تظهر بملاحظة تحذيرية.'
+              : cfg.hint}{' '}
+            البنود الناقصة يمكن إضافتها يدوياً بعد التطبيق.
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -193,8 +229,22 @@ export default function ImportQuantitiesModal({
           {summary && (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '0.78rem' }}>
               <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#eff6ff', color: '#1a56db' }}>{summary.total} بند</span>
-              <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#ecfdf5', color: '#0ea77b' }}>{summary.matched} مطابق</span>
-              <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#fffbeb', color: '#e6820a' }}>{summary.review} للمراجعة</span>
+              {lineCategory === 'WORK' && (
+                <>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#ecfdf5', color: '#0ea77b' }}>{summary.matched} مطابق</span>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#fffbeb', color: '#e6820a' }}>{summary.review} للمراجعة</span>
+                </>
+              )}
+              {lineCategory === 'MATERIAL' && preview.length > 0 && (
+                <>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#ecfdf5', color: '#0ea77b' }}>
+                    {preview.filter(l => l.warehouse_material_id).length} موجود بالمستودع
+                  </span>
+                  <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#fef2f2', color: '#c81e1e' }}>
+                    {preview.filter(l => l.warehouse_note).length} غير مضافة
+                  </span>
+                </>
+              )}
               {mergeMode !== 'replace_all' && existingLines.length > 0 && (
                 <span style={{ padding: '4px 10px', borderRadius: '20px', background: '#f3f4f6', color: '#6b7280' }}>
                   بعد الدمج: {mergedPreview.length} بند
@@ -208,7 +258,10 @@ export default function ImportQuantitiesModal({
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg2)' }}>
-                    {['الحالة', 'كود البند', 'الوصف', 'كمية', 'وحدة', 'سعر'].map(h => (
+                    {(lineCategory === 'MATERIAL'
+                      ? ['المستودع', 'SEC#', 'الوصف', 'كمية', 'وحدة']
+                      : ['الحالة', 'كود البند', 'الوصف', 'كمية', 'وحدة', 'سعر']
+                    ).map(h => (
                       <th key={h} style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)' }}>{h}</th>
                     ))}
                   </tr>
@@ -216,18 +269,31 @@ export default function ImportQuantitiesModal({
                 <tbody>
                   {preview.slice(0, 50).map((l, i) => {
                     const st = STATUS_STYLE[l.matchStatus]
+                    const wh = l.warehouse_material_id ? WAREHOUSE_STYLE.found : l.warehouse_note ? WAREHOUSE_STYLE.missing : null
                     return (
                       <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 10px' }}>
-                          <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '12px', background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>
-                            {l.importErrors?.length ? '⚠️' : st.label}
-                          </span>
-                        </td>
+                        {lineCategory === 'MATERIAL' ? (
+                          <td style={{ padding: '6px 10px' }}>
+                            {wh ? (
+                              <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '12px', background: wh.bg, color: wh.color, whiteSpace: 'nowrap' }}>
+                                {l.warehouse_note || wh.label}
+                              </span>
+                            ) : '—'}
+                          </td>
+                        ) : (
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '12px', background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>
+                              {l.importErrors?.length ? '⚠️' : st.label}
+                            </span>
+                          </td>
+                        )}
                         <td style={{ padding: '6px 10px', fontFamily: 'monospace' }} dir="ltr">{l.item_code || '—'}</td>
-                        <td style={{ padding: '6px 10px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.description}</td>
+                        <td style={{ padding: '6px 10px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={l.description}>{l.description}</td>
                         <td style={{ padding: '6px 10px' }} dir="ltr">{l.qty}</td>
                         <td style={{ padding: '6px 10px' }}>{l.unit}</td>
-                        <td style={{ padding: '6px 10px', color: '#0ea77b' }} dir="ltr">{l.unit_price ? l.unit_price.toLocaleString('ar-SA') : '—'}</td>
+                        {lineCategory === 'WORK' && (
+                          <td style={{ padding: '6px 10px', color: '#0ea77b' }} dir="ltr">{l.unit_price ? l.unit_price.toLocaleString('ar-SA') : '—'}</td>
+                        )}
                       </tr>
                     )
                   })}

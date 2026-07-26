@@ -12,6 +12,9 @@ export type BoqImportLine = {
   source: BoqLineSource
   matchStatus: BoqMatchStatus
   importErrors?: string[]
+  /** ملاحظة مطابقة المستودع (مواد المقايسة) */
+  warehouse_note?: string | null
+  warehouse_material_id?: number | null
 }
 
 export type FrameworkItemRef = {
