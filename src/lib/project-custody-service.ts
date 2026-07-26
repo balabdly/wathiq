@@ -67,6 +67,39 @@ export type ProjectCustodyMeta = {
   reservation_number?: string | null
 }
 
+export type CustodyVoucherKind = 'receive' | 'issue' | 'return_client' | 'return_site'
+
+export type CustodyVoucherLine = {
+  mat_name: string
+  unit: string
+  qty: number
+}
+
+export type CustodyVoucherDoc = {
+  no: string
+  legacy: boolean
+  date: string
+  wh_name: string
+  kind: CustodyVoucherKind
+  kind_label: string
+  booking_no?: string | null
+  exit_permit_no?: string | null
+  lines: CustodyVoucherLine[]
+}
+
+export type CustodyVoucherSummary = {
+  receive: CustodyVoucherDoc[]
+  issue: CustodyVoucherDoc[]
+  return_client: CustodyVoucherDoc[]
+  return_site: CustodyVoucherDoc[]
+  counts: {
+    receive: number
+    issue: number
+    return_client: number
+    return_site: number
+  }
+}
+
 export type ProjectCustodyDetail = {
   received: CustodyMaterialRow[]
   notYetReceived: CustodyPendingReceiveRow[]
@@ -79,10 +112,12 @@ export type ProjectCustodyPageData = ProjectCustodyDetail & {
   project: {
     id: number
     name: string
+    code?: string | null
     status?: string | null
     location?: string | null
     client_name?: string | null
   }
+  vouchers: CustodyVoucherSummary
   totals: {
     received: number
     issued: number
@@ -337,6 +372,68 @@ function buildMetaFromLedger(ledgerRows: LedgerRow[], reservationNumber?: string
   }
 }
 
+function voucherKindFromRow(row: LedgerRow): CustodyVoucherKind | null {
+  const kind = classifyCustodyMovement(row.type, row.movement_category, row.is_loan)
+  return kind === 'other' ? null : kind
+}
+
+export function buildCustodyVouchersFromLedger(ledgerRows: LedgerRow[]): CustodyVoucherSummary {
+  const grouped = new Map<string, LedgerRow[]>()
+
+  for (const row of ledgerRows) {
+    if (!voucherKindFromRow(row)) continue
+    const key = row.txn_number || `legacy-${row.id}`
+    const list = grouped.get(key) || []
+    list.push(row)
+    grouped.set(key, list)
+  }
+
+  const buckets: Record<CustodyVoucherKind, CustodyVoucherDoc[]> = {
+    receive: [],
+    issue: [],
+    return_client: [],
+    return_site: [],
+  }
+
+  for (const [key, rows] of Array.from(grouped.entries())) {
+    const first = rows[0]
+    const kind = voucherKindFromRow(first)
+    if (!kind) continue
+    buckets[kind].push({
+      no: first.txn_number || key,
+      legacy: !first.txn_number,
+      date: first.created_at,
+      wh_name: first.wh_name || '—',
+      kind,
+      kind_label: KIND_LABELS[kind],
+      booking_no: first.booking_no,
+      exit_permit_no: first.exit_permit_no,
+      lines: rows.map((r: LedgerRow) => ({
+        mat_name: r.mat_name,
+        unit: r.unit || 'قطعة',
+        qty: num(r.qty),
+      })),
+    })
+  }
+
+  for (const kind of Object.keys(buckets) as CustodyVoucherKind[]) {
+    buckets[kind].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }
+
+  return {
+    receive: buckets.receive,
+    issue: buckets.issue,
+    return_client: buckets.return_client,
+    return_site: buckets.return_site,
+    counts: {
+      receive: buckets.receive.length,
+      issue: buckets.issue.length,
+      return_client: buckets.return_client.length,
+      return_site: buckets.return_site.length,
+    },
+  }
+}
+
 function buildNotYetReceived(
   planned: { lines: PlannedLine[]; has_boq: boolean },
   materials: CustodyMaterialRow[],
@@ -386,7 +483,7 @@ export async function fetchProjectCustodyPageData(
   projectId: number,
 ): Promise<ProjectCustodyPageData | null> {
   const [{ data: project }, { data: planning }, { data: pmRows }, planned] = await Promise.all([
-    supabase.from('projects').select('id, name, status, location, client_name').eq('tenant_id', tenantId).eq('id', projectId).maybeSingle(),
+    supabase.from('projects').select('id, name, code, status, location, client_name').eq('tenant_id', tenantId).eq('id', projectId).maybeSingle(),
     supabase.from('project_planning').select('material_reservation_number').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
     supabase.from('project_materials')
       .select('material_id, qty_balance, material:materials(name, unit, catalog_no), warehouse:warehouses(name)')
@@ -417,6 +514,7 @@ export async function fetchProjectCustodyPageData(
 
   const notYetReceived = buildNotYetReceived(planned, received)
   const meta = buildMetaFromLedger(ledgerRows, planning?.material_reservation_number)
+  const vouchers = buildCustodyVouchersFromLedger(ledgerRows)
 
   const totals = received.reduce(
     (acc, m) => ({
@@ -433,6 +531,7 @@ export async function fetchProjectCustodyPageData(
     project: {
       id: project.id,
       name: project.name,
+      code: project.code,
       status: project.status,
       location: project.location,
       client_name: project.client_name,
@@ -442,6 +541,7 @@ export async function fetchProjectCustodyPageData(
     pendingInWarehouse,
     has_boq: planned.has_boq || planned.lines.length > 0,
     meta,
+    vouchers,
     totals,
   }
 }

@@ -6,15 +6,13 @@ import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { fetchCustodyProjectIds } from '@/lib/project-custody-service'
-import {
-  FolderOpen, Search, Package, AlertTriangle, RotateCcw, Eye,
-} from 'lucide-react'
-
-const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
+import { FolderOpen, Search, RotateCcw, Eye } from 'lucide-react'
 
 type Project = {
-  id: number; name: string; status?: string; location?: string
-  material_count?: number; balance_count?: number
+  id: number
+  name: string
+  code?: string | null
+  status?: string
 }
 
 export default function InventoryProjectsPage() {
@@ -23,7 +21,6 @@ export default function InventoryProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, withBalance: 0 })
 
   useEffect(() => { if (tenant) loadBase() }, [tenant?.id, activeBranch?.id])
 
@@ -31,23 +28,11 @@ export default function InventoryProjectsPage() {
     if (!tenant) return
     setLoading(true)
 
-    const [pmRes, custodyProjectIds] = await Promise.all([
-      supabase.from('project_materials').select('project_id, qty_balance').eq('tenant_id', tenant.id),
-      fetchCustodyProjectIds(tenant.id),
-    ])
-
-    const countByProject: Record<number, { count: number; balance: number }> = {}
-    for (const row of pmRes.data || []) {
-      const pid = row.project_id as number
-      if (!countByProject[pid]) countByProject[pid] = { count: 0, balance: 0 }
-      countByProject[pid].count++
-      if (Number(row.qty_balance) > 0) countByProject[pid].balance++
-    }
-
+    const custodyProjectIds = await fetchCustodyProjectIds(tenant.id)
     const custodyIds = new Set(custodyProjectIds)
 
     const { data: allProjects } = await supabase.from('projects')
-      .select('id, name, status, location, branch_id')
+      .select('id, name, code, status, branch_id')
       .eq('tenant_id', tenant.id).order('name')
 
     let filtered = allProjects || []
@@ -57,35 +42,28 @@ export default function InventoryProjectsPage() {
 
     const projList = filtered
       .filter(p => custodyIds.has(p.id) || p.status !== 'مكتمل')
-      .map((p: Project & { branch_id?: number }) => ({
+      .map(p => ({
         id: p.id,
         name: p.name,
+        code: p.code,
         status: p.status,
-        location: p.location,
-        material_count: countByProject[p.id]?.count ?? (custodyIds.has(p.id) ? 1 : 0),
-        balance_count: countByProject[p.id]?.balance ?? 0,
       }))
       .sort((a, b) => {
         const aC = custodyIds.has(a.id) ? 1 : 0
         const bC = custodyIds.has(b.id) ? 1 : 0
         if (bC !== aC) return bC - aC
-        return a.name.localeCompare(b.name, 'ar')
+        return (a.code || a.name).localeCompare(b.code || b.name, 'ar')
       })
 
-    const withBalance = (pmRes.data || []).filter(m => Number(m.qty_balance) > 0).length
-
     setProjects(projList)
-    setKpis({
-      totalProjects: projList.filter(p => custodyIds.has(p.id)).length || projList.length,
-      totalMaterials: pmRes.data?.length || 0,
-      withBalance,
-    })
     setLoading(false)
   }
 
-  const filtered = projects.filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()),
-  )
+  const filtered = projects.filter(p => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)
+  })
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}>
@@ -100,28 +78,14 @@ export default function InventoryProjectsPage() {
           <FolderOpen style={{ width: '22px', height: '22px', color: '#0f766e' }} /> عهدة المشاريع
         </h1>
         <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>
-          قائمة المشاريع — اضغط 👁 لعرض تفاصيل المواد والحركات ورقم الحجز
+          اضغط 👁 لعرض عهدة المشروع وأذوناته
         </p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px' }}>
-        {[
-          { label: 'مشاريع عليها عهدة', value: kpis.totalProjects, color: '#0f766e', bg: '#f0fdfa', icon: FolderOpen },
-          { label: 'إجمالي الأصناف', value: kpis.totalMaterials, color: '#1a56db', bg: '#eff6ff', icon: Package },
-          { label: 'أصناف برصيد بالمخزن', value: kpis.withBalance, color: '#c81e1e', bg: '#fef2f2', icon: AlertTriangle },
-        ].map(kpi => (
-          <div key={kpi.label} style={{ background: kpi.bg, border: `1px solid ${kpi.color}22`, borderRadius: '12px', padding: '14px' }}>
-            <kpi.icon style={{ width: '18px', height: '18px', color: kpi.color, marginBottom: '8px' }} />
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '3px' }}>{kpi.label}</div>
-          </div>
-        ))}
       </div>
 
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', maxWidth: '320px', flex: 1 }}>
           <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', color: 'var(--text3)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث باسم المشروع..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث برقم أو اسم المشروع..."
             className="input" style={{ paddingRight: '32px', fontSize: '0.82rem', width: '100%' }} />
         </div>
         <button onClick={loadBase} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
@@ -139,7 +103,7 @@ export default function InventoryProjectsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['المشروع', 'الحالة', 'أصناف', 'برصيد', ''].map(h => (
+                {['رقم المشروع', 'الحالة', ''].map(h => (
                   <th key={h || 'action'} style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
@@ -149,28 +113,25 @@ export default function InventoryProjectsPage() {
                 <tr key={proj.id} style={{ borderBottom: '1px solid #f1f5f9' }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>{proj.name}</td>
                   <td style={{ padding: '12px 16px' }}>
-                    {proj.status && (
-                      <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>{proj.status}</span>
+                    <div style={{ fontWeight: 700, fontFamily: 'monospace', color: '#1a56db' }} dir="ltr">{proj.code || '—'}</div>
+                    {!proj.code && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{proj.name}</div>
                     )}
                   </td>
-                  <td style={{ padding: '12px 16px' }} dir="ltr">{proj.material_count ?? 0}</td>
                   <td style={{ padding: '12px 16px' }}>
-                    {(proj.balance_count ?? 0) > 0 ? (
-                      <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700 }}>
-                        {proj.balance_count}
-                      </span>
-                    ) : <span style={{ color: '#94a3b8' }}>—</span>}
+                    {proj.status ? (
+                      <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>{proj.status}</span>
+                    ) : '—'}
                   </td>
-                  <td style={{ padding: '12px 16px', textAlign: 'left' }}>
-                    <Link href={`/inventory/projects/${proj.id}`}
+                  <td style={{ padding: '12px 16px', textAlign: 'left', width: '56px' }}>
+                    <Link href={`/inventory/projects/${proj.id}`} title="عرض العهدة"
                       style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '6px 12px', borderRadius: '8px', border: '1px solid #99f6e4',
-                        background: '#f0fdfa', color: '#0f766e', fontWeight: 700, fontSize: '0.75rem', textDecoration: 'none',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '34px', height: '34px', borderRadius: '8px', border: '1px solid #99f6e4',
+                        background: '#f0fdfa', color: '#0f766e', textDecoration: 'none',
                       }}>
-                      <Eye style={{ width: '14px', height: '14px' }} /> عرض
+                      <Eye style={{ width: '16px', height: '16px' }} />
                     </Link>
                   </td>
                 </tr>
