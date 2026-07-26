@@ -250,7 +250,7 @@ function buildMaterialsFromLedger(
   for (const row of ledgerRows) {
     const event = ledgerToEvent(row)
     const key = row.mat_name?.trim() || 'unknown'
-    const meta = [...materialMeta.values()].find(m => m.name === key)
+    const meta = Array.from(materialMeta.values()).find(m => m.name === key)
     const prev = byKey.get(key)
     const base: CustodyMaterialRow = prev || {
       key: `mat-${key}`,
@@ -283,7 +283,7 @@ function buildMaterialsFromLedger(
     byKey.set(key, base)
   }
 
-  byKey.forEach(row => {
+  Array.from(byKey.values()).forEach(row => {
     row.qty_balance = Math.max(0, row.qty_received - row.qty_issued - row.qty_returned_client)
   })
   return byKey

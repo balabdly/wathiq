@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowRight, Package, Clock, Warehouse, Undo2, Download,
-  FileText, Hash, User, MapPin, ChevronDown, ChevronUp,
+  User, MapPin, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { useStore } from '@/hooks/useStore'
 import {
