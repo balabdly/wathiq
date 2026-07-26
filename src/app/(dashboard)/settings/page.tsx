@@ -465,7 +465,7 @@ export default function SettingsCompanyPage() {
             { key: 'visits',    label: 'الزيارات',    options: ['list', 'cards'] },
             { key: 'tasks',     label: 'المهام',      options: ['list', 'cards', 'kanban'] },
             { key: 'employees', label: 'الموظفون',    options: ['list', 'cards'] },
-            { key: 'materials', label: 'المواد',      options: ['list', 'cards'] },
+            { key: 'materials', label: 'الأذون والأرصدة', options: ['list', 'cards'] },
           ].map(item => (
             <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
               <div>

@@ -77,9 +77,9 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
           <div>
             <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Package style={{ width: '20px', height: '20px', color: '#1a56db' }} />
-              المواد
+              الأذون والأرصدة
             </h1>
-            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>الأرصدة وأذون الاستلام (وارد) والصرف (صادر) والتحويل — تعريف الأصناف من المستودعات والأصناف</p>
+            <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>متابعة الأرصدة · أذون الاستلام · أذون الصرف · التحويل والاستعارة — تعريف الأصناف من المستودعات والأصناف</p>
           </div>
         </div>
 

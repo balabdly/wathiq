@@ -16,7 +16,7 @@ const SECTIONS = [
   { key: 'visits',    label: 'الزيارات',  icon: '🔍', options: ['list', 'cards'] as DisplayView[] },
   { key: 'tasks',     label: 'المهام',    icon: '✅', options: ['list', 'cards', 'kanban'] as DisplayView[] },
   { key: 'employees', label: 'الموظفون', icon: '👥', options: ['list', 'cards'] as DisplayView[] },
-  { key: 'materials', label: 'المواد',    icon: '📦', options: ['list', 'cards'] as DisplayView[] },
+  { key: 'materials', label: 'الأذون والأرصدة', icon: '📦', options: ['list', 'cards'] as DisplayView[] },
 ]
 
 export default function UserSettingsPage() {

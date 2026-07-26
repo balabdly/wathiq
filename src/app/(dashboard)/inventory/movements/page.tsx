@@ -257,7 +257,7 @@ export default function InventoryMovementsPage() {
           <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ArrowLeftRight style={{ width: '22px', height: '22px', color: '#0891b2' }} /> دفتر الحركات
           </h1>
-          <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>{todayStr} — كشف حركة الصنف على مستوى السطر (الأذون تُدار من صفحة المواد)</p>
+          <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>{todayStr} — كشف حركة الصنف على مستوى السطر (الأذون تُدار من الأذون والأرصدة)</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={printLedgerReport} className="btn btn-primary" style={{ fontSize: '0.82rem', background: '#0891b2' }}>
