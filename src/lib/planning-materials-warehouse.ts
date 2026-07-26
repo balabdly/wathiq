@@ -377,7 +377,7 @@ export async function checkReceivePlanningWarnings(
   }
 
   const warnings: ReceivePlanningWarning[] = []
-  for (const [materialId, { qty, name }] of merged) {
+  Array.from(merged.entries()).forEach(([materialId, { qty, name }]) => {
     const planned = plannedMap.get(materialId)?.planned ?? 0
     const already = receivedMap.get(materialId) ?? 0
     const totalAfter = already + qty
@@ -401,7 +401,7 @@ export async function checkReceivePlanningWarnings(
         kind: 'over_receive',
       })
     }
-  }
+  })
   return warnings
 }
 
