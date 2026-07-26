@@ -7,6 +7,11 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { UNITS, type Material } from '../materials/opsShared'
+import {
+  detectExcelImportFormat,
+  parseExcelMaterialRows,
+  type NormalizedMaterialImportRow,
+} from '@/lib/materials-excel-import'
 
 type WH = {
   id: number; name: string; location?: string
@@ -191,7 +196,8 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
     unit: 'قطعة', qty: '0', reorder: '0', source: 'خاص', location: '', notes: '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
-  const [importData, setImportData] = useState<any[]>([])
+  const [importData, setImportData] = useState<NormalizedMaterialImportRow[]>([])
+  const [importFormat, setImportFormat] = useState<'sec' | 'arabic' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function handleSave() {
@@ -231,19 +237,63 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
     if (!form.warehouse_id) { toast.error('اختر المستودع'); return }
     if (importData.length === 0) { toast.error('لا توجد بيانات للاستيراد'); return }
     setSaving(true)
-    const rows = importData.map(r => ({
-      tenant_id: tenantId, branch_id: branchId,
-      warehouse_id: Number(form.warehouse_id),
-      name: r['اسم المادة'] || r['name'] || '', unit: r['الوحدة'] || r['unit'] || 'قطعة',
-      catalog_no: r['رقم الكتالوج'] || r['catalog_no'] || null,
-      sec_number: r['رقم SEC'] || r['sec_number'] || null,
-      qty: Number(r['الكمية'] || r['qty'] || 0), reorder: Number(r['حد الأمان'] || r['reorder'] || 0),
-      source: 'خاص', is_active: true,
-    })).filter(r => r.name)
-    const { error } = await supabase.from('materials').insert(rows)
+
+    const whId = Number(form.warehouse_id)
+    const { data: existing } = await supabase.from('materials')
+      .select('id, name, sec_number')
+      .eq('tenant_id', tenantId).eq('warehouse_id', whId)
+
+    const bySec = new Map((existing || []).filter(m => m.sec_number).map(m => [String(m.sec_number), m]))
+    const byName = new Map((existing || []).map(m => [m.name, m]))
+
+    let added = 0
+    let updated = 0
+
+    for (const r of importData) {
+      const prev = (r.sec_number && bySec.get(r.sec_number)) || byName.get(r.name)
+      const payload = {
+        name: r.name,
+        unit: r.unit,
+        catalog_no: r.catalog_no,
+        sec_number: r.sec_number,
+        mat_code: r.mat_code,
+        item_code: r.item_code,
+        source: r.source,
+        reorder: r.reorder,
+        location: r.location,
+        is_active: true,
+      }
+
+      if (prev) {
+        const { error } = await supabase.from('materials').update(payload).eq('id', prev.id)
+        if (error) { toast.error(`تحديث "${r.name}": ${error.message}`); setSaving(false); return }
+        updated++
+      } else {
+        const { error } = await supabase.from('materials').insert({
+          ...payload,
+          tenant_id: tenantId,
+          branch_id: branchId,
+          warehouse_id: whId,
+          qty: r.qty,
+        })
+        if (error) {
+          if (error.message.includes('materials_unique_name_per_warehouse'))
+            toast.error(`⛔ "${r.name}" — الاسم مكرر في المستودع`)
+          else if (error.message.includes('materials_unique_sec_number'))
+            toast.error(`⛔ رقم SEC "${r.sec_number}" مستخدم`)
+          else
+            toast.error(`⛔ "${r.name}": ${error.message}`)
+          setSaving(false)
+          return
+        }
+        added++
+        byName.set(r.name, { id: -1, name: r.name, sec_number: r.sec_number })
+        if (r.sec_number) bySec.set(r.sec_number, { id: -1, name: r.name, sec_number: r.sec_number })
+      }
+    }
+
     setSaving(false)
-    if (error) { toast.error('خطأ: ' + error.message); return }
-    toast.success(`تم استيراد ${rows.length} مادة ✅`)
+    toast.success(`تم الاستيراد ✅ — أُضيف ${added}${updated ? ` | حُدّث ${updated}` : ''}`)
     onSave(); onClose()
   }
 
@@ -256,14 +306,16 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
         const data = new Uint8Array(ev.target?.result as ArrayBuffer)
         const wb   = XLSX.read(data, { type: 'array' })
         const ws   = wb.Sheets[wb.SheetNames[0]]
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        // تصفية الصفوف الفارغة وأسطر الملاحظات
-        const valid = rows.filter(r =>
-          r['اسم المادة'] && String(r['اسم المادة']).trim() &&
-          !String(r['اسم المادة']).startsWith('#')
-        )
+        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        const format = detectExcelImportFormat(rows)
+        const valid = parseExcelMaterialRows(rows)
+        setImportFormat(format)
         setImportData(valid)
-        toast.success(`تم قراءة ${valid.length} مادة ✅`)
+        toast.success(
+          format === 'sec'
+            ? `تم قراءة ${valid.length} مادة SEC (Item No + Description) ✅`
+            : `تم قراءة ${valid.length} مادة ✅`,
+        )
       } catch { toast.error('خطأ في قراءة الملف — تأكد أنه ملف Excel صحيح') }
     }
     reader.readAsArrayBuffer(file)
@@ -303,6 +355,11 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
       ['الكمية', 'لا', 'رقم', 'الكمية الافتتاحية — 0 افتراضياً'],
       ['حد الأمان', 'لا', 'رقم', 'تنبيه عند الوصول لهذا الحد'],
       ['الموقع في المستودع', 'لا', '—', 'مثال: رف A - قسم 1'],
+      ['', '', '', ''],
+      ['— قائمة SEC الرسمية —', '', '', ''],
+      ['Item No', 'نعم', '—', 'رقم الصنف (908101001)'],
+      ['Description', 'نعم', '—', 'اسم المادة بالإنجليزية'],
+      ['Unit', 'نعم', 'MTR / EA / KIT / ROLL', 'تُحوَّل تلقائياً للعربية'],
     ])
     wsInfo['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 55 }, { wch: 30 }]
     XLSX.utils.book_append_sheet(wb, wsInfo, 'تعليمات')
@@ -388,6 +445,10 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
           {tab === 'import' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+              <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: '8px', padding: '10px 14px', fontSize: '0.75rem', color: '#0f766e' }}>
+                يدعم ملف <strong>SE MAT.xlsx</strong> (أعمدة: Item No · Description · Unit) أو النموذج العربي — يُكتشف تلقائياً
+              </div>
+
               {/* خطوات الاستيراد */}
               <div style={{ background: '#f8fafc', border: '1px solid var(--border)', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text)', marginBottom: '2px' }}>خطوات الاستيراد:</div>
@@ -427,7 +488,7 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
 
               {importData.length > 0 && (
                 <div style={{ background: '#ecfdf5', border: '1px solid #86efac', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', color: '#0ea77b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  ✅ تم قراءة {importData.length} مادة — جاهزة للاستيراد
+                  ✅ {importFormat === 'sec' ? 'قائمة SEC' : 'النموذج العربي'} — {importData.length} مادة جاهزة للاستيراد
                 </div>
               )}
             </div>

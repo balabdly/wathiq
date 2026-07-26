@@ -53,14 +53,21 @@ function parseRows(filePath) {
   const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' })
   const rows = []
   const seenSec = new Set()
+  const nameCount = new Map()
 
   for (const r of raw) {
     const itemNo = String(r['Item No'] || r['item no'] || r['ITEM NO'] || '').trim()
-    const desc = String(r.Description || r['DESCRIPTION'] || r['description'] || '').trim()
+    let desc = String(r.Description || r['DESCRIPTION'] || r['description'] || '').trim()
     const unit = mapUnit(r.Unit || r['UNIT'])
     if (!itemNo || !desc) continue
     if (seenSec.has(itemNo)) continue
     seenSec.add(itemNo)
+
+    const base = desc
+    const count = (nameCount.get(base) || 0) + 1
+    nameCount.set(base, count)
+    if (count > 1) desc = `${base} [${itemNo}]`
+
     rows.push({
       name: desc,
       unit,
