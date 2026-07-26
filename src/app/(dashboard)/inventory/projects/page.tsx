@@ -69,15 +69,15 @@ function ProjectCustodyModal({
     const sections: string[][] = [
       ['═══ المواد المستلمة ═══'],
       ['المادة', 'الوحدة', 'مستلم', 'مصروف', 'مرجع للعميل', 'الرصيد'],
-      ...detail.received.map(r => [r.name, r.unit, r.qty_received, r.qty_issued, r.qty_returned, r.qty_balance]),
+      ...detail.received.map(r => [r.name, r.unit, String(r.qty_received), String(r.qty_issued), String(r.qty_returned), String(r.qty_balance)]),
       [],
       ['═══ غير المستلمة (حسب المقايسة) ═══'],
       ['المادة', 'الوحدة', 'مخطط', 'مستلم', 'متبقي'],
-      ...detail.notYetReceived.map(r => [r.description, r.unit, r.qty_planned, r.qty_received, r.qty_pending]),
+      ...detail.notYetReceived.map(r => [r.description, r.unit, String(r.qty_planned), String(r.qty_received), String(r.qty_pending)]),
       [],
       ['═══ متبقي للإرجاع للعميل ═══'],
       ['المادة', 'الوحدة', 'الرصيد'],
-      ...detail.pendingClientReturn.map(r => [r.name, r.unit, r.qty_balance]),
+      ...detail.pendingClientReturn.map(r => [r.name, r.unit, String(r.qty_balance)]),
     ]
     const csv = sections.map(r => r.join('\t')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'application/vnd.ms-excel;charset=utf-8' })
