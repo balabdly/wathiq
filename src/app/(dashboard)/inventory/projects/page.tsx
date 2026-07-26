@@ -7,22 +7,36 @@ import { useStore } from '@/hooks/useStore'
 import { fetchCustodyProjectsList, type CustodyProjectListRow } from '@/lib/project-custody-service'
 import { FolderOpen, Search, RotateCcw, Eye } from 'lucide-react'
 
-const COUNT_COL: Record<string, string> = {
-  receive: '#0ea77b',
-  issue: '#c81e1e',
-  return_client: '#e6820a',
-  return_site: '#1a56db',
+const COUNT_META = [
+  { key: 'receive' as const, label: 'استلام', color: '#0ea77b', bg: '#ecfdf5' },
+  { key: 'issue' as const, label: 'صرف', color: '#c81e1e', bg: '#fef2f2' },
+  { key: 'return_client' as const, label: 'إرجاع', color: '#e6820a', bg: '#fffbeb' },
+  { key: 'return_site' as const, label: 'مرتجع', color: '#1a56db', bg: '#eff6ff' },
+]
+
+const TH: React.CSSProperties = {
+  padding: '12px 14px',
+  fontWeight: 700,
+  color: '#64748b',
+  fontSize: '0.72rem',
+  borderBottom: '2px solid #e2e8f0',
+  whiteSpace: 'nowrap',
+  background: '#f8fafc',
 }
 
-function CountCell({ value, color }: { value: number; color: string }) {
+function CountBadge({ value, color, bg }: { value: number; color: string; bg: string }) {
+  if (value <= 0) {
+    return <span style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>—</span>
+  }
   return (
-    <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-      {value > 0 ? (
-        <span style={{ fontWeight: 800, color }} dir="ltr">{value}</span>
-      ) : (
-        <span style={{ color: '#cbd5e1' }}>—</span>
-      )}
-    </td>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      minWidth: '36px', height: '30px', padding: '0 10px',
+      borderRadius: '8px', fontWeight: 800, fontSize: '0.85rem',
+      background: bg, color, border: `1px solid ${color}33`,
+    }} dir="ltr">
+      {value}
+    </span>
   )
 }
 
@@ -55,8 +69,6 @@ export default function InventoryProjectsPage() {
     </div>
   )
 
-  const headers = ['رقم المشروع', 'استلام', 'صرف', 'إرجاع', 'مرتجع', '']
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
@@ -85,39 +97,72 @@ export default function InventoryProjectsPage() {
           <div style={{ fontWeight: 600 }}>لا توجد مشاريع عليها عهدة</div>
         </div>
       ) : (
-        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', minWidth: '620px' }}>
+        <div style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px', overflow: 'auto' }}>
+          <table style={{
+            width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px',
+            fontSize: '0.82rem', minWidth: '680px', tableLayout: 'fixed',
+          }}>
+            <colgroup>
+              <col style={{ width: '22%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '64px' }} />
+            </colgroup>
             <thead>
-              <tr style={{ background: '#f8fafc' }}>
-                {headers.map(h => (
-                  <th key={h || 'action'} style={{
-                    padding: '11px 12px', textAlign: h && h !== 'رقم المشروع' ? 'center' : 'right',
-                    fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
-                  }}>{h}</th>
+              <tr>
+                <th style={{ ...TH, textAlign: 'right', borderRadius: '0 10px 10px 0' }}>رقم المشروع</th>
+                {COUNT_META.map(c => (
+                  <th key={c.key} style={{ ...TH, textAlign: 'center' }}>{c.label}</th>
                 ))}
+                <th style={{ ...TH, textAlign: 'center', borderRadius: '10px 0 0 10px' }} />
               </tr>
             </thead>
             <tbody>
               {filtered.map(proj => (
-                <tr key={proj.id} style={{ borderBottom: '1px solid #f1f5f9' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 700, fontFamily: 'monospace', color: '#1a56db' }} dir="ltr">{proj.code || '—'}</div>
-                    {!proj.code && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px' }}>{proj.name}</div>
-                    )}
+                <tr key={proj.id}>
+                  <td style={{
+                    padding: '14px 16px', verticalAlign: 'middle',
+                    background: 'white', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0',
+                    borderRight: '1px solid #e2e8f0', borderRadius: '0 12px 12px 0',
+                  }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
+                      <span style={{
+                        display: 'inline-block', padding: '5px 12px', borderRadius: '8px',
+                        background: '#eff6ff', border: '1px solid #bfdbfe',
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        fontWeight: 700, fontSize: '0.88rem', color: '#1e40af',
+                        letterSpacing: '0.04em', lineHeight: 1.4,
+                        direction: 'ltr', unicodeBidi: 'isolate',
+                      }}>
+                        {proj.code || '—'}
+                      </span>
+                      {proj.name && proj.code !== proj.name && (
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {proj.name}
+                        </span>
+                      )}
+                    </div>
                   </td>
-                  <CountCell value={proj.voucher_counts.receive} color={COUNT_COL.receive} />
-                  <CountCell value={proj.voucher_counts.issue} color={COUNT_COL.issue} />
-                  <CountCell value={proj.voucher_counts.return_client} color={COUNT_COL.return_client} />
-                  <CountCell value={proj.voucher_counts.return_site} color={COUNT_COL.return_site} />
-                  <td style={{ padding: '12px 16px', textAlign: 'left', width: '56px' }}>
+                  {COUNT_META.map(c => (
+                    <td key={c.key} style={{
+                      padding: '14px 8px', textAlign: 'center', verticalAlign: 'middle',
+                      background: 'white', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0',
+                    }}>
+                      <CountBadge value={proj.voucher_counts[c.key]} color={c.color} bg={c.bg} />
+                    </td>
+                  ))}
+                  <td style={{
+                    padding: '14px 12px', textAlign: 'center', verticalAlign: 'middle',
+                    background: 'white', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0',
+                    borderLeft: '1px solid #e2e8f0', borderRadius: '12px 0 0 12px',
+                  }}>
                     <Link href={`/inventory/projects/${proj.id}`} title="عرض العهدة"
                       style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: '34px', height: '34px', borderRadius: '8px', border: '1px solid #99f6e4',
-                        background: '#f0fdfa', color: '#0f766e', textDecoration: 'none',
+                        width: '36px', height: '36px', borderRadius: '10px',
+                        border: '1px solid #99f6e4', background: '#f0fdfa', color: '#0f766e', textDecoration: 'none',
                       }}>
                       <Eye style={{ width: '16px', height: '16px' }} />
                     </Link>
