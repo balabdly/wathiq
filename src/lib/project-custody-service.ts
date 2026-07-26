@@ -114,18 +114,157 @@ async function fetchPlannedMaterialLines(tenantId: string, projectId: number): P
   }
 }
 
+type LedgerRow = {
+  id: number
+  type: string
+  movement_category?: string | null
+  mat_name: string
+  unit?: string | null
+  qty: number
+  wh_name?: string | null
+  is_loan?: boolean | null
+}
+
+function isReceiveType(type: string, cat?: string | null): boolean {
+  if (type === 'استلام' || type === 'توريد') return true
+  return !!(cat && (cat.includes('استلام') || cat === 'مرتجع_موقع'))
+}
+
+function isIssueType(type: string, isLoan?: boolean | null): boolean {
+  return type === 'صرف' && !isLoan
+}
+
+function isClientReturnType(type: string, cat?: string | null): boolean {
+  return type === 'إرجاع للعميل' || type === 'إرجاع' || cat === 'ارجاع_عميل'
+}
+
+async function fetchCustodyFromLedger(
+  tenantId: string,
+  projectId: number,
+  projectName?: string | null,
+): Promise<Map<number | string, CustodyMaterialRow>> {
+  const [{ data: ledgerById }, { data: ledgerByName }] = await Promise.all([
+    supabase.from('stock_ledger').select('id, type, movement_category, mat_name, unit, qty, wh_name, is_loan')
+      .eq('tenant_id', tenantId).eq('project_id', projectId),
+    projectName
+      ? supabase.from('stock_ledger').select('id, type, movement_category, mat_name, unit, qty, wh_name, is_loan')
+          .eq('tenant_id', tenantId).eq('project_name', projectName)
+      : Promise.resolve({ data: [] as LedgerRow[] }),
+  ])
+
+  const seen = new Set<number>()
+  const rows: LedgerRow[] = []
+  for (const row of [...(ledgerById || []), ...(ledgerByName || [])] as LedgerRow[]) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    rows.push(row)
+  }
+
+  const byKey = new Map<number | string, CustodyMaterialRow>()
+  for (const row of rows) {
+    const key = row.mat_name || 'unknown'
+    const prev = byKey.get(key)
+    const base: CustodyMaterialRow = prev || {
+      key: `ledger-${key}`,
+      material_id: null,
+      name: row.mat_name,
+      unit: row.unit || 'قطعة',
+      warehouse_name: row.wh_name || null,
+      qty_received: 0,
+      qty_issued: 0,
+      qty_returned: 0,
+      qty_balance: 0,
+    }
+    const qty = num(row.qty)
+    if (isReceiveType(row.type, row.movement_category)) base.qty_received += qty
+    else if (isIssueType(row.type, row.is_loan)) base.qty_issued += qty
+    else if (isClientReturnType(row.type, row.movement_category)) base.qty_returned += qty
+    base.qty_balance = Math.max(0, base.qty_received - base.qty_issued - base.qty_returned)
+    if (row.wh_name && base.warehouse_name && !base.warehouse_name.includes(row.wh_name)) {
+      base.warehouse_name = `${base.warehouse_name}، ${row.wh_name}`
+    } else if (row.wh_name && !base.warehouse_name) {
+      base.warehouse_name = row.wh_name
+    }
+    byKey.set(key, base)
+  }
+  return byKey
+}
+
+function buildCustodySections(
+  receivedByMaterial: Map<number, CustodyMaterialRow>,
+  receivedByName: Map<string, CustodyMaterialRow>,
+  planned: { lines: PlannedLine[]; has_boq: boolean },
+): ProjectCustodyDetail {
+  const received = [
+    ...Array.from(receivedByMaterial.values()),
+    ...Array.from(receivedByName.values()),
+  ]
+    .filter(r => r.qty_received > 0 || r.qty_balance > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+
+  const pendingClientReturn = received
+    .filter(r => r.qty_balance > 0)
+    .sort((a, b) => b.qty_balance - a.qty_balance)
+
+  const receivedQtyByMaterial = new Map<number, number>()
+  for (const r of received) {
+    if (r.material_id) receivedQtyByMaterial.set(r.material_id, r.qty_received)
+  }
+
+  const notYetReceived: CustodyPendingReceiveRow[] = []
+  for (const line of planned.lines) {
+    const receivedQty = line.material_id ? (receivedQtyByMaterial.get(line.material_id) ?? 0) : 0
+    const pending = Math.max(0, line.qty_planned - receivedQty)
+    if (pending > 0) {
+      notYetReceived.push({
+        key: line.key,
+        material_id: line.material_id,
+        description: line.description,
+        unit: line.unit,
+        qty_planned: line.qty_planned,
+        qty_received: receivedQty,
+        qty_pending: pending,
+      })
+    }
+  }
+
+  return {
+    received,
+    notYetReceived: notYetReceived.sort((a, b) => a.description.localeCompare(b.description, 'ar')),
+    pendingClientReturn,
+    has_boq: planned.has_boq || planned.lines.length > 0,
+  }
+}
+
+/** مشاريع لها حركات عهدة (project_materials أو stock_ledger) */
+export async function fetchCustodyProjectIds(tenantId: string): Promise<number[]> {
+  const [{ data: pmRows }, { data: ledgerRows }] = await Promise.all([
+    supabase.from('project_materials').select('project_id').eq('tenant_id', tenantId),
+    supabase.from('stock_ledger').select('project_id').eq('tenant_id', tenantId).not('project_id', 'is', null),
+  ])
+  const ids = new Set<number>()
+  for (const row of pmRows || []) ids.add(row.project_id as number)
+  for (const row of ledgerRows || []) if (row.project_id) ids.add(row.project_id as number)
+  return Array.from(ids)
+}
+
 export async function fetchProjectCustodyDetail(
   tenantId: string,
   projectId: number,
+  projectName?: string | null,
 ): Promise<ProjectCustodyDetail> {
-  const [{ data: pmRows }, planned] = await Promise.all([
+  const [{ data: pmRows }, planned, projectRes] = await Promise.all([
     supabase
       .from('project_materials')
       .select('material_id, qty_received, qty_issued, qty_returned, qty_balance, material:materials(name, unit, catalog_no), warehouse:warehouses(name)')
       .eq('tenant_id', tenantId)
       .eq('project_id', projectId),
     fetchPlannedMaterialLines(tenantId, projectId),
+    projectName ? Promise.resolve({ data: { name: projectName } }) :
+      supabase.from('projects').select('name').eq('id', projectId).maybeSingle(),
   ])
+
+  const resolvedName = projectName || (projectRes.data as { name?: string } | null)?.name || null
 
   const receivedByMaterial = new Map<number, CustodyMaterialRow>()
   for (const row of (pmRows || []) as ProjectMaterialRow[]) {
@@ -157,38 +296,14 @@ export async function fetchProjectCustodyDetail(
     }
   }
 
-  const received = Array.from(receivedByMaterial.values())
-    .filter(r => r.qty_received > 0)
-    .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
-
-  const pendingClientReturn = received
-    .filter(r => r.qty_balance > 0)
-    .sort((a, b) => b.qty_balance - a.qty_balance)
-
-  const notYetReceived: CustodyPendingReceiveRow[] = []
-
-  for (const line of planned.lines) {
-    const receivedQty = line.material_id ? (receivedByMaterial.get(line.material_id)?.qty_received ?? 0) : 0
-    const pending = Math.max(0, line.qty_planned - receivedQty)
-    if (pending > 0) {
-      notYetReceived.push({
-        key: line.key,
-        material_id: line.material_id,
-        description: line.description,
-        unit: line.unit,
-        qty_planned: line.qty_planned,
-        qty_received: receivedQty,
-        qty_pending: pending,
-      })
-    }
+  if (receivedByMaterial.size === 0) {
+    const ledgerMap = await fetchCustodyFromLedger(tenantId, projectId, resolvedName)
+    const receivedByName = new Map<string, CustodyMaterialRow>()
+    ledgerMap.forEach((row, key) => receivedByName.set(String(key), row))
+    return buildCustodySections(receivedByMaterial, receivedByName, planned)
   }
 
-  return {
-    received,
-    notYetReceived: notYetReceived.sort((a, b) => a.description.localeCompare(b.description, 'ar')),
-    pendingClientReturn,
-    has_boq: planned.has_boq || planned.lines.length > 0,
-  }
+  return buildCustodySections(receivedByMaterial, new Map(), planned)
 }
 
 export type ProjectCustodyListItem = {

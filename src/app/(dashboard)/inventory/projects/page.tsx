@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import {
   fetchProjectCustodyDetail,
+  fetchCustodyProjectIds,
   type ProjectCustodyDetail,
 } from '@/lib/project-custody-service'
 import {
@@ -56,7 +57,7 @@ function ProjectCustodyModal({
   async function load() {
     setLoading(true)
     const [custody, loansRes] = await Promise.all([
-      fetchProjectCustodyDetail(tenantId, project.id),
+      fetchProjectCustodyDetail(tenantId, project.id, project.name),
       supabase.from('project_material_loans')
         .select('*, material:materials(name, unit)')
         .eq('tenant_id', tenantId)
@@ -300,53 +301,69 @@ export default function InventoryProjectsPage() {
   const [viewProject, setViewProject] = useState<Project | null>(null)
   const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, withBalance: 0, openLoans: 0, noTeam: 0 })
 
-  useEffect(() => { if (tenant && activeBranch) loadBase() }, [tenant?.id, activeBranch?.id])
+  useEffect(() => { if (tenant) loadBase() }, [tenant?.id, activeBranch?.id])
 
   async function loadBase() {
-    if (!tenant || !activeBranch) return
+    if (!tenant) return
     setLoading(true)
 
-    const { data: pmData } = await supabase.from('project_materials')
-      .select('project_id, qty_balance').eq('tenant_id', tenant.id)
+    const [pmRes, custodyProjectIds, projectsRes, loansRes, teamsRes] = await Promise.all([
+      supabase.from('project_materials').select('project_id, qty_balance').eq('tenant_id', tenant.id),
+      fetchCustodyProjectIds(tenant.id),
+      supabase.from('projects').select('id, name, status, location, team_id, engineer, branch_id')
+        .eq('tenant_id', tenant.id).order('name'),
+      supabase.from('project_material_loans').select('status').eq('tenant_id', tenant.id),
+      supabase.from('teams').select('id, name, team_type')
+        .eq('tenant_id', tenant.id).eq('is_active', true),
+    ])
 
     const countByProject: Record<number, { count: number; balance: number }> = {}
-    for (const row of pmData || []) {
+    for (const row of pmRes.data || []) {
       const pid = row.project_id as number
       if (!countByProject[pid]) countByProject[pid] = { count: 0, balance: 0 }
       countByProject[pid].count++
       if (Number(row.qty_balance) > 0) countByProject[pid].balance++
     }
 
-    const projectIds = Object.keys(countByProject).map(Number)
-    if (projectIds.length === 0) {
-      setLoading(false); setProjects([]); return
+    const custodyIds = new Set(custodyProjectIds)
+    let allProjects = projectsRes.data || []
+
+    // فرع نشط: اعرض مشاريع الفرع + أي مشروع له عهدة مهما كان فرعه
+    if (activeBranch?.id) {
+      allProjects = allProjects.filter(p =>
+        p.branch_id === activeBranch.id || custodyIds.has(p.id),
+      )
     }
 
-    const [projRes, allProjRes, loansRes, teamsRes] = await Promise.all([
-      supabase.from('projects').select('id, name, status, location, team_id, engineer')
-        .in('id', projectIds).eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id)
-        .neq('status', 'مكتمل').order('name'),
-      supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
-      supabase.from('project_material_loans').select('status').eq('tenant_id', tenant.id),
-      supabase.from('teams').select('id, name, team_type')
-        .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id).eq('is_active', true),
-    ])
-
-    const projList = (projRes.data || []).map((p: Project) => ({
-      ...p,
-      material_count: countByProject[p.id]?.count ?? 0,
-      balance_count: countByProject[p.id]?.balance ?? 0,
-    }))
+    // اعرض: مشاريع لها عهدة، أو مشاريع نشطة (غير مكتملة)
+    const projList = allProjects
+      .filter(p => custodyIds.has(p.id) || p.status !== 'مكتمل')
+      .map((p: Project) => ({
+        id: p.id,
+        name: p.name,
+        status: p.status,
+        location: p.location,
+        team_id: p.team_id,
+        engineer: p.engineer,
+        material_count: countByProject[p.id]?.count ?? (custodyIds.has(p.id) ? 1 : 0),
+        balance_count: countByProject[p.id]?.balance ?? 0,
+      }))
+      .sort((a, b) => {
+        const aCustody = custodyIds.has(a.id) ? 1 : 0
+        const bCustody = custodyIds.has(b.id) ? 1 : 0
+        if (bCustody !== aCustody) return bCustody - aCustody
+        return a.name.localeCompare(b.name, 'ar')
+      })
 
     const nameMap: Record<number, string> = {}
-    ;(allProjRes.data || []).forEach((p: { id: number; name: string }) => { nameMap[p.id] = p.name })
+    allProjects.forEach((p: { id: number; name: string }) => { nameMap[p.id] = p.name })
     const tMap: Record<number, string> = {}
     const tTypeMap: Record<number, string> = {}
     ;(teamsRes.data || []).forEach((t: { id: number; name: string; team_type: string }) => {
       tMap[t.id] = t.name; tTypeMap[t.id] = t.team_type
     })
 
-    const withBalance = (pmData || []).filter(m => Number(m.qty_balance) > 0).length
+    const withBalance = (pmRes.data || []).filter(m => Number(m.qty_balance) > 0).length
     const openLoans = (loansRes.data || []).filter(l => l.status !== 'مُعاد كلياً').length
 
     setProjects(projList)
@@ -355,8 +372,8 @@ export default function InventoryProjectsPage() {
     setTeamTypes(tTypeMap)
     setTeamsList((teamsRes.data || []).map((t: { id: number; name: string }) => ({ id: t.id, name: t.name })))
     setKpis({
-      totalProjects: projList.length,
-      totalMaterials: pmData?.length || 0,
+      totalProjects: projList.filter(p => custodyIds.has(p.id)).length || projList.length,
+      totalMaterials: pmRes.data?.length || 0,
       withBalance,
       openLoans,
       noTeam: projList.filter(p => !p.team_id).length,
