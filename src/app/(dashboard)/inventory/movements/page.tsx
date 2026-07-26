@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { printOperationReceipt } from '@/app/(dashboard)/inventory/materials/opsShared'
 import {
   ArrowDownToLine, ArrowUpFromLine, RotateCcw, ArrowLeftRight,
   Search, Filter, Download, Printer, X, Package, ChevronLeft, ChevronRight
@@ -15,7 +16,7 @@ type LedgerEntry = {
   unit: string; qty: number; qty_before: number; qty_after: number
   wh_name: string; project_name?: string; dispatch_note?: string
   vendor_name?: string; doc_code?: string; booking_no?: string
-  client_name?: string; created_at: string; attachment_url?: string
+  client_name?: string; exit_permit_no?: string; created_at: string; attachment_url?: string
   txn_number?: string; movement_category?: string
   is_loan?: boolean; loan_from_project?: string; loan_to_project?: string
 }
@@ -53,6 +54,18 @@ const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFract
 function formatDateTime(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleDateString('ar-SA') + ' ' + d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })
+}
+
+function printTypeForVoucher(lines: LedgerEntry[]): string {
+  const first = lines[0]
+  if (!first) return 'استلام'
+  const cat = first.movement_category || ''
+  if (cat === 'مرتجع_موقع' || cat === 'ارجاع_مستودع') return 'مرتجع موقع'
+  if (cat === 'مزال_موقع') return 'مزال من الموقع'
+  if (first.type === 'إرجاع للعميل' || cat === 'ارجاع_عميل') return 'إرجاع للعميل'
+  if (first.type === 'صرف' || cat.includes('صرف')) return 'صرف'
+  if (first.type === 'تحويل' || cat === 'تحويل') return 'تحويل'
+  return 'استلام'
 }
 
 // ══════════════════════════════════════════
@@ -171,6 +184,47 @@ export default function InventoryMovementsPage() {
     const csv = [headers, ...rows].map(r => r.join('\t')).join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'application/vnd.ms-excel;charset=utf-8' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'الحركات.xls'; a.click()
+  }
+
+  async function fetchVoucherLines(txn: string): Promise<LedgerEntry[]> {
+    if (!tenant) return []
+    const { data } = await supabase.from('stock_ledger').select('*')
+      .eq('tenant_id', tenant.id).eq('txn_number', txn).order('id', { ascending: true })
+    return (data || []) as LedgerEntry[]
+  }
+
+  async function printVoucher() {
+    if (!fVoucher) return
+    const lines = await fetchVoucherLines(fVoucher)
+    if (!lines.length) return
+    const first = lines[0]
+    printOperationReceipt({
+      type: printTypeForVoucher(lines),
+      warehouseName: first.wh_name || '',
+      projectName: first.project_name || '',
+      date: first.created_at.split('T')[0],
+      rows: lines.map(l => ({ name: l.mat_name, unit: l.unit, qty: Number(l.qty), note: l.dispatch_note || '' })),
+      vendorName: first.vendor_name || '',
+      docCode: first.doc_code || '',
+      bookingNo: first.booking_no || '',
+      clientName: first.client_name || '',
+      exitPermitNo: first.exit_permit_no || '',
+      txnNumber: fVoucher,
+    })
+  }
+
+  async function exportVoucherExcel() {
+    if (!fVoucher) return
+    const lines = await fetchVoucherLines(fVoucher)
+    if (!lines.length) return
+    const headers = ['رقم الإذن', 'النوع', 'المادة', 'الكمية', 'الوحدة', 'قبل', 'بعد', 'المستودع', 'المشروع', 'المورد', 'المستند', 'التاريخ']
+    const rows = lines.map(e => [e.txn_number || '', getMovementMeta(e).label, e.mat_name, e.qty, e.unit, e.qty_before, e.qty_after, e.wh_name, e.project_name || '', e.vendor_name || '', e.doc_code || '', formatDateTime(e.created_at)])
+    const csv = [headers, ...rows].map(r => r.join('\t')).join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `إذن_${fVoucher}.xls`
+    a.click()
   }
 
   // ══ طباعة كشف حركة رسمي للنتيجة المفلترة الحالية (بديل سند السطر المحذوف) ══
@@ -297,7 +351,6 @@ export default function InventoryMovementsPage() {
           { val: '__صرف__',      label: '📤 صرف',            color: '#c81e1e', bg: '#fef2f2' },
           { val: 'ارجاع_عميل',  label: '↩️ إرجاع للعميل',  color: '#e6820a', bg: '#fffbeb' },
           { val: 'مرتجع_موقع',  label: '📦 مرتجع موقع',    color: '#1a56db', bg: '#eff6ff' },
-          { val: 'مزال_موقع',   label: '🔩 مزال',           color: '#374151', bg: '#f3f4f6' },
           { val: '__استعارة__', label: '🔁 استعارات',       color: '#7c3aed', bg: '#f5f3ff' },
         ].map(opt => (
           <button key={opt.val} onClick={() => { setFType(opt.val); loadMovements(1, { type: opt.val }) }}
@@ -351,6 +404,32 @@ export default function InventoryMovementsPage() {
         )}
       </div>
 
+      {/* شريط الإذن — يظهر عند الضغط على رقم إذن */}
+      {fVoucher && (
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px',
+          background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '12px 16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.78rem', color: '#1e40af', fontWeight: 600 }}>عرض الإذن:</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '0.9rem', color: '#1a56db' }} dir="ltr">{fVoucher}</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>({total.toLocaleString()} سطر)</span>
+            <button type="button" onClick={() => { setFVoucher(''); loadMovements(1, { voucher: '' }) }}
+              style={{ background: 'none', border: 'none', color: '#c81e1e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+              ✕ إغلاق
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={printVoucher} className="btn btn-primary" style={{ fontSize: '0.78rem', background: '#0891b2' }}>
+              <Printer style={{ width: '14px', height: '14px' }} /> طباعة الإذن
+            </button>
+            <button onClick={exportVoucherExcel} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+              <Download style={{ width: '14px', height: '14px' }} /> Excel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* الجدول */}
       <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
         {/* رأس الجدول مع العداد */}
@@ -358,12 +437,6 @@ export default function InventoryMovementsPage() {
           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text3)' }}>
             {total.toLocaleString()} حركة
             {(fSearch || fWh || fProject || fDateFrom || fDateTo || fType) && ' (مفلترة)'}
-            {fVoucher && (
-              <span onClick={() => { setFVoucher(''); loadMovements(1, { voucher: '' }) }}
-                style={{ marginRight: '8px', background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer' }}>
-                إذن: {fVoucher} ✕
-              </span>
-            )}
           </span>
           {totalPages > 1 && (
             <span style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>صفحة {page} / {totalPages}</span>
