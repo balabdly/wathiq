@@ -382,7 +382,7 @@ function buildMetaFromLedger(ledgerRows: LedgerRow[], reservationNumber?: string
   }
 }
 
-function voucherKindFromRow(row: LedgerRow): CustodyVoucherKind | null {
+function voucherKindFromRow(row: LedgerRow): Exclude<CustodyMovementKind, 'other'> | null {
   const kind = classifyCustodyMovement(row.type, row.movement_category, row.is_loan)
   return kind === 'other' ? null : kind
 }
