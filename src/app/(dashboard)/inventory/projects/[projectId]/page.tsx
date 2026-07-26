@@ -30,16 +30,22 @@ const VOUCHER_KIND_UI: Record<CustodyVoucherKind, { label: string; short: string
   issue: { label: 'أذون الصرف', short: 'صرف', color: '#c81e1e', bg: '#fef2f2', printType: 'صرف' },
   return_client: { label: 'أذون الإرجاع', short: 'إرجاع', color: '#e6820a', bg: '#fffbeb', printType: 'إرجاع للعميل' },
   return_site: { label: 'مرتجع من الموقع', short: 'مرتجع', color: '#1a56db', bg: '#eff6ff', printType: 'مرتجع موقع' },
+  loan: { label: 'أذون الاستعارة', short: 'استعارة', color: '#7c3aed', bg: '#f5f3ff', printType: 'استعارة بين مشاريع' },
 }
 
 function printCustodyVoucher(doc: CustodyVoucherDoc, projectName: string) {
-  const ui = VOUCHER_KIND_UI[doc.kind]
+  const printType = doc.kind === 'loan'
+    ? (doc.kind_label.startsWith('تسوية') ? 'تسوية استعارة' : 'استعارة بين مشاريع')
+    : VOUCHER_KIND_UI[doc.kind].printType
+  const displayProject = doc.kind === 'loan' && doc.loan_from_project && doc.loan_to_project
+    ? `من: ${doc.loan_from_project} ← إلى: ${doc.loan_to_project}`
+    : projectName
   printOperationReceipt({
-    type: ui.printType,
+    type: printType,
     warehouseName: doc.wh_name,
-    projectName,
+    projectName: displayProject,
     date: doc.date.split('T')[0],
-    rows: doc.lines.map(l => ({ name: l.mat_name, unit: l.unit, qty: l.qty, note: '' })),
+    rows: doc.lines.map(l => ({ name: l.mat_name, unit: l.unit, qty: l.qty, note: l.note || '' })),
     bookingNo: doc.booking_no || '',
     exitPermitNo: doc.exit_permit_no || '',
     txnNumber: doc.legacy ? '' : doc.no,
@@ -100,7 +106,11 @@ function VouchersPanel({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: '0.82rem' }} dir="ltr">{doc.no}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '3px' }}>
-                      {fmtDate(doc.date)} · {doc.wh_name} · {doc.lines.length} مادة
+                      {fmtDate(doc.date)} · {doc.kind_label}
+                      {doc.loan_from_project && doc.loan_to_project && (
+                        <span style={{ color: '#7c3aed', fontWeight: 600 }}> · {doc.loan_from_project} ← {doc.loan_to_project}</span>
+                      )}
+                      {' · '}{doc.lines.length} مادة
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
@@ -129,7 +139,7 @@ function VouchersPanel({
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', background: '#fafbff' }}>
                     <thead>
                       <tr>
-                        {['المادة', 'الوحدة', 'الكمية'].map(h => (
+                        {['المادة', 'الوحدة', 'الكمية', ...(doc.kind === 'loan' ? ['البيان'] : [])].map(h => (
                           <th key={h} style={{ ...TH, padding: '8px 16px', fontSize: '0.68rem' }}>{h}</th>
                         ))}
                       </tr>
@@ -140,6 +150,9 @@ function VouchersPanel({
                           <td style={{ ...TD, padding: '8px 16px' }}>{line.mat_name}</td>
                           <td style={{ ...TD, padding: '8px 16px', color: 'var(--text3)' }}>{line.unit}</td>
                           <td style={{ ...TD, padding: '8px 16px', fontWeight: 700, textAlign: 'center' }} dir="ltr">{fmt(line.qty)}</td>
+                          {doc.kind === 'loan' && (
+                            <td style={{ ...TD, padding: '8px 16px', fontSize: '0.72rem', color: 'var(--text3)' }}>{line.note || '—'}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -242,7 +255,7 @@ export default function ProjectCustodyDetailPage() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'stretch' }}>
-        {(['receive', 'issue', 'return_client', 'return_site'] as CustodyVoucherKind[]).map(kind => (
+        {(['receive', 'issue', 'return_client', 'return_site', 'loan'] as CustodyVoucherKind[]).map(kind => (
           <VoucherCountChip
             key={kind}
             kind={kind}

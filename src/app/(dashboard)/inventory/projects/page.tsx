@@ -12,6 +12,7 @@ const COUNT_META = [
   { key: 'issue' as const, label: 'صرف', color: '#c81e1e', bg: '#fef2f2' },
   { key: 'return_client' as const, label: 'إرجاع', color: '#e6820a', bg: '#fffbeb' },
   { key: 'return_site' as const, label: 'مرتجع', color: '#1a56db', bg: '#eff6ff' },
+  { key: 'loan' as const, label: 'استعارة', color: '#7c3aed', bg: '#f5f3ff' },
 ]
 
 const TH: React.CSSProperties = {
@@ -100,14 +101,15 @@ export default function InventoryProjectsPage() {
         <div style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px', overflow: 'auto' }}>
           <table style={{
             width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px',
-            fontSize: '0.82rem', minWidth: '680px', tableLayout: 'fixed',
+            fontSize: '0.82rem', minWidth: '780px', tableLayout: 'fixed',
           }}>
             <colgroup>
-              <col style={{ width: '22%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '14%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '11%' }} />
               <col style={{ width: '64px' }} />
             </colgroup>
             <thead>

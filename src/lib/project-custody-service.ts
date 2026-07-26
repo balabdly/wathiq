@@ -67,12 +67,13 @@ export type ProjectCustodyMeta = {
   reservation_number?: string | null
 }
 
-export type CustodyVoucherKind = 'receive' | 'issue' | 'return_client' | 'return_site'
+export type CustodyVoucherKind = 'receive' | 'issue' | 'return_client' | 'return_site' | 'loan'
 
 export type CustodyVoucherLine = {
   mat_name: string
   unit: string
   qty: number
+  note?: string
 }
 
 export type CustodyVoucherDoc = {
@@ -84,6 +85,8 @@ export type CustodyVoucherDoc = {
   kind_label: string
   booking_no?: string | null
   exit_permit_no?: string | null
+  loan_from_project?: string | null
+  loan_to_project?: string | null
   lines: CustodyVoucherLine[]
 }
 
@@ -92,11 +95,13 @@ export type CustodyVoucherSummary = {
   issue: CustodyVoucherDoc[]
   return_client: CustodyVoucherDoc[]
   return_site: CustodyVoucherDoc[]
+  loan: CustodyVoucherDoc[]
   counts: {
     receive: number
     issue: number
     return_client: number
     return_site: number
+    loan: number
   }
 }
 
@@ -155,6 +160,8 @@ type LedgerRow = {
   client_name?: string | null
   vendor_name?: string | null
   dispatch_note?: string | null
+  loan_from_project?: string | null
+  loan_to_project?: string | null
 }
 
 const KIND_LABELS: Record<CustodyMovementKind, string> = {
@@ -256,12 +263,12 @@ async function fetchProjectLedgerRows(
 ): Promise<LedgerRow[]> {
   const [{ data: byId }, { data: byName }] = await Promise.all([
     supabase.from('stock_ledger')
-      .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note')
+      .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note, loan_from_project, loan_to_project')
       .eq('tenant_id', tenantId).eq('project_id', projectId)
       .order('created_at', { ascending: true }),
     projectName
       ? supabase.from('stock_ledger')
-          .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note')
+          .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note, loan_from_project, loan_to_project')
           .eq('tenant_id', tenantId).eq('project_name', projectName)
           .order('created_at', { ascending: true })
       : Promise.resolve({ data: [] as LedgerRow[] }),
@@ -285,6 +292,7 @@ function buildMaterialsFromLedger(
   const byKey = new Map<string, CustodyMaterialRow>()
 
   for (const row of ledgerRows) {
+    if (row.is_loan) continue
     const event = ledgerToEvent(row)
     const key = row.mat_name?.trim() || 'unknown'
     const meta = Array.from(materialMeta.values()).find(m => m.name === key)
@@ -379,15 +387,27 @@ function voucherKindFromRow(row: LedgerRow): CustodyVoucherKind | null {
   return kind === 'other' ? null : kind
 }
 
+function loanVoucherLabel(first: LedgerRow): string {
+  const note = (first.dispatch_note || '').trim()
+  if (note.startsWith('تسوية')) return 'تسوية استعارة'
+  return 'استعارة بين مشاريع'
+}
+
 export function buildCustodyVouchersFromLedger(ledgerRows: LedgerRow[]): CustodyVoucherSummary {
-  const grouped = new Map<string, LedgerRow[]>()
+  const regularGrouped = new Map<string, LedgerRow[]>()
+  const loanGrouped = new Map<string, LedgerRow[]>()
 
   for (const row of ledgerRows) {
-    if (!voucherKindFromRow(row)) continue
     const key = row.txn_number || `legacy-${row.id}`
-    const list = grouped.get(key) || []
-    list.push(row)
-    grouped.set(key, list)
+    if (row.is_loan) {
+      const list = loanGrouped.get(key) || []
+      list.push(row)
+      loanGrouped.set(key, list)
+    } else if (voucherKindFromRow(row)) {
+      const list = regularGrouped.get(key) || []
+      list.push(row)
+      regularGrouped.set(key, list)
+    }
   }
 
   const buckets: Record<CustodyVoucherKind, CustodyVoucherDoc[]> = {
@@ -395,9 +415,10 @@ export function buildCustodyVouchersFromLedger(ledgerRows: LedgerRow[]): Custody
     issue: [],
     return_client: [],
     return_site: [],
+    loan: [],
   }
 
-  for (const [key, rows] of Array.from(grouped.entries())) {
+  for (const [key, rows] of Array.from(regularGrouped.entries())) {
     const first = rows[0]
     const kind = voucherKindFromRow(first)
     if (!kind) continue
@@ -418,6 +439,28 @@ export function buildCustodyVouchersFromLedger(ledgerRows: LedgerRow[]): Custody
     })
   }
 
+  for (const [key, rows] of Array.from(loanGrouped.entries())) {
+    const first = rows[0]
+    buckets.loan.push({
+      no: first.txn_number || key,
+      legacy: !first.txn_number,
+      date: first.created_at,
+      wh_name: first.wh_name || '—',
+      kind: 'loan',
+      kind_label: loanVoucherLabel(first),
+      booking_no: first.booking_no,
+      exit_permit_no: first.exit_permit_no,
+      loan_from_project: first.loan_from_project,
+      loan_to_project: first.loan_to_project,
+      lines: rows.map((r: LedgerRow) => ({
+        mat_name: r.mat_name,
+        unit: r.unit || 'قطعة',
+        qty: num(r.qty),
+        note: r.dispatch_note || undefined,
+      })),
+    })
+  }
+
   for (const kind of Object.keys(buckets) as CustodyVoucherKind[]) {
     buckets[kind].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }
@@ -427,11 +470,13 @@ export function buildCustodyVouchersFromLedger(ledgerRows: LedgerRow[]): Custody
     issue: buckets.issue,
     return_client: buckets.return_client,
     return_site: buckets.return_site,
+    loan: buckets.loan,
     counts: {
       receive: buckets.receive.length,
       issue: buckets.issue.length,
       return_client: buckets.return_client.length,
       return_site: buckets.return_site.length,
+      loan: buckets.loan.length,
     },
   }
 }
@@ -487,7 +532,7 @@ export type CustodyProjectListRow = {
   voucher_counts: CustodyVoucherSummary['counts']
 }
 
-const LEDGER_VOUCHER_SELECT = 'id, project_id, project_name, type, movement_category, is_loan, txn_number, created_at, wh_name, mat_name, unit, qty, booking_no, exit_permit_no'
+const LEDGER_VOUCHER_SELECT = 'id, project_id, project_name, type, movement_category, is_loan, txn_number, created_at, wh_name, mat_name, unit, qty, booking_no, exit_permit_no, dispatch_note, loan_from_project, loan_to_project'
 
 function resolveLedgerProjectId(
   row: { project_id?: number | null; project_name?: string | null },
