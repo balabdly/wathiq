@@ -182,7 +182,7 @@ export default function ImportQuantitiesModal({
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '12px 14px', fontSize: '0.82rem', color: '#1a56db', lineHeight: 1.6 }}>
             {lineCategory === 'MATERIAL'
-              ? 'يُقارن كل بند مواد مع كatalog المستودع — المواد غير المضافة تظهر بملاحظة تحذيرية.'
+              ? 'يُقارن كل بند مواد مع كatalog المستودع — UDS/الصور تُظهر الرقم بدون 90 ويُطابق تلقائياً. المواد غير المضافة تظهر بملاحظة.'
               : cfg.hint}{' '}
             البنود الناقصة يمكن إضافتها يدوياً بعد التطبيق.
           </div>

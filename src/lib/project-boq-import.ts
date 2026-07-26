@@ -1,5 +1,14 @@
 /** استيراد كميات المشروع — Excel / CSV / PDF / صورة UDS */
 
+import {
+  expandSecItemCode,
+  lookupSecCodeMap,
+  normalizeSecItemCode,
+  secItemCodeVariants,
+  indexSecCodeMap,
+  findSecCodeIndex,
+} from '@/lib/sec-item-code'
+
 export type BoqLineSource = 'manual' | 'excel' | 'csv' | 'pdf' | 'image'
 export type BoqMatchStatus = 'matched' | 'review' | 'manual'
 
@@ -62,13 +71,15 @@ function pickField(row: Record<string, unknown>, keys: string[]): string {
 }
 
 function normalizeCode(code: string): string {
-  return code.replace(/\s+/g, '').toUpperCase()
+  return normalizeSecItemCode(code)
 }
 
 export function buildFrameworkMap(items: FrameworkItemRef[]): Map<string, FrameworkItemRef> {
   const map = new Map<string, FrameworkItemRef>()
   for (const item of items) {
-    map.set(normalizeCode(item.item_code), item)
+    for (const v of secItemCodeVariants(item.item_code)) {
+      if (!map.has(v)) map.set(v, item)
+    }
   }
   return map
 }
@@ -80,7 +91,7 @@ export function matchBoqLine(
 ): BoqImportLine {
   const errors: string[] = []
   const code = raw.item_code.trim()
-  const fw = code ? frameworkMap.get(normalizeCode(code)) : undefined
+  const fw = code ? lookupSecCodeMap(frameworkMap, code) : undefined
 
   if (!raw.description && !code) errors.push('الوصف أو كود البند مطلوب')
   if (!raw.qty || raw.qty <= 0) errors.push('الكمية يجب أن تكون أكبر من صفر')
@@ -91,7 +102,7 @@ export function matchBoqLine(
   else if (code) matchStatus = 'review'
 
   return {
-    item_code: code,
+    item_code: fw ? (fw.item_code || expandSecItemCode(code)) : expandSecItemCode(code) || code,
     description: fw?.description_ar || raw.description || code,
     unit: fw?.unit || raw.unit || 'EA',
     qty: raw.qty,
@@ -303,7 +314,7 @@ export function mergeBoqLines(
 
   const byCode = new Map<string, number>()
   result.forEach((l, i) => {
-    if (l.item_code) byCode.set(normalizeCode(l.item_code), i)
+    if (l.item_code) indexSecCodeMap(byCode, l.item_code, i)
   })
 
   for (const imp of imported) {
@@ -311,12 +322,11 @@ export function mergeBoqLines(
       result.push(imp)
       continue
     }
-    const key = normalizeCode(imp.item_code)
-    const idx = byCode.get(key)
+    const idx = findSecCodeIndex(byCode, imp.item_code)
     if (idx !== undefined) {
       result[idx] = { ...imp, matchStatus: imp.matchStatus }
     } else {
-      byCode.set(key, result.length)
+      indexSecCodeMap(byCode, imp.item_code, result.length)
       result.push(imp)
     }
   }

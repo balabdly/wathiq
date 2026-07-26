@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import type { MaterialReceiptType } from '@/lib/project-planning-service'
 import type { ReservationReconciliation } from '@/lib/pmc-types'
 import { fetchReservationReconciliation } from '@/lib/pmc-service'
+import { findMaterialBySecCode, secItemCodeVariants } from '@/lib/sec-item-code'
 
 export type PlanningMaterialAlert = 'none' | 'not_in_plan' | 'over_received' | 'under_received'
 
@@ -102,10 +103,6 @@ function buildRow(
   }
 }
 
-function normCode(v: string): string {
-  return v.trim().toUpperCase()
-}
-
 function findBalanceForPlannedLine(
   line: { material_id?: number | null; description: string; catalog_no?: string | null },
   balanceByMaterial: Map<number, ReservationReconciliation>,
@@ -117,7 +114,11 @@ function findBalanceForPlannedLine(
   if (byName) return byName
   if (line.catalog_no?.trim()) {
     const cat = line.catalog_no.trim().toLowerCase()
-    return balances.find(b => b.material_name?.trim().toLowerCase().includes(cat))
+    const variants = secItemCodeVariants(line.catalog_no).map(v => v.toLowerCase())
+    return balances.find(b => {
+      const name = b.material_name?.trim().toLowerCase() || ''
+      return name.includes(cat) || variants.some(v => name.includes(v))
+    })
   }
   return undefined
 }
@@ -133,13 +134,7 @@ export function resolveWarehouseMaterialId(
   }
   const cat = (line.catalog_no || '').trim()
   if (cat) {
-    const n = normCode(cat)
-    const byCode = materials.find(m =>
-      normCode(m.catalog_no || '') === n
-      || normCode(m.sec_number || '') === n
-      || normCode(m.mat_code || '') === n
-      || normCode(m.item_code || '') === n,
-    )
+    const byCode = findMaterialBySecCode(materials, cat)
     if (byCode) return byCode.id
   }
   const desc = line.description.trim()

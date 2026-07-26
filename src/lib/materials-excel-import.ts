@@ -1,6 +1,8 @@
 // src/lib/materials-excel-import.ts
 // تحويل ملفات Excel (النموذج العربي أو قائمة SEC الرسمية) لصفوف استيراد موحّدة
 
+import { expandSecItemCode, normalizeSecItemCode } from '@/lib/sec-item-code'
+
 export type NormalizedMaterialImportRow = {
   name: string
   unit: string
@@ -50,11 +52,13 @@ function parseSecMatFormat(rawRows: Record<string, unknown>[]): NormalizedMateri
   const out: NormalizedMaterialImportRow[] = []
 
   for (const row of rawRows) {
-    const itemNo = cell(row, 'Item No', 'ITEM NO', 'item no')
+    const itemNoRaw = cell(row, 'Item No', 'ITEM NO', 'item no')
     let name = cell(row, 'Description', 'DESCRIPTION', 'description')
-    if (!itemNo || !name) continue
-    if (seenSec.has(itemNo)) continue
-    seenSec.add(itemNo)
+    if (!itemNoRaw || !name) continue
+    const itemNo = expandSecItemCode(itemNoRaw) || normalizeSecItemCode(itemNoRaw)
+    const seenKey = normalizeSecItemCode(itemNo)
+    if (seenSec.has(seenKey)) continue
+    seenSec.add(seenKey)
 
     const base = name
     const n = (nameCount.get(base) || 0) + 1

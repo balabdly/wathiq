@@ -8,6 +8,7 @@ import type { ProjectBoqLine } from '@/lib/pmc-types'
 import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
 import { matchLineToWarehouseMaterial } from '@/lib/planning-materials-warehouse'
+import { findMaterialBySecCode, lookupSecCodeMap, normalizeSecItemCode, resolveSecDisplayCode } from '@/lib/sec-item-code'
 import ImportQuantitiesModal, { BoqLineStatusBadge, type BoqImportKind } from '@/components/projects/ImportQuantitiesModal'
 import { MaterialsReservationBlock } from '@/components/projects/BoqReservationPanel'
 import {
@@ -44,7 +45,7 @@ function emptyLine(category: BoqLineCategory): LineRow {
 
 function inferMatchStatus(itemCode: string, frameworkMap: Map<string, { item_code: string }>): BoqMatchStatus {
   if (!itemCode.trim()) return 'manual'
-  return frameworkMap.has(itemCode.replace(/\s+/g, '').toUpperCase()) ? 'matched' : 'review'
+  return lookupSecCodeMap(frameworkMap, itemCode) ? 'matched' : 'review'
 }
 
 function resolveCategory(line: ProjectBoqLine & { line_category?: string | null }): BoqLineCategory {
@@ -127,7 +128,7 @@ type MaterialCatalogRow = {
 }
 
 function normalizeItemCode(v: string): string {
-  return v.replace(/\s+/g, '').toUpperCase()
+  return normalizeSecItemCode(v)
 }
 
 function enrichMaterialWarehouseMatch(row: LineRow, catalog: MaterialCatalogRow[]): LineRow {
@@ -148,7 +149,7 @@ function enrichMaterialWarehouseMatch(row: LineRow, catalog: MaterialCatalogRow[
       warehouse_note: null,
       description: mat?.name || row.description,
       unit: mat?.unit || row.unit,
-      item_code: row.item_code.trim() || mat?.sec_number || mat?.catalog_no || row.item_code,
+      item_code: resolveSecDisplayCode(row.item_code, mat ? { sec_number: mat.sec_number, catalog_no: mat.catalog_no } : null),
     }
   }
   return { ...row, warehouse_material_id: null, warehouse_note: match.note }
@@ -506,7 +507,7 @@ export default function ProjectEstimateEditor({
   function mapDbLine(l: ProjectBoqLine & { line_category?: string | null }, snap?: BoqRevisionSnapshotLine): LineRow {
     const cat = resolveCategory(l)
     const code = l.catalog_no || ''
-    const fw = code ? frameworkMap.get(code.replace(/\s+/g, '').toUpperCase()) : undefined
+    const fw = code ? lookupSecCodeMap(frameworkMap, code) : undefined
     const isNew = isNewLineFromNotes(l.notes)
     const row: LineRow = {
       item_code: code,
@@ -592,7 +593,11 @@ export default function ProjectEstimateEditor({
   }
 
   function selectFramework(idx: number, itemCode: string) {
-    const item = frameworkItems.find(f => f.item_code === itemCode)
+    let item = frameworkItems.find(f => f.item_code === itemCode)
+    if (!item) {
+      const fw = lookupSecCodeMap(frameworkMap, itemCode)
+      if (fw) item = frameworkItems.find(f => f.item_code === fw.item_code)
+    }
     if (!item) return
     setLines(prev => {
       const next = [...prev]
@@ -607,11 +612,7 @@ export default function ProjectEstimateEditor({
       updateLine(idx, 'item_code', '')
       return
     }
-    const q = normalizeItemCode(trimmed)
-    const mat = materialCatalog.find(m =>
-      normalizeItemCode(m.sec_number || '') === q ||
-      normalizeItemCode(m.catalog_no || '') === q,
-    )
+    const mat = findMaterialBySecCode(materialCatalog, trimmed)
     setLines(prev => {
       const next = [...prev]
       const base = { ...next[idx], item_code: trimmed }
@@ -621,7 +622,7 @@ export default function ProjectEstimateEditor({
       }
       next[idx] = {
         ...base,
-        item_code: mat.sec_number || mat.catalog_no || trimmed,
+        item_code: resolveSecDisplayCode(trimmed, mat),
         description: mat.name,
         unit: mat.unit || next[idx].unit,
         warehouse_material_id: mat.id,
