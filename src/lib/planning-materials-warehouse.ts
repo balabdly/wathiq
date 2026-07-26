@@ -5,9 +5,19 @@ import { fetchReservationReconciliation } from '@/lib/pmc-service'
 
 export type PlanningMaterialAlert = 'none' | 'not_in_plan' | 'over_received' | 'under_received'
 
+export type WarehouseMaterialLookup = {
+  id: number
+  name: string
+  catalog_no?: string | null
+  sec_number?: string | null
+  mat_code?: string | null
+  item_code?: string | null
+}
+
 export type PlanningMaterialWarehouseRow = {
   key: string
   material_id: number | null
+  catalog_no?: string | null
   description: string
   unit: string
   /** الكمية المحجوزة (من BOQ / المقايسة) */
@@ -92,6 +102,54 @@ function buildRow(
   }
 }
 
+function normCode(v: string): string {
+  return v.trim().toUpperCase()
+}
+
+function findBalanceForPlannedLine(
+  line: { material_id?: number | null; description: string; catalog_no?: string | null },
+  balanceByMaterial: Map<number, ReservationReconciliation>,
+  balances: ReservationReconciliation[],
+): ReservationReconciliation | undefined {
+  if (line.material_id) return balanceByMaterial.get(line.material_id)
+  const desc = line.description.trim().toLowerCase()
+  const byName = balances.find(b => b.material_name?.trim().toLowerCase() === desc)
+  if (byName) return byName
+  if (line.catalog_no?.trim()) {
+    const cat = line.catalog_no.trim().toLowerCase()
+    return balances.find(b => b.material_name?.trim().toLowerCase().includes(cat))
+  }
+  return undefined
+}
+
+/** ربط سطر المقايسة بمادة في المستودع (رقم كتالوج / SEC / الاسم) */
+export function resolveWarehouseMaterialId(
+  materials: WarehouseMaterialLookup[],
+  line: { material_id?: number | null; description: string; catalog_no?: string | null },
+): number | null {
+  if (line.material_id) {
+    const exact = materials.find(m => m.id === line.material_id)
+    if (exact) return exact.id
+  }
+  const cat = (line.catalog_no || '').trim()
+  if (cat) {
+    const n = normCode(cat)
+    const byCode = materials.find(m =>
+      normCode(m.catalog_no || '') === n
+      || normCode(m.sec_number || '') === n
+      || normCode(m.mat_code || '') === n
+      || normCode(m.item_code || '') === n,
+    )
+    if (byCode) return byCode.id
+  }
+  const desc = line.description.trim()
+  const byName = materials.find(m => m.name === desc)
+  if (byName) return byName.id
+  const byPrefix = materials.find(m => m.name.startsWith(desc + ' [') || m.name.startsWith(desc))
+  if (byPrefix) return byPrefix.id
+  return null
+}
+
 export async function fetchPlanningMaterialsWarehouseStatus(
   tenantId: string,
   projectId: number,
@@ -139,12 +197,16 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     reservation = data
   }
 
-  if (!reservation) return empty
+  if (!reservation && reservationNo?.trim()) {
+    empty.reservation_no = reservationNo.trim()
+  }
 
   const [{ data: recon }, boqVersionId] = await Promise.all([
-    fetchReservationReconciliation(tenantId, { projectId, reservationId: reservation.id }),
+    reservation
+      ? fetchReservationReconciliation(tenantId, { projectId, reservationId: reservation.id })
+      : Promise.resolve({ data: [] as ReservationReconciliation[] }),
     (async () => {
-      if (reservation!.boq_version_id) return reservation!.boq_version_id
+      if (reservation?.boq_version_id) return reservation.boq_version_id
       const { data: active } = await supabase
         .from('project_boq_versions')
         .select('id')
@@ -201,16 +263,18 @@ export async function fetchPlanningMaterialsWarehouseStatus(
 
   for (const line of plannedSource) {
     const mid = line.material_id ?? null
-    const bal = mid ? balanceByMaterial.get(mid) : undefined
-    if (mid) usedMaterialIds.add(mid)
+    const bal = findBalanceForPlannedLine(line, balanceByMaterial, balances)
+    const resolvedMid = mid ?? bal?.material_id ?? null
+    if (resolvedMid) usedMaterialIds.add(resolvedMid)
     const planned = num(line.qty_planned)
     const received = num(bal?.qty_received)
     const issued = num(bal?.qty_issued)
     const remaining = Math.max(0, planned - received)
     const remainingIssue = planned > 0 ? Math.max(0, planned - issued) : 0
     rows.push(buildRow({
-      key: mid ? `m-${mid}` : `boq-${line.description}`,
-      material_id: mid,
+      key: resolvedMid ? `m-${resolvedMid}` : `boq-${line.catalog_no || line.description}`,
+      material_id: resolvedMid,
+      catalog_no: line.catalog_no ?? null,
       description: line.description,
       unit: line.unit || bal?.unit || 'قطعة',
       qty_planned: planned,
@@ -276,10 +340,12 @@ export async function fetchPlanningMaterialsWarehouseStatus(
   if (over_received_count > 0) driftParts.push(`${over_received_count} مادة باستلام زائد`)
   const planning_drift_summary = driftParts.join(' — ')
 
+  if (!rows.length && !reservation) return empty
+
   return {
-    reservation_id: reservation.id,
-    reservation_no: reservation.reservation_no,
-    reservation_status: reservation.status,
+    reservation_id: reservation?.id ?? null,
+    reservation_no: reservation?.reservation_no ?? reservationNo?.trim() ?? null,
+    reservation_status: reservation?.status ?? null,
     reservation_date: null,
     rows,
     totals,

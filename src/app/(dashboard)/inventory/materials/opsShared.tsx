@@ -17,7 +17,7 @@ import toast from 'react-hot-toast'
 import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
-import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage } from '@/lib/planning-materials-warehouse'
+import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage, fetchPlanningMaterialsWarehouseStatus, resolveWarehouseMaterialId, type PlanningMaterialsWarehouseSummary, type PlanningMaterialWarehouseRow } from '@/lib/planning-materials-warehouse'
 import type { MaterialReservation } from '@/lib/pmc-types'
 
 // ══════════════════════════════════════════
@@ -143,6 +143,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   const [materials,       setMaterials]       = useState<Material[]>([])
   const [projectBalances, setProjectBalances] = useState<Record<number, number>>({})
   const [directQtys,      setDirectQtys]      = useState<Record<number, string>>({})
+  const [plannedSummary,  setPlannedSummary]  = useState<PlanningMaterialsWarehouseSummary | null>(null)
+  const [loadingPlanned,  setLoadingPlanned]  = useState(false)
+  const [receiveChecked,  setReceiveChecked]  = useState<Record<string, boolean>>({})
+  const [receiveQtys,     setReceiveQtys]     = useState<Record<string, string>>({})
+  const [showUnplannedReceive, setShowUnplannedReceive] = useState(false)
   const [rows,            setRows]            = useState([{ mat_id: '', qty: '', note: '' }])
   const [attachmentFile,  setAttachmentFile]  = useState<File | null>(null)
   const attachRef = useRef<HTMLInputElement>(null)
@@ -189,6 +194,30 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   }, [form.project_id, form.warehouse_id, type])
 
   useEffect(() => {
+    if (type !== 'استلام' || !isProjectWh || !form.project_id) {
+      setPlannedSummary(null)
+      setReceiveChecked({})
+      setReceiveQtys({})
+      return
+    }
+    let cancelled = false
+    setLoadingPlanned(true)
+    fetchPlanningMaterialsWarehouseStatus(
+      tenantId,
+      Number(form.project_id),
+      form.reservation_id ? Number(form.reservation_id) : null,
+      form.booking_no.trim() || null,
+    ).then(summary => {
+      if (cancelled) return
+      setPlannedSummary(summary)
+      setReceiveChecked({})
+      setReceiveQtys({})
+      setShowUnplannedReceive(false)
+    }).finally(() => { if (!cancelled) setLoadingPlanned(false) })
+    return () => { cancelled = true }
+  }, [type, isProjectWh, form.project_id, form.reservation_id, form.booking_no, tenantId])
+
+  useEffect(() => {
     if (!form.project_id) { setReservations([]); setTeamMembers([]); return }
     fetchOpenReservations(tenantId, Number(form.project_id)).then(({ data }) => setReservations(data || []))
     supabase.from('projects').select('team_id').eq('id', Number(form.project_id)).single()
@@ -219,6 +248,48 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     const proj = projects.find((p: { id: number; name: string }) => p.id === Number(projectId))
     set('project_id', projectId); set('project_name', proj?.name || '')
     set('reservation_id', ''); set('booking_no', ''); set('requested_by', '')
+    if (type === 'استلام' && projectId) {
+      supabase.from('project_planning')
+        .select('material_reservation_id, material_reservation_number')
+        .eq('tenant_id', tenantId)
+        .eq('project_id', Number(projectId))
+        .maybeSingle()
+        .then(({ data: plan }) => {
+          if (!plan) return
+          if (plan.material_reservation_number) set('booking_no', plan.material_reservation_number)
+          if (plan.material_reservation_id) set('reservation_id', String(plan.material_reservation_id))
+        })
+    }
+  }
+
+  type ReceivePlannedRow = PlanningMaterialWarehouseRow & { resolved_material_id: number | null }
+
+  function getReceivePlannedRows(): ReceivePlannedRow[] {
+    if (!plannedSummary) return []
+    return plannedSummary.rows
+      .filter(r => r.qty_planned > 0)
+      .map(r => ({
+        ...r,
+        resolved_material_id: resolveWarehouseMaterialId(materials, r),
+      }))
+  }
+
+  const receivePlannedRows = getReceivePlannedRows()
+  const pendingReceiveRows = receivePlannedRows.filter(r => r.qty_remaining > 0)
+  const usePlannedReceiveUi = type === 'استلام' && isProjectWh && Boolean(form.project_id) && receivePlannedRows.length > 0
+
+  function toggleReceiveLine(row: ReceivePlannedRow, checked: boolean) {
+    setReceiveChecked(prev => ({ ...prev, [row.key]: checked }))
+    if (checked && !receiveQtys[row.key] && row.qty_remaining > 0) {
+      setReceiveQtys(prev => ({ ...prev, [row.key]: String(row.qty_remaining) }))
+    }
+    if (!checked) {
+      setReceiveQtys(prev => {
+        const next = { ...prev }
+        delete next[row.key]
+        return next
+      })
+    }
   }
 
   function noteWithRequester(note: string): string {
@@ -241,6 +312,15 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
       effectiveRows = Object.entries(directQtys).filter(([, qty]) => Number(qty) > 0)
         .map(([matId, qty]) => ({ mat_id: matId, qty, note: '' }))
     }
+    if (type === 'استلام' && usePlannedReceiveUi) {
+      const fromPlanned = receivePlannedRows
+        .filter(r => receiveChecked[r.key] && r.resolved_material_id && Number(receiveQtys[r.key]) > 0)
+        .map(r => ({ mat_id: String(r.resolved_material_id), qty: receiveQtys[r.key], note: '' }))
+      const fromManual = showUnplannedReceive
+        ? rows.filter(r => r.mat_id && Number(r.qty) > 0)
+        : []
+      effectiveRows = [...fromPlanned, ...fromManual]
+    }
     const validRows = effectiveRows.filter(r => r.mat_id && Number(r.qty) > 0)
 
     // ══ حارس السطور الناقصة: لا سطر يُرمى بصمت — مادة بلا كمية أو كمية بلا مادة = إيقاف برسالة تسمّيه ══
@@ -261,7 +341,16 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
       }
     }
 
-    if (validRows.length === 0) { toast.error('أدخل كمية لمادة واحدة على الأقل'); savingRef.current = false; return }
+    if (type === 'استلام' && usePlannedReceiveUi) {
+      const missingLink = receivePlannedRows.filter(r => receiveChecked[r.key] && !r.resolved_material_id)
+      if (missingLink.length > 0) {
+        toast.error(`⛔ ${missingLink.length} مادة غير مربوطة بالمستودع — تحقق من رقم الكتالوج/SEC`)
+        savingRef.current = false
+        return
+      }
+    }
+
+    if (validRows.length === 0) { toast.error('اختر مادة واحدة على الأقل وحدّد الكمية'); savingRef.current = false; return }
     if (type === 'صرف' && !form.project_id) { toast.error('اسم المشروع مطلوب'); savingRef.current = false; return }
     if (type === 'إرجاع' && !form.project_id && isProjectWh) { toast.error('اختر المشروع'); savingRef.current = false; return }
     if (type === 'استلام' && projectRequiredOnReceive && !form.project_id) { toast.error('المشروع إلزامي لهذا المستودع'); savingRef.current = false; return }
@@ -547,7 +636,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
 
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-box" style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-box" style={{ maxWidth: usePlannedReceiveUi ? '760px' : '640px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header" style={{ background: meta.color + '10', borderBottom: `2px solid ${meta.color}22` }}>
           <h3 style={{ fontWeight: 700, color: meta.color, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <meta.icon style={{ width: '18px', height: '18px' }} /> {type} مواد
@@ -716,7 +805,106 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
           )}
 
           {/* المواد */}
-          {isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع') ? (
+          {type === 'استلام' && usePlannedReceiveUi ? (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px', color: '#0ea77b' }}>
+                مواد المقايسة — ضع ✓ على ما تم استلامه
+              </label>
+              {loadingPlanned ? (
+                <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af', fontSize: '0.875rem' }}>جاري تحميل المقايسة...</div>
+              ) : pendingReceiveRows.length === 0 ? (
+                <div style={{ padding: '12px', textAlign: 'center', color: '#0ea77b', fontSize: '0.875rem', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
+                  ✅ تم استلام جميع المواد المخططة لهذا الحجز
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '320px', overflowY: 'auto' }}>
+                  {pendingReceiveRows.map(row => {
+                    const checked = Boolean(receiveChecked[row.key])
+                    const disabled = !row.resolved_material_id
+                    return (
+                      <div key={row.key} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', borderRadius: '8px',
+                        background: checked ? '#ecfdf5' : '#f8fafc',
+                        border: `1px solid ${checked ? '#a7f3d0' : 'var(--border)'}`,
+                        opacity: disabled ? 0.65 : 1,
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={e => toggleReceiveLine(row, e.target.checked)}
+                          style={{ width: '16px', height: '16px', flexShrink: 0, cursor: disabled ? 'not-allowed' : 'pointer' }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.description}</div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
+                            محجوز: <strong dir="ltr">{row.qty_planned}</strong>
+                            {' · '}مستلم: <strong dir="ltr">{row.qty_received}</strong>
+                            {' · '}متبقي: <strong dir="ltr" style={{ color: '#0ea77b' }}>{row.qty_remaining}</strong>
+                            {' '}{row.unit}
+                            {row.catalog_no ? <> · <span dir="ltr">{row.catalog_no}</span></> : null}
+                          </div>
+                          {disabled && (
+                            <div style={{ fontSize: '0.66rem', color: '#c81e1e', marginTop: '2px' }}>⚠ غير مربوطة بمستودع المواد — راجع رقم الكتالوج</div>
+                          )}
+                        </div>
+                        <input
+                          type="number"
+                          value={receiveQtys[row.key] || ''}
+                          min="0"
+                          disabled={!checked || disabled}
+                          onChange={e => setReceiveQtys(prev => ({ ...prev, [row.key]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
+                          placeholder="0"
+                          style={{ width: '72px', padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '0.82rem', textAlign: 'center' }}
+                        />
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '28px' }}>{row.unit}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {plannedSummary?.line_source !== 'none' && (
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '6px' }}>
+                  المصدر: {plannedSummary?.line_source === 'boq' ? 'مقايسة BOQ' : 'تخطيط يدوي'}
+                  {form.booking_no ? <> · حجز: <span dir="ltr">{form.booking_no}</span></> : null}
+                </div>
+              )}
+              {!showUnplannedReceive ? (
+                <button type="button" onClick={() => setShowUnplannedReceive(true)}
+                  style={{ alignSelf: 'flex-start', marginTop: '8px', background: 'none', border: '1px dashed #d1d5db', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', color: '#6b7280' }}>
+                  + إضافة مادة غير مخططة
+                </button>
+              ) : (
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed #e5e7eb' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '6px', color: '#6b7280' }}>مواد إضافية (غير المقايسة)</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {rows.map((row, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <select value={row.mat_id} onChange={e => setRow(i, 'mat_id', e.target.value)} className="select" style={{ flex: 2 }}>
+                          <option value="">— اختر مادة —</option>
+                          {materials.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                        <input type="number" value={row.qty} onChange={e => setRow(i, 'qty', e.target.value)} className="input" placeholder="الكمية" min="0" style={{ width: '90px' }} />
+                        <input value={row.note} onChange={e => setRow(i, 'note', e.target.value)} className="input" placeholder="بيان" style={{ flex: 1 }} />
+                        {rows.length > 1 && (
+                          <button onClick={() => setRows(r => r.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c81e1e', padding: '4px' }}>
+                            <Trash2 style={{ width: '14px', height: '14px' }} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button onClick={() => setRows(r => [...r, { mat_id: '', qty: '', note: '' }])}
+                      style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #d1d5db', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', color: '#6b7280' }}>
+                      + سطر
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : isProjectWh && form.project_id && (type === 'صرف' || type === 'إرجاع') ? (
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px', color: '#1a56db' }}>
                 {type === 'صرف' ? 'مواد المشروع — أدخل الكميات المصروفة:' : 'مواد المشروع — أدخل الكميات المُرجعة (اختياري):'}
@@ -756,6 +944,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
           ) : (
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px' }}>المواد:</label>
+              {type === 'استلام' && isProjectWh && form.project_id && !loadingPlanned && plannedSummary?.line_source === 'none' && (
+                <div style={{ fontSize: '0.75rem', color: '#92400e', marginBottom: '8px', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                  لا توجد مواد في مقايسة المشروع — أضف مواد BOQ في التخطيط أو أدخلها يدوياً هنا
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {rows.map((row, i) => (
                   <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
