@@ -17,6 +17,7 @@ import toast from 'react-hot-toast'
 import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
+import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage } from '@/lib/planning-materials-warehouse'
 import type { MaterialReservation } from '@/lib/pmc-types'
 
 // ══════════════════════════════════════════
@@ -291,6 +292,32 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
       toast.error('أدخل رقم الحجز أو اختر حجزاً — لا يتطلب اكتمال التخطيط')
       savingRef.current = false
       return
+    }
+
+    const mergedForCheck: Record<number, { mat_id: number; qty: number }> = {}
+    for (const row of validRows) {
+      const id = Number(row.mat_id)
+      if (mergedForCheck[id]) mergedForCheck[id].qty += Number(row.qty)
+      else mergedForCheck[id] = { mat_id: id, qty: Number(row.qty) }
+    }
+    const rowsForPlanningCheck = Object.values(mergedForCheck)
+
+    if (type === 'استلام' && isProjectWh && form.project_id && rowsForPlanningCheck.length > 0) {
+      const warnings = await checkReceivePlanningWarnings(
+        tenantId,
+        Number(form.project_id),
+        rowsForPlanningCheck.map(r => ({
+          material_id: r.mat_id,
+          qty: r.qty,
+          material_name: materials.find(m => m.id === r.mat_id)?.name,
+        })),
+        reservationIdForSubmit ? Number(reservationIdForSubmit) : null,
+        form.booking_no,
+      )
+      if (warnings.length > 0 && !confirm(formatReceivePlanningConfirmMessage(warnings))) {
+        savingRef.current = false
+        return
+      }
     }
 
     setSaving(true)

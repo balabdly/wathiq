@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Save, Package, Warehouse } from 'lucide-react'
+import { Save, Package, Warehouse, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   updateProjectPlanning,
@@ -12,6 +12,7 @@ import {
   fetchPlanningMaterialsWarehouseStatus,
   resolveMaterialReservationId,
   type PlanningMaterialsWarehouseSummary,
+  type PlanningMaterialAlert,
 } from '@/lib/planning-materials-warehouse'
 import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
 
@@ -128,7 +129,20 @@ export function MaterialsReservationBlock({
     setSaving(false)
   }
 
-  const matRows = warehouse?.rows.filter(r => r.qty_planned > 0) || []
+  const matRows = warehouse?.rows.filter(r => r.qty_planned > 0 || r.qty_received > 0) || []
+  const alertLabel = (alert: PlanningMaterialAlert) => {
+    if (alert === 'not_in_plan') return 'غير موجود بالمقايسة'
+    if (alert === 'over_received') return 'استلام زائد'
+    if (alert === 'under_received') return 'لم يُستلم بعد'
+    if (alert === 'none') return 'مطابق'
+    return '—'
+  }
+  const alertColor = (alert: PlanningMaterialAlert) => {
+    if (alert === 'not_in_plan') return { bg: '#fef2f2', color: '#c81e1e' }
+    if (alert === 'over_received') return { bg: '#fffbeb', color: '#e6820a' }
+    if (alert === 'under_received') return { bg: '#f8fafc', color: '#64748b' }
+    return { bg: '#ecfdf5', color: '#0ea77b' }
+  }
 
   return (
     <div style={embedded
@@ -177,26 +191,55 @@ export function MaterialsReservationBlock({
       )}
       {loadingWh ? (
         <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>جاري تحميل حالة المخزون...</div>
-      ) : matRows.length > 0 ? (
+      ) : warehouse?.has_planning_drift ? (
+        <div style={{
+          marginBottom: '10px', padding: '10px 12px', borderRadius: '8px',
+          background: '#fffbeb', border: '1px solid #fde68a', fontSize: '0.75rem', color: '#92400e',
+          display: 'flex', alignItems: 'flex-start', gap: '8px',
+        }}>
+          <AlertTriangle style={{ width: '16px', height: '16px', flexShrink: 0, marginTop: '1px' }} />
+          <div>
+            <strong>تنبيه فجوة مقايسة:</strong> {warehouse.planning_drift_summary}
+            <div style={{ marginTop: '4px', opacity: 0.9 }}>يُنصح بتعديل المقايسة لتطابق ما استُلم فعلياً في المخزون.</div>
+          </div>
+        </div>
+      ) : null}
+      {loadingWh ? null : matRows.length > 0 ? (
         <div style={{ overflow: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
             <thead>
               <tr style={{ background: '#eef2ff' }}>
-                {['المادة', 'محجوز', 'مستلم', 'مصروف', 'متبقي'].map(h => (
+                {['المادة', 'مخطط', 'مستلم', 'مصروف', 'متبقي', 'الحالة'].map(h => (
                   <th key={h} style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#4338ca' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {matRows.map(r => (
-                <tr key={r.key} style={{ borderTop: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '8px' }}>{r.description}</td>
-                  <td style={{ padding: '8px' }} dir="ltr">{r.qty_planned}</td>
-                  <td style={{ padding: '8px' }} dir="ltr">{r.qty_received}</td>
-                  <td style={{ padding: '8px' }} dir="ltr">{r.qty_issued}</td>
-                  <td style={{ padding: '8px', fontWeight: 700, color: r.qty_remaining > 0 ? '#e6820a' : '#0ea77b' }} dir="ltr">{r.qty_remaining}</td>
-                </tr>
-              ))}
+              {matRows.map(r => {
+                const style = alertColor(r.planning_alert)
+                const rowBg = r.is_unplanned ? '#fef2f2' : r.is_over_received ? '#fffbeb' : undefined
+                return (
+                  <tr key={r.key} style={{ borderTop: '1px solid #e2e8f0', background: rowBg }}>
+                    <td style={{ padding: '8px' }}>{r.description}</td>
+                    <td style={{ padding: '8px', color: r.qty_planned <= 0 ? '#94a3b8' : undefined }} dir="ltr">
+                      {r.qty_planned > 0 ? r.qty_planned : '—'}
+                    </td>
+                    <td style={{ padding: '8px', fontWeight: r.qty_received > 0 ? 700 : 400 }} dir="ltr">{r.qty_received}</td>
+                    <td style={{ padding: '8px' }} dir="ltr">{r.qty_issued}</td>
+                    <td style={{ padding: '8px', fontWeight: 700, color: r.qty_remaining > 0 ? '#e6820a' : '#0ea77b' }} dir="ltr">
+                      {r.qty_planned > 0 ? r.qty_remaining : '—'}
+                    </td>
+                    <td style={{ padding: '8px' }}>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: '999px',
+                        fontSize: '0.68rem', fontWeight: 700, background: style.bg, color: style.color,
+                      }}>
+                        {alertLabel(r.planning_alert)}
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
