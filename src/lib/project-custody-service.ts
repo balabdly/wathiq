@@ -9,17 +9,27 @@ function unwrapJoin<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value
 }
 
-type MaterialJoin = { name: string; unit: string; catalog_no?: string | null }
-type WarehouseJoin = { name: string }
+function uniqueStrings(values: (string | null | undefined)[]): string[] {
+  return Array.from(new Set(values.map(v => v?.trim()).filter(Boolean) as string[]))
+}
 
-type ProjectMaterialRow = {
-  material_id: number
-  qty_received: number | null
-  qty_issued: number | null
-  qty_returned: number | null
-  qty_balance: number | null
-  material: MaterialJoin | MaterialJoin[] | null
-  warehouse: WarehouseJoin | WarehouseJoin[] | null
+export type CustodyMovementKind = 'receive' | 'issue' | 'return_client' | 'return_site' | 'other'
+
+export type CustodyMovementEvent = {
+  id: number
+  date: string
+  kind: CustodyMovementKind
+  kind_label: string
+  qty: number
+  unit: string
+  txn_number?: string | null
+  booking_no?: string | null
+  exit_permit_no?: string | null
+  doc_code?: string | null
+  client_name?: string | null
+  vendor_name?: string | null
+  wh_name?: string | null
+  note?: string | null
 }
 
 export type CustodyMaterialRow = {
@@ -31,8 +41,12 @@ export type CustodyMaterialRow = {
   warehouse_name?: string | null
   qty_received: number
   qty_issued: number
-  qty_returned: number
+  /** إرجاع فعلي للعميل (SEC) فقط */
+  qty_returned_client: number
+  /** مرتجع موقع → المستودع (ليس إرجاع عميل) */
+  qty_returned_site: number
   qty_balance: number
+  events: CustodyMovementEvent[]
 }
 
 export type CustodyPendingReceiveRow = {
@@ -45,11 +59,37 @@ export type CustodyPendingReceiveRow = {
   qty_pending: number
 }
 
+export type ProjectCustodyMeta = {
+  booking_numbers: string[]
+  exit_permits: string[]
+  doc_codes: string[]
+  client_names: string[]
+  reservation_number?: string | null
+}
+
 export type ProjectCustodyDetail = {
   received: CustodyMaterialRow[]
   notYetReceived: CustodyPendingReceiveRow[]
-  pendingClientReturn: CustodyMaterialRow[]
+  pendingInWarehouse: CustodyMaterialRow[]
   has_boq: boolean
+  meta: ProjectCustodyMeta
+}
+
+export type ProjectCustodyPageData = ProjectCustodyDetail & {
+  project: {
+    id: number
+    name: string
+    status?: string | null
+    location?: string | null
+    client_name?: string | null
+  }
+  totals: {
+    received: number
+    issued: number
+    returned_client: number
+    in_warehouse: number
+    pending_receive: number
+  }
 }
 
 type PlannedLine = {
@@ -58,6 +98,64 @@ type PlannedLine = {
   description: string
   unit: string
   qty_planned: number
+}
+
+type LedgerRow = {
+  id: number
+  type: string
+  movement_category?: string | null
+  mat_name: string
+  mat_code?: string | null
+  unit?: string | null
+  qty: number
+  wh_name?: string | null
+  is_loan?: boolean | null
+  created_at: string
+  txn_number?: string | null
+  booking_no?: string | null
+  exit_permit_no?: string | null
+  doc_code?: string | null
+  client_name?: string | null
+  vendor_name?: string | null
+  dispatch_note?: string | null
+}
+
+const KIND_LABELS: Record<CustodyMovementKind, string> = {
+  receive: 'استلام من العميل',
+  issue: 'صرف للموقع',
+  return_client: 'إرجاع للعميل',
+  return_site: 'مرتجع موقع → المستودع',
+  other: 'حركة أخرى',
+}
+
+export function classifyCustodyMovement(type: string, cat?: string | null, isLoan?: boolean | null): CustodyMovementKind {
+  if (isLoan) return 'other'
+  const c = (cat || '').trim()
+  if (c === 'ارجاع_عميل' || type === 'إرجاع للعميل') return 'return_client'
+  if (c === 'مرتجع_موقع' || c === 'ارجاع_مستودع') return 'return_site'
+  if (type === 'استلام' || type === 'توريد' || c.includes('استلام')) return 'receive'
+  if (type === 'صرف' || c.includes('صرف')) return 'issue'
+  return 'other'
+}
+
+function ledgerToEvent(row: LedgerRow): CustodyMovementEvent {
+  const kind = classifyCustodyMovement(row.type, row.movement_category, row.is_loan)
+  return {
+    id: row.id,
+    date: row.created_at,
+    kind,
+    kind_label: KIND_LABELS[kind],
+    qty: num(row.qty),
+    unit: row.unit || 'قطعة',
+    txn_number: row.txn_number,
+    booking_no: row.booking_no,
+    exit_permit_no: row.exit_permit_no,
+    doc_code: row.doc_code,
+    client_name: row.client_name,
+    vendor_name: row.vendor_name,
+    wh_name: row.wh_name,
+    note: row.dispatch_note,
+  }
 }
 
 async function fetchPlannedMaterialLines(tenantId: string, projectId: number): Promise<{ lines: PlannedLine[]; has_boq: boolean }> {
@@ -96,7 +194,7 @@ async function fetchPlannedMaterialLines(tenantId: string, projectId: number): P
 
   const { data: manual } = await supabase
     .from('project_planning_material_lines')
-    .select('description, unit, qty_planned, catalog_no')
+    .select('description, unit, qty_planned')
     .eq('tenant_id', tenantId)
     .eq('project_id', projectId)
     .order('sort_order')
@@ -114,109 +212,150 @@ async function fetchPlannedMaterialLines(tenantId: string, projectId: number): P
   }
 }
 
-type LedgerRow = {
-  id: number
-  type: string
-  movement_category?: string | null
-  mat_name: string
-  unit?: string | null
-  qty: number
-  wh_name?: string | null
-  is_loan?: boolean | null
-}
-
-function isReceiveType(type: string, cat?: string | null): boolean {
-  if (type === 'استلام' || type === 'توريد') return true
-  return !!(cat && (cat.includes('استلام') || cat === 'مرتجع_موقع'))
-}
-
-function isIssueType(type: string, isLoan?: boolean | null): boolean {
-  return type === 'صرف' && !isLoan
-}
-
-function isClientReturnType(type: string, cat?: string | null): boolean {
-  return type === 'إرجاع للعميل' || type === 'إرجاع' || cat === 'ارجاع_عميل'
-}
-
-async function fetchCustodyFromLedger(
+async function fetchProjectLedgerRows(
   tenantId: string,
   projectId: number,
   projectName?: string | null,
-): Promise<Map<number | string, CustodyMaterialRow>> {
-  const [{ data: ledgerById }, { data: ledgerByName }] = await Promise.all([
-    supabase.from('stock_ledger').select('id, type, movement_category, mat_name, unit, qty, wh_name, is_loan')
-      .eq('tenant_id', tenantId).eq('project_id', projectId),
+): Promise<LedgerRow[]> {
+  const [{ data: byId }, { data: byName }] = await Promise.all([
+    supabase.from('stock_ledger')
+      .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note')
+      .eq('tenant_id', tenantId).eq('project_id', projectId)
+      .order('created_at', { ascending: true }),
     projectName
-      ? supabase.from('stock_ledger').select('id, type, movement_category, mat_name, unit, qty, wh_name, is_loan')
+      ? supabase.from('stock_ledger')
+          .select('id, type, movement_category, mat_name, mat_code, unit, qty, wh_name, is_loan, created_at, txn_number, booking_no, exit_permit_no, doc_code, client_name, vendor_name, dispatch_note')
           .eq('tenant_id', tenantId).eq('project_name', projectName)
+          .order('created_at', { ascending: true })
       : Promise.resolve({ data: [] as LedgerRow[] }),
   ])
 
   const seen = new Set<number>()
   const rows: LedgerRow[] = []
-  for (const row of [...(ledgerById || []), ...(ledgerByName || [])] as LedgerRow[]) {
+  for (const row of [...(byId || []), ...(byName || [])] as LedgerRow[]) {
     if (seen.has(row.id)) continue
     seen.add(row.id)
     rows.push(row)
   }
+  rows.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  return rows
+}
 
-  const byKey = new Map<number | string, CustodyMaterialRow>()
-  for (const row of rows) {
-    const key = row.mat_name || 'unknown'
+function buildMaterialsFromLedger(
+  ledgerRows: LedgerRow[],
+  materialMeta: Map<number, { name: string; unit: string; catalog_no?: string | null; warehouse_name?: string | null }>,
+): Map<string, CustodyMaterialRow> {
+  const byKey = new Map<string, CustodyMaterialRow>()
+
+  for (const row of ledgerRows) {
+    const event = ledgerToEvent(row)
+    const key = row.mat_name?.trim() || 'unknown'
+    const meta = [...materialMeta.values()].find(m => m.name === key)
     const prev = byKey.get(key)
     const base: CustodyMaterialRow = prev || {
-      key: `ledger-${key}`,
+      key: `mat-${key}`,
       material_id: null,
-      name: row.mat_name,
-      unit: row.unit || 'قطعة',
-      warehouse_name: row.wh_name || null,
+      name: key,
+      unit: row.unit || meta?.unit || 'قطعة',
+      catalog_no: meta?.catalog_no,
+      warehouse_name: row.wh_name || meta?.warehouse_name || null,
       qty_received: 0,
       qty_issued: 0,
-      qty_returned: 0,
+      qty_returned_client: 0,
+      qty_returned_site: 0,
       qty_balance: 0,
+      events: [],
     }
+
+    base.events.push(event)
     const qty = num(row.qty)
-    if (isReceiveType(row.type, row.movement_category)) base.qty_received += qty
-    else if (isIssueType(row.type, row.is_loan)) base.qty_issued += qty
-    else if (isClientReturnType(row.type, row.movement_category)) base.qty_returned += qty
-    base.qty_balance = Math.max(0, base.qty_received - base.qty_issued - base.qty_returned)
+    if (event.kind === 'receive') base.qty_received += qty
+    else if (event.kind === 'issue') base.qty_issued += qty
+    else if (event.kind === 'return_client') base.qty_returned_client += qty
+    else if (event.kind === 'return_site') base.qty_received += qty
+
     if (row.wh_name && base.warehouse_name && !base.warehouse_name.includes(row.wh_name)) {
       base.warehouse_name = `${base.warehouse_name}، ${row.wh_name}`
     } else if (row.wh_name && !base.warehouse_name) {
       base.warehouse_name = row.wh_name
     }
+
     byKey.set(key, base)
   }
+
+  byKey.forEach(row => {
+    row.qty_balance = Math.max(0, row.qty_received - row.qty_issued - row.qty_returned_client)
+  })
   return byKey
 }
 
-function buildCustodySections(
-  receivedByMaterial: Map<number, CustodyMaterialRow>,
-  receivedByName: Map<string, CustodyMaterialRow>,
+function mergePmBalances(
+  materials: Map<string, CustodyMaterialRow>,
+  pmRows: {
+    material_id: number
+    qty_balance: number | null
+    material: { name: string; unit: string; catalog_no?: string | null } | { name: string; unit: string; catalog_no?: string | null }[] | null
+    warehouse: { name: string } | { name: string }[] | null
+  }[],
+) {
+  for (const row of pmRows) {
+    const mat = unwrapJoin(row.material)
+    const wh = unwrapJoin(row.warehouse)
+    const name = mat?.name || `مادة #${row.material_id}`
+    const existing = materials.get(name)
+    if (existing) {
+      existing.material_id = row.material_id
+      existing.qty_balance = num(row.qty_balance)
+      if (mat?.catalog_no) existing.catalog_no = mat.catalog_no
+      if (wh?.name) existing.warehouse_name = wh.name
+    } else if (num(row.qty_balance) > 0 || mat) {
+      materials.set(name, {
+        key: `m-${row.material_id}`,
+        material_id: row.material_id,
+        name,
+        unit: mat?.unit || 'قطعة',
+        catalog_no: mat?.catalog_no,
+        warehouse_name: wh?.name || null,
+        qty_received: 0,
+        qty_issued: 0,
+        qty_returned_client: 0,
+        qty_returned_site: 0,
+        qty_balance: num(row.qty_balance),
+        events: [],
+      })
+    }
+  }
+}
+
+function buildMetaFromLedger(ledgerRows: LedgerRow[], reservationNumber?: string | null): ProjectCustodyMeta {
+  return {
+    booking_numbers: uniqueStrings(ledgerRows.map(r => r.booking_no)),
+    exit_permits: uniqueStrings(ledgerRows.map(r => r.exit_permit_no)),
+    doc_codes: uniqueStrings(ledgerRows.map(r => r.doc_code)),
+    client_names: uniqueStrings(ledgerRows.map(r => r.client_name)),
+    reservation_number: reservationNumber || ledgerRows.find(r => r.booking_no)?.booking_no || null,
+  }
+}
+
+function buildNotYetReceived(
   planned: { lines: PlannedLine[]; has_boq: boolean },
-): ProjectCustodyDetail {
-  const received = [
-    ...Array.from(receivedByMaterial.values()),
-    ...Array.from(receivedByName.values()),
-  ]
-    .filter(r => r.qty_received > 0 || r.qty_balance > 0)
-    .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
-
-  const pendingClientReturn = received
-    .filter(r => r.qty_balance > 0)
-    .sort((a, b) => b.qty_balance - a.qty_balance)
-
-  const receivedQtyByMaterial = new Map<number, number>()
-  for (const r of received) {
-    if (r.material_id) receivedQtyByMaterial.set(r.material_id, r.qty_received)
+  materials: CustodyMaterialRow[],
+): CustodyPendingReceiveRow[] {
+  const receivedByMaterial = new Map<number, number>()
+  const receivedByName = new Map<string, number>()
+  for (const m of materials) {
+    if (m.material_id) receivedByMaterial.set(m.material_id, m.qty_received)
+    receivedByName.set(m.name, m.qty_received)
   }
 
-  const notYetReceived: CustodyPendingReceiveRow[] = []
+  const rows: CustodyPendingReceiveRow[] = []
   for (const line of planned.lines) {
-    const receivedQty = line.material_id ? (receivedQtyByMaterial.get(line.material_id) ?? 0) : 0
+    const receivedQty = line.material_id
+      ? (receivedByMaterial.get(line.material_id) ?? 0)
+      : (receivedByName.get(line.description) ?? 0)
     const pending = Math.max(0, line.qty_planned - receivedQty)
     if (pending > 0) {
-      notYetReceived.push({
+      rows.push({
         key: line.key,
         material_id: line.material_id,
         description: line.description,
@@ -227,16 +366,10 @@ function buildCustodySections(
       })
     }
   }
-
-  return {
-    received,
-    notYetReceived: notYetReceived.sort((a, b) => a.description.localeCompare(b.description, 'ar')),
-    pendingClientReturn,
-    has_boq: planned.has_boq || planned.lines.length > 0,
-  }
+  return rows.sort((a, b) => a.description.localeCompare(b.description, 'ar'))
 }
 
-/** مشاريع لها حركات عهدة (project_materials أو stock_ledger) */
+/** مشاريع لها حركات عهدة */
 export async function fetchCustodyProjectIds(tenantId: string): Promise<number[]> {
   const [{ data: pmRows }, { data: ledgerRows }] = await Promise.all([
     supabase.from('project_materials').select('project_id').eq('tenant_id', tenantId),
@@ -248,93 +381,86 @@ export async function fetchCustodyProjectIds(tenantId: string): Promise<number[]
   return Array.from(ids)
 }
 
+export async function fetchProjectCustodyPageData(
+  tenantId: string,
+  projectId: number,
+): Promise<ProjectCustodyPageData | null> {
+  const [{ data: project }, { data: planning }, { data: pmRows }, planned] = await Promise.all([
+    supabase.from('projects').select('id, name, status, location, client_name').eq('tenant_id', tenantId).eq('id', projectId).maybeSingle(),
+    supabase.from('project_planning').select('material_reservation_number').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
+    supabase.from('project_materials')
+      .select('material_id, qty_balance, material:materials(name, unit, catalog_no), warehouse:warehouses(name)')
+      .eq('tenant_id', tenantId).eq('project_id', projectId),
+    fetchPlannedMaterialLines(tenantId, projectId),
+  ])
+
+  if (!project) return null
+
+  const ledgerRows = await fetchProjectLedgerRows(tenantId, projectId, project.name)
+  const materialMeta = new Map<number, { name: string; unit: string; catalog_no?: string | null; warehouse_name?: string | null }>()
+  for (const row of pmRows || []) {
+    const mat = unwrapJoin(row.material as { name: string; unit: string; catalog_no?: string | null } | { name: string; unit: string; catalog_no?: string | null }[] | null)
+    const wh = unwrapJoin(row.warehouse as { name: string } | { name: string }[] | null)
+    if (mat) materialMeta.set(row.material_id as number, { ...mat, warehouse_name: wh?.name || null })
+  }
+
+  const materialMap = buildMaterialsFromLedger(ledgerRows, materialMeta)
+  mergePmBalances(materialMap, (pmRows || []) as Parameters<typeof mergePmBalances>[1])
+
+  const received = Array.from(materialMap.values())
+    .filter(m => m.qty_received > 0 || m.qty_balance > 0 || m.events.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+
+  const pendingInWarehouse = received
+    .filter(m => m.qty_balance > 0)
+    .sort((a, b) => b.qty_balance - a.qty_balance)
+
+  const notYetReceived = buildNotYetReceived(planned, received)
+  const meta = buildMetaFromLedger(ledgerRows, planning?.material_reservation_number)
+
+  const totals = received.reduce(
+    (acc, m) => ({
+      received: acc.received + m.qty_received,
+      issued: acc.issued + m.qty_issued,
+      returned_client: acc.returned_client + m.qty_returned_client,
+      in_warehouse: acc.in_warehouse + m.qty_balance,
+      pending_receive: acc.pending_receive,
+    }),
+    { received: 0, issued: 0, returned_client: 0, in_warehouse: 0, pending_receive: notYetReceived.reduce((s, r) => s + r.qty_pending, 0) },
+  )
+
+  return {
+    project: {
+      id: project.id,
+      name: project.name,
+      status: project.status,
+      location: project.location,
+      client_name: project.client_name,
+    },
+    received,
+    notYetReceived,
+    pendingInWarehouse,
+    has_boq: planned.has_boq || planned.lines.length > 0,
+    meta,
+    totals,
+  }
+}
+
+/** @deprecated استخدم fetchProjectCustodyPageData */
 export async function fetchProjectCustodyDetail(
   tenantId: string,
   projectId: number,
-  projectName?: string | null,
+  _projectName?: string | null,
 ): Promise<ProjectCustodyDetail> {
-  const [{ data: pmRows }, planned, projectRes] = await Promise.all([
-    supabase
-      .from('project_materials')
-      .select('material_id, qty_received, qty_issued, qty_returned, qty_balance, material:materials(name, unit, catalog_no), warehouse:warehouses(name)')
-      .eq('tenant_id', tenantId)
-      .eq('project_id', projectId),
-    fetchPlannedMaterialLines(tenantId, projectId),
-    projectName ? Promise.resolve({ data: { name: projectName } }) :
-      supabase.from('projects').select('name').eq('id', projectId).maybeSingle(),
-  ])
-
-  const resolvedName = projectName || (projectRes.data as { name?: string } | null)?.name || null
-
-  const receivedByMaterial = new Map<number, CustodyMaterialRow>()
-  for (const row of (pmRows || []) as ProjectMaterialRow[]) {
-    const mid = row.material_id
-    const mat = unwrapJoin(row.material)
-    const wh = unwrapJoin(row.warehouse)
-    const prev = receivedByMaterial.get(mid)
-    if (prev) {
-      prev.qty_received += num(row.qty_received)
-      prev.qty_issued += num(row.qty_issued)
-      prev.qty_returned += num(row.qty_returned)
-      prev.qty_balance += num(row.qty_balance)
-      if (wh?.name && prev.warehouse_name && !prev.warehouse_name.includes(wh.name)) {
-        prev.warehouse_name = `${prev.warehouse_name}، ${wh.name}`
-      }
-    } else {
-      receivedByMaterial.set(mid, {
-        key: `m-${mid}`,
-        material_id: mid,
-        name: mat?.name || `مادة #${mid}`,
-        unit: mat?.unit || 'قطعة',
-        catalog_no: mat?.catalog_no,
-        warehouse_name: wh?.name || null,
-        qty_received: num(row.qty_received),
-        qty_issued: num(row.qty_issued),
-        qty_returned: num(row.qty_returned),
-        qty_balance: num(row.qty_balance),
-      })
-    }
+  const page = await fetchProjectCustodyPageData(tenantId, projectId)
+  if (!page) {
+    return { received: [], notYetReceived: [], pendingInWarehouse: [], has_boq: false, meta: { booking_numbers: [], exit_permits: [], doc_codes: [], client_names: [] } }
   }
-
-  if (receivedByMaterial.size === 0) {
-    const ledgerMap = await fetchCustodyFromLedger(tenantId, projectId, resolvedName)
-    const receivedByName = new Map<string, CustodyMaterialRow>()
-    ledgerMap.forEach((row, key) => receivedByName.set(String(key), row))
-    return buildCustodySections(receivedByMaterial, receivedByName, planned)
+  return {
+    received: page.received,
+    notYetReceived: page.notYetReceived,
+    pendingInWarehouse: page.pendingInWarehouse,
+    has_boq: page.has_boq,
+    meta: page.meta,
   }
-
-  return buildCustodySections(receivedByMaterial, new Map(), planned)
-}
-
-export type ProjectCustodyListItem = {
-  id: number
-  name: string
-  status?: string
-  location?: string
-  team_id?: number | null
-  engineer?: string
-  material_count: number
-  active_balance_count: number
-  pending_receive_count: number
-  pending_return_count: number
-}
-
-export async function fetchProjectCustodyListSummary(
-  tenantId: string,
-  branchId: number,
-  projectIds: number[],
-): Promise<Record<number, Pick<ProjectCustodyListItem, 'material_count' | 'active_balance_count' | 'pending_receive_count' | 'pending_return_count'>>> {
-  const summary: Record<number, Pick<ProjectCustodyListItem, 'material_count' | 'active_balance_count' | 'pending_receive_count' | 'pending_return_count'>> = {}
-  if (!projectIds.length) return summary
-
-  await Promise.all(projectIds.map(async (pid) => {
-    const detail = await fetchProjectCustodyDetail(tenantId, pid)
-    summary[pid] = {
-      material_count: detail.received.length,
-      active_balance_count: detail.pendingClientReturn.length,
-      pending_receive_count: detail.notYetReceived.length,
-      pending_return_count: detail.pendingClientReturn.length,
-    }
-  }))
-  return summary
 }
