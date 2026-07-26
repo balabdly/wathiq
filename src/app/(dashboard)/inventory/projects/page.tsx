@@ -1,35 +1,25 @@
 // src/app/(dashboard)/inventory/projects/page.tsx
-// عهدة المشاريع — عرض المستلم/المصروف/المرجع/الرصيد والذمم لكل مشروع
-// ملاحظة معمارية: تعديل المقايسة حُذف من هنا نهائياً — مكانه قسم المشاريع (طبقة العقد)
-// المخزون طبقة حركة فقط: استلام، صرف، إرجاع، تحويل، استعارة وتسوية
+// عهدة المشاريع — قائمة + تفاصيل (مستلمة / غير مستلمة حسب المقايسة / للإرجاع للعميل)
 'use client'
 import { useEffect, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
 import {
+  fetchProjectCustodyDetail,
+  type ProjectCustodyDetail,
+} from '@/lib/project-custody-service'
+import {
   FolderOpen, Search, Package, AlertTriangle, RotateCcw,
-  ChevronDown, ChevronUp, Download, ArrowLeftRight, Users
+  Eye, X, Download, ArrowLeftRight, Users, Clock, Undo2,
 } from 'lucide-react'
-
-// ══════════════════════════════════════════
-// الألوان والثوابت
-// ══════════════════════════════════════════
-const MOVEMENT_COLORS = {
-  استلام:      { color: '#0ea77b', bg: '#ecfdf5', border: '#86efac', label: 'استلام عهدة' },
-  صرف:         { color: '#c81e1e', bg: '#fef2f2', border: '#fecaca', label: 'صرف'          },
-  ارجاع_عميل: { color: '#e6820a', bg: '#fffbeb', border: '#fde68a', label: 'إرجاع للعميل' },
-  استعارة:     { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', label: 'ذمّة استعارة' },
-}
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
 
-type Project     = { id: number; name: string; status?: string; location?: string; team_id?: number | null; engineer?: string }
-type ProjectMat  = {
-  id: number; project_id: number; material_id: number; warehouse_id: number
-  qty_received: number; qty_issued: number; qty_returned: number; qty_balance: number
-  material?: { name: string; unit: string; catalog_no?: string; sec_number?: string }
-  warehouse?: { name: string }
+type Project = {
+  id: number; name: string; status?: string; location?: string
+  team_id?: number | null; engineer?: string
+  material_count?: number; balance_count?: number
 }
 type Loan = {
   id: string; from_project_id: number; to_project_id: number
@@ -37,125 +27,333 @@ type Loan = {
   material?: { name: string; unit: string }
 }
 
-// ══════════════════════════════════════════
-// الصفحة الرئيسية
-// ══════════════════════════════════════════
+type DetailTab = 'received' | 'pending_receive' | 'pending_return'
+
+function ProjectCustodyModal({
+  project, projNames, teamNames, teamTypes, tenantId,
+  onClose, onRefresh,
+}: {
+  project: Project
+  projNames: Record<number, string>
+  teamNames: Record<number, string>
+  teamTypes: Record<number, string>
+  tenantId: string
+  onClose: () => void
+  onRefresh: () => void
+}) {
+  const [tab, setTab] = useState<DetailTab>('received')
+  const [detail, setDetail] = useState<ProjectCustodyDetail | null>(null)
+  const [loans, setLoans] = useState<Loan[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { load() }, [project.id])
+
+  async function load() {
+    setLoading(true)
+    const [custody, loansRes] = await Promise.all([
+      fetchProjectCustodyDetail(tenantId, project.id),
+      supabase.from('project_material_loans')
+        .select('*, material:materials(name, unit)')
+        .eq('tenant_id', tenantId)
+        .or(`from_project_id.eq.${project.id},to_project_id.eq.${project.id}`)
+        .neq('status', 'مُعاد كلياً')
+        .order('loan_date'),
+    ])
+    setDetail(custody)
+    setLoans((loansRes.data || []) as Loan[])
+    setLoading(false)
+  }
+
+  function exportCsv() {
+    if (!detail) return
+    const sections: string[][] = [
+      ['═══ المواد المستلمة ═══'],
+      ['المادة', 'الوحدة', 'مستلم', 'مصروف', 'مرجع للعميل', 'الرصيد'],
+      ...detail.received.map(r => [r.name, r.unit, r.qty_received, r.qty_issued, r.qty_returned, r.qty_balance]),
+      [],
+      ['═══ غير المستلمة (حسب المقايسة) ═══'],
+      ['المادة', 'الوحدة', 'مخطط', 'مستلم', 'متبقي'],
+      ...detail.notYetReceived.map(r => [r.description, r.unit, r.qty_planned, r.qty_received, r.qty_pending]),
+      [],
+      ['═══ متبقي للإرجاع للعميل ═══'],
+      ['المادة', 'الوحدة', 'الرصيد'],
+      ...detail.pendingClientReturn.map(r => [r.name, r.unit, r.qty_balance]),
+    ]
+    const csv = sections.map(r => r.join('\t')).join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `عهدة_${project.name}.xls`
+    a.click()
+  }
+
+  const TABS: { id: DetailTab; label: string; icon: typeof Package; count: number; color: string }[] = detail ? [
+    { id: 'received', label: 'مستلمة', icon: Package, count: detail.received.length, color: '#0ea77b' },
+    { id: 'pending_receive', label: 'غير مستلمة (المقايسة)', icon: Clock, count: detail.notYetReceived.length, color: '#e6820a' },
+    { id: 'pending_return', label: 'للإرجاع للعميل', icon: Undo2, count: detail.pendingClientReturn.length, color: '#c81e1e' },
+  ] : []
+
+  return (
+    <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ maxWidth: '860px', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header" style={{ background: '#f0fdfa', borderBottom: '2px solid #99f6e4', flexShrink: 0 }}>
+          <div>
+            <h3 style={{ fontWeight: 800, color: '#0f766e', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+              <Eye style={{ width: '18px', height: '18px' }} /> {project.name}
+            </h3>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {project.status && <span>{project.status}</span>}
+              {project.team_id && teamNames[project.team_id] && (
+                <span style={{ color: TEAM_TYPE_STYLE[teamTypes[project.team_id]]?.color || '#7c3aed' }}>
+                  👥 {teamNames[project.team_id]}
+                </span>
+              )}
+              {project.engineer && <span>👤 {project.engineer}</span>}
+              {project.location && <span>📍 {project.location}</span>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button onClick={() => { load(); onRefresh() }} title="تحديث"
+              style={{ padding: '6px 8px', borderRadius: '8px', border: '1px solid #99f6e4', background: 'white', cursor: 'pointer', color: '#0f766e' }}>
+              <RotateCcw style={{ width: '14px', height: '14px' }} />
+            </button>
+            <button onClick={exportCsv} disabled={!detail} title="تصدير"
+              style={{ padding: '6px 8px', borderRadius: '8px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
+              <Download style={{ width: '14px', height: '14px' }} />
+            </button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+              <X style={{ width: '18px', height: '18px' }} />
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '60px', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '28px', height: '28px', border: '3px solid var(--border)', borderTopColor: '#0f766e', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          </div>
+        ) : detail && (
+          <>
+            <div style={{ display: 'flex', gap: '6px', padding: '12px 16px 0', flexWrap: 'wrap', flexShrink: 0 }}>
+              {TABS.map(t => {
+                const Icon = t.icon
+                const active = tab === t.id
+                return (
+                  <button key={t.id} onClick={() => setTab(t.id)} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '10px', border: `1px solid ${active ? t.color : 'var(--border)'}`,
+                    background: active ? t.color + '12' : 'white', color: active ? t.color : 'var(--text3)',
+                    fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer',
+                  }}>
+                    <Icon style={{ width: '14px', height: '14px' }} />
+                    {t.label}
+                    {t.count > 0 && (
+                      <span style={{
+                        background: active ? t.color : '#e5e7eb', color: active ? 'white' : '#6b7280',
+                        borderRadius: '999px', padding: '1px 7px', fontSize: '0.68rem', fontWeight: 800,
+                      }}>{t.count}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="modal-body" style={{ overflowY: 'auto', flex: 1, padding: '12px 16px 16px' }}>
+              {tab === 'received' && (
+                <>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', margin: '0 0 10px' }}>
+                    كل ما استُلم من العميل (SEC) وسُجّل على عهدة المشروع
+                  </p>
+                  {detail.received.length === 0 ? (
+                    <EmptyState text="لم يُستلم أي مادة بعد" />
+                  ) : (
+                    <MatTable headers={['المادة', 'الوحدة', 'مستلم', 'مصروف', 'مرجع', 'الرصيد']}
+                      rows={detail.received.map(r => [
+                        r.name, r.unit,
+                        <span key="r" style={{ color: '#0ea77b', fontWeight: 700 }} dir="ltr">{fmt(r.qty_received)}</span>,
+                        <span key="i" style={{ color: '#c81e1e', fontWeight: 700 }} dir="ltr">{fmt(r.qty_issued)}</span>,
+                        <span key="ret" dir="ltr">{r.qty_returned > 0 ? fmt(r.qty_returned) : '—'}</span>,
+                        <span key="b" style={{ fontWeight: 800, color: r.qty_balance > 0 ? '#1a56db' : '#94a3b8' }} dir="ltr">{fmt(r.qty_balance)}</span>,
+                      ])} />
+                  )}
+                </>
+              )}
+
+              {tab === 'pending_receive' && (
+                <>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', margin: '0 0 10px' }}>
+                    بنود المقايسة التي لم تُستلم من العميل بعد (مخطط − مستلم)
+                  </p>
+                  {!detail.has_boq ? (
+                    <div style={{ padding: '24px', textAlign: 'center', background: '#fffbeb', borderRadius: '10px', border: '1px solid #fde68a', fontSize: '0.82rem', color: '#92400e' }}>
+                      لا توجد مقايسة مسجّلة — أضف بنود المواد في التخطيط لمتابعة ما تبقّى للاستلام
+                    </div>
+                  ) : detail.notYetReceived.length === 0 ? (
+                    <EmptyState text="✅ كل بنود المقايسة مستلمة" />
+                  ) : (
+                    <MatTable headers={['المادة', 'الوحدة', 'مخطط', 'مستلم', 'متبقي للاستلام']}
+                      rows={detail.notYetReceived.map(r => [
+                        r.description, r.unit,
+                        <span key="p" dir="ltr">{fmt(r.qty_planned)}</span>,
+                        <span key="r" dir="ltr">{fmt(r.qty_received)}</span>,
+                        <span key="pend" style={{ fontWeight: 800, color: '#e6820a' }} dir="ltr">{fmt(r.qty_pending)}</span>,
+                      ])} />
+                  )}
+                </>
+              )}
+
+              {tab === 'pending_return' && (
+                <>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text3)', margin: '0 0 10px' }}>
+                    مواد باقية في العهدة (رصيد &gt; 0) — يُفترض إرجاعها للعميل عند انتهاء المشروع
+                  </p>
+                  {detail.pendingClientReturn.length === 0 ? (
+                    <EmptyState text="لا يوجد رصيد متبقٍ للإرجاع" />
+                  ) : (
+                    <MatTable headers={['المادة', 'الوحدة', 'مستلم', 'مصروف', 'الرصيد (للإرجاع)']}
+                      rows={detail.pendingClientReturn.map(r => [
+                        r.name, r.unit,
+                        <span key="r" dir="ltr">{fmt(r.qty_received)}</span>,
+                        <span key="i" dir="ltr">{fmt(r.qty_issued)}</span>,
+                        <span key="b" style={{ fontWeight: 800, color: '#c81e1e' }} dir="ltr">{fmt(r.qty_balance)}</span>,
+                      ])} />
+                  )}
+                </>
+              )}
+
+              {loans.length > 0 && (
+                <div style={{ marginTop: '16px', padding: '12px', background: '#faf9ff', borderRadius: '10px', border: '1px solid #ede9fe' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7c3aed', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ArrowLeftRight style={{ width: '14px', height: '14px' }} /> ذمم استعارة مفتوحة ({loans.length})
+                  </div>
+                  {loans.map(loan => {
+                    const lent = loan.from_project_id === project.id
+                    const other = projNames[lent ? loan.to_project_id : loan.from_project_id] || '—'
+                    const remaining = Number(loan.qty_loaned) - Number(loan.qty_returned)
+                    return (
+                      <div key={loan.id} style={{ fontSize: '0.75rem', padding: '6px 0', borderBottom: '1px solid #ede9fe' }}>
+                        {lent ? '⬅ أعار إلى' : '➡ استعار من'} <strong>{other}</strong> — {loan.material?.name} — متبقٍ {fmt(remaining)} {loan.material?.unit}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.85rem', background: '#f8fafc', borderRadius: '10px' }}>
+      {text}
+    </div>
+  )
+}
+
+function MatTable({ headers, rows }: { headers: string[]; rows: (string | React.ReactNode)[][] }) {
+  return (
+    <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+        <thead>
+          <tr style={{ background: '#f8fafc' }}>
+            {headers.map(h => (
+              <th key={h} style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+              {row.map((cell, j) => (
+                <td key={j} style={{ padding: '9px 12px', fontWeight: j === 0 ? 600 : 400 }}>{cell}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function InventoryProjectsPage() {
   const { tenant, activeBranch } = useStore()
 
-  const [projects,    setProjects]    = useState<Project[]>([])
-  const [projNames,   setProjNames]   = useState<Record<number, string>>({})
-  const [teamNames,   setTeamNames]   = useState<Record<number, string>>({})
-  const [teamTypes,   setTeamTypes]   = useState<Record<number, string>>({})
-  const [teamsList,   setTeamsList]   = useState<{ id: number; name: string }[]>([])
-  const [materials,   setMaterials]   = useState<Record<number, ProjectMat[]>>({})
-  const [loans,       setLoans]       = useState<Record<number, Loan[]>>({})
-  const [loading,     setLoading]     = useState(true)
-  const [search,      setSearch]      = useState('')
-  const [teamFilter,  setTeamFilter]  = useState('')
-  const [expanded,    setExpanded]    = useState<Set<number>>(new Set())
-  const [loadingProj, setLoadingProj] = useState<Set<number>>(new Set())
-  const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, zeroBalance: 0, openLoans: 0, noTeam: 0 })
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projNames, setProjNames] = useState<Record<number, string>>({})
+  const [teamNames, setTeamNames] = useState<Record<number, string>>({})
+  const [teamTypes, setTeamTypes] = useState<Record<number, string>>({})
+  const [teamsList, setTeamsList] = useState<{ id: number; name: string }[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [teamFilter, setTeamFilter] = useState('')
+  const [viewProject, setViewProject] = useState<Project | null>(null)
+  const [kpis, setKpis] = useState({ totalProjects: 0, totalMaterials: 0, withBalance: 0, openLoans: 0, noTeam: 0 })
 
   useEffect(() => { if (tenant && activeBranch) loadBase() }, [tenant?.id, activeBranch?.id])
 
   async function loadBase() {
     if (!tenant || !activeBranch) return
     setLoading(true)
-    const { data: pmData } = await supabase.from('project_materials')
-      .select('project_id').eq('tenant_id', tenant.id)
-    const projectIds = Array.from(new Set((pmData || []).map((p: { project_id: number }) => p.project_id)))
-    if (projectIds.length === 0) { setLoading(false); setProjects([]); return }
 
-    const [projRes, allProjRes, allPM, loansRes, teamsRes] = await Promise.all([
+    const { data: pmData } = await supabase.from('project_materials')
+      .select('project_id, qty_balance').eq('tenant_id', tenant.id)
+
+    const countByProject: Record<number, { count: number; balance: number }> = {}
+    for (const row of pmData || []) {
+      const pid = row.project_id as number
+      if (!countByProject[pid]) countByProject[pid] = { count: 0, balance: 0 }
+      countByProject[pid].count++
+      if (Number(row.qty_balance) > 0) countByProject[pid].balance++
+    }
+
+    const projectIds = Object.keys(countByProject).map(Number)
+    if (projectIds.length === 0) {
+      setLoading(false); setProjects([]); return
+    }
+
+    const [projRes, allProjRes, loansRes, teamsRes] = await Promise.all([
       supabase.from('projects').select('id, name, status, location, team_id, engineer')
-        .in('id', projectIds)
-        .eq('tenant_id', tenant.id)
-        .eq('branch_id', activeBranch.id)
-        .neq('status', 'مكتمل')
-        .order('name'),
+        .in('id', projectIds).eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id)
+        .neq('status', 'مكتمل').order('name'),
       supabase.from('projects').select('id, name').eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id),
-      supabase.from('project_materials').select('qty_balance').eq('tenant_id', tenant.id),
       supabase.from('project_material_loans').select('status').eq('tenant_id', tenant.id),
       supabase.from('teams').select('id, name, team_type')
         .eq('tenant_id', tenant.id).eq('branch_id', activeBranch.id).eq('is_active', true),
     ])
 
-    const zeroBalance = (allPM.data || []).filter(m => Number(m.qty_balance) === 0).length
-    const openLoans   = (loansRes.data || []).filter(l => l.status !== 'مُعاد كلياً').length
-    const projList = projRes.data || []
-    const noTeam = projList.filter((p: Project) => !p.team_id).length
+    const projList = (projRes.data || []).map((p: Project) => ({
+      ...p,
+      material_count: countByProject[p.id]?.count ?? 0,
+      balance_count: countByProject[p.id]?.balance ?? 0,
+    }))
 
     const nameMap: Record<number, string> = {}
     ;(allProjRes.data || []).forEach((p: { id: number; name: string }) => { nameMap[p.id] = p.name })
     const tMap: Record<number, string> = {}
     const tTypeMap: Record<number, string> = {}
     ;(teamsRes.data || []).forEach((t: { id: number; name: string; team_type: string }) => {
-      tMap[t.id] = t.name
-      tTypeMap[t.id] = t.team_type
+      tMap[t.id] = t.name; tTypeMap[t.id] = t.team_type
     })
+
+    const withBalance = (pmData || []).filter(m => Number(m.qty_balance) > 0).length
+    const openLoans = (loansRes.data || []).filter(l => l.status !== 'مُعاد كلياً').length
 
     setProjects(projList)
     setProjNames(nameMap)
     setTeamNames(tMap)
     setTeamTypes(tTypeMap)
     setTeamsList((teamsRes.data || []).map((t: { id: number; name: string }) => ({ id: t.id, name: t.name })))
-    setKpis({ totalProjects: projectIds.length, totalMaterials: allPM.data?.length || 0, zeroBalance, openLoans, noTeam })
+    setKpis({
+      totalProjects: projList.length,
+      totalMaterials: pmData?.length || 0,
+      withBalance,
+      openLoans,
+      noTeam: projList.filter(p => !p.team_id).length,
+    })
     setLoading(false)
-  }
-
-  async function fetchProjectData(projectId: number) {
-    if (!tenant) return
-    const [matsRes, loansRes] = await Promise.all([
-      supabase.from('project_materials')
-        .select('*, material:materials(name, unit, catalog_no, sec_number), warehouse:warehouses(name)')
-        .eq('tenant_id', tenant.id).eq('project_id', projectId),
-      supabase.from('project_material_loans')
-        .select('*, material:materials(name, unit)')
-        .eq('tenant_id', tenant.id)
-        .or(`from_project_id.eq.${projectId},to_project_id.eq.${projectId}`)
-        .neq('status', 'مُعاد كلياً')
-        .order('loan_date'),
-    ])
-    setMaterials(prev => ({ ...prev, [projectId]: matsRes.data  || [] }))
-    setLoans(prev     => ({ ...prev, [projectId]: (loansRes.data || []) as Loan[] }))
-  }
-
-  async function loadProjectData(projectId: number) {
-    if (!tenant) return
-    if (materials[projectId] !== undefined) {
-      setExpanded(prev => {
-        const next = new Set(prev)
-        next.has(projectId) ? next.delete(projectId) : next.add(projectId)
-        return next
-      })
-      return
-    }
-    setLoadingProj(prev => new Set(Array.from(prev).concat(projectId)))
-    await fetchProjectData(projectId)
-    setExpanded(prev => new Set(Array.from(prev).concat(projectId)))
-    setLoadingProj(prev => { const next = new Set(prev); next.delete(projectId); return next })
-  }
-
-  async function refreshProject(projectId: number) {
-    if (!tenant) return
-    setLoadingProj(prev => new Set(Array.from(prev).concat(projectId)))
-    await fetchProjectData(projectId)
-    setLoadingProj(prev => { const next = new Set(prev); next.delete(projectId); return next })
-    loadBase()
-  }
-
-  function exportProject(proj: Project) {
-    const mats = materials[proj.id] || []
-    const headers = ['الاسم', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'مرجع للعميل', 'الرصيد']
-    const rows = mats.map(m => [
-      m.material?.name || '—', m.material?.catalog_no || '—',
-      m.warehouse?.name || '—', m.material?.unit || '—',
-      m.qty_received, m.qty_issued, m.qty_returned || 0, m.qty_balance,
-    ])
-    const csv = [headers, ...rows].map(r => r.join('\t')).join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'application/vnd.ms-excel;charset=utf-8' })
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `مواد_${proj.name}.xls`; a.click()
   }
 
   const filtered = projects.filter(p => {
@@ -173,28 +371,24 @@ export default function InventoryProjectsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-      {/* العنوان */}
       <div>
-        <h1 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <h1 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <FolderOpen style={{ width: '22px', height: '22px', color: '#0f766e' }} /> عهدة المشاريع
         </h1>
         <p style={{ color: 'var(--text3)', fontSize: '0.82rem', marginTop: '2px' }}>
-          المستلم والمصروف والمرجع والرصيد وذمم الاستعارة لكل مشروع — تعديل المقايسة من قسم المشاريع
+          قائمة المشاريع — اضغط 👁 لعرض: المستلمة · غير المستلمة (المقايسة) · للإرجاع للعميل
         </p>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '12px' }}>
         {[
-          { label: 'مشاريع عليها عهدة', value: kpis.totalProjects,  color: '#0f766e', bg: '#f0fdfa', icon: FolderOpen    },
-          { label: 'إجمالي الأصناف',    value: kpis.totalMaterials, color: '#1a56db', bg: '#eff6ff', icon: Package        },
-          { label: 'أصناف رصيدها صفر', value: kpis.zeroBalance,    color: '#c81e1e', bg: '#fef2f2', icon: AlertTriangle  },
-          { label: 'ذمم استعارة مفتوحة', value: kpis.openLoans,    color: '#7c3aed', bg: '#f5f3ff', icon: ArrowLeftRight, alert: kpis.openLoans > 0 },
-          { label: 'بدون فريق',           value: kpis.noTeam,       color: kpis.noTeam > 0 ? '#c81e1e' : '#6b7280', bg: kpis.noTeam > 0 ? '#fef2f2' : '#f3f4f6', icon: Users, alert: kpis.noTeam > 0 },
+          { label: 'مشاريع عليها عهدة', value: kpis.totalProjects, color: '#0f766e', bg: '#f0fdfa', icon: FolderOpen },
+          { label: 'إجمالي الأصناف', value: kpis.totalMaterials, color: '#1a56db', bg: '#eff6ff', icon: Package },
+          { label: 'أصناف برصيد', value: kpis.withBalance, color: '#c81e1e', bg: '#fef2f2', icon: AlertTriangle },
+          { label: 'ذمم استعارة', value: kpis.openLoans, color: '#7c3aed', bg: '#f5f3ff', icon: ArrowLeftRight },
+          { label: 'بدون فريق', value: kpis.noTeam, color: kpis.noTeam > 0 ? '#c81e1e' : '#6b7280', bg: kpis.noTeam > 0 ? '#fef2f2' : '#f3f4f6', icon: Users },
         ].map(kpi => (
-          <div key={kpi.label} style={{ background: kpi.bg, border: `1px solid ${kpi.color}22`, borderRadius: '12px', padding: '14px', position: 'relative' }}>
-            {(kpi as any).alert && <div style={{ position: 'absolute', top: '10px', left: '10px', width: '8px', height: '8px', borderRadius: '50%', background: '#c81e1e' }} className="pulse-dot" />}
+          <div key={kpi.label} style={{ background: kpi.bg, border: `1px solid ${kpi.color}22`, borderRadius: '12px', padding: '14px' }}>
             <kpi.icon style={{ width: '18px', height: '18px', color: kpi.color, marginBottom: '8px' }} />
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '3px' }}>{kpi.label}</div>
@@ -202,220 +396,91 @@ export default function InventoryProjectsPage() {
         ))}
       </div>
 
-      {/* مفتاح الألوان */}
-      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-        {Object.entries(MOVEMENT_COLORS).map(([key, val]) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: val.color }} />
-            <span style={{ color: 'var(--text3)' }}>{val.label}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* البحث والفلترة */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', maxWidth: '300px' }}>
-          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: 'var(--text3)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="بحث باسم المشروع..." className="input" style={{ paddingRight: '32px', fontSize: '0.82rem', width: '100%' }} />
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', maxWidth: '300px', flex: 1 }}>
+          <Search style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', color: 'var(--text3)' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث باسم المشروع..."
+            className="input" style={{ paddingRight: '32px', fontSize: '0.82rem', width: '100%' }} />
         </div>
         <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل الفرق</option>
-          <option value="none">⚠️ بدون فريق</option>
+          <option value="none">بدون فريق</option>
           {teamsList.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
+        <button onClick={loadBase} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+          <RotateCcw style={{ width: '14px', height: '14px' }} /> تحديث
+        </button>
       </div>
 
-      {/* قائمة المشاريع */}
       {filtered.length === 0 ? (
-        <div style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '14px', padding: '60px', textAlign: 'center', color: 'var(--text3)' }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🏗️</div>
-          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>لا توجد مشاريع عليها عهدة</div>
+        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '14px', padding: '60px', textAlign: 'center', color: 'var(--text3)' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🏗️</div>
+          <div style={{ fontWeight: 600 }}>لا توجد مشاريع عليها عهدة</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {filtered.map(proj => {
-            const isExpanded   = expanded.has(proj.id)
-            const isLoading    = loadingProj.has(proj.id)
-            const mats         = materials[proj.id] || []
-            const projLoans    = loans[proj.id]     || []
-            // لا جمع كميات عبر الأصناف — وحدات مختلطة (متر + قطعة) رقمها بلا معنى
-            const zeroItems   = mats.filter(m => Number(m.qty_balance) === 0).length
-            const activeItems = mats.length - zeroItems
-
-            return (
-              <div key={proj.id} style={{ background: 'var(--card-bg, white)', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
-
-                {/* رأس المشروع */}
-                <div onClick={() => loadProjectData(proj.id)}
-                  style={{ padding: '16px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', transition: 'background 0.15s' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--bg2, #f8fafc)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
-                    <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <FolderOpen style={{ width: '20px', height: '20px', color: '#0f766e' }} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginTop: '2px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {proj.status && <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '10px', padding: '1px 7px', fontWeight: 600 }}>{proj.status}</span>}
-                        {proj.team_id && teamNames[proj.team_id] ? (
-                          <span style={{
-                            background: TEAM_TYPE_STYLE[teamTypes[proj.team_id]]?.bg || '#f5f3ff',
-                            color: TEAM_TYPE_STYLE[teamTypes[proj.team_id]]?.color || '#7c3aed',
-                            borderRadius: '10px', padding: '1px 7px', fontWeight: 600,
-                          }}>
-                            👥 {teamNames[proj.team_id]}
-                          </span>
-                        ) : (
-                          <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '10px', padding: '1px 7px', fontWeight: 600, fontSize: '0.68rem' }}>بدون فريق</span>
-                        )}
-                        {proj.engineer && <span>👤 {proj.engineer}</span>}
-                        {proj.location && <span>📍 {proj.location}</span>}
-                        {projLoans.length > 0 && (
-                          <span style={{ background: '#f5f3ff', color: '#7c3aed', borderRadius: '10px', padding: '1px 7px', fontWeight: 700 }}>
-                            🔁 {projLoans.length} ذمّة مفتوحة
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* عدّادات أصناف فقط — الكميات التفصيلية بوحداتها في الجدول أدناه */}
-                  {mats.length > 0 && (
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexShrink: 0 }}>
-                      <span style={{ background: '#f0fdfa', color: '#0f766e', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
-                        {mats.length} صنف
+        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: '14px', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                {['المشروع', 'الحالة', 'الفريق', 'أصناف', 'برصيد', ''].map(h => (
+                  <th key={h} style={{ padding: '11px 16px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(proj => (
+                <tr key={proj.id} style={{ borderBottom: '1px solid #f1f5f9' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>{proj.name}</td>
+                  <td style={{ padding: '12px 16px' }}>
+                    {proj.status && (
+                      <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 600 }}>{proj.status}</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '12px 16px', fontSize: '0.78rem', color: 'var(--text3)' }}>
+                    {proj.team_id && teamNames[proj.team_id]
+                      ? teamNames[proj.team_id]
+                      : <span style={{ color: '#c81e1e' }}>بدون فريق</span>}
+                  </td>
+                  <td style={{ padding: '12px 16px' }} dir="ltr">{proj.material_count ?? 0}</td>
+                  <td style={{ padding: '12px 16px' }}>
+                    {(proj.balance_count ?? 0) > 0 ? (
+                      <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '8px', padding: '2px 8px', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {proj.balance_count}
                       </span>
-                      {activeItems > 0 && (
-                        <span style={{ background: '#eff6ff', color: '#1a56db', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
-                          {activeItems} برصيد
-                        </span>
-                      )}
-                      {zeroItems > 0 && (
-                        <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '20px', padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700 }}>
-                          {zeroItems} نفذت
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                    <button onClick={() => refreshProject(proj.id)} title="تحديث"
-                      style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #bfdbfe', background: '#eff6ff', cursor: 'pointer', color: '#1a56db' }}>
-                      <RotateCcw style={{ width: '13px', height: '13px' }} />
-                    </button>
-                    <button onClick={() => exportProject(proj)} title="تصدير"
-                      style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer', color: '#6b7280' }}>
-                      <Download style={{ width: '13px', height: '13px' }} />
-                    </button>
-                  </div>
-
-                  <div style={{ color: 'var(--text3)', flexShrink: 0 }}>
-                    {isLoading
-                      ? <div style={{ width: '16px', height: '16px', border: '2px solid var(--border)', borderTopColor: '#0f766e', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                      : isExpanded ? <ChevronUp style={{ width: '16px', height: '16px' }} /> : <ChevronDown style={{ width: '16px', height: '16px' }} />}
-                  </div>
-                </div>
-
-                {/* تفاصيل المشروع */}
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid var(--border)' }}>
-
-                    {/* جدول المواد */}
-                    {mats.length === 0 ? (
-                      <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.875rem' }}>
-                        لا توجد مواد لهذا المشروع
-                      </div>
                     ) : (
-                      <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg2, #f8fafc)' }}>
-                              {['المادة', 'رقم الكتالوج', 'المستودع', 'الوحدة', 'مستلم', 'مصروف', 'مرجع للعميل', 'الرصيد', 'الحالة'].map(h => (
-                                <th key={h} style={{ padding: '9px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--text3)', fontSize: '0.75rem', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {mats.map((m, i) => {
-                              const balance  = Number(m.qty_balance)
-                              const received = Number(m.qty_received)
-                              const pct      = received > 0 ? Math.round((balance / received) * 100) : 0
-                              return (
-                                <tr key={i} style={{ borderBottom: '1px solid var(--bg2)', background: balance === 0 ? '#fff5f5' : 'transparent' }}>
-                                  <td style={{ padding: '10px 14px', fontWeight: 600 }}>{m.material?.name || '—'}</td>
-                                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.75rem', color: '#1a56db' }}>{m.material?.catalog_no || '—'}</td>
-                                  <td style={{ padding: '10px 14px', color: 'var(--text3)', fontSize: '0.78rem' }}>{m.warehouse?.name || '—'}</td>
-                                  <td style={{ padding: '10px 14px', color: 'var(--text3)' }}>{m.material?.unit || '—'}</td>
-                                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: MOVEMENT_COLORS.استلام.color }}>{fmt(received)}</td>
-                                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: MOVEMENT_COLORS.صرف.color }}>{fmt(Number(m.qty_issued))}</td>
-                                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 700, color: Number(m.qty_returned) > 0 ? MOVEMENT_COLORS.ارجاع_عميل.color : 'var(--text3)' }}>
-                                    {Number(m.qty_returned) > 0 ? fmt(Number(m.qty_returned)) : '—'}
-                                  </td>
-                                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 800, fontSize: '0.9rem', color: balance === 0 ? '#c81e1e' : '#1a56db' }}>
-                                    {fmt(balance)}
-                                  </td>
-                                  <td style={{ padding: '10px 14px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <div style={{ width: '60px', height: '6px', borderRadius: '3px', background: 'var(--bg2, #e5e7eb)', overflow: 'hidden' }}>
-                                        <div style={{ width: `${pct}%`, height: '100%', borderRadius: '3px', background: balance === 0 ? '#c81e1e' : pct < 25 ? '#e6820a' : '#0ea77b', transition: 'width 0.3s' }} />
-                                      </div>
-                                      <span style={{ fontSize: '0.68rem', color: 'var(--text3)', fontFamily: 'monospace' }}>{pct}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <span style={{ color: '#94a3b8' }}>—</span>
                     )}
-
-                    {/* ذمم الاستعارة المفتوحة */}
-                    {projLoans.length > 0 && (
-                      <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px', background: '#faf9ff' }}>
-                        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7c3aed', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <ArrowLeftRight style={{ width: '14px', height: '14px' }} /> ذمم الاستعارة المفتوحة — تُسوَّى من تبويب التحويل والاستعارة، وذمّة مفتوحة = لا إقفال
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                          {projLoans.map(loan => {
-                            const lent      = loan.from_project_id === proj.id
-                            const otherName = projNames[lent ? loan.to_project_id : loan.from_project_id] || '—'
-                            const remaining = Number(loan.qty_loaned) - Number(loan.qty_returned)
-                            return (
-                              <div key={loan.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem', padding: '7px 12px', background: 'white', border: '1px solid #ede9fe', borderRadius: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 700, color: lent ? '#e6820a' : '#0ea77b' }}>
-                                  {lent ? '⬅ أعار إلى' : '➡ استعار من'}
-                                </span>
-                                <span style={{ fontWeight: 600 }}>{otherName}</span>
-                                <span style={{ color: 'var(--text3)' }}>—</span>
-                                <span>{loan.material?.name || '—'}</span>
-                                <span style={{ fontFamily: 'monospace', color: '#7c3aed', fontWeight: 700 }}>
-                                  متبقٍ {fmt(remaining)} {loan.material?.unit || ''}
-                                </span>
-                                <span style={{ fontSize: '0.68rem', color: 'var(--text3)' }}>
-                                  (مستعار {fmt(Number(loan.qty_loaned))} — مُسوّى {fmt(Number(loan.qty_returned))} — {loan.loan_date})
-                                </span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                  </td>
+                  <td style={{ padding: '12px 16px', textAlign: 'left' }}>
+                    <button onClick={() => setViewProject(proj)} title="عرض التفاصيل"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '6px 12px', borderRadius: '8px', border: '1px solid #99f6e4',
+                        background: '#f0fdfa', color: '#0f766e', cursor: 'pointer', fontWeight: 700, fontSize: '0.75rem',
+                      }}>
+                      <Eye style={{ width: '14px', height: '14px' }} /> عرض
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <style jsx global>{`
-        .pulse-dot { animation: pulse-anim 2s infinite; }
-        @keyframes pulse-anim { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.4)} }
-      `}</style>
+      {viewProject && tenant && (
+        <ProjectCustodyModal
+          project={viewProject}
+          projNames={projNames}
+          teamNames={teamNames}
+          teamTypes={teamTypes}
+          tenantId={tenant.id}
+          onClose={() => setViewProject(null)}
+          onRefresh={loadBase}
+        />
+      )}
     </div>
   )
 }
