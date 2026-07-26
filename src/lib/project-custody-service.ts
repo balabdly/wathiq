@@ -4,6 +4,24 @@ function num(v: unknown): number {
   return Number(v) || 0
 }
 
+function unwrapJoin<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null
+  return Array.isArray(value) ? (value[0] ?? null) : value
+}
+
+type MaterialJoin = { name: string; unit: string; catalog_no?: string | null }
+type WarehouseJoin = { name: string }
+
+type ProjectMaterialRow = {
+  material_id: number
+  qty_received: number | null
+  qty_issued: number | null
+  qty_returned: number | null
+  qty_balance: number | null
+  material: MaterialJoin | MaterialJoin[] | null
+  warehouse: WarehouseJoin | WarehouseJoin[] | null
+}
+
 export type CustodyMaterialRow = {
   key: string
   material_id: number | null
@@ -110,10 +128,10 @@ export async function fetchProjectCustodyDetail(
   ])
 
   const receivedByMaterial = new Map<number, CustodyMaterialRow>()
-  for (const row of pmRows || []) {
-    const mid = row.material_id as number
-    const mat = row.material as { name: string; unit: string; catalog_no?: string } | null
-    const wh = row.warehouse as { name: string } | null
+  for (const row of (pmRows || []) as ProjectMaterialRow[]) {
+    const mid = row.material_id
+    const mat = unwrapJoin(row.material)
+    const wh = unwrapJoin(row.warehouse)
     const prev = receivedByMaterial.get(mid)
     if (prev) {
       prev.qty_received += num(row.qty_received)
@@ -148,10 +166,8 @@ export async function fetchProjectCustodyDetail(
     .sort((a, b) => b.qty_balance - a.qty_balance)
 
   const notYetReceived: CustodyPendingReceiveRow[] = []
-  const usedMaterialIds = new Set<number>()
 
   for (const line of planned.lines) {
-    if (line.material_id) usedMaterialIds.add(line.material_id)
     const receivedQty = line.material_id ? (receivedByMaterial.get(line.material_id)?.qty_received ?? 0) : 0
     const pending = Math.max(0, line.qty_planned - receivedQty)
     if (pending > 0) {
@@ -164,13 +180,6 @@ export async function fetchProjectCustodyDetail(
         qty_received: receivedQty,
         qty_pending: pending,
       })
-    }
-  }
-
-  // مواد مستلمة بدون مقايسة — لا تظهر في «غير المستلمة» (تظهر في المستلمة فقط)
-  for (const row of received) {
-    if (row.material_id && !usedMaterialIds.has(row.material_id)) {
-      // received but not in plan — already in received list
     }
   }
 

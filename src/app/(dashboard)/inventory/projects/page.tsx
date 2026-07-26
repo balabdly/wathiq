@@ -1,7 +1,7 @@
 // src/app/(dashboard)/inventory/projects/page.tsx
 // عهدة المشاريع — قائمة + تفاصيل (مستلمة / غير مستلمة حسب المقايسة / للإرجاع للعميل)
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { TEAM_TYPE_STYLE } from '@/lib/project-teams'
@@ -15,6 +15,11 @@ import {
 } from 'lucide-react'
 
 const fmt = (n: number) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })
+
+function unwrapJoin<T>(value: T | T[] | null | undefined): T | undefined {
+  if (value == null) return undefined
+  return Array.isArray(value) ? value[0] : value
+}
 
 type Project = {
   id: number; name: string; status?: string; location?: string
@@ -60,7 +65,10 @@ function ProjectCustodyModal({
         .order('loan_date'),
     ])
     setDetail(custody)
-    setLoans((loansRes.data || []) as Loan[])
+    setLoans((loansRes.data || []).map(row => ({
+      ...row,
+      material: unwrapJoin((row as { material?: { name: string; unit: string } | { name: string; unit: string }[] }).material),
+    })) as Loan[])
     setLoading(false)
   }
 
@@ -253,7 +261,7 @@ function EmptyState({ text }: { text: string }) {
   )
 }
 
-function MatTable({ headers, rows }: { headers: string[]; rows: (string | React.ReactNode)[][] }) {
+function MatTable({ headers, rows }: { headers: string[]; rows: (string | ReactNode)[][] }) {
   return (
     <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid var(--border)' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
