@@ -96,9 +96,42 @@ export type PlanningProject = {
   end_date?: string
   estimated_value?: number
   pmo_phase?: string
+  status?: string
   created_at?: string
   planning?: ProjectPlanning | null
   planningProgress?: PlanningProgress
+}
+
+const POST_PLANNING_PMO_PHASES = new Set(['3_EXEC', '4_MEASURE', '5_CLOSE'])
+const LEGACY_PLANNING_STATUSES = new Set(['تحت التخطيط', 'قيد التخطيط', 'قيد التنفيذ'])
+
+export type PlanningPageAccess = {
+  allowed: boolean
+  readOnly: boolean
+  shouldEnsurePlanning: boolean
+}
+
+/** هل يمكن فتح صفحات تخطيط المشروع (مقاisesة، حجز، …) */
+export function resolvePlanningPageAccess(
+  project: { pmo_phase?: string | null; status?: string | null },
+  planning: ProjectPlanning | null,
+  hasBoqLines: boolean,
+): PlanningPageAccess {
+  const phase = project.pmo_phase ?? null
+  if (phase === '1_RECEIPT') return { allowed: false, readOnly: false, shouldEnsurePlanning: false }
+  if (phase === '2_PREP') {
+    return { allowed: true, readOnly: false, shouldEnsurePlanning: !planning }
+  }
+  if (phase && POST_PLANNING_PMO_PHASES.has(phase)) {
+    return { allowed: true, readOnly: true, shouldEnsurePlanning: false }
+  }
+  if (!planning && !hasBoqLines) {
+    return { allowed: true, readOnly: false, shouldEnsurePlanning: true }
+  }
+  if (!phase && LEGACY_PLANNING_STATUSES.has(project.status || '')) {
+    return { allowed: true, readOnly: false, shouldEnsurePlanning: !planning }
+  }
+  return { allowed: false, readOnly: false, shouldEnsurePlanning: false }
 }
 
 async function attachPlanningProgress(tenantId: string, projects: PlanningProject[]): Promise<PlanningProject[]> {
@@ -202,7 +235,7 @@ export async function ensureProjectPlanning(tenantId: string, projectId: number,
 export async function fetchProjectPlanning(tenantId: string, projectId: number) {
   const [{ data: project, error: pErr }, { data: planning }] = await Promise.all([
     supabase.from('projects')
-      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, description')
+      .select('id, name, code, client_name, type, start_date, end_date, estimated_value, pmo_phase, status, description')
       .eq('tenant_id', tenantId).eq('id', projectId).single(),
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
   ])

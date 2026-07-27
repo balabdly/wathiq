@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/hooks/useStore'
-import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems } from '@/lib/project-planning-service'
+import { fetchProjectPlanning, ensureProjectPlanning, closeProjectPlanning, fetchCostItems, resolvePlanningPageAccess } from '@/lib/project-planning-service'
 import { fetchProjectBoqCategoryCounts } from '@/lib/pmc-service'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
@@ -43,18 +43,20 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const reload = useCallback(async () => {
     if (!tenant || !projectId) return
     const result = await fetchProjectPlanning(tenant.id, projectId)
-    const phase = result.project?.pmo_phase
-    const isPostPlanning = !!phase && POST_PLANNING_PHASES.has(phase)
+    const boqCounts = await fetchProjectBoqCategoryCounts(tenant.id, projectId)
+    const hasBoqLines = boqCounts.materials > 0 || boqCounts.works > 0
+    const access = resolvePlanningPageAccess(
+      { pmo_phase: result.project?.pmo_phase, status: result.project?.status },
+      result.planning,
+      hasBoqLines,
+    )
 
-    if (phase === '1_RECEIPT') {
-      router.replace('/projects/initiation/projects')
-      return
-    }
-    if (!isPostPlanning && phase !== '2_PREP') {
+    if (!access.allowed) {
       router.replace('/projects/planning')
       return
     }
-    if (!result.planning && phase === '2_PREP') {
+
+    if (access.shouldEnsurePlanning && !result.planning) {
       await ensureProjectPlanning(tenant.id, projectId, {
         start_date: result.project?.start_date,
         end_date: result.project?.end_date,
@@ -64,12 +66,13 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
       result.planning = refreshed.planning
     }
 
-    const viewOnly = result.planning?.planning_status === 'closed' || isPostPlanning
+    const phase = result.project?.pmo_phase
+    const isPostPlanning = !!phase && POST_PLANNING_PHASES.has(phase)
+    const viewOnly = access.readOnly || result.planning?.planning_status === 'closed' || isPostPlanning
     setReadOnly(viewOnly)
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
-    const boqCounts = await fetchProjectBoqCategoryCounts(tenant.id, projectId)
     setProgress(computePlanningProgress(
       result.planning,
       (costItems || []).some(i => Number(i.planned_amount) > 0) ? 1 : 0,

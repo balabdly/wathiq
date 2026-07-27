@@ -12,6 +12,7 @@ export type ProjectPlanningDetail = {
   end_date?: string
   estimated_value?: number
   pmo_phase?: string
+  status?: string
   description?: string
 }
 

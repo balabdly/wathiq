@@ -7,6 +7,7 @@
 // ══════════════════════════════════════════════════════════════
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
   Plus, X, Save, Search, Trash2,
@@ -713,7 +714,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               </label>
               {reservations.length === 0 && !form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
-                  لم يُحفظ رقم حجز لهذا المشروع — سجّله في <strong>المقايسة</strong> واحفظ، أو أدخل الرقم في الحقل أدناه
+                  لم يُحفظ رقم حجز لهذا المشروع في النظام —{' '}
+                  <Link href={`/projects/planning/${form.project_id}/boq`} style={{ color: '#1a56db', fontWeight: 600 }}>
+                    افتح المقايسة
+                  </Link>
+                  {' '}واحفظ الحجز مع «حفظ المقايسة»، أو أدخل الرقم يدوياً أدناه
                 </div>
               ) : reservations.length === 0 && form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#0ea77b', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
@@ -963,7 +968,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '8px' }}>المواد:</label>
               {type === 'استلام' && isProjectWh && form.project_id && !loadingPlanned && plannedSummary?.line_source === 'none' && (
                 <div style={{ fontSize: '0.75rem', color: '#92400e', marginBottom: '8px', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
-                  لا توجد مواد في مقايسة المشروع — أضف مواد BOQ في التخطيط أو أدخلها يدوياً هنا
+                  لا توجد مواد محفوظة في مقايسة هذا المشروع —{' '}
+                  <Link href={`/projects/planning/${form.project_id}/boq`} style={{ color: '#1a56db', fontWeight: 600 }}>
+                    افتح المقايسة
+                  </Link>
+                  {' '}وأضف المواد ثم اضغط «حفظ المقايسة»، أو أدخل المواد يدوياً هنا
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
