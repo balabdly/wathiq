@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
 import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
-import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines } from '@/lib/pmc-service'
+import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines, ensureReservationByNumber, formatSupabaseError } from '@/lib/pmc-service'
+import { resolveMaterialReservationId } from '@/lib/planning-materials-warehouse'
 import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
 import { buildTenantStoragePath } from '@/lib/storage-path'
 import {
@@ -401,6 +402,46 @@ export async function uploadPlanningFile(tenantId: string, projectId: number, fi
   const { error } = await supabase.storage.from('project-attachments').upload(path, file, { upsert: true })
   if (error) throw error
   return { path, name }
+}
+
+export async function saveProjectMaterialReservation(
+  tenantId: string,
+  projectId: number,
+  reservationNumber: string,
+  options?: {
+    reservationDate?: string | null
+    clientName?: string | null
+    reservationId?: number | null
+  },
+): Promise<number | null> {
+  const no = reservationNumber.trim()
+  if (!no) return null
+
+  await ensureProjectPlanning(tenantId, projectId)
+
+  let resId = options?.reservationId ?? null
+  if (!resId) {
+    const found = await resolveMaterialReservationId(tenantId, projectId, no)
+    if (found) resId = found
+    else {
+      const { data: ensured, error } = await ensureReservationByNumber(
+        tenantId,
+        projectId,
+        no,
+        options?.clientName ?? undefined,
+      )
+      if (error || !ensured) throw new Error(formatSupabaseError(error, 'تعذّر إنشاء الحجز'))
+      resId = ensured.id
+    }
+  }
+
+  await updateProjectPlanning(tenantId, projectId, {
+    material_reservation_date: options?.reservationDate || null,
+    material_reservation_number: no,
+    material_reservation_id: resId,
+  })
+
+  return resId
 }
 
 export async function notifyWarehouseMaterialPickup(

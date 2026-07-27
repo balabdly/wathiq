@@ -9,7 +9,7 @@ import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-pla
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
 import { findMaterialBySecCode, lookupSecCodeMap, normalizeSecItemCode, resolveSecDisplayCode } from '@/lib/sec-item-code'
 import ImportQuantitiesModal, { BoqLineStatusBadge, type BoqImportKind } from '@/components/projects/ImportQuantitiesModal'
-import { MaterialsReservationBlock } from '@/components/projects/BoqReservationPanel'
+import { MaterialsReservationBlock, type MaterialsReservationHandle } from '@/components/projects/BoqReservationPanel'
 import {
   type BoqImportLine,
   type BoqLineSource,
@@ -389,6 +389,7 @@ export default function ProjectEstimateEditor({
   const { tenant, currentUser } = useStore()
   const [lines, setLines] = useState<LineRow[]>([emptyLine('MATERIAL'), emptyLine('WORK')])
   const [versionId, setVersionId] = useState<number | null>(null)
+  const reservationRef = useRef<MaterialsReservationHandle>(null)
   const [loadingBoq, setLoadingBoq] = useState(true)
   const [saving, setSaving] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
@@ -699,6 +700,13 @@ export default function ProjectEstimateEditor({
     }))
 
     try {
+      const reservationDraft = reservationRef.current?.getDraft()
+      let savedReservation = false
+      if (reservationDraft?.material_reservation_number.trim()) {
+        await reservationRef.current!.saveReservation()
+        savedReservation = true
+      }
+
       const { versionId: targetVersionId, nextVersionNo } = await resolveBoqVersionForSave(
         tenant.id,
         projectId,
@@ -740,9 +748,14 @@ export default function ProjectEstimateEditor({
         updated_at: new Date().toISOString(),
       }).eq('tenant_id', tenant.id).eq('id', projectId)
 
-      toast.success(isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅')
+      toast.success(
+        savedReservation
+          ? 'تم حفظ المقايسة والحجز ✅'
+          : (isRevision ? 'تم حفظ تعديل المقايسة ✅' : 'تم حفظ المقايسة ✅'),
+      )
       await loadBoq()
       onSaved?.()
+      onPlanningSaved?.()
     } catch (e: unknown) {
       toast.error(formatSupabaseError(e, 'فشل الحفظ'))
       await loadBoq()
@@ -772,6 +785,7 @@ export default function ProjectEstimateEditor({
         onMaterialSecLookup={applyMaterialSecLookup}
         reservationSlot={tenantId && projectName ? (
           <MaterialsReservationBlock
+            ref={reservationRef}
             embedded
             tenantId={tenantId}
             projectId={projectId}

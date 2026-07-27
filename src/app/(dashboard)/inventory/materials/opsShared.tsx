@@ -711,7 +711,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               </label>
               {reservations.length === 0 && !form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
-                  لا حجز في القائمة — أدخل <strong>رقم الحجز</strong> من المقايسة في الحقل أدناه (يُربط تلقائياً عند الحفظ)
+                  لم يُحفظ رقم حجز لهذا المشروع — سجّله في <strong>المقايسة</strong> واحفظ، أو أدخل الرقم في الحقل أدناه
                 </div>
               ) : reservations.length === 0 && form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#0ea77b', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>

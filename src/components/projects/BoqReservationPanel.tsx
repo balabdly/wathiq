@@ -1,23 +1,44 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
 import { Save, Package, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
-  ensureProjectPlanning,
-  updateProjectPlanning,
+  saveProjectMaterialReservation,
 } from '@/lib/project-planning-service'
 import { formatSupabaseError } from '@/lib/pmc-service'
 import {
   fetchPlanningMaterialsWarehouseStatus,
-  resolveMaterialReservationId,
   type PlanningMaterialsWarehouseSummary,
   type PlanningMaterialAlert,
 } from '@/lib/planning-materials-warehouse'
-import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
+import { fetchOpenReservations } from '@/lib/pmc-service'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '4px' }
 
-export function MaterialsReservationBlock({
+export type MaterialsReservationDraft = {
+  material_reservation_date: string
+  material_reservation_id: string
+  material_reservation_number: string
+}
+
+export type MaterialsReservationHandle = {
+  getDraft: () => MaterialsReservationDraft
+  saveReservation: () => Promise<number | null>
+}
+
+export const MaterialsReservationBlock = forwardRef<
+  MaterialsReservationHandle,
+  {
+    tenantId: string
+    projectId: number
+    projectName: string
+    clientName?: string
+    planning: import('@/lib/project-planning-service').ProjectPlanning | null
+    readOnly?: boolean
+    onSaved?: () => void
+    embedded?: boolean
+  }
+>(function MaterialsReservationBlock({
   tenantId,
   projectId,
   projectName,
@@ -26,20 +47,12 @@ export function MaterialsReservationBlock({
   readOnly,
   onSaved,
   embedded = false,
-}: {
-  tenantId: string
-  projectId: number
-  projectName: string
-  clientName?: string
-  planning: import('@/lib/project-planning-service').ProjectPlanning | null
-  readOnly?: boolean
-  onSaved?: () => void
-  embedded?: boolean
-}) {
+}, ref) {
   const [saving, setSaving] = useState(false)
   const [loadingWh, setLoadingWh] = useState(false)
   const [warehouse, setWarehouse] = useState<PlanningMaterialsWarehouseSummary | null>(null)
   const [reservations, setReservations] = useState<{ id: number; reservation_no: string }[]>([])
+  const [savedNumber, setSavedNumber] = useState(planning?.material_reservation_number || '')
   const [form, setForm] = useState({
     material_reservation_date: planning?.material_reservation_date || '',
     material_reservation_id: planning?.material_reservation_id ? String(planning.material_reservation_id) : '',
@@ -59,13 +72,14 @@ export function MaterialsReservationBlock({
   }, [tenantId, projectId, planning?.material_reservation_id, form.material_reservation_number])
 
   useEffect(() => {
-    if (!planning) return
+    const no = planning?.material_reservation_number || ''
+    setSavedNumber(no)
     setForm({
-      material_reservation_date: planning.material_reservation_date || '',
-      material_reservation_id: planning.material_reservation_id ? String(planning.material_reservation_id) : '',
-      material_reservation_number: planning.material_reservation_number || '',
+      material_reservation_date: planning?.material_reservation_date || '',
+      material_reservation_id: planning?.material_reservation_id ? String(planning.material_reservation_id) : '',
+      material_reservation_number: no,
     })
-  }, [planning?.id, planning?.updated_at])
+  }, [planning?.id, planning?.updated_at, planning?.material_reservation_number, planning?.material_reservation_id, planning?.material_reservation_date])
 
   useEffect(() => {
     fetchOpenReservations(tenantId, projectId).then(({ data }) => setReservations(data || []))
@@ -75,44 +89,50 @@ export function MaterialsReservationBlock({
     if (form.material_reservation_number.trim()) loadWarehouse(form.material_reservation_number)
   }, [form.material_reservation_number, planning?.updated_at, loadWarehouse])
 
-  async function handleSaveReservation() {
+  async function handleSaveReservation(): Promise<number | null> {
     if (!form.material_reservation_number.trim()) {
       toast.error('رقم الحجز مطلوب للربط مع المخزون')
-      return
+      return null
     }
     setSaving(true)
     try {
-      await ensureProjectPlanning(tenantId, projectId)
-
-      let resId = form.material_reservation_id ? Number(form.material_reservation_id) : null
-      if (!resId) {
-        const found = await resolveMaterialReservationId(tenantId, projectId, form.material_reservation_number.trim())
-        if (found) resId = found
-        else {
-          const { data: ensured, error } = await ensureReservationByNumber(
-            tenantId, projectId, form.material_reservation_number.trim(), clientName,
-          )
-          if (error || !ensured) throw new Error(formatSupabaseError(error, 'تعذّر إنشاء الحجز'))
-          resId = ensured.id
-        }
+      const resId = await saveProjectMaterialReservation(
+        tenantId,
+        projectId,
+        form.material_reservation_number,
+        {
+          reservationDate: form.material_reservation_date || null,
+          clientName,
+          reservationId: form.material_reservation_id ? Number(form.material_reservation_id) : null,
+        },
+      )
+      if (form.material_reservation_id) {
+        // keep id
+      } else if (resId) {
+        setForm(f => ({ ...f, material_reservation_id: String(resId) }))
       }
-
-      await updateProjectPlanning(tenantId, projectId, {
-        material_reservation_date: form.material_reservation_date || null,
-        material_reservation_number: form.material_reservation_number.trim(),
-        material_reservation_id: resId,
-      })
-
+      setSavedNumber(form.material_reservation_number.trim())
       toast.success('تم حفظ بيانات الحجز ✅')
       onSaved?.()
       await loadWarehouse(form.material_reservation_number)
+      return resId
     } catch (e: unknown) {
       toast.error(formatSupabaseError(e, 'فشل حفظ الحجز'))
+      throw e
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
+  useImperativeHandle(ref, () => ({
+    getDraft: () => ({ ...form }),
+    saveReservation: handleSaveReservation,
+  }), [form, tenantId, projectId, clientName])
+
   const matRows = warehouse?.rows.filter(r => r.qty_planned > 0 || r.qty_received > 0) || []
+  const isDirty = form.material_reservation_number.trim() !== (savedNumber || '').trim()
+    || (form.material_reservation_date || '') !== (planning?.material_reservation_date || '')
+
   const alertLabel = (alert: PlanningMaterialAlert) => {
     if (alert === 'not_in_plan') return 'غير موجود بالمقايسة'
     if (alert === 'over_received') return 'استلام زائد'
@@ -135,8 +155,18 @@ export function MaterialsReservationBlock({
           <Package style={{ width: '16px', height: '16px' }} /> حجز المواد (SEC)
       </div>
       <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0 0 10px' }}>
-        التخطيط يسجّل رقم الحجز والمواد المطلوبة. التوفر الفعلي يظهر عند زيارة مستودع SEC — المقاول يستلم المتوفر وينتظر الباقي.
+        أدخل رقم الحجز من SEC — يُحفظ تلقائياً مع <strong>حفظ المقايسة</strong> أو عبر زر «حفظ الحجز».
       </p>
+      {isDirty && form.material_reservation_number.trim() && (
+        <div style={{ fontSize: '0.72rem', color: '#92400e', marginBottom: '10px', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+          ⚠ رقم الحجز لم يُحفظ بعد — اضغط «حفظ الحجز» أو «حفظ المقايسة»
+        </div>
+      )}
+      {savedNumber && !isDirty && (
+        <div style={{ fontSize: '0.72rem', color: '#0ea77b', marginBottom: '10px', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
+          ✓ الحجز محفوظ: <strong dir="ltr">{savedNumber}</strong>
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
         <div>
           <label style={lbl}>تاريخ الحجز</label>
@@ -160,7 +190,7 @@ export function MaterialsReservationBlock({
         )}
       </div>
       {!readOnly && (
-        <button onClick={handleSaveReservation} disabled={saving} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #c7d2fe', color: '#4338ca', marginBottom: '12px' }}>
+        <button onClick={() => void handleSaveReservation()} disabled={saving} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #c7d2fe', color: '#4338ca', marginBottom: '12px' }}>
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ الحجز'}
         </button>
       )}
@@ -223,8 +253,8 @@ export function MaterialsReservationBlock({
       ) : null}
     </div>
   )
-}
+})
 
-export default function BoqReservationPanel(props: Parameters<typeof MaterialsReservationBlock>[0]) {
+export default function BoqReservationPanel(props: React.ComponentProps<typeof MaterialsReservationBlock>) {
   return <MaterialsReservationBlock {...props} />
 }
