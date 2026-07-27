@@ -190,6 +190,7 @@ function EstimateSectionTable({
   onImport,
   onMaterialSecLookup,
   reservationSlot,
+  sectionId,
 }: {
   category: BoqLineCategory
   title: string
@@ -207,6 +208,7 @@ function EstimateSectionTable({
   onImport?: (kind: BoqImportKind) => void
   onMaterialSecLookup?: (globalIdx: number, query: string) => void
   reservationSlot?: React.ReactNode
+  sectionId?: string
 }) {
   const style = SECTION_STYLE[category]
   const qtyHeaders = isRevision ? ['الكمية السابقة', 'الكمية المعدّلة'] : ['الكمية']
@@ -214,7 +216,7 @@ function EstimateSectionTable({
   const sectionPrevTotal = isRevision ? lines.reduce((s, l) => s + (l.qty_previous ?? 0) * l.unit_price, 0) : 0
 
   return (
-    <div style={{ borderRadius: '12px', border: `2px solid ${style.headerBorder}`, overflow: 'hidden' }}>
+    <div id={sectionId} style={{ borderRadius: '12px', border: `2px solid ${style.headerBorder}`, overflow: 'hidden' }}>
       <div style={{
         padding: '12px 16px', background: style.headerBg, borderBottom: `1px solid ${style.headerBorder}`,
         display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px',
@@ -372,6 +374,7 @@ export default function ProjectEstimateEditor({
   clientName,
   planning,
   onPlanningSaved,
+  focusSection,
 }: {
   projectId: number
   frameworkItems: FrameworkBoqRow[]
@@ -385,6 +388,7 @@ export default function ProjectEstimateEditor({
   clientName?: string
   planning?: ProjectPlanning | null
   onPlanningSaved?: () => void
+  focusSection?: 'materials' | 'works' | null
 }) {
   const { tenant, currentUser } = useStore()
   const [lines, setLines] = useState<LineRow[]>([emptyLine('MATERIAL'), emptyLine('WORK')])
@@ -514,6 +518,7 @@ export default function ProjectEstimateEditor({
 
   const materialLines = lines.filter(l => l.line_category === 'MATERIAL')
   const workLines = lines.filter(l => l.line_category === 'WORK')
+  const hasMaterialLines = materialLines.some(l => l.description.trim() && l.qty > 0)
   const materialIndices = lines.map((l, i) => l.line_category === 'MATERIAL' ? i : -1).filter(i => i >= 0)
   const workIndices = lines.map((l, i) => l.line_category === 'WORK' ? i : -1).filter(i => i >= 0)
 
@@ -702,7 +707,8 @@ export default function ProjectEstimateEditor({
     try {
       const reservationDraft = reservationRef.current?.getDraft()
       let savedReservation = false
-      if (reservationDraft?.material_reservation_number.trim()) {
+      const hasSavedMaterials = validMats.some(l => l.qty > 0)
+      if (hasSavedMaterials && reservationDraft?.material_reservation_number.trim()) {
         await reservationRef.current!.saveReservation()
         savedReservation = true
       }
@@ -763,6 +769,15 @@ export default function ProjectEstimateEditor({
     setSaving(false)
   }
 
+  useEffect(() => {
+    if (!focusSection || loadingBoq) return
+    const id = focusSection === 'materials' ? 'estimate-section-materials' : 'estimate-section-works'
+    const el = document.getElementById(id)
+    if (el) {
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    }
+  }, [focusSection, loadingBoq])
+
   if (loadingBoq) return <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>جاري التحميل...</div>
 
   return (
@@ -778,6 +793,7 @@ export default function ProjectEstimateEditor({
       )}
 
       <EstimateSectionTable category="MATERIAL" title="المواد" icon={<Package style={{ width: '18px', height: '18px' }} />}
+        sectionId="estimate-section-materials"
         lines={materialLines} lineIndices={materialIndices} frameworkItems={[]} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
         onRemove={removeLine} onAdd={() => addLine('MATERIAL')}
@@ -793,6 +809,7 @@ export default function ProjectEstimateEditor({
             clientName={clientName}
             planning={planning ?? null}
             readOnly={readOnly}
+            hasMaterialLines={hasMaterialLines}
             onSaved={onPlanningSaved}
           />
         ) : undefined} />
@@ -804,6 +821,7 @@ export default function ProjectEstimateEditor({
       </div>
 
       <EstimateSectionTable category="WORK" title="الأعمال" icon={<HardHat style={{ width: '18px', height: '18px' }} />}
+        sectionId="estimate-section-works"
         lines={workLines} lineIndices={workIndices} frameworkItems={frameworkItems} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
         onRemove={removeLine} onAdd={() => addLine('WORK')}

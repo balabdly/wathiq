@@ -100,6 +100,7 @@ export type PlanningProject = {
   created_at?: string
   planning?: ProjectPlanning | null
   planningProgress?: PlanningProgress
+  boqCounts?: BoqCategoryCounts
 }
 
 const POST_PLANNING_PMO_PHASES = new Set(['3_EXEC', '4_MEASURE', '5_CLOSE'])
@@ -156,6 +157,7 @@ async function attachPlanningProgress(tenantId: string, projects: PlanningProjec
 
   return projects.map(p => ({
     ...p,
+    boqCounts: boqCountsMap.get(p.id) || { materials: 0, works: 0 },
     planningProgress: computePlanningProgress(
       p.planning,
       costComplete.has(p.id) ? 1 : 0,

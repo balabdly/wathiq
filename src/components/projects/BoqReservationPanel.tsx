@@ -35,6 +35,7 @@ export const MaterialsReservationBlock = forwardRef<
     clientName?: string
     planning: import('@/lib/project-planning-service').ProjectPlanning | null
     readOnly?: boolean
+    hasMaterialLines?: boolean
     onSaved?: () => void
     embedded?: boolean
   }
@@ -45,6 +46,7 @@ export const MaterialsReservationBlock = forwardRef<
   clientName,
   planning,
   readOnly,
+  hasMaterialLines = false,
   onSaved,
   embedded = false,
 }, ref) {
@@ -90,6 +92,10 @@ export const MaterialsReservationBlock = forwardRef<
   }, [form.material_reservation_number, planning?.updated_at, loadWarehouse])
 
   async function handleSaveReservation(): Promise<number | null> {
+    if (!hasMaterialLines) {
+      toast.error('أضف بنود مواد في المقايسة أولاً قبل حفظ رقم الحجز')
+      return null
+    }
     if (!form.material_reservation_number.trim()) {
       toast.error('رقم الحجز مطلوب للربط مع المخزون')
       return null
@@ -127,7 +133,7 @@ export const MaterialsReservationBlock = forwardRef<
   useImperativeHandle(ref, () => ({
     getDraft: () => ({ ...form }),
     saveReservation: handleSaveReservation,
-  }), [form, tenantId, projectId, clientName])
+  }), [form, tenantId, projectId, clientName, hasMaterialLines])
 
   const matRows = warehouse?.rows.filter(r => r.qty_planned > 0 || r.qty_received > 0) || []
   const isDirty = form.material_reservation_number.trim() !== (savedNumber || '').trim()
@@ -154,45 +160,56 @@ export const MaterialsReservationBlock = forwardRef<
       <div style={{ fontWeight: 700, fontSize: embedded ? '0.8rem' : '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#4338ca', marginBottom: '12px' }}>
           <Package style={{ width: '16px', height: '16px' }} /> حجز المواد (SEC)
       </div>
-      <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0 0 10px' }}>
-        أدخل رقم الحجز من SEC — يُحفظ تلقائياً مع <strong>حفظ المقايسة</strong> أو عبر زر «حفظ الحجز».
-      </p>
-      {isDirty && form.material_reservation_number.trim() && (
-        <div style={{ fontSize: '0.72rem', color: '#92400e', marginBottom: '10px', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
-          ⚠ رقم الحجز لم يُحفظ بعد — اضغط «حفظ الحجز» أو «حفظ المقايسة»
+      {!hasMaterialLines ? (
+        <div style={{
+          fontSize: '0.78rem', color: '#4338ca', marginBottom: '12px', padding: '12px 14px',
+          background: '#eef2ff', borderRadius: '10px', border: '1px solid #c7d2fe',
+        }}>
+          <strong>لم تضف مواد بعد.</strong> أضف بنود المواد في الجدول أعلاه أولاً، ثم أدخل رقم الحجز — لا يُحفظ الحجز بدون مواد.
         </div>
-      )}
-      {savedNumber && !isDirty && (
-        <div style={{ fontSize: '0.72rem', color: '#0ea77b', marginBottom: '10px', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
-          ✓ الحجز محفوظ: <strong dir="ltr">{savedNumber}</strong>
-        </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-        <div>
-          <label style={lbl}>تاريخ الحجز</label>
-          <input type="date" value={form.material_reservation_date} onChange={e => setForm(f => ({ ...f, material_reservation_date: e.target.value }))} className="input" disabled={readOnly} dir="ltr" />
-        </div>
-        <div>
-          <label style={lbl}>رقم الحجز *</label>
-          <input value={form.material_reservation_number} onChange={e => setForm(f => ({ ...f, material_reservation_number: e.target.value }))} className="input" placeholder="SEC booking #" dir="ltr" disabled={readOnly} />
-        </div>
-        {reservations.length > 0 && (
-          <div>
-            <label style={lbl}>ربط حجز</label>
-            <select value={form.material_reservation_id} onChange={e => {
-              const res = reservations.find(r => r.id === Number(e.target.value))
-              setForm(f => ({ ...f, material_reservation_id: e.target.value, material_reservation_number: res?.reservation_no || f.material_reservation_number }))
-            }} className="input" disabled={readOnly}>
-              <option value="">—</option>
-              {reservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no}</option>)}
-            </select>
+      ) : (
+        <>
+          <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0 0 10px' }}>
+            أدخل رقم الحجز من SEC — يُحفظ مع <strong>حفظ المقايسة</strong> أو عبر زر «حفظ الحجز».
+          </p>
+          {isDirty && form.material_reservation_number.trim() && (
+            <div style={{ fontSize: '0.72rem', color: '#92400e', marginBottom: '10px', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+              ⚠ رقم الحجز لم يُحفظ بعد — اضغط «حفظ الحجز» أو «حفظ المقايسة»
+            </div>
+          )}
+          {savedNumber && !isDirty && (
+            <div style={{ fontSize: '0.72rem', color: '#0ea77b', marginBottom: '10px', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
+              ✓ الحجز محفوظ: <strong dir="ltr">{savedNumber}</strong>
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+            <div>
+              <label style={lbl}>تاريخ الحجز</label>
+              <input type="date" value={form.material_reservation_date} onChange={e => setForm(f => ({ ...f, material_reservation_date: e.target.value }))} className="input" disabled={readOnly} dir="ltr" />
+            </div>
+            <div>
+              <label style={lbl}>رقم الحجز *</label>
+              <input value={form.material_reservation_number} onChange={e => setForm(f => ({ ...f, material_reservation_number: e.target.value }))} className="input" placeholder="SEC booking #" dir="ltr" disabled={readOnly} />
+            </div>
+            {reservations.length > 0 && (
+              <div>
+                <label style={lbl}>ربط حجز</label>
+                <select value={form.material_reservation_id} onChange={e => {
+                  const res = reservations.find(r => r.id === Number(e.target.value))
+                  setForm(f => ({ ...f, material_reservation_id: e.target.value, material_reservation_number: res?.reservation_no || f.material_reservation_number }))
+                }} className="input" disabled={readOnly}>
+                  <option value="">—</option>
+                  {reservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no}</option>)}
+                </select>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      {!readOnly && (
-        <button onClick={() => void handleSaveReservation()} disabled={saving} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #c7d2fe', color: '#4338ca', marginBottom: '12px' }}>
-          <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ الحجز'}
-        </button>
+          {!readOnly && (
+            <button onClick={() => void handleSaveReservation()} disabled={saving} className="btn btn-ghost" style={{ fontSize: '0.78rem', border: '1px solid #c7d2fe', color: '#4338ca', marginBottom: '12px' }}>
+              <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ الحجز'}
+            </button>
+          )}
+        </>
       )}
       {loadingWh ? (
         <div style={{ fontSize: '0.78rem', color: 'var(--text3)' }}>جاري تحميل حالة المخزون...</div>
@@ -248,7 +265,7 @@ export const MaterialsReservationBlock = forwardRef<
             </tbody>
           </table>
         </div>
-      ) : form.material_reservation_number.trim() ? (
+      ) : hasMaterialLines && form.material_reservation_number.trim() ? (
         <p style={{ fontSize: '0.75rem', color: 'var(--text3)', margin: 0 }}>لا حركات مخزنية بعد — بنود المواد في المقايسة أعلاه</p>
       ) : null}
     </div>

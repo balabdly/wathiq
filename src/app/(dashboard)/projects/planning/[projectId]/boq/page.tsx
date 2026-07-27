@@ -1,6 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { ClipboardList, Upload, FileText, CheckCircle2 } from 'lucide-react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { ClipboardList, Upload, FileText, CheckCircle2, Eye } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
@@ -8,6 +9,7 @@ import { DEFAULT_SEC_CONTRACT } from '@/lib/sec-workflow'
 import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
 import { formatSupabaseError } from '@/lib/pmc-service'
 import ProjectEstimateEditor from '@/components/projects/ProjectEstimateEditor'
+import EditEstimateDropdown from '@/components/projects/EditEstimateDropdown'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import { supabase } from '@/lib/supabase'
 
@@ -20,8 +22,29 @@ type FrameworkBoqRow = {
 }
 
 export default function PlanningBoqPage() {
+  return (
+    <Suspense fallback={
+      <div className="card" style={{ padding: '24px', textAlign: 'center', color: 'var(--text3)' }}>
+        جاري تحميل المقايسة...
+      </div>
+    }>
+      <PlanningBoqPageInner />
+    </Suspense>
+  )
+}
+
+function PlanningBoqPageInner() {
+  const searchParams = useSearchParams()
+  const viewOnly = searchParams.get('view') === '1'
+  const focusSection = searchParams.get('section') === 'materials'
+    ? 'materials' as const
+    : searchParams.get('section') === 'works'
+      ? 'works' as const
+      : null
+
   const { tenant } = useStore()
   const { tenantId, projectId, project, planning, reload, readOnly } = useProjectPlanning()
+  const editorReadOnly = !!readOnly || viewOnly
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loadingFw, setLoadingFw] = useState(true)
   const [uploadingApproval, setUploadingApproval] = useState(false)
@@ -83,14 +106,27 @@ export default function PlanningBoqPage() {
 
   return (
     <div className="card" style={{ padding: '20px' }}>
-      <div style={{ marginBottom: '16px' }}>
-        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ClipboardList style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-          مقايسة SEC — {project.name}
-        </h3>
-        <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
-          المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء
-        </p>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <ClipboardList style={{ width: '18px', height: '18px', color: '#1a56db' }} />
+            مقايسة SEC — {project.name}
+          </h3>
+          <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
+            المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء
+          </p>
+        </div>
+        {viewOnly && !readOnly && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.75rem', color: '#0ea77b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Eye style={{ width: '14px', height: '14px' }} /> عرض فقط
+            </span>
+            <EditEstimateDropdown projectId={projectId} asButton />
+          </div>
+        )}
+        {!viewOnly && !readOnly && (
+          <EditEstimateDropdown projectId={projectId} asButton />
+        )}
       </div>
 
       {isRevision && !readOnly && (
@@ -143,7 +179,7 @@ export default function PlanningBoqPage() {
       <ProjectEstimateEditor
         projectId={projectId}
         frameworkItems={frameworkItems}
-        readOnly={!!readOnly}
+        readOnly={editorReadOnly}
         isRevision={isRevision}
         revisionSnapshot={revisionSnapshot}
         saveLabel={isRevision ? 'حفظ تعديل المقايسة' : 'حفظ المقايسة'}
@@ -151,6 +187,7 @@ export default function PlanningBoqPage() {
         projectName={project.name}
         clientName={project.client_name}
         planning={planning}
+        focusSection={editorReadOnly ? null : focusSection}
         onSaved={() => reload()}
         onPlanningSaved={() => reload()}
       />

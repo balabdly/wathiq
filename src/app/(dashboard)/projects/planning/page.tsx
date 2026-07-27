@@ -8,6 +8,7 @@ import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
 import { usePlanning } from './PlanningContext'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
+import EditEstimateDropdown from '@/components/projects/EditEstimateDropdown'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
 
 export default function PlanningListPage() {
@@ -87,15 +88,18 @@ export default function PlanningListPage() {
                       {p.estimated_value ? `${Number(p.estimated_value).toLocaleString('ar-SA')} ر.س` : '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         <button
-                          onClick={() => router.push(`/projects/planning/${p.id}/boq`)}
+                          onClick={() => router.push(`/projects/planning/${p.id}/boq?view=1`)}
                           className="btn btn-ghost"
                           style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
-                          title="عرض المشروع"
+                          title="عرض المقايسة"
                         >
                           <Eye style={{ width: '16px', height: '16px' }} />
                         </button>
+                        {canEdit && (
+                          <EditEstimateDropdown projectId={p.id} iconOnly />
+                        )}
                         {canEdit && (
                           <button
                             onClick={() => handleReturnToInitiation(p.id, p.name)}
