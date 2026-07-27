@@ -411,3 +411,77 @@ export async function fetchOpenReservations(tenantId: string, projectId: number)
     .order('opened_at', { ascending: false })
   return { data: (data || []) as Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'project_id' | 'client_name'>[], error }
 }
+
+export type ProjectReservationContext = {
+  reservations: Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[]
+  material_reservation_id: number | null
+  material_reservation_number: string | null
+}
+
+/** حجوزات المشروع + ربط المقايسة — للاستلام والمخزون */
+export async function fetchProjectReservationContext(
+  tenantId: string,
+  projectId: number,
+): Promise<ProjectReservationContext> {
+  const [{ data: open }, { data: planning }] = await Promise.all([
+    supabase
+      .from('material_reservations')
+      .select('id, reservation_no, status, project_id, client_name')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+      .in('status', ['OPEN', 'PARTIAL', 'RECONCILED', 'CLOSED'])
+      .order('opened_at', { ascending: false }),
+    supabase
+      .from('project_planning')
+      .select('material_reservation_id, material_reservation_number')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+      .maybeSingle(),
+  ])
+
+  const reservations: Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[] = [...(open || [])]
+  const seen = new Set(reservations.map(r => r.id))
+
+  const planId = planning?.material_reservation_id ?? null
+  const planNo = planning?.material_reservation_number?.trim() || null
+
+  async function appendReservation(id: number) {
+    if (seen.has(id)) return
+    const { data: row } = await supabase
+      .from('material_reservations')
+      .select('id, reservation_no, status, project_id, client_name')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .maybeSingle()
+    if (row) {
+      reservations.unshift(row)
+      seen.add(row.id)
+    }
+  }
+
+  if (planId) await appendReservation(planId)
+
+  if (planNo && !reservations.some(r => r.reservation_no === planNo)) {
+    const { data: byNo } = await supabase
+      .from('material_reservations')
+      .select('id, reservation_no, status, project_id, client_name')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+      .eq('reservation_no', planNo)
+      .maybeSingle()
+    if (byNo && !seen.has(byNo.id)) {
+      reservations.unshift(byNo)
+      seen.add(byNo.id)
+    }
+  }
+
+  const primary = (planId && reservations.find(r => r.id === planId))
+    || (planNo && reservations.find(r => r.reservation_no === planNo))
+    || reservations[0]
+
+  return {
+    reservations,
+    material_reservation_id: primary?.id ?? planId,
+    material_reservation_number: primary?.reservation_no ?? planNo,
+  }
+}

@@ -6,19 +6,38 @@ import Sidebar from '@/components/layout/Sidebar'
 import { Toaster } from 'react-hot-toast'
 import { useAuthSync } from '@/hooks/usePWA'
 
+function useStoreHydrated() {
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(useStore.persist.hasHydrated())
+    return useStore.persist.onFinishHydration(() => setHydrated(true))
+  }, [])
+  return hydrated
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
   const { currentUser } = useStore()
+  const hydrated = useStoreHydrated()
   const [open, setOpen] = useState(false)
 
   useAuthSync()
 
   useEffect(() => {
+    if (!hydrated) return
     if (!currentUser) router.push('/login')
-  }, [currentUser, router])
+  }, [hydrated, currentUser, router])
 
   useEffect(() => { setOpen(false) }, [pathname])
+
+  if (!hydrated) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
+        <div style={{ width: '32px', height: '32px', border: '3px solid var(--border)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
 
   if (!currentUser) return null
 

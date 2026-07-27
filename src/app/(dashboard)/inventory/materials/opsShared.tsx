@@ -14,7 +14,7 @@ import {
   Paperclip,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
+import { ensureReservationByNumber, fetchProjectReservationContext } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
 import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage, fetchPlanningMaterialsWarehouseStatus, resolveWarehouseMaterialId, type PlanningMaterialsWarehouseSummary, type PlanningMaterialWarehouseRow } from '@/lib/planning-materials-warehouse'
@@ -219,10 +219,22 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
 
   useEffect(() => {
     if (!form.project_id) { setReservations([]); setTeamMembers([]); return }
-    fetchOpenReservations(tenantId, Number(form.project_id)).then(({ data }) => setReservations(data || []))
+    let cancelled = false
+    fetchProjectReservationContext(tenantId, Number(form.project_id)).then(ctx => {
+      if (cancelled) return
+      setReservations(ctx.reservations)
+      if (type === 'استلام') {
+        setForm(f => ({
+          ...f,
+          reservation_id: ctx.material_reservation_id ? String(ctx.material_reservation_id) : '',
+          booking_no: ctx.material_reservation_number || '',
+        }))
+      }
+    })
     supabase.from('projects').select('team_id').eq('id', Number(form.project_id)).single()
       .then(({ data: proj }) => fetchAssigneeOptions(supabase, tenantId, proj?.team_id).then(setTeamMembers))
-  }, [form.project_id, tenantId])
+    return () => { cancelled = true }
+  }, [form.project_id, tenantId, type])
 
   async function loadMats() {
     const { data } = await supabase.from('materials').select('*')
@@ -246,20 +258,14 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
 
   function handleProjectChange(projectId: string) {
     const proj = projects.find((p: { id: number; name: string }) => p.id === Number(projectId))
-    set('project_id', projectId); set('project_name', proj?.name || '')
-    set('reservation_id', ''); set('booking_no', ''); set('requested_by', '')
-    if (type === 'استلام' && projectId) {
-      supabase.from('project_planning')
-        .select('material_reservation_id, material_reservation_number')
-        .eq('tenant_id', tenantId)
-        .eq('project_id', Number(projectId))
-        .maybeSingle()
-        .then(({ data: plan }) => {
-          if (!plan) return
-          if (plan.material_reservation_number) set('booking_no', plan.material_reservation_number)
-          if (plan.material_reservation_id) set('reservation_id', String(plan.material_reservation_id))
-        })
-    }
+    setForm(f => ({
+      ...f,
+      project_id: projectId,
+      project_name: proj?.name || '',
+      reservation_id: '',
+      booking_no: '',
+      requested_by: '',
+    }))
   }
 
   type ReceivePlannedRow = PlanningMaterialWarehouseRow & { resolved_material_id: number | null }
@@ -703,9 +709,13 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
                 حجز المواد (Booking) <span style={{ color: '#c81e1e' }}>*</span>
               </label>
-              {reservations.length === 0 ? (
+              {reservations.length === 0 && !form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
-                  لا حجز مسجّل — أدخل <strong>رقم الحجز</strong> في الحقل أدناه (يُنشأ تلقائياً عند الحفظ)
+                  لا حجز في القائمة — أدخل <strong>رقم الحجز</strong> من المقايسة في الحقل أدناه (يُربط تلقائياً عند الحفظ)
+                </div>
+              ) : reservations.length === 0 && form.booking_no ? (
+                <div style={{ fontSize: '0.78rem', color: '#0ea77b', padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
+                  حجز من المقايسة: <strong dir="ltr">{form.booking_no}</strong>
                 </div>
               ) : (
                 <select value={form.reservation_id} onChange={e => handleReservationChange(e.target.value)} className="select">
@@ -1043,7 +1053,11 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
   useEffect(() => {
     if (!projectId) { setReservations([]); setReservationId(''); setBookingNo(''); return }
-    fetchOpenReservations(tenantId, Number(projectId)).then(({ data }) => setReservations(data || []))
+    fetchProjectReservationContext(tenantId, Number(projectId)).then(ctx => {
+      setReservations(ctx.reservations)
+      if (ctx.material_reservation_id) setReservationId(String(ctx.material_reservation_id))
+      if (ctx.material_reservation_number) setBookingNo(ctx.material_reservation_number)
+    })
   }, [projectId, tenantId])
 
   async function handleSave() {

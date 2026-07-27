@@ -414,7 +414,6 @@ export default function ExecutionProjectPage() {
               <Link
                 key={t.slug}
                 href={`/projects/planning/${projectId}/${t.slug}`}
-                target="_blank"
                 style={{
                   padding: '6px 10px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 600,
                   textDecoration: 'none', background: '#f3f4f6', color: '#374151',

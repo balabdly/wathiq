@@ -50,10 +50,6 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
       router.replace('/projects/initiation/projects')
       return
     }
-    if (isPostPlanning && result.planning?.planning_status !== 'closed') {
-      router.replace('/projects/execution')
-      return
-    }
     if (!isPostPlanning && phase !== '2_PREP') {
       router.replace('/projects/planning')
       return
