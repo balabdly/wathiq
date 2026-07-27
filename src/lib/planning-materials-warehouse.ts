@@ -107,8 +107,10 @@ function findBalanceForPlannedLine(
   line: { material_id?: number | null; description: string; catalog_no?: string | null },
   balanceByMaterial: Map<number, ReservationReconciliation>,
   balances: ReservationReconciliation[],
+  resolvedMaterialId?: number | null,
 ): ReservationReconciliation | undefined {
-  if (line.material_id) return balanceByMaterial.get(line.material_id)
+  const mid = resolvedMaterialId ?? line.material_id ?? null
+  if (mid) return balanceByMaterial.get(mid)
   const desc = line.description.trim().toLowerCase()
   const byName = balances.find(b => b.material_name?.trim().toLowerCase() === desc)
   if (byName) return byName
@@ -121,6 +123,15 @@ function findBalanceForPlannedLine(
     })
   }
   return undefined
+}
+
+async function fetchTenantWarehouseMaterials(tenantId: string): Promise<WarehouseMaterialLookup[]> {
+  const { data } = await supabase
+    .from('materials')
+    .select('id, name, catalog_no, sec_number, mat_code, item_code')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+  return (data || []) as WarehouseMaterialLookup[]
 }
 
 /** ربط سطر المقايسة بمادة في المستودع (رقم كتالوج / SEC / الاسم) */
@@ -291,13 +302,14 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     empty.reservation_no = reservationNo.trim()
   }
 
-  const [{ data: recon }, boqVersionId] = await Promise.all([
+  const [{ data: recon }, boqVersionId, warehouseMaterials] = await Promise.all([
     reservation
       ? fetchReservationReconciliation(tenantId, { projectId, reservationId: reservation.id })
       : Promise.resolve({ data: [] as ReservationReconciliation[] }),
     reservation?.boq_version_id
       ? Promise.resolve(reservation.boq_version_id)
       : resolveProjectBoqVersionId(tenantId, projectId),
+    fetchTenantWarehouseMaterials(tenantId),
   ])
 
   const balances = (recon || []) as ReservationReconciliation[]
@@ -339,20 +351,22 @@ export async function fetchPlanningMaterialsWarehouseStatus(
   const usedMaterialIds = new Set<number>()
 
   for (const line of plannedSource) {
-    const mid = line.material_id ?? null
-    const bal = findBalanceForPlannedLine(line, balanceByMaterial, balances)
-    const resolvedMid = mid ?? bal?.material_id ?? null
-    if (resolvedMid) usedMaterialIds.add(resolvedMid)
+    const resolvedMid = line.material_id
+      ?? resolveWarehouseMaterialId(warehouseMaterials, line)
+      ?? null
+    const bal = findBalanceForPlannedLine(line, balanceByMaterial, balances, resolvedMid)
+    const mid = resolvedMid ?? bal?.material_id ?? null
+    if (mid) usedMaterialIds.add(mid)
     const planned = num(line.qty_planned)
     const received = num(bal?.qty_received)
     const issued = num(bal?.qty_issued)
     const remaining = Math.max(0, planned - received)
     const remainingIssue = planned > 0 ? Math.max(0, planned - issued) : 0
     rows.push(buildRow({
-      key: resolvedMid ? `m-${resolvedMid}` : `boq-${line.catalog_no || line.description}`,
-      material_id: resolvedMid,
+      key: mid ? `m-${mid}` : `boq-${line.catalog_no || line.description}`,
+      material_id: mid,
       catalog_no: line.catalog_no ?? null,
-      description: line.description,
+      description: bal?.material_name || line.description,
       unit: line.unit || bal?.unit || 'قطعة',
       qty_planned: planned,
       qty_received: received,
@@ -445,26 +459,37 @@ async function fetchProjectPlannedMaterialMap(
   projectId: number,
 ): Promise<Map<number, { planned: number; name: string }>> {
   const map = new Map<number, { planned: number; name: string }>()
-  const { data: active } = await supabase
-    .from('project_boq_versions')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .eq('project_id', projectId)
-    .eq('status', 'ACTIVE')
-    .order('version_no', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [activeResult, warehouseMaterials] = await Promise.all([
+    supabase
+      .from('project_boq_versions')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('project_id', projectId)
+      .eq('status', 'ACTIVE')
+      .order('version_no', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    fetchTenantWarehouseMaterials(tenantId),
+  ])
+
+  const active = activeResult.data
 
   if (active?.id) {
     const { data: lines } = await supabase
       .from('project_boq_lines')
-      .select('material_id, description, qty_planned, line_category, notes')
+      .select('material_id, description, qty_planned, catalog_no, line_category, notes')
       .eq('tenant_id', tenantId)
       .eq('boq_version_id', active.id)
     for (const line of lines || []) {
       const cat = line.line_category === 'MATERIAL' || line.notes?.includes('line_category:MATERIAL') || line.material_id ? 'MATERIAL' : 'WORK'
-      if (cat !== 'MATERIAL' || !line.material_id) continue
+      if (cat !== 'MATERIAL') continue
       const mid = line.material_id
+        ?? resolveWarehouseMaterialId(warehouseMaterials, {
+          material_id: null,
+          description: line.description,
+          catalog_no: line.catalog_no,
+        })
+      if (!mid) continue
       const prev = map.get(mid)
       map.set(mid, {
         planned: (prev?.planned ?? 0) + num(line.qty_planned),
