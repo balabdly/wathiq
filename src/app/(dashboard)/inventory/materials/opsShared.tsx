@@ -161,6 +161,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     date: new Date().toISOString().split('T')[0], return_type: '',
   })
   const [reservations, setReservations] = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[]>([])
+  const [planningBookingNo, setPlanningBookingNo] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<AssigneeOption[]>([])
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -218,16 +219,17 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   }, [type, isProjectWh, form.project_id, form.reservation_id, form.booking_no, tenantId])
 
   useEffect(() => {
-    if (!form.project_id) { setReservations([]); setTeamMembers([]); return }
+    if (!form.project_id) { setReservations([]); setPlanningBookingNo(null); setTeamMembers([]); return }
     let cancelled = false
     fetchProjectReservationContext(tenantId, Number(form.project_id)).then(ctx => {
       if (cancelled) return
       setReservations(ctx.reservations)
+      setPlanningBookingNo(ctx.material_reservation_number)
       if (type === 'استلام') {
         setForm(f => ({
           ...f,
           reservation_id: ctx.material_reservation_id ? String(ctx.material_reservation_id) : '',
-          booking_no: ctx.material_reservation_number || '',
+          booking_no: ctx.material_reservation_number || f.booking_no,
         }))
       }
     })
@@ -785,6 +787,11 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
                   <input value={form.booking_no} onChange={e => set('booking_no', e.target.value)} className="input"
                     placeholder="رقم حجز SEC — يكفي للاستلام دون اكتمال التخطيط"
                     dir="ltr" />
+                  {planningBookingNo && form.booking_no.trim() && form.booking_no.trim() !== planningBookingNo && (
+                    <div style={{ fontSize: '0.72rem', color: '#92400e', marginTop: '4px' }}>
+                      رقم الحجز المحفوظ في المقايسة: <strong dir="ltr">{planningBookingNo}</strong>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>رقم المستند</label>

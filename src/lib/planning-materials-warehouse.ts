@@ -171,6 +171,75 @@ export function matchLineToWarehouseMaterial(
   return { material_id: null, matched: false, note: WAREHOUSE_MISSING_NOTE }
 }
 
+function isMissingColumnError(error: { message?: string; code?: string } | null, column: string): boolean {
+  if (!error?.message) return false
+  const msg = error.message.toLowerCase()
+  const col = column.toLowerCase()
+  return (
+    error.code === 'PGRST204'
+    || error.code === '42703'
+    || (msg.includes(col) && (msg.includes('column') || msg.includes('schema cache')))
+  )
+}
+
+function resolveBoqLineCategory(line: {
+  line_category?: string | null
+  notes?: string | null
+  material_id?: number | null
+}): 'MATERIAL' | 'WORK' {
+  if (line.line_category === 'MATERIAL' || line.line_category === 'WORK') return line.line_category
+  if (line.notes?.includes('line_category:MATERIAL')) return 'MATERIAL'
+  if (line.notes?.includes('line_category:WORK')) return 'WORK'
+  if (line.material_id) return 'MATERIAL'
+  return 'WORK'
+}
+
+async function fetchBoqMaterialLines(
+  tenantId: string,
+  boqVersionId: number,
+): Promise<{ material_id?: number | null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[]> {
+  const withCategory = await supabase
+    .from('project_boq_lines')
+    .select('material_id, description, unit, qty_planned, catalog_no, line_category, notes')
+    .eq('tenant_id', tenantId)
+    .eq('boq_version_id', boqVersionId)
+    .order('line_no')
+
+  type BoqLineRow = {
+    material_id?: number | null
+    description: string
+    unit: string
+    qty_planned: number | string
+    catalog_no?: string | null
+    line_category?: string | null
+    notes?: string | null
+  }
+
+  let raw: BoqLineRow[] | null = withCategory.data as BoqLineRow[] | null
+  if (withCategory.error && isMissingColumnError(withCategory.error, 'line_category')) {
+    const fallback = await supabase
+      .from('project_boq_lines')
+      .select('material_id, description, unit, qty_planned, catalog_no, notes')
+      .eq('tenant_id', tenantId)
+      .eq('boq_version_id', boqVersionId)
+      .order('line_no')
+    if (fallback.error) throw fallback.error
+    raw = (fallback.data || []) as BoqLineRow[]
+  } else if (withCategory.error) {
+    throw withCategory.error
+  }
+
+  return (raw || [])
+    .filter(l => resolveBoqLineCategory(l) === 'MATERIAL')
+    .map(l => ({
+      material_id: l.material_id,
+      description: l.description,
+      unit: l.unit,
+      qty_planned: Number(l.qty_planned) || 0,
+      catalog_no: l.catalog_no,
+    }))
+}
+
 export async function fetchPlanningMaterialsWarehouseStatus(
   tenantId: string,
   projectId: number,
@@ -247,16 +316,11 @@ export async function fetchPlanningMaterialsWarehouseStatus(
 
   let boqLines: { material_id?: number | null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[] = []
   if (boqVersionId) {
-    const { data: lines } = await supabase
-      .from('project_boq_lines')
-      .select('material_id, description, unit, qty_planned, catalog_no, line_category, notes')
-      .eq('tenant_id', tenantId)
-      .eq('boq_version_id', boqVersionId)
-      .order('line_no')
-    boqLines = (lines || []).filter(l => {
-      const cat = l.line_category === 'MATERIAL' || l.notes?.includes('line_category:MATERIAL') || l.material_id ? 'MATERIAL' : 'WORK'
-      return cat === 'MATERIAL'
-    })
+    try {
+      boqLines = await fetchBoqMaterialLines(tenantId, boqVersionId)
+    } catch {
+      boqLines = []
+    }
   }
 
   let manualLines: { material_id?: null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[] = []
