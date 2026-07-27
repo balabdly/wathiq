@@ -214,7 +214,7 @@ export async function fetchProjectPlanning(tenantId: string, projectId: number) 
 
 export async function updateProjectPlanning(tenantId: string, projectId: number, payload: Partial<ProjectPlanning>) {
   const { data: existing } = await supabase.from('project_planning')
-    .select('planning_status')
+    .select('planning_status, id')
     .eq('tenant_id', tenantId)
     .eq('project_id', projectId)
     .maybeSingle()
@@ -224,6 +224,27 @@ export async function updateProjectPlanning(tenantId: string, projectId: number,
   }
 
   const patch = { ...payload, updated_at: new Date().toISOString() }
+
+  if (!existing) {
+    let { error } = await supabase.from('project_planning').insert({
+      tenant_id: tenantId,
+      project_id: projectId,
+      planning_status: 'active',
+      ...patch,
+    })
+    if (error && isMissingPlanningColumnError(error)) {
+      const fallbackPatch = applyBoqRevisionFallbackPatch(patch)
+      ;({ error } = await supabase.from('project_planning').insert({
+        tenant_id: tenantId,
+        project_id: projectId,
+        planning_status: 'active',
+        ...fallbackPatch,
+      }))
+    }
+    if (error) throw error
+    return
+  }
+
   let { error } = await supabase.from('project_planning')
     .update(patch)
     .eq('tenant_id', tenantId)
@@ -392,9 +413,9 @@ export async function notifyWarehouseMaterialPickup(
     tenant_id: tenantId,
     for_role: 'inventory',
     title: 'طلب إرسال شاحنة لاستلام المواد',
-    body: `المشروع «${projectName}» — رقم الحجز: ${reservationNo}. المواد متوفرة — يرجى تجهيز الشاحنة للاستلام.`,
+    body: `المشروع «${projectName}» — رقم الحجز: ${reservationNo}. يرجى تجهيز الشاحنة للاستلام.`,
     type: 'action',
     project_id: projectId,
   })
-  if (error) throw error
+  if (error && error.code !== '42P01' && !error.message?.includes('notifications')) throw error
 }

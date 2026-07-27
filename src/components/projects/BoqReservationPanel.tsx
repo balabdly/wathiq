@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 import { Save, Package, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
+  ensureProjectPlanning,
   updateProjectPlanning,
-  notifyWarehouseMaterialPickup,
-  type MaterialAvailability,
 } from '@/lib/project-planning-service'
+import { formatSupabaseError } from '@/lib/pmc-service'
 import {
   fetchPlanningMaterialsWarehouseStatus,
   resolveMaterialReservationId,
@@ -16,12 +16,6 @@ import {
 import { fetchOpenReservations, ensureReservationByNumber } from '@/lib/pmc-service'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: '4px' }
-
-const AVAILABILITY_OPTIONS: { value: MaterialAvailability; label: string }[] = [
-  { value: 'pending', label: 'قيد الانتظار' },
-  { value: 'available', label: 'متوفرة' },
-  { value: 'not_available', label: 'غير متوفرة' },
-]
 
 export function MaterialsReservationBlock({
   tenantId,
@@ -50,7 +44,6 @@ export function MaterialsReservationBlock({
     material_reservation_date: planning?.material_reservation_date || '',
     material_reservation_id: planning?.material_reservation_id ? String(planning.material_reservation_id) : '',
     material_reservation_number: planning?.material_reservation_number || '',
-    material_availability: (planning?.material_availability || 'pending') as MaterialAvailability,
   })
 
   const loadWarehouse = useCallback(async (resNo?: string) => {
@@ -71,7 +64,6 @@ export function MaterialsReservationBlock({
       material_reservation_date: planning.material_reservation_date || '',
       material_reservation_id: planning.material_reservation_id ? String(planning.material_reservation_id) : '',
       material_reservation_number: planning.material_reservation_number || '',
-      material_availability: (planning.material_availability || 'pending') as MaterialAvailability,
     })
   }, [planning?.id, planning?.updated_at])
 
@@ -90,6 +82,8 @@ export function MaterialsReservationBlock({
     }
     setSaving(true)
     try {
+      await ensureProjectPlanning(tenantId, projectId)
+
       let resId = form.material_reservation_id ? Number(form.material_reservation_id) : null
       if (!resId) {
         const found = await resolveMaterialReservationId(tenantId, projectId, form.material_reservation_number.trim())
@@ -98,32 +92,22 @@ export function MaterialsReservationBlock({
           const { data: ensured, error } = await ensureReservationByNumber(
             tenantId, projectId, form.material_reservation_number.trim(), clientName,
           )
-          if (error || !ensured) throw new Error(error?.message || 'تعذّر إنشاء الحجز')
+          if (error || !ensured) throw new Error(formatSupabaseError(error, 'تعذّر إنشاء الحجز'))
           resId = ensured.id
         }
       }
-
-      const wasAvailable = planning?.material_availability === 'available'
-      const nowAvailable = form.material_availability === 'available'
 
       await updateProjectPlanning(tenantId, projectId, {
         material_reservation_date: form.material_reservation_date || null,
         material_reservation_number: form.material_reservation_number.trim(),
         material_reservation_id: resId,
-        material_availability: form.material_availability,
-        material_receipt_type: warehouse?.receipt_type === 'none' ? 'full' : warehouse?.receipt_type,
       })
-
-      if (nowAvailable && !wasAvailable && !planning?.material_pickup_notified_at) {
-        await notifyWarehouseMaterialPickup(tenantId, projectId, projectName, form.material_reservation_number.trim())
-        await updateProjectPlanning(tenantId, projectId, { material_pickup_notified_at: new Date().toISOString() })
-      }
 
       toast.success('تم حفظ بيانات الحجز ✅')
       onSaved?.()
       await loadWarehouse(form.material_reservation_number)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الحفظ')
+      toast.error(formatSupabaseError(e, 'فشل حفظ الحجز'))
     }
     setSaving(false)
   }
@@ -150,6 +134,9 @@ export function MaterialsReservationBlock({
       <div style={{ fontWeight: 700, fontSize: embedded ? '0.8rem' : '0.875rem', display: 'flex', alignItems: 'center', gap: '6px', color: '#4338ca', marginBottom: '12px' }}>
           <Package style={{ width: '16px', height: '16px' }} /> حجز المواد (SEC)
       </div>
+      <p style={{ fontSize: '0.72rem', color: '#64748b', margin: '0 0 10px' }}>
+        التخطيط يسجّل رقم الحجز والمواد المطلوبة. التوفر الفعلي يظهر عند زيارة مستودع SEC — المقاول يستلم المتوفر وينتظر الباقي.
+      </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
         <div>
           <label style={lbl}>تاريخ الحجز</label>
@@ -158,12 +145,6 @@ export function MaterialsReservationBlock({
         <div>
           <label style={lbl}>رقم الحجز *</label>
           <input value={form.material_reservation_number} onChange={e => setForm(f => ({ ...f, material_reservation_number: e.target.value }))} className="input" placeholder="SEC booking #" dir="ltr" disabled={readOnly} />
-        </div>
-        <div>
-          <label style={lbl}>توفر المواد</label>
-          <select value={form.material_availability} onChange={e => setForm(f => ({ ...f, material_availability: e.target.value as MaterialAvailability }))} className="input" disabled={readOnly}>
-            {AVAILABILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
         </div>
         {reservations.length > 0 && (
           <div>

@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase'
 import type { ProjectBoqLine } from '@/lib/pmc-types'
 import type { BoqRevisionSnapshotLine, ProjectPlanning } from '@/lib/project-planning-service'
 import { fetchPlanningMaterialLines, parseMaterialsSpreadsheet } from '@/lib/planning-material-lines-service'
-import { matchLineToWarehouseMaterial } from '@/lib/planning-materials-warehouse'
 import { findMaterialBySecCode, lookupSecCodeMap, normalizeSecItemCode, resolveSecDisplayCode } from '@/lib/sec-item-code'
 import ImportQuantitiesModal, { BoqLineStatusBadge, type BoqImportKind } from '@/components/projects/ImportQuantitiesModal'
 import { MaterialsReservationBlock } from '@/components/projects/BoqReservationPanel'
@@ -61,16 +60,11 @@ function parsePrevQty(notes?: string | null): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
-function buildNotes(category: BoqLineCategory, trackPrevQty: boolean, qtyPrevious?: number, isNew?: boolean, warehouseMissing?: boolean): string | null {
+function buildNotes(category: BoqLineCategory, trackPrevQty: boolean, qtyPrevious?: number, isNew?: boolean): string | null {
   const parts: string[] = [`line_category:${category}`]
   if (isNew) parts.push('is_new:1')
   if (trackPrevQty && qtyPrevious != null && !isNew) parts.push(`prev_qty:${qtyPrevious}`)
-  if (warehouseMissing) parts.push('warehouse_missing:1')
   return parts.join('|')
-}
-
-function isWarehouseMissingFromNotes(notes?: string | null): boolean {
-  return !!notes?.includes('warehouse_missing:1')
 }
 
 function isNewLineFromNotes(notes?: string | null): boolean {
@@ -131,63 +125,19 @@ function normalizeItemCode(v: string): string {
   return normalizeSecItemCode(v)
 }
 
-function enrichMaterialWarehouseMatch(row: LineRow, catalog: MaterialCatalogRow[]): LineRow {
+function enrichMaterialSecLookup(row: LineRow, catalog: MaterialCatalogRow[]): LineRow {
   if (row.line_category !== 'MATERIAL') return row
-  if (!row.description.trim() && !row.item_code.trim()) {
-    return { ...row, warehouse_material_id: null, warehouse_note: null }
+  const trimmed = row.item_code.trim()
+  if (!trimmed) return row
+  const mat = findMaterialBySecCode(catalog, trimmed)
+  if (!mat) return row
+  return {
+    ...row,
+    item_code: resolveSecDisplayCode(trimmed, mat),
+    description: mat.name || row.description,
+    unit: mat.unit || row.unit,
+    warehouse_material_id: mat.id,
   }
-  const match = matchLineToWarehouseMaterial(catalog, {
-    material_id: row.warehouse_material_id,
-    description: row.description,
-    item_code: row.item_code,
-  })
-  if (match.matched && match.material_id) {
-    const mat = catalog.find(m => m.id === match.material_id)
-    return {
-      ...row,
-      warehouse_material_id: match.material_id,
-      warehouse_note: null,
-      description: mat?.name || row.description,
-      unit: mat?.unit || row.unit,
-      item_code: resolveSecDisplayCode(row.item_code, mat ? { sec_number: mat.sec_number, catalog_no: mat.catalog_no } : null),
-    }
-  }
-  return { ...row, warehouse_material_id: null, warehouse_note: match.note }
-}
-
-function enrichMaterialRows(rows: LineRow[], catalog: MaterialCatalogRow[]): LineRow[] {
-  return rows.map(r => (r.line_category === 'MATERIAL' ? enrichMaterialWarehouseMatch(r, catalog) : r))
-}
-
-function countMissingWarehouseMaterials(rows: LineRow[]): number {
-  return rows.filter(r => r.line_category === 'MATERIAL' && r.warehouse_note).length
-}
-
-function toastWarehouseImportSummary(rows: LineRow[], source: string) {
-  const missing = countMissingWarehouseMaterials(rows)
-  if (missing > 0) {
-    toast(`تم الاستيراد — ⚠ ${missing} مادة غير مضافة في المستودع`, { duration: 6000, icon: '⚠️' })
-  } else {
-    toast.success(`تم ${source} — جميع المواد موجودة في المستودع ✅`)
-  }
-}
-
-export function MaterialWarehouseBadge({ note, matched }: { note?: string | null; matched?: boolean }) {
-  if (matched) {
-    return (
-      <span style={{ fontSize: '0.65rem', padding: '2px 7px', borderRadius: '10px', background: '#ecfdf5', color: '#0ea77b', whiteSpace: 'nowrap' }}>
-        ✓ موجود بالمستودع
-      </span>
-    )
-  }
-  if (note) {
-    return (
-      <span style={{ fontSize: '0.62rem', padding: '3px 8px', borderRadius: '8px', background: '#fef2f2', color: '#c81e1e', lineHeight: 1.4, display: 'inline-block', maxWidth: '160px' }}>
-        {note}
-      </span>
-    )
-  }
-  return null
 }
 
 const IMPORT_BTN = {
@@ -297,9 +247,6 @@ function EstimateSectionTable({
                 <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الحالة</th>
               )}
               {category === 'MATERIAL' && (
-                <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right', minWidth: '130px' }}>المستودع</th>
-              )}
-              {category === 'MATERIAL' && (
                 <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right', minWidth: '110px' }}>SEC#</th>
               )}
               <th style={{ padding: '8px', fontSize: '0.72rem', color: style.titleColor, textAlign: 'right' }}>الوصف</th>
@@ -323,7 +270,7 @@ function EstimateSectionTable({
               return (
                 <tr key={globalIdx} style={{
                   borderTop: `1px solid ${style.headerBorder}`,
-                  background: line.warehouse_note ? '#fef2f255' : qtyChanged ? '#fffbeb55' : isNewRow ? '#ecfdf533' : undefined,
+                  background: qtyChanged ? '#fffbeb55' : isNewRow ? '#ecfdf533' : undefined,
                 }}>
                   {category === 'WORK' && frameworkItems.length > 0 && (
                     <td style={{ padding: '6px 8px', minWidth: '140px' }}>
@@ -341,11 +288,6 @@ function EstimateSectionTable({
                   {category === 'WORK' && (
                     <td style={{ padding: '6px 8px' }}>
                       {(!isRevision || isNewRow) ? <BoqLineStatusBadge status={line.matchStatus} /> : null}
-                    </td>
-                  )}
-                  {category === 'MATERIAL' && (
-                    <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
-                      <MaterialWarehouseBadge note={line.warehouse_note} matched={!!line.warehouse_material_id} />
                     </td>
                   )}
                   {category === 'MATERIAL' && (
@@ -480,11 +422,6 @@ export default function ProjectEstimateEditor({
   }, [tenant?.id])
 
   useEffect(() => {
-    if (!materialCatalog.length) return
-    setLines(prev => enrichMaterialRows(prev, materialCatalog))
-  }, [materialCatalog])
-
-  useEffect(() => {
     if (!planning) return
     const ov = (planning as { estimate_total_override?: number | null }).estimate_total_override
     const note = (planning as { estimate_total_note?: string | null }).estimate_total_note
@@ -521,9 +458,8 @@ export default function ProjectEstimateEditor({
       line_category: cat,
       is_new: isNew || undefined,
       warehouse_material_id: l.material_id ?? null,
-      warehouse_note: isWarehouseMissingFromNotes(l.notes) && !l.material_id ? matchLineToWarehouseMaterial(materialCatalog, { description: l.description, item_code: code }).note : null,
     }
-    return cat === 'MATERIAL' ? enrichMaterialWarehouseMatch(row, materialCatalog) : row
+    return cat === 'MATERIAL' ? enrichMaterialSecLookup(row, materialCatalog) : row
   }
 
   async function loadBoq() {
@@ -553,13 +489,13 @@ export default function ProjectEstimateEditor({
     if (!materialRows.length) {
       const { data: legacyMat } = await fetchPlanningMaterialLines(tenant.id, projectId)
       if (legacyMat?.length) {
-        materialRows = legacyMat.filter(l => l.description.trim()).map(l => enrichMaterialWarehouseMatch({
+        materialRows = legacyMat.filter(l => l.description.trim()).map(l => ({
           ...emptyLine('MATERIAL'),
           description: l.description,
           unit: l.unit || 'قطعة',
           qty: Number(l.qty_planned) || 0,
           item_code: l.catalog_no || '',
-        }, materialCatalog))
+        }))
       }
     }
 
@@ -585,8 +521,8 @@ export default function ProjectEstimateEditor({
       const next = [...prev]
       const row = { ...next[idx], [key]: val }
       if (key === 'item_code' || key === 'description') row.matchStatus = inferMatchStatus(String(row.item_code), frameworkMap)
-      next[idx] = row.line_category === 'MATERIAL' && (key === 'item_code' || key === 'description')
-        ? enrichMaterialWarehouseMatch(row, materialCatalog)
+      next[idx] = row.line_category === 'MATERIAL' && key === 'item_code'
+        ? enrichMaterialSecLookup(row, materialCatalog)
         : row
       return next
     })
@@ -617,7 +553,7 @@ export default function ProjectEstimateEditor({
       const next = [...prev]
       const base = { ...next[idx], item_code: trimmed }
       if (!mat) {
-        next[idx] = enrichMaterialWarehouseMatch(base, materialCatalog)
+        next[idx] = base
         return next
       }
       next[idx] = {
@@ -626,7 +562,6 @@ export default function ProjectEstimateEditor({
         description: mat.name,
         unit: mat.unit || next[idx].unit,
         warehouse_material_id: mat.id,
-        warehouse_note: null,
       }
       return next
     })
@@ -647,16 +582,14 @@ export default function ProjectEstimateEditor({
   }
 
   function appendImportedRows(category: BoqLineCategory, imported: BoqImportLine[]) {
-    let newRows = imported.filter(r => r.description.trim()).map(r => ({
+    const newRows = imported.filter(r => r.description.trim()).map(r => ({
       ...r,
       line_category: category,
       unit: r.unit || (category === 'MATERIAL' ? 'قطعة' : 'EA'),
       is_new: isRevision || undefined,
       qty_previous: isRevision ? 0 : undefined,
-      warehouse_note: r.warehouse_note ?? null,
       warehouse_material_id: r.warehouse_material_id ?? null,
     })) as LineRow[]
-    if (category === 'MATERIAL') newRows = enrichMaterialRows(newRows, materialCatalog)
     setLines(prev => {
       const mats = prev.filter(l => l.line_category === 'MATERIAL')
       const works = prev.filter(l => l.line_category === 'WORK')
@@ -671,19 +604,7 @@ export default function ProjectEstimateEditor({
 
   function handleImportApply(imported: BoqImportLine[]) {
     if (isRevision) {
-      if (importTarget === 'MATERIAL') {
-        const enriched = enrichMaterialRows(
-          imported.filter(r => r.description.trim()).map(r => ({
-            ...r,
-            line_category: 'MATERIAL' as const,
-            unit: r.unit || 'قطعة',
-          })) as LineRow[],
-          materialCatalog,
-        )
-        toastWarehouseImportSummary(enriched, 'الاستيراد')
-      } else {
-        toast.success(`تمت إضافة ${imported.length} بند أعمال جديد`)
-      }
+      toast.success(`تمت إضافة ${imported.length} بند ${importTarget === 'MATERIAL' ? 'مواد' : 'أعمال'}`)
       appendImportedRows(importTarget, imported)
       setImportModalOpen(false)
       return
@@ -692,11 +613,10 @@ export default function ProjectEstimateEditor({
       const mats = prev.filter(l => l.line_category === 'MATERIAL')
       const works = prev.filter(l => l.line_category === 'WORK')
       if (importTarget === 'MATERIAL') {
-        let newMats = imported.length
+        const newMats = imported.length
           ? imported.map(r => ({ ...r, line_category: 'MATERIAL' as const, unit: r.unit || 'قطعة' })) as LineRow[]
           : [emptyLine('MATERIAL')]
-        newMats = enrichMaterialRows(newMats, materialCatalog)
-        toastWarehouseImportSummary(newMats, 'استيراد المواد')
+        toast.success(`تم استيراد ${newMats.length} بند مواد`)
         return [...newMats, ...works]
       }
       const newWorks = imported.length
@@ -730,17 +650,16 @@ export default function ProjectEstimateEditor({
         qty: Number(r.qty_planned) || 0,
         item_code: r.catalog_no || '',
       })) as LineRow[]
-      imported = enrichMaterialRows(imported, materialCatalog)
       if (isRevision) {
         appendImportedRows('MATERIAL', imported)
-        toastWarehouseImportSummary(imported, 'استيراد Excel')
+        toast.success(`تم استيراد ${imported.length} بند مواد`)
         return
       }
       setLines(prev => {
         const works = prev.filter(l => l.line_category === 'WORK')
         return [...(imported.length ? imported : [emptyLine('MATERIAL')]), ...works]
       })
-      toastWarehouseImportSummary(imported, 'استيراد Excel')
+      toast.success(`تم استيراد ${imported.length} بند مواد`)
     } catch {
       toast.error('تعذّر قراءة ملف Excel')
     }
@@ -775,7 +694,7 @@ export default function ProjectEstimateEditor({
       unit: l.unit,
       qty_planned: l.qty,
       material_id: l.line_category === 'MATERIAL' ? (l.warehouse_material_id ?? null) : null,
-      notes: buildNotes(l.line_category, isRevision, l.qty_previous, l.is_new, l.line_category === 'MATERIAL' && !!l.warehouse_note),
+      notes: buildNotes(l.line_category, isRevision, l.qty_previous, l.is_new),
       line_category: l.line_category,
     }))
 
@@ -956,7 +875,6 @@ export default function ProjectEstimateEditor({
         <ImportQuantitiesModal importKind={importKind} frameworkItems={frameworkItems}
           existingLines={importTarget === 'MATERIAL' ? materialLines : workLines}
           lineCategory={importTarget}
-          warehouseMaterials={importTarget === 'MATERIAL' ? materialCatalog : undefined}
           onClose={() => setImportModalOpen(false)} onApply={handleImportApply} />
       )}
     </>
