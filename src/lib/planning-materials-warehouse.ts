@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import type { MaterialReceiptType } from '@/lib/project-planning-service'
 import type { ReservationReconciliation } from '@/lib/pmc-types'
-import { fetchReservationReconciliation } from '@/lib/pmc-service'
+import { fetchReservationReconciliation, resolveProjectBoqVersionId } from '@/lib/pmc-service'
 import { findMaterialBySecCode, secItemCodeVariants } from '@/lib/sec-item-code'
 
 export type PlanningMaterialAlert = 'none' | 'not_in_plan' | 'over_received' | 'under_received'
@@ -295,19 +295,9 @@ export async function fetchPlanningMaterialsWarehouseStatus(
     reservation
       ? fetchReservationReconciliation(tenantId, { projectId, reservationId: reservation.id })
       : Promise.resolve({ data: [] as ReservationReconciliation[] }),
-    (async () => {
-      if (reservation?.boq_version_id) return reservation.boq_version_id
-      const { data: active } = await supabase
-        .from('project_boq_versions')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('project_id', projectId)
-        .eq('status', 'ACTIVE')
-        .order('version_no', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      return active?.id ?? null
-    })(),
+    reservation?.boq_version_id
+      ? Promise.resolve(reservation.boq_version_id)
+      : resolveProjectBoqVersionId(tenantId, projectId),
   ])
 
   const balances = (recon || []) as ReservationReconciliation[]
@@ -325,19 +315,21 @@ export async function fetchPlanningMaterialsWarehouseStatus(
 
   let manualLines: { material_id?: null; description: string; unit: string; qty_planned: number; catalog_no?: string | null }[] = []
   if (!boqLines.length) {
-    const { data: planLines } = await supabase
+    const { data: planLines, error: planLinesErr } = await supabase
       .from('project_planning_material_lines')
       .select('description, unit, qty_planned, catalog_no')
       .eq('tenant_id', tenantId)
       .eq('project_id', projectId)
       .order('sort_order')
-    manualLines = (planLines || []).map(l => ({
-      material_id: null,
-      description: l.description,
-      unit: l.unit || 'قطعة',
-      qty_planned: Number(l.qty_planned) || 0,
-      catalog_no: l.catalog_no,
-    }))
+    if (!planLinesErr) {
+      manualLines = (planLines || []).map(l => ({
+        material_id: null,
+        description: l.description,
+        unit: l.unit || 'قطعة',
+        qty_planned: Number(l.qty_planned) || 0,
+        catalog_no: l.catalog_no,
+      }))
+    }
   }
 
   const plannedSource = boqLines.length > 0 ? boqLines : manualLines

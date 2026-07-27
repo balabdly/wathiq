@@ -277,7 +277,49 @@ export async function fetchProjectBoqCategoryCounts(tenantId: string, projectId:
 
 export async function projectHasActiveBoqLines(tenantId: string, projectId: number): Promise<boolean> {
   const c = await fetchProjectBoqCategoryCounts(tenantId, projectId)
-  return c.materials > 0 && c.works > 0
+  return c.materials > 0 || c.works > 0
+}
+
+/** نسخة BOQ للعرض/الاستلام — ACTIVE أولاً ثم أي نسخة فيها بنود */
+export async function resolveProjectBoqVersionId(tenantId: string, projectId: number): Promise<number | null> {
+  const { data: active } = await supabase
+    .from('project_boq_versions')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .eq('status', 'ACTIVE')
+    .order('version_no', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (active?.id) return active.id
+
+  const { data: versions } = await supabase
+    .from('project_boq_versions')
+    .select('id, version_no')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .order('version_no', { ascending: false })
+
+  for (const v of versions || []) {
+    const { count } = await supabase
+      .from('project_boq_lines')
+      .select('id', { count: 'exact', head: true })
+      .eq('boq_version_id', v.id)
+    if (count && count > 0) return v.id
+  }
+  return null
+}
+
+export async function fetchProjectBoqReadiness(
+  tenantId: string,
+  projectId: number,
+): Promise<{ materialCount: number; workCount: number; hasBoq: boolean }> {
+  const counts = await fetchProjectBoqCategoryCounts(tenantId, projectId)
+  return {
+    materialCount: counts.materials,
+    workCount: counts.works,
+    hasBoq: counts.materials > 0 || counts.works > 0,
+  }
 }
 
 /** @deprecated استخدم fetchProjectBoqCategoryCounts */

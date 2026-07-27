@@ -15,7 +15,7 @@ import {
   Paperclip,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { ensureReservationByNumber, fetchProjectReservationContext } from '@/lib/pmc-service'
+import { ensureReservationByNumber, fetchProjectReservationContext, fetchProjectBoqReadiness } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
 import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage, fetchPlanningMaterialsWarehouseStatus, resolveWarehouseMaterialId, type PlanningMaterialsWarehouseSummary, type PlanningMaterialWarehouseRow } from '@/lib/planning-materials-warehouse'
@@ -163,6 +163,7 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   })
   const [reservations, setReservations] = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status' | 'client_name'>[]>([])
   const [planningBookingNo, setPlanningBookingNo] = useState<string | null>(null)
+  const [projectBoqReady, setProjectBoqReady] = useState<{ materialCount: number; hasBoq: boolean } | null>(null)
   const [teamMembers, setTeamMembers] = useState<AssigneeOption[]>([])
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -220,12 +221,16 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
   }, [type, isProjectWh, form.project_id, form.reservation_id, form.booking_no, tenantId])
 
   useEffect(() => {
-    if (!form.project_id) { setReservations([]); setPlanningBookingNo(null); setTeamMembers([]); return }
+    if (!form.project_id) { setReservations([]); setPlanningBookingNo(null); setProjectBoqReady(null); setTeamMembers([]); return }
     let cancelled = false
-    fetchProjectReservationContext(tenantId, Number(form.project_id)).then(ctx => {
+    Promise.all([
+      fetchProjectReservationContext(tenantId, Number(form.project_id)),
+      fetchProjectBoqReadiness(tenantId, Number(form.project_id)),
+    ]).then(([ctx, boq]) => {
       if (cancelled) return
       setReservations(ctx.reservations)
       setPlanningBookingNo(ctx.material_reservation_number)
+      setProjectBoqReady({ materialCount: boq.materialCount, hasBoq: boq.hasBoq })
       if (type === 'استلام') {
         setForm(f => ({
           ...f,
@@ -712,6 +717,20 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
                 حجز المواد (Booking) <span style={{ color: '#c81e1e' }}>*</span>
               </label>
+              {type === 'استلام' && projectBoqReady && !projectBoqReady.hasBoq && (
+                <div style={{ fontSize: '0.75rem', color: '#c81e1e', marginBottom: '8px', padding: '8px 10px', background: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca' }}>
+                  <strong>لا مقايسة محفوظة لهذا المشروع في النظام</strong> (0 مواد) — المواد لا تظهر تلقائياً لأن الحفظ لم يُسجَّل بعد.
+                  {' '}
+                  <Link href={`/projects/planning/${form.project_id}/boq`} style={{ color: '#1a56db', fontWeight: 600 }}>
+                    افتح المقايسة واحفظ
+                  </Link>
+                </div>
+              )}
+              {type === 'استلام' && projectBoqReady?.hasBoq && !loadingPlanned && receivePlannedRows.length > 0 && (
+                <div style={{ fontSize: '0.72rem', color: '#0ea77b', marginBottom: '8px', padding: '6px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #86efac' }}>
+                  ✓ {projectBoqReady.materialCount} مادة من المقايسة — تظهر أدناه للاختيار
+                </div>
+              )}
               {reservations.length === 0 && !form.booking_no ? (
                 <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
                   لم يُحفظ رقم حجز لهذا المشروع في النظام —{' '}
