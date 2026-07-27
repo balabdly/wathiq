@@ -10,8 +10,15 @@ import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
 const QuickQhseModal = dynamic(() => import('@/components/projects/QuickQhseModal'), { ssr: false })
 import { supabase } from '@/lib/supabase'
 import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/utils'
-import { phaseLabel, WORKFLOW_TYPES, statusForPhase, PMO_PHASES_FULL, PMO_PHASES_OM } from '@/lib/sec-workflow'
+import { WORKFLOW_TYPES, statusForPhase } from '@/lib/sec-workflow'
 import type { PmoPhase } from '@/lib/sec-workflow'
+import {
+  LIFECYCLE_PHASES,
+  lifecycleForPmoLabel,
+  lifecycleStyle,
+  pmoPhaseToLifecycle,
+  projectMatchesLifecycleFilter,
+} from '@/lib/project-lifecycle'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
 
@@ -45,11 +52,6 @@ const PROJECT_TYPES: { code: string; name: string }[] = [
   { code: 'OTHER', name: 'أخرى' },
 ]
 const TYPE_NAME: Record<string, string> = Object.fromEntries(PROJECT_TYPES.map(t => [t.code, t.name]))
-
-const PHASE_FILTER_OPTIONS = [
-  ...PMO_PHASES_FULL,
-  ...PMO_PHASES_OM,
-]
 
 const COLUMNS = [
   { id: 'تحت التخطيط', label: 'تحت التخطيط', icon: '📋', color: '#6b7280', bg: '#f9fafb',  border: '#e5e7eb', autoProgress: 0   },
@@ -724,7 +726,7 @@ export default function ProjectsPage() {
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('')
-  const [phaseFilter, setPhaseFilter] = useState('__lifecycle__')
+  const [phaseFilter, setPhaseFilter] = useState('')
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
@@ -938,8 +940,7 @@ export default function ProjectsPage() {
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
-    const phaseMatch = !phaseFilter
-      || (phaseFilter === '__lifecycle__' ? !!phase : phaseFilter === '__none__' ? !phase : phase === phaseFilter)
+    const phaseMatch = projectMatchesLifecycleFilter(phaseFilter, phase)
     return (
       phaseMatch &&
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
@@ -999,12 +1000,10 @@ export default function ProjectsPage() {
         </div>
 
         <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
-          <option value="__lifecycle__">مشاريع lifecycle (الجديدة)</option>
-          <option value="">كل المراحل</option>
-          {PHASE_FILTER_OPTIONS.map(ph => (
+          <option value="">كل مراحل الحياة</option>
+          {LIFECYCLE_PHASES.map(ph => (
             <option key={ph.id} value={ph.id}>{ph.label}</option>
           ))}
-          <option value="__none__">— بدون مرحلة —</option>
         </select>
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
@@ -1142,11 +1141,15 @@ export default function ProjectsPage() {
                           {' '}{WORKFLOW_TYPES.find(w => w.id === (p as any).workflow_type)?.label.split(' ')[0]}
                         </span>
                       )}
-                      {(p as any).pmo_phase && (
-                        <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', fontWeight: 600 }}>
-                          {phaseLabel((p as any).pmo_phase, (p as any).workflow_type)?.split('—')[0]?.trim()}
+                      {(p as any).pmo_phase && (() => {
+                        const life = pmoPhaseToLifecycle((p as any).pmo_phase)
+                        const st = lifecycleStyle(life)
+                        return (
+                        <span style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: '6px', background: st.bg, color: st.color, fontWeight: 600 }}>
+                          {lifecycleForPmoLabel((p as any).pmo_phase)}
                         </span>
-                      )}
+                        )
+                      })()}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1a1a2e' }}>{p.name}</div>
                     {((p as any).client_name || (p as any).client) && (

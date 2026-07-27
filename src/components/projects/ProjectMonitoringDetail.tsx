@@ -7,10 +7,16 @@ import { fetchProjectPlanning } from '@/lib/project-planning-service'
 import { fetchBoqVersions } from '@/lib/pmc-service'
 import { fetchProjectTeamAssignments } from '@/lib/project-execution-service'
 import { fetchTeamWithMembers } from '@/lib/project-teams'
-import { phaseLabel } from '@/lib/sec-workflow'
+import { lifecycleForPmoLabel } from '@/lib/project-lifecycle'
+import {
+  fetchProjectPhaseHistory,
+  formatPhaseDuration,
+  phaseHistoryLabel,
+  type ProjectPhaseHistoryRow,
+} from '@/lib/project-phase-history-service'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import {
-  ArrowRight, Download, FileText, Image, File, ClipboardList, HardHat, Archive, Rocket,
+  ArrowRight, Download, FileText, Image, File, ClipboardList, HardHat, Archive, Rocket, Clock,
 } from 'lucide-react'
 import { formatTeamTypeLabel, ASSIGNMENT_STATUS_LABEL, ASSIGNMENT_STATUS_STYLE } from '@/lib/project-teams'
 import type { ProjectTeamAssignment } from '@/lib/project-teams'
@@ -31,6 +37,42 @@ const PHASE_TABS = [
 ] as const
 
 type PhaseTab = typeof PHASE_TABS[number]['id']
+
+const TAB_TO_LIFECYCLE: Record<Exclude<PhaseTab, 'visits'>, ProjectPhaseHistoryRow['lifecycle_phase']> = {
+  initiation: 'initiation',
+  planning: 'planning',
+  execution: 'execution',
+  close: 'closure',
+}
+
+function PhaseTimingBlock({ rows, lifecycle }: { rows: ProjectPhaseHistoryRow[]; lifecycle: ProjectPhaseHistoryRow['lifecycle_phase'] }) {
+  const matches = rows.filter(r => r.lifecycle_phase === lifecycle)
+  if (!matches.length) {
+    return (
+      <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: '0 0 12px', padding: '8px 10px', background: '#f9fafb', borderRadius: '8px' }}>
+        لم يصل المشروع إلى هذه المرحلة بعد
+      </p>
+    )
+  }
+  return (
+    <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {matches.map((row, idx) => (
+        <div key={`${row.lifecycle_phase}-${row.entered_at}-${idx}`} style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fafafa', fontSize: '0.78rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+            <span><strong>دخول:</strong> {formatDate(row.entered_at)}</span>
+            <span><strong>خروج:</strong> {row.exited_at ? formatDate(row.exited_at) : '— ما زال في المرحلة —'}</span>
+            <span><strong>المدة:</strong> {formatPhaseDuration(row.entered_at, row.exited_at)}</span>
+          </div>
+          {row.synthetic && (
+            <div style={{ marginTop: '4px', fontSize: '0.72rem', color: '#e6820a' }}>
+              تقدير من تاريخ إنشاء المشروع — سيُحدَّث عند الانتقال بين المراحل
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function fileIcon(type: string) {
   if (type?.startsWith('image/')) return <Image style={{ width: '16px', height: '16px', color: '#0ea77b' }} />
@@ -89,6 +131,7 @@ export default function ProjectMonitoringDetail({
   const [closure, setClosure] = useState<any>(null)
   const [boqSummary, setBoqSummary] = useState({ materials: 0, works: 0, lines: 0 })
   const [teamAssignments, setTeamAssignments] = useState<ProjectTeamAssignment[]>([])
+  const [phaseHistory, setPhaseHistory] = useState<ProjectPhaseHistoryRow[]>([])
 
   useEffect(() => {
     if (!tenant) return
@@ -98,7 +141,7 @@ export default function ProjectMonitoringDetail({
   async function loadAll() {
     if (!tenant) return
     setLoading(true)
-    const [planRes, attachRes, visitsRes, boqRes, closureRes, logsRes, logCountRes, teamRes, assignRes] = await Promise.all([
+    const [planRes, attachRes, visitsRes, boqRes, closureRes, logsRes, logCountRes, teamRes, assignRes, historyRes] = await Promise.all([
       fetchProjectPlanning(tenant.id, project.id),
       supabase.from('project_attachments').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('created_at', { ascending: false }),
       supabase.from('visits').select('*').eq('tenant_id', tenant.id).eq('project_id', project.id).order('date', { ascending: false }),
@@ -110,11 +153,16 @@ export default function ProjectMonitoringDetail({
         ? fetchTeamWithMembers(supabase, tenant.id, (project as Project & { team_id?: number }).team_id!)
         : Promise.resolve({ team: null, members: [] }),
       fetchProjectTeamAssignments(tenant.id, project.id, (project as Project & { team_id?: number }).team_id),
+      fetchProjectPhaseHistory(tenant.id, project.id, {
+        pmo_phase: (project as Project & { pmo_phase?: string }).pmo_phase,
+        created_at: project.created_at,
+      }),
     ])
 
     setPlanning(planRes.planning)
     setClosure(closureRes.data)
     setTeamAssignments(assignRes)
+    setPhaseHistory(historyRes)
     setExecution({
       team: teamRes.team,
       engineer: (project as Project & { engineer?: string }).engineer,
@@ -170,7 +218,7 @@ export default function ProjectMonitoringDetail({
         <div>
           <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{p.name}</h2>
           <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
-            {p.code || '—'} · {phaseLabel(p.pmo_phase as any) || p.status} · عرض للاطلاع فقط
+            {p.code || '—'} · {lifecycleForPmoLabel(p.pmo_phase)} · عرض للاطلاع فقط
           </p>
         </div>
       </div>
@@ -192,6 +240,40 @@ export default function ProjectMonitoringDetail({
         })}
       </div>
 
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+          <Clock style={{ width: '16px', height: '16px', color: '#1a56db' }} />
+          <h3 style={{ margin: 0, fontSize: '0.9rem' }}>سجل مراحل المشروع</h3>
+        </div>
+        {loading ? (
+          <p style={{ fontSize: '0.8rem', color: '#9ca3af', margin: 0 }}>جاري تحميل السجل...</p>
+        ) : !phaseHistory.length ? (
+          <p style={{ fontSize: '0.8rem', color: '#9ca3af', margin: 0 }}>لا يوجد سجل مراحل بعد</p>
+        ) : (
+          <div style={{ overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr style={{ background: '#f9fafb' }}>
+                  {['المرحلة', 'تاريخ الدخول', 'تاريخ الخروج', 'المدة'].map(h => (
+                    <th key={h} style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: '#6b7280' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {phaseHistory.map((row, idx) => (
+                  <tr key={`${row.lifecycle_phase}-${row.entered_at}-${idx}`} style={{ borderTop: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '8px', fontWeight: 600 }}>{phaseHistoryLabel(row)}</td>
+                    <td style={{ padding: '8px' }}>{formatDate(row.entered_at)}</td>
+                    <td style={{ padding: '8px' }}>{row.exited_at ? formatDate(row.exited_at) : '—'}</td>
+                    <td style={{ padding: '8px' }}>{formatPhaseDuration(row.entered_at, row.exited_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>جاري التحميل...</div>
       ) : (
@@ -199,6 +281,7 @@ export default function ProjectMonitoringDetail({
           {tab === 'initiation' && (
             <>
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>مرحلة البدء</h3>
+              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.initiation} />
               <InfoRow label="العميل" value={p.client_name} />
               <InfoRow label="نوع المشروع" value={p.type} />
               <InfoRow label="الاستشاري" value={p.responsible_consultant} />
@@ -216,6 +299,7 @@ export default function ProjectMonitoringDetail({
           {tab === 'planning' && (
             <>
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>مرحلة التخطيط</h3>
+              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.planning} />
               {!planning ? (
                 <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم تبدأ التخطيط بعد</p>
               ) : (
@@ -247,6 +331,7 @@ export default function ProjectMonitoringDetail({
           {tab === 'execution' && (
             <>
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>مرحلة التنفيذ</h3>
+              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.execution} />
               {!execution ? (
                 <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم يبدأ التنفيذ بعد</p>
               ) : (
@@ -287,6 +372,7 @@ export default function ProjectMonitoringDetail({
           {tab === 'close' && (
             <>
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>مرحلة الإغلاق</h3>
+              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.close} />
               {!closure ? (
                 <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم يُغلق المشروع بعد</p>
               ) : (

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { X, Save, Upload, Paperclip, Trash2 } from 'lucide-react'
+import { recordInitialProjectPhase } from '@/lib/project-phase-history-service'
 import toast from 'react-hot-toast'
 import type { ProjectTypeRow } from './ManageProjectTypesModal'
 import type { InitiationProject } from '@/app/(dashboard)/projects/initiation/InitiationContext'
@@ -173,6 +174,7 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
       }).select('id').single()
       if (error || !data?.id) { toast.error(error?.message || 'فشل الحفظ'); setSaving(false); return }
       projectId = data.id
+      await recordInitialProjectPhase(tenantId, data.id, '1_RECEIPT')
       setUploading(true)
       await uploadAttachments(data.id, attachments.filter(a => a.pendingFile))
       setUploading(false)

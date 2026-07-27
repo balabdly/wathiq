@@ -3,6 +3,7 @@ import { buildTenantStoragePath } from '@/lib/storage-path'
 import { fetchBoqVersions } from '@/lib/pmc-service'
 import { computeMeasureProgress, type MeasureProgress } from '@/lib/measure-progress'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 import type { BillingModel } from '@/lib/sec-workflow'
 
 export type ProjectMeasure = {
@@ -199,13 +200,7 @@ export async function advanceProjectToMeasure(tenantId: string, projectId: numbe
     throw new Error('يجب أن تصل نسبة الإنجاز إلى 100% قبل الانتقال للمقايسة')
   }
 
-  const { error: phaseErr } = await supabase.from('projects').update({
-    pmo_phase: '4_MEASURE',
-    status: statusForPhase('4_MEASURE'),
-    progress: 100,
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (phaseErr) throw phaseErr
+  await updateProjectPmoPhase(tenantId, projectId, '4_MEASURE', { progress: 100 })
 
   await ensureProjectMeasure(tenantId, projectId)
   await supabase.from('project_measure').update({
@@ -222,12 +217,7 @@ export async function closeProjectMeasure(tenantId: string, projectId: number) {
 
   await updateProjectMeasure(tenantId, projectId, { measure_status: 'closed' })
 
-  const { error: phaseErr } = await supabase.from('projects').update({
-    pmo_phase: '5_CLOSE',
-    status: statusForPhase('5_CLOSE'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (phaseErr) throw phaseErr
+  await updateProjectPmoPhase(tenantId, projectId, '5_CLOSE')
 
   const { ensureProjectClosure } = await import('@/lib/project-close-service')
   await ensureProjectClosure(tenantId, projectId)
@@ -247,12 +237,7 @@ export async function reopenProjectToExecution(tenantId: string, projectId: numb
     throw new Error('يمكن إرجاع مشاريع في مرحلة المقايسة فقط')
   }
 
-  const { error: projErr } = await supabase.from('projects').update({
-    pmo_phase: '3_EXEC',
-    status: statusForPhase('3_EXEC'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (projErr) throw projErr
+  await updateProjectPmoPhase(tenantId, projectId, '3_EXEC')
 
   await supabase.from('project_measure').update({
     measure_status: 'active',

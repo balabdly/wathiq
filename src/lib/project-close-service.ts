@@ -4,6 +4,7 @@ import { computeClosureProgress, type ClosureProgress } from '@/lib/closure-prog
 import { getMissingClosureDocs } from '@/lib/project-tasks'
 import { isTaskOpen } from '@/lib/project-tasks'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 import type { BillingModel } from '@/lib/sec-workflow'
 
 export type ProjectClosure = {
@@ -164,11 +165,7 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
   }
 
   if (project.pmo_phase === '4_MEASURE') {
-    await supabase.from('projects').update({
-      pmo_phase: '5_CLOSE',
-      status: statusForPhase('5_CLOSE'),
-      updated_at: new Date().toISOString(),
-    }).eq('id', projectId).eq('tenant_id', tenantId)
+    await updateProjectPmoPhase(tenantId, projectId, '5_CLOSE')
     project.pmo_phase = '5_CLOSE'
     project.status = statusForPhase('5_CLOSE')
   }
@@ -242,14 +239,7 @@ export async function approveProjectClosure(tenantId: string, projectId: number)
     closed_at: now,
   })
 
-  const { error } = await supabase.from('projects').update({
-    pmo_phase: '5_CLOSE',
-    status: 'مكتمل',
-    progress: 100,
-    updated_at: now,
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-
-  if (error) throw error
+  await updateProjectPmoPhase(tenantId, projectId, '5_CLOSE', { status: 'مكتمل', progress: 100 })
 }
 
 /** إرجاع من الإغلاق إلى التنفيذ */
@@ -266,12 +256,7 @@ export async function reopenProjectToExecution(tenantId: string, projectId: numb
     throw new Error('يمكن إرجاع مشاريع في مرحلة الإغلاق (غير المكتملة) فقط')
   }
 
-  const { error: projErr } = await supabase.from('projects').update({
-    pmo_phase: '3_EXEC',
-    status: statusForPhase('3_EXEC'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (projErr) throw projErr
+  await updateProjectPmoPhase(tenantId, projectId, '3_EXEC')
 
   await supabase.from('project_closure').update({
     closure_status: 'active',

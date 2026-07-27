@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 import { fetchProjectBoqCategoryCounts } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress } from '@/lib/planning-progress'
 import type { ProjectPlanning } from '@/lib/project-planning-service'
@@ -314,12 +315,7 @@ function todayDateStr(): string {
 }
 
 export async function startProjectExecution(tenantId: string, projectId: number) {
-  const { error } = await supabase.from('projects').update({
-    pmo_phase: '3_EXEC',
-    status: statusForPhase('3_EXEC'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (error) throw error
+  await updateProjectPmoPhase(tenantId, projectId, '3_EXEC')
 }
 
 /** نقل من التنفيذ إلى الإغلاق (تخطي مرحلة المقايسة المنفصلة) */
@@ -339,13 +335,7 @@ export async function advanceProjectToClose(tenantId: string, projectId: number)
     throw new Error('يجب أن تصل نسبة الإنجاز إلى 100% قبل الانتقال للإغلاق')
   }
 
-  const { error: phaseErr } = await supabase.from('projects').update({
-    pmo_phase: '5_CLOSE',
-    status: statusForPhase('5_CLOSE'),
-    progress: 100,
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (phaseErr) throw phaseErr
+  await updateProjectPmoPhase(tenantId, projectId, '5_CLOSE', { progress: 100 })
 
   const { ensureProjectClosure } = await import('@/lib/project-close-service')
   await ensureProjectClosure(tenantId, projectId)

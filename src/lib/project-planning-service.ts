@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
+import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines } from '@/lib/pmc-service'
 import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
 import { buildTenantStoragePath } from '@/lib/storage-path'
@@ -171,12 +172,7 @@ export async function ensureProjectPlanning(tenantId: string, projectId: number,
     .maybeSingle()
 
   if (existing) {
-    const { error: phaseErr } = await supabase.from('projects').update({
-      pmo_phase: '2_PREP',
-      status: statusForPhase('2_PREP'),
-      updated_at: new Date().toISOString(),
-    }).eq('id', projectId).eq('tenant_id', tenantId)
-    if (phaseErr) throw phaseErr
+    await updateProjectPmoPhase(tenantId, projectId, '2_PREP')
 
     if (existing.planning_status !== 'active') {
       await supabase.from('project_planning').update({
@@ -197,11 +193,7 @@ export async function ensureProjectPlanning(tenantId: string, projectId: number,
 
   if (error) throw error
 
-  await supabase.from('projects').update({
-    pmo_phase: '2_PREP',
-    status: statusForPhase('2_PREP'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
+  await updateProjectPmoPhase(tenantId, projectId, '2_PREP')
 
   return data as ProjectPlanning
 }
@@ -313,19 +305,13 @@ export async function reopenProjectPlanning(
     .maybeSingle()
   if (!planning) throw new Error('لا يوجد سجل تخطيط لهذا المشروع')
 
-  const projUpdate: Record<string, unknown> = {
-    pmo_phase: '2_PREP',
-    status: statusForPhase('2_PREP'),
-    updated_at: new Date().toISOString(),
-  }
+  const { updateProjectPmoPhase } = await import('@/lib/project-phase-history-service')
+  const extra: Record<string, unknown> = {}
   if (!options?.preserveTeam) {
-    projUpdate.team_id = null
-    projUpdate.engineer = null
+    extra.team_id = null
+    extra.engineer = null
   }
-
-  const { error: projErr } = await supabase.from('projects').update(projUpdate)
-    .eq('id', projectId).eq('tenant_id', tenantId)
-  if (projErr) throw projErr
+  await updateProjectPmoPhase(tenantId, projectId, '2_PREP', extra)
 
   const planPatch: Record<string, unknown> = {
     planning_status: 'active',

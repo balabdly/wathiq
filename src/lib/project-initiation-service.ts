@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import { statusForPhase } from '@/lib/sec-workflow'
 import { ensureProjectPlanning } from '@/lib/project-planning-service'
+import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 
 export type InitiationBasketProject = {
   id: number
@@ -88,10 +88,5 @@ export async function reopenProjectToInitiation(tenantId: string, projectId: num
     throw new Error('يمكن إرجاع مشاريع في مرحلة التخطيط فقط')
   }
 
-  const { error } = await supabase.from('projects').update({
-    pmo_phase: '1_RECEIPT',
-    status: statusForPhase('1_RECEIPT'),
-    updated_at: new Date().toISOString(),
-  }).eq('id', projectId).eq('tenant_id', tenantId)
-  if (error) throw error
+  await updateProjectPmoPhase(tenantId, projectId, '1_RECEIPT')
 }
