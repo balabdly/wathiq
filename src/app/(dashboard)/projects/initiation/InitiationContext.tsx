@@ -18,6 +18,8 @@ export type InitiationProject = {
   description?: string
   created_at?: string
   hasBoq?: boolean
+  cancellation_reason?: string | null
+  cancelled_at?: string | null
 }
 
 export type FrameworkBoqRow = {

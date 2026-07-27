@@ -112,6 +112,8 @@ export interface Project {
   attachments?: Attachment[]
   timeline?: TimelineEntry[]
   history?: string[]
+  cancellation_reason?: string | null
+  cancelled_at?: string | null
   created_at: string
   updated_at: string
 }

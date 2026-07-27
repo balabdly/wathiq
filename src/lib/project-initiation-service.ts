@@ -18,15 +18,27 @@ export type InitiationBasketProject = {
   description?: string
   created_at?: string
   hasBoq?: boolean
+  cancellation_reason?: string | null
+  cancelled_at?: string | null
 }
 
-export async function fetchInitiationBasketProjects(tenantId: string) {
-  const { data: projects, error } = await supabase
+export async function fetchInitiationBasketProjects(
+  tenantId: string,
+  options?: { cancelledOnly?: boolean },
+) {
+  let query = supabase
     .from('projects')
-    .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, responsible_consultant, start_date, end_date, description, created_at')
+    .select('id, name, code, client_id, client_name, type, status, pmo_phase, estimated_value, responsible_consultant, start_date, end_date, description, created_at, cancellation_reason, cancelled_at')
     .eq('tenant_id', tenantId)
     .eq('pmo_phase', '1_RECEIPT')
-    .order('created_at', { ascending: false })
+
+  if (options?.cancelledOnly) {
+    query = query.eq('status', 'ملغي')
+  } else {
+    query = query.neq('status', 'ملغي')
+  }
+
+  const { data: projects, error } = await query.order('created_at', { ascending: false })
 
   const list = projects || []
   const ids = list.map(p => p.id)
@@ -73,6 +85,25 @@ export async function completeProjectInitiation(
   }
 
   await ensureProjectPlanning(tenantId, projectId, p)
+}
+
+/** إلغاء مشروع (حذف منطقي) — يبقى محفوظاً مع السبب */
+export async function cancelProject(tenantId: string, projectId: number, reason: string) {
+  const trimmed = reason.trim()
+  if (!trimmed) throw new Error('سبب الإلغاء مطلوب')
+
+  const { error } = await supabase
+    .from('projects')
+    .update({
+      status: 'ملغي',
+      cancellation_reason: trimmed,
+      cancelled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenantId)
+    .eq('id', projectId)
+
+  if (error) throw error
 }
 
 /** إرجاع مشروع من التخطيط إلى سلة البدء (تصحيح بيانات المشروع) */

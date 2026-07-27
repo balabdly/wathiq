@@ -16,7 +16,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
   const [projectTypes, setProjectTypes] = useState<{ id: number; code: string; name: string }[]>([])
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [kpis, setKpis] = useState({ total: 0, readyForPlanning: 0, noClient: 0, noBoq: 0 })
+  const [kpis, setKpis] = useState({ total: 0, readyForPlanning: 0, noClient: 0 })
 
   const reloadShared = useCallback(async () => {
     if (!tenant) return
@@ -54,7 +54,6 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
       total: list.length,
       readyForPlanning: list.filter(p => p.client_id).length,
       noClient: list.filter(p => !p.client_id).length,
-      noBoq: 0,
     })
   }, [tenant?.id])
 
@@ -81,12 +80,11 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {!isDetail && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
             {[
               { label: 'في سلة البدء', value: kpis.total, color: '#1a56db', bg: '#eff6ff' },
               { label: 'جاهز للتخطيط', value: kpis.readyForPlanning, color: '#0ea77b', bg: '#ecfdf5' },
               { label: 'بدون عميل', value: kpis.noClient, color: '#e6820a', bg: '#fffbeb' },
-              { label: 'بدون كميات', value: kpis.noBoq, color: '#c81e1e', bg: '#fef2f2' },
             ].map(kpi => (
               <div key={kpi.label} className="card" style={{ padding: '16px', background: kpi.bg }}>
                 <div style={{ fontSize: '1.3rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>

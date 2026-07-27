@@ -36,7 +36,8 @@ export default function MaterialsLayout({ children }: { children: React.ReactNod
     const [whRes, projRes] = await Promise.all([
       supabase.from('warehouses').select('*').eq('tenant_id', tenant.id).order('name'),
       supabase.from('projects').select('id, name, status').eq('tenant_id', tenant.id)
-        .not('status', 'eq', 'مكتمل').order('name'),
+        .not('status', 'eq', 'مكتمل')
+        .not('status', 'eq', 'ملغي').order('name'),
     ])
     setWarehouses(whRes.data || [])
     setProjects(projRes.data || [])

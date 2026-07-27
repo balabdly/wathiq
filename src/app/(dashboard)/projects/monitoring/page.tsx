@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import ProjectModal  from '@/components/projects/ProjectModal'
 import ProjectMonitoringDetail from '@/components/projects/ProjectMonitoringDetail'
 import { cleanupLegacyMonitoringProjects, isLifecycleProject } from '@/lib/project-monitoring-cleanup'
+import { cancelProject } from '@/lib/project-initiation-service'
+import CancelProjectModal from '@/components/projects/CancelProjectModal'
 import { useStore } from '@/hooks/useStore'
 import { projectsApi, visitsApi } from '@/lib/db'
 import type { QhseVisitType } from '@/components/projects/QuickQhseModal'
@@ -761,6 +763,7 @@ export default function ProjectsPage() {
   const [showModal,        setShowModal]        = useState(false)
   const [editProject,      setEditProject]      = useState<Project | null>(null)
   const [detailProject,    setDetail]           = useState<Project | null>(null)
+  const [cancelTarget,     setCancelTarget]     = useState<Project | null>(null)
 
   const canEdit = currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit')
   const [projectBlockers, setProjectBlockers] = useState<Record<number, { tasks: number; ncr: number }>>({})
@@ -906,10 +909,16 @@ export default function ProjectsPage() {
   }
 
   async function handleDelete(p: Project) {
-    if (!confirm(`حذف المشروع "${p.name}"؟`)) return
-    await projectsApi.delete(p.id)
-    setProjects(projects.filter(x => x.id !== p.id))
-    toast.success('تم حذف المشروع')
+    setCancelTarget(p)
+  }
+
+  async function handleCancelConfirm(reason: string) {
+    if (!tenant || !cancelTarget) return
+    await cancelProject(tenant.id, cancelTarget.id, reason)
+    setProjects(projects.filter(x => x.id !== cancelTarget.id))
+    if (detailProject?.id === cancelTarget.id) setDetail(null)
+    setCancelTarget(null)
+    toast.success('تم إلغاء المشروع')
   }
 
   async function handleSaveNote(project: Project, noteText: string) {
@@ -938,6 +947,12 @@ export default function ProjectsPage() {
   const existingTypes = Array.from(new Set(projects.map(p => p.type).filter(Boolean))) as string[]
 
   const filtered = projects.filter(p => {
+    const isCancelled = p.status === 'ملغي'
+    if (statusFilter === 'ملغي') {
+      if (!isCancelled) return false
+    } else if (isCancelled) {
+      return false
+    }
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = projectMatchesLifecycleFilter(phaseFilter, phase)
@@ -1304,6 +1319,14 @@ export default function ProjectsPage() {
             setTaskProject(null)
           }}
           defaultProjectId={taskProject.id}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelProjectModal
+          projectName={cancelTarget.name}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={handleCancelConfirm}
         />
       )}
 

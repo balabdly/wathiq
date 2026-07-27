@@ -1,16 +1,16 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
-import { supabase } from '@/lib/supabase'
-import { completeProjectInitiation } from '@/lib/project-initiation-service'
+import { completeProjectInitiation, cancelProject, fetchInitiationBasketProjects } from '@/lib/project-initiation-service'
 import { useInitiation } from '../InitiationContext'
 import InitiationProjectModal from '@/components/projects/InitiationProjectModal'
 import ManageProjectTypesModal from '@/components/projects/ManageProjectTypesModal'
-import { Plus, Search, Pencil, Trash2, Tag, ClipboardList, ArrowLeftCircle } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Tag, ArrowLeftCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
+import CancelProjectModal from '@/components/projects/CancelProjectModal'
 import type { InitiationProject } from '../InitiationContext'
 
 function typeLabel(code: string | undefined, types: { code: string; name: string }[]) {
@@ -23,12 +23,23 @@ export default function InitiationProjectsPage() {
   const { tenant } = useStore()
   const { projects, projectTypes, reloadShared, reloadKpis, tenantId, branchId } = useInitiation()
   const [search, setSearch] = useState('')
+  const [showCancelled, setShowCancelled] = useState(false)
+  const [cancelledProjects, setCancelledProjects] = useState<InitiationProject[]>([])
   const [showModal, setShowModal] = useState(false)
   const [showTypes, setShowTypes] = useState(false)
   const [editProject, setEditProject] = useState<InitiationProject | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<InitiationProject | null>(null)
   const [sending, setSending] = useState<number | null>(null)
 
-  const filtered = projects.filter(p => {
+  const list = showCancelled ? cancelledProjects : projects
+
+  useEffect(() => {
+    if (!tenantId) return
+    fetchInitiationBasketProjects(tenantId, { cancelledOnly: true })
+      .then(({ data }) => setCancelledProjects(data || []))
+  }, [tenantId, projects, showCancelled])
+
+  const filtered = list.filter(p => {
     const q = search.toLowerCase()
     return !q
       || p.name.toLowerCase().includes(q)
@@ -38,12 +49,15 @@ export default function InitiationProjectsPage() {
 
   const { paginated, PaginationBar } = useFilteredPagination(filtered, 10, search)
 
-  async function handleDelete(id: number, name: string) {
-    if (!confirm(`حذف "${name}"؟`)) return
-    await supabase.from('projects').delete().eq('id', id)
-    toast.success('تم الحذف')
+  async function handleCancelConfirm(reason: string) {
+    if (!tenantId || !cancelTarget) return
+    await cancelProject(tenantId, cancelTarget.id, reason)
+    toast.success('تم إلغاء المشروع')
+    setCancelTarget(null)
     await reloadShared()
     await reloadKpis()
+    const { data } = await fetchInitiationBasketProjects(tenantId, { cancelledOnly: true })
+    setCancelledProjects(data || [])
   }
 
   async function handleSendToPlanning(project: InitiationProject) {
@@ -80,23 +94,41 @@ export default function InitiationProjectsPage() {
             <input value={search} onChange={e => setSearch(e.target.value)} className="input" style={{ paddingRight: '32px', width: '220px' }} placeholder="بحث..." />
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={() => setShowTypes(true)} className="btn btn-ghost" style={{ fontSize: '0.82rem', border: '1px solid #ddd6fe', color: '#7c3aed' }}>
-              <Tag style={{ width: '15px', height: '15px' }} /> تحديد أنواع المشاريع
-            </button>
-            <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
-              <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
-            </button>
+            <select
+              value={showCancelled ? 'cancelled' : 'active'}
+              onChange={e => setShowCancelled(e.target.value === 'cancelled')}
+              className="select"
+              style={{ width: 'auto', minWidth: '160px', fontSize: '0.82rem' }}
+            >
+              <option value="active">سلة البدء النشطة</option>
+              <option value="cancelled">المشاريع الملغية</option>
+            </select>
+            {!showCancelled && (
+              <>
+                <button onClick={() => setShowTypes(true)} className="btn btn-ghost" style={{ fontSize: '0.82rem', border: '1px solid #ddd6fe', color: '#7c3aed' }}>
+                  <Tag style={{ width: '15px', height: '15px' }} /> تحديد أنواع المشاريع
+                </button>
+                <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
+                  <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
+                </button>
+              </>
+            )}
           </div>
         </div>
 
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>لا مشاريع في سلة البدء</div>
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>
+            {showCancelled ? 'لا مشاريع ملغية في سلة البدء' : 'لا مشاريع في سلة البدء'}
+          </div>
         ) : (
           <div style={{ overflow: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                  {['الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'البداية', 'النهاية', ''].map(h => (
+                  {(showCancelled
+                    ? ['الرقم', 'المشروع', 'العميل', 'سبب الإلغاء', 'تاريخ الإلغاء', '']
+                    : ['الرقم', 'المشروع', 'العميل', 'النوع', 'القيمة', 'البداية', 'النهاية', '']
+                  ).map(h => (
                     <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem' }}>{h}</th>
                   ))}
                 </tr>
@@ -104,6 +136,18 @@ export default function InitiationProjectsPage() {
               <tbody>
                 {paginated.map(p => {
                   const ready = !!p.client_id
+                  if (showCancelled) {
+                    return (
+                      <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: 700 }}>{p.name}</td>
+                        <td style={{ padding: '10px 12px', color: '#1a56db' }}>{p.client_name || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#6b7280', maxWidth: '240px' }}>{p.cancellation_reason || '—'}</td>
+                        <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.cancelled_at ? formatDate(p.cancelled_at.slice(0, 10)) : '—'}</td>
+                        <td />
+                      </tr>
+                    )
+                  }
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace' }} dir="ltr">{p.code || '—'}</td>
@@ -117,14 +161,6 @@ export default function InitiationProjectsPage() {
                       <td style={{ padding: '10px 12px', fontSize: '0.75rem' }}>{p.end_date ? formatDate(p.end_date) : '—'}</td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', gap: '4px' }}>
-                          <button
-                            onClick={() => router.push(`/projects/initiation/${p.id}/quantities`)}
-                            className="btn btn-ghost"
-                            style={{ padding: '6px', color: '#7c3aed', border: '1px solid #ddd6fe' }}
-                            title="مسودة كميات (اختياري)"
-                          >
-                            <ClipboardList style={{ width: '14px', height: '14px' }} />
-                          </button>
                           <button onClick={() => { setEditProject(p); setShowModal(true) }} className="btn btn-ghost" style={{ padding: '6px' }} title="تعديل">
                             <Pencil style={{ width: '14px', height: '14px' }} />
                           </button>
@@ -142,7 +178,7 @@ export default function InitiationProjectsPage() {
                           >
                             <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                           </button>
-                          <button onClick={() => handleDelete(p.id, p.name)} className="btn btn-ghost" style={{ padding: '6px', color: '#c81e1e' }} title="حذف">
+                          <button onClick={() => setCancelTarget(p)} className="btn btn-ghost" style={{ padding: '6px', color: '#c81e1e' }} title="إلغاء المشروع">
                             <Trash2 style={{ width: '14px', height: '14px' }} />
                           </button>
                         </div>
@@ -173,6 +209,14 @@ export default function InitiationProjectsPage() {
           tenantId={tenant.id}
           onClose={() => setShowTypes(false)}
           onChanged={reloadShared}
+        />
+      )}
+
+      {cancelTarget && (
+        <CancelProjectModal
+          projectName={cancelTarget.name}
+          onClose={() => setCancelTarget(null)}
+          onConfirm={handleCancelConfirm}
         />
       )}
     </div>
