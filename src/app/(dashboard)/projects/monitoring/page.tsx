@@ -65,6 +65,31 @@ const COLUMNS = [
   { id: 'ملغي',         label: 'ملغي',           icon: '❌', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
 ]
 
+/** فلاتر الحالة في لوحة المتابعة — صحة المسار لا حالة Kanban التفصيلية */
+const MONITORING_HEALTH_FILTERS = [
+  { id: 'on_track', label: 'على المسار الصحيح', icon: '✅' },
+  { id: 'متأخر',    label: 'متأخر',              icon: '⚠️' },
+  { id: 'ملغي',     label: 'ملغي',               icon: '❌' },
+] as const
+
+function isProjectLate(p: Project, ref: Date): boolean {
+  if (p.status === 'متأخر') return true
+  if (p.status === 'قيد التنفيذ' && p.end_date) {
+    const end = new Date(p.end_date)
+    end.setHours(0, 0, 0, 0)
+    return end < ref && p.progress < 100
+  }
+  return false
+}
+
+function matchesMonitoringHealthFilter(p: Project, filter: string, ref: Date): boolean {
+  if (!filter) return p.status !== 'ملغي'
+  if (filter === 'ملغي') return p.status === 'ملغي'
+  if (filter === 'متأخر') return isProjectLate(p, ref)
+  if (filter === 'on_track') return p.status !== 'ملغي' && !isProjectLate(p, ref)
+  return true
+}
+
 function getStatusColor(p: Project): string {
   const status = p.status as string
   const days   = daysUntil(p.end_date)
@@ -947,19 +972,14 @@ export default function ProjectsPage() {
   const existingTypes = Array.from(new Set(projects.map(p => p.type).filter(Boolean))) as string[]
 
   const filtered = projects.filter(p => {
-    const isCancelled = p.status === 'ملغي'
-    if (statusFilter === 'ملغي') {
-      if (!isCancelled) return false
-    } else if (isCancelled) {
-      return false
-    }
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = projectMatchesLifecycleFilter(phaseFilter, phase)
+    const healthMatch = matchesMonitoringHealthFilter(p, statusFilter, now)
     return (
       phaseMatch &&
+      healthMatch &&
       (!q || p.name.toLowerCase().includes(q) || (p.code || '').toLowerCase().includes(q)) &&
-      (!statusFilter || p.status === statusFilter) &&
       (!typeFilter   || p.type   === typeFilter)  &&
       (!clientFilter || (p as any).client_name === clientFilter || (p as any).client === clientFilter) &&
       (!teamFilter || String((p as any).team_id) === teamFilter) &&
@@ -967,9 +987,9 @@ export default function ProjectsPage() {
     )
   })
 
-  const activeCount = projects.filter(p => p.status === 'قيد التنفيذ').length
+  const activeCount = projects.filter(p => p.status === 'قيد التنفيذ' && !isProjectLate(p, now)).length
   const doneCount   = projects.filter(p => p.progress >= 100 || p.status === 'مكتمل').length
-  const lateCount   = projects.filter(p => p.progress < 100 && p.end_date && new Date(p.end_date) < now && p.status !== 'مكتمل').length
+  const lateCount   = projects.filter(p => isProjectLate(p, now) && p.status !== 'ملغي').length
   const totalValue = projects.reduce((s, p) => s + (Number((p as any).estimated_value) || 0), 0)
 
   if (detailProject) {
@@ -1015,16 +1035,16 @@ export default function ProjectsPage() {
         </div>
 
         <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
-          <option value="">كل مراحل الحياة</option>
+          <option value="">كل المراحل</option>
           {LIFECYCLE_PHASES.map(ph => (
             <option key={ph.id} value={ph.id}>{ph.label}</option>
           ))}
         </select>
 
-        <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto' }}>
+        <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل الحالات</option>
-          {COLUMNS.map(c => (
-            <option key={c.id} value={c.id}>{c.icon} {c.label}{c.autoProgress !== null ? ` — ${c.autoProgress}%` : ''}</option>
+          {MONITORING_HEALTH_FILTERS.map(f => (
+            <option key={f.id} value={f.id}>{f.icon} {f.label}</option>
           ))}
         </select>
 
@@ -1097,9 +1117,8 @@ export default function ProjectsPage() {
         <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '12px', alignItems: 'flex-start', minWidth: 0 }}>
           {COLUMNS.map(col => {
             const colProjects = filtered.filter(p => {
-              if (col.id === 'متأخر')
-                return p.status === 'متأخر' || (p.status === 'قيد التنفيذ' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
-              return p.status === col.id && !(col.id === 'قيد التنفيذ' && p.end_date && new Date(p.end_date) < now && p.progress < 100)
+              if (col.id === 'متأخر') return isProjectLate(p, now)
+              return p.status === col.id && !(col.id === 'قيد التنفيذ' && isProjectLate(p, now))
             })
             return (
               <div key={col.id} style={{ flexShrink: 0, width: '230px' }}>
