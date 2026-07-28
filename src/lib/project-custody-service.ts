@@ -350,9 +350,9 @@ function mergePmBalances(
     const existing = materials.get(name)
     if (existing) {
       existing.material_id = row.material_id
-      existing.qty_balance = num(row.qty_balance)
       if (mat?.catalog_no) existing.catalog_no = mat.catalog_no
       if (wh?.name) existing.warehouse_name = wh.name
+      // لا نستبدل qty_balance — يُحسب من الحركات (مستلم − مصروف − إرجاع)
     } else if (num(row.qty_balance) > 0 || mat) {
       materials.set(name, {
         key: `m-${row.material_id}`,
@@ -365,11 +365,18 @@ function mergePmBalances(
         qty_issued: 0,
         qty_returned_client: 0,
         qty_returned_site: 0,
-        qty_balance: num(row.qty_balance),
+        qty_balance: 0,
         events: [],
       })
     }
   }
+}
+
+/** متبقي العهدة = مستلم − مصروف − إرجاع للعميل */
+function recalculateCustodyBalances(materials: Map<string, CustodyMaterialRow>) {
+  Array.from(materials.values()).forEach(row => {
+    row.qty_balance = Math.max(0, row.qty_received - row.qty_issued - row.qty_returned_client)
+  })
 }
 
 function buildMetaFromLedger(ledgerRows: LedgerRow[], reservationNumber?: string | null): ProjectCustodyMeta {
@@ -627,6 +634,7 @@ export async function fetchProjectCustodyPageData(
 
   const materialMap = buildMaterialsFromLedger(ledgerRows, materialMeta)
   mergePmBalances(materialMap, (pmRows || []) as Parameters<typeof mergePmBalances>[1])
+  recalculateCustodyBalances(materialMap)
 
   const received = Array.from(materialMap.values())
     .filter(m => m.qty_received > 0 || m.qty_balance > 0 || m.events.length > 0)
