@@ -23,6 +23,8 @@ export type ProjectPlanningContextValue = {
   planning: ProjectPlanning | null
   reload: () => Promise<void>
   readOnly?: boolean
+  /** true بعد حفظ مقايسة فيها مواد أو أعمال */
+  hasEstimate?: boolean
 }
 
 export const ProjectPlanningContext = createContext<ProjectPlanningContextValue | null>(null)

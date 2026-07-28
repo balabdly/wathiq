@@ -38,6 +38,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   const [planning, setPlanning] = useState<ProjectPlanning | null>(null)
   const [progress, setProgress] = useState<PlanningProgress | null>(null)
   const [readOnly, setReadOnly] = useState(false)
+  const [hasEstimate, setHasEstimate] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
@@ -70,6 +71,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
     const isPostPlanning = !!phase && POST_PLANNING_PHASES.has(phase)
     const viewOnly = access.readOnly || result.planning?.planning_status === 'closed' || isPostPlanning
     setReadOnly(viewOnly)
+    setHasEstimate(hasBoqLines)
     setProject(result.project as ProjectPlanningDetail)
     setPlanning(result.planning)
     const { data: costItems } = await fetchCostItems(tenant.id, projectId)
@@ -134,7 +136,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
   }
 
   return (
-    <ProjectPlanningContext.Provider value={{ tenantId: tenant.id, projectId, project, planning, reload, readOnly }}>
+    <ProjectPlanningContext.Provider value={{ tenantId: tenant.id, projectId, project, planning, reload, readOnly, hasEstimate }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button

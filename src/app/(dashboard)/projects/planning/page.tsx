@@ -89,16 +89,22 @@ export default function PlanningListPage() {
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                        <button
-                          onClick={() => router.push(`/projects/planning/${p.id}/boq?view=1`)}
-                          className="btn btn-ghost"
-                          style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
-                          title="عرض المقايسة"
-                        >
-                          <Eye style={{ width: '16px', height: '16px' }} />
-                        </button>
+                        {((p.boqCounts?.materials ?? 0) > 0 || (p.boqCounts?.works ?? 0) > 0) && (
+                          <button
+                            onClick={() => router.push(`/projects/planning/${p.id}/boq?view=1`)}
+                            className="btn btn-ghost"
+                            style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac' }}
+                            title="عرض المقايسة"
+                          >
+                            <Eye style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
                         {canEdit && (
-                          <EditEstimateDropdown projectId={p.id} iconOnly />
+                          <EditEstimateDropdown
+                            projectId={p.id}
+                            hasEstimate={(p.boqCounts?.materials ?? 0) > 0 || (p.boqCounts?.works ?? 0) > 0}
+                            iconOnly
+                          />
                         )}
                         {canEdit && (
                           <button

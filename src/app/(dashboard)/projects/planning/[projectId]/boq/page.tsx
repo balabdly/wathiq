@@ -43,7 +43,7 @@ function PlanningBoqPageInner() {
       : null
 
   const { tenant } = useStore()
-  const { tenantId, projectId, project, planning, reload, readOnly } = useProjectPlanning()
+  const { tenantId, projectId, project, planning, reload, readOnly, hasEstimate = false } = useProjectPlanning()
   const editorReadOnly = !!readOnly || viewOnly
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loadingFw, setLoadingFw] = useState(true)
@@ -110,24 +110,35 @@ function PlanningBoqPageInner() {
         <div>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ClipboardList style={{ width: '18px', height: '18px', color: '#1a56db' }} />
-            مقايسة SEC — {project.name}
+            {hasEstimate ? 'مقايسة SEC' : 'إنشاء مقايسة SEC'} — {project.name}
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
-            المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء
+            {hasEstimate
+              ? 'المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء'
+              : 'أضف بنود المواد والأعمال ثم اضغط «حفظ المقايسة» — بعد الحفظ يظهر زر التعديل'}
           </p>
         </div>
-        {viewOnly && !readOnly && (
+        {viewOnly && !readOnly && hasEstimate && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', color: '#0ea77b', display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Eye style={{ width: '14px', height: '14px' }} /> عرض فقط
             </span>
-            <EditEstimateDropdown projectId={projectId} asButton />
+            <EditEstimateDropdown projectId={projectId} hasEstimate={hasEstimate} asButton />
           </div>
         )}
-        {!viewOnly && !readOnly && (
-          <EditEstimateDropdown projectId={projectId} asButton />
+        {!viewOnly && !readOnly && hasEstimate && (
+          <EditEstimateDropdown projectId={projectId} hasEstimate={hasEstimate} asButton />
         )}
       </div>
+
+      {!hasEstimate && !readOnly && !viewOnly && (
+        <div style={{
+          padding: '12px 16px', borderRadius: '10px', marginBottom: '16px',
+          background: '#ecfdf5', border: '1px solid #86efac', fontSize: '0.82rem', color: '#065f46',
+        }}>
+          <strong>إنشاء مقايسة جديدة</strong> — أضف المواد (أعلى) والأعمال (أسفل)، ثم احفظ. بعد الحفظ ستتمكن من العرض والتعديل.
+        </div>
+      )}
 
       {isRevision && !readOnly && (
         <div style={{ padding: '10px 14px', borderRadius: '10px', marginBottom: '16px', background: '#fffbeb', border: '1px solid #fcd34d', fontSize: '0.82rem', color: '#92400e' }}>
@@ -182,7 +193,7 @@ function PlanningBoqPageInner() {
         readOnly={editorReadOnly}
         isRevision={isRevision}
         revisionSnapshot={revisionSnapshot}
-        saveLabel={isRevision ? 'حفظ تعديل المقايسة' : 'حفظ المقايسة'}
+        saveLabel={isRevision ? 'حفظ تعديل المقايسة' : (hasEstimate ? 'حفظ المقايسة' : 'إنشاء وحفظ المقايسة')}
         tenantId={tenantId}
         projectName={project.name}
         clientName={project.client_name}

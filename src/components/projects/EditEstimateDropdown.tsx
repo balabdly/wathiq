@@ -1,17 +1,19 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil, Package, HardHat, ClipboardList } from 'lucide-react'
+import { Pencil, Package, HardHat, ClipboardList, Plus } from 'lucide-react'
 
 type Props = {
   projectId: number
+  /** هل وُجدت مقايسة محفوظة (بنود مواد أو أعمال) */
+  hasEstimate?: boolean
   /** أيقونة صغيرة بجانب العين في القائمة */
   iconOnly?: boolean
   /** زر نصي داخل صفحة المقايسة */
   asButton?: boolean
 }
 
-export default function EditEstimateDropdown({ projectId, iconOnly, asButton }: Props) {
+export default function EditEstimateDropdown({ projectId, hasEstimate = false, iconOnly, asButton }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -30,6 +32,31 @@ export default function EditEstimateDropdown({ projectId, iconOnly, asButton }: 
     setOpen(false)
     const q = section ? `?section=${section}` : ''
     router.push(`${base}${q}`)
+  }
+
+  function goCreate() {
+    router.push(base)
+  }
+
+  // ── لا مقايسة بعد: زر إنشاء فقط ──
+  if (!hasEstimate) {
+    if (asButton) return null
+    return (
+      <button
+        type="button"
+        onClick={goCreate}
+        className="btn btn-ghost"
+        style={{
+          padding: iconOnly ? '6px 10px' : '6px 12px',
+          color: '#0ea77b',
+          border: '1px solid #86efac',
+        }}
+        title="إنشاء مقايسة"
+      >
+        <Plus style={{ width: '16px', height: '16px' }} />
+        {!iconOnly && <span style={{ marginRight: '4px' }}>إنشاء مقايسة</span>}
+      </button>
+    )
   }
 
   const menu = open ? (
