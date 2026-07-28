@@ -182,6 +182,9 @@ export default function ReceiveVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
+                        {doc.lines[0].movement_category === 'استلام_عهدة' && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#ecfdf5', color: '#0ea77b' }}>📥 استلام عهدة</span>
+                        )}
                         {doc.lines[0].movement_category === 'مرتجع_موقع' && (
                           <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#eff6ff', color: '#1a56db' }}>📦 مرتجع موقع</span>
                         )}
