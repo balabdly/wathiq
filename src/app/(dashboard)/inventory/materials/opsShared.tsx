@@ -392,9 +392,15 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
     }
 
     if (mapping.requiresReservation && !reservationIdForSubmit && !form.booking_no?.trim()) {
-      toast.error('أدخل رقم الحجز أو اختر حجزاً — لا يتطلب اكتمال التخطيط')
+      toast.error('أدخل رقم الحجز أو اختر حجزاً لعملية الاستلام')
       savingRef.current = false
       return
+    }
+
+    if ((type === 'صرف' || type === 'إرجاع') && isProjectWh && form.project_id && !reservationIdForSubmit) {
+      const ctx = await fetchProjectReservationContext(tenantId, Number(form.project_id))
+      const autoId = ctx.material_reservation_id ?? ctx.reservations[0]?.id
+      if (autoId) reservationIdForSubmit = String(autoId)
     }
 
     const mergedForCheck: Record<number, { mat_id: number; qty: number }> = {}
@@ -711,8 +717,8 @@ export function OperationModal({ type, tenantId, branchId, warehouses, projects,
             </div>
           )}
 
-          {/* حجز المواد — إلزامي لعهدة SEC */}
-          {isProjectWh && form.project_id && type !== 'تحويل' && (
+          {/* حجز المواد — إلزامي لاستلام عهدة SEC فقط */}
+          {isProjectWh && form.project_id && type === 'استلام' && (
             <div>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
                 حجز المواد (Booking) <span style={{ color: '#c81e1e' }}>*</span>

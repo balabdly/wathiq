@@ -1,5 +1,5 @@
 import type { OwnershipType, PostInventoryVoucherPayload, VoucherType } from '@/lib/pmc-types'
-import { postInventoryVoucher } from '@/lib/pmc-service'
+import { fetchProjectReservationContext, postInventoryVoucher } from '@/lib/pmc-service'
 
 export type OpType = 'استلام' | 'صرف' | 'إرجاع' | 'تحويل'
 
@@ -39,13 +39,13 @@ export function resolveVoucherMapping(
   }
   if (type === 'صرف') {
     if (isProjectWh && hasProject) {
-      return { voucherType: 'ISSUE', ownership: 'CUSTODY', movementCategory: 'صرف_عهدة', requiresReservation: true }
+      return { voucherType: 'ISSUE', ownership: 'CUSTODY', movementCategory: 'صرف_عهدة', requiresReservation: false }
     }
     return { voucherType: 'ISSUE', ownership: 'COMPANY', movementCategory: 'صرف_عام', requiresReservation: false }
   }
   // إرجاع
   if (isProjectWh && hasProject) {
-    return { voucherType: 'RETURN_CLIENT', ownership: 'CUSTODY', movementCategory: 'ارجاع_عميل', requiresReservation: true }
+    return { voucherType: 'RETURN_CLIENT', ownership: 'CUSTODY', movementCategory: 'ارجاع_عميل', requiresReservation: false }
   }
   if (returnType === 'فائض') {
     return { voucherType: 'RECEIVE', ownership: 'COMPANY', movementCategory: 'ارجاع_مستودع', requiresReservation: false }
@@ -106,11 +106,21 @@ export async function submitOperationVoucher(
 ) {
   const mapping = resolveVoucherMapping(type, opts.isProjectWh, form.project_id, form.return_type)
 
-  if (mapping.requiresReservation && !form.reservation_id) {
-    return { data: null, error: { message: 'يجب اختيار حجز المواد (رقم الحجز) لعمليات عهدة SEC' } }
+  let reservationId = form.reservation_id ? Number(form.reservation_id) : undefined
+  if (mapping.ownership === 'CUSTODY' && form.project_id && !reservationId) {
+    const ctx = await fetchProjectReservationContext(tenantId, Number(form.project_id))
+    reservationId = ctx.material_reservation_id ?? ctx.reservations[0]?.id
   }
 
-  const payload = buildVoucherPayload(type, tenantId, branchId, form, rows, opts)
+  if (mapping.requiresReservation && !reservationId) {
+    return { data: null, error: { message: 'يجب اختيار حجز المواد (رقم الحجز) لاستلام مواد العهدة' } }
+  }
+
+  if (mapping.ownership === 'CUSTODY' && form.project_id && !reservationId && type !== 'استلام') {
+    return { data: null, error: { message: 'لا يوجد حجز مرتبط بالمشروع — احفظ رقم الحجز في المقايسة أولاً' } }
+  }
+
+  const payload = buildVoucherPayload(type, tenantId, branchId, { ...form, reservation_id: reservationId ? String(reservationId) : '' }, rows, opts)
   return postInventoryVoucher(payload)
 }
 
