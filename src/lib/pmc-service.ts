@@ -527,3 +527,86 @@ export async function fetchProjectReservationContext(
     material_reservation_number: primary?.reservation_no ?? planNo,
   }
 }
+
+export type ProjectIssueVoucher = {
+  id: number
+  voucher_no: string
+  posted_at: string | null
+  warehouse_id: number | null
+}
+
+export type IssueVoucherReturnLine = {
+  material_id: number
+  mat_name: string
+  unit: string
+  issued_qty: number
+  already_returned: number
+  max_return: number
+  material?: { id: number; name: string; unit: string; catalog_no?: string | null } | null
+}
+
+/** أذون الصرف المرحّلة للمشروع */
+export async function fetchProjectIssueVouchers(
+  tenantId: string,
+  projectId: number,
+  warehouseId?: number,
+): Promise<ProjectIssueVoucher[]> {
+  let q = supabase
+    .from('inventory_vouchers')
+    .select('id, voucher_no, posted_at, warehouse_id')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .eq('voucher_type', 'ISSUE')
+    .eq('status', 'POSTED')
+    .order('posted_at', { ascending: false })
+  if (warehouseId) q = q.eq('warehouse_id', warehouseId)
+  const { data } = await q
+  return (data || []) as ProjectIssueVoucher[]
+}
+
+/** مواد إذن صرف مع الكمية المتبقية القابلة للإرجاع */
+export async function fetchIssueVoucherReturnLines(
+  tenantId: string,
+  projectId: number,
+  voucherId: number,
+): Promise<{ voucher_no: string; lines: IssueVoucherReturnLine[] }> {
+  const [{ data: voucher }, { data: lines }] = await Promise.all([
+    supabase.from('inventory_vouchers').select('voucher_no').eq('id', voucherId).eq('tenant_id', tenantId).maybeSingle(),
+    supabase.from('inventory_voucher_lines')
+      .select('material_id, mat_name, unit, qty, material:materials(id, name, unit, catalog_no)')
+      .eq('voucher_id', voucherId)
+      .order('line_no'),
+  ])
+  if (!voucher?.voucher_no) return { voucher_no: '', lines: [] }
+
+  const { data: priorReturns } = await supabase.from('stock_ledger')
+    .select('mat_name, qty')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .eq('movement_category', 'مرتجع_موقع')
+    .ilike('dispatch_note', `%${voucher.voucher_no}%`)
+
+  const returnedByName = new Map<string, number>()
+  for (const row of priorReturns || []) {
+    const name = row.mat_name?.trim()
+    if (!name) continue
+    returnedByName.set(name, (returnedByName.get(name) || 0) + (Number(row.qty) || 0))
+  }
+
+  const mapped = (lines || []).map(line => {
+    const issued = Number(line.qty) || 0
+    const already = returnedByName.get(line.mat_name?.trim() || '') || 0
+    const mat = Array.isArray(line.material) ? line.material[0] : line.material
+    return {
+      material_id: line.material_id as number,
+      mat_name: line.mat_name,
+      unit: line.unit || mat?.unit || 'قطعة',
+      issued_qty: issued,
+      already_returned: already,
+      max_return: Math.max(0, issued - already),
+      material: mat ?? null,
+    }
+  })
+
+  return { voucher_no: voucher.voucher_no, lines: mapped.filter(l => l.max_return > 0) }
+}

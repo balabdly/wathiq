@@ -134,14 +134,24 @@ export async function submitSiteReturnVoucher(
     projectId: number
     projectName: string
     reservationId?: number
-    bookingNo?: string
+    issueVoucherNo: string
     notes?: string
     lines: { material_id: number; qty: number; note?: string }[]
   },
 ) {
-  if (!opts.reservationId) {
-    return { data: null, error: { message: 'يجب اختيار حجز المواد لمرتجع الموقع' } }
+  let reservationId = opts.reservationId
+  if (!reservationId) {
+    const ctx = await fetchProjectReservationContext(tenantId, opts.projectId)
+    reservationId = ctx.material_reservation_id ?? ctx.reservations[0]?.id
   }
+  if (!reservationId) {
+    return { data: null, error: { message: 'لا يوجد حجز مرتبط بالمشروع' } }
+  }
+  if (!opts.issueVoucherNo?.trim()) {
+    return { data: null, error: { message: 'يجب اختيار إذن الصرف' } }
+  }
+  const refNote = `مرتجع مقابل ${opts.issueVoucherNo.trim()}`
+  const combinedNotes = opts.notes?.trim() ? `${refNote} — ${opts.notes.trim()}` : refNote
   return postInventoryVoucher({
     tenant_id: tenantId,
     branch_id: branchId,
@@ -151,10 +161,12 @@ export async function submitSiteReturnVoucher(
     wh_name: opts.whName,
     project_id: opts.projectId,
     project_name: opts.projectName,
-    reservation_id: opts.reservationId,
-    booking_no: opts.bookingNo,
+    reservation_id: reservationId,
     movement_category: 'مرتجع_موقع',
-    notes: opts.notes,
-    lines: opts.lines,
+    notes: combinedNotes,
+    lines: opts.lines.map(l => ({
+      ...l,
+      note: l.note ? `${refNote} — ${l.note}` : refNote,
+    })),
   })
 }

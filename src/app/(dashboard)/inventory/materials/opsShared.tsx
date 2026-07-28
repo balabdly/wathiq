@@ -15,10 +15,11 @@ import {
   Paperclip,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { ensureReservationByNumber, fetchProjectReservationContext, fetchProjectBoqReadiness } from '@/lib/pmc-service'
+import { ensureReservationByNumber, fetchProjectIssueVouchers, fetchIssueVoucherReturnLines, fetchProjectReservationContext, fetchProjectBoqReadiness } from '@/lib/pmc-service'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { canUseAtomicVoucher, resolveVoucherMapping, submitOperationVoucher, submitSiteReturnVoucher } from '@/lib/pmc-voucher-bridge'
 import { checkReceivePlanningWarnings, formatReceivePlanningConfirmMessage, fetchPlanningMaterialsWarehouseStatus, resolveWarehouseMaterialId, type PlanningMaterialsWarehouseSummary, type PlanningMaterialWarehouseRow } from '@/lib/planning-materials-warehouse'
+import type { IssueVoucherReturnLine, ProjectIssueVoucher } from '@/lib/pmc-service'
 import type { MaterialReservation } from '@/lib/pmc-types'
 
 // ══════════════════════════════════════════
@@ -1063,13 +1064,13 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
   const [warehouseId,    setWarehouseId]    = useState('')
   const [projectId,      setProjectId]      = useState('')
   const [projectName,    setProjectName]    = useState('')
-  const [issuedMats,     setIssuedMats]     = useState<any[]>([])
+  const [issuedMats,     setIssuedMats]     = useState<IssueVoucherReturnLine[]>([])
   const [returnQtys,     setReturnQtys]     = useState<Record<number, string>>({})
   const [date,           setDate]           = useState(new Date().toISOString().split('T')[0])
   const [notes,          setNotes]          = useState('')
-  const [reservationId,  setReservationId]  = useState('')
-  const [bookingNo,      setBookingNo]      = useState('')
-  const [reservations,   setReservations]   = useState<Pick<MaterialReservation, 'id' | 'reservation_no' | 'status'>[]>([])
+  const [issueVoucherId, setIssueVoucherId] = useState('')
+  const [issueVoucherNo, setIssueVoucherNo] = useState('')
+  const [issueVouchers,  setIssueVouchers]  = useState<ProjectIssueVoucher[]>([])
 
   // ── وضع المودال: مرتجع مصروفات (يرد للعهدة) أو مزال من الموقع (شبكة قديمة/تالف → السكراب) ──
   const [mode,        setMode]        = useState<'مصروفات' | 'مزال'>('مصروفات')
@@ -1078,65 +1079,59 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
   const scrapWarehouses = warehouses.filter(w => w.wh_category === 'سكراب' || (w.name || '').includes('سكراب'))
   const scrapOptions    = scrapWarehouses.length > 0 ? scrapWarehouses : warehouses
 
-  async function loadIssuedMats() {
-    if (!warehouseId || !projectId) return
-    const { data } = await supabase.from('project_materials')
-      .select('*, material:materials(id, name, unit, catalog_no)')
-      .eq('tenant_id', tenantId)
-      .eq('project_id', Number(projectId))
-      .eq('warehouse_id', Number(warehouseId))
-      .gt('qty_issued', 0)
-    setIssuedMats(data || [])
+  async function loadIssueVouchers() {
+    if (!warehouseId || !projectId) {
+      setIssueVouchers([])
+      setIssueVoucherId('')
+      setIssueVoucherNo('')
+      setIssuedMats([])
+      setReturnQtys({})
+      return
+    }
+    const list = await fetchProjectIssueVouchers(tenantId, Number(projectId), Number(warehouseId))
+    setIssueVouchers(list)
+    setIssueVoucherId('')
+    setIssueVoucherNo('')
+    setIssuedMats([])
     setReturnQtys({})
   }
 
-  useEffect(() => { loadIssuedMats() }, [warehouseId, projectId])
+  async function loadReturnLines(voucherId: string) {
+    if (!voucherId || !projectId) {
+      setIssuedMats([])
+      setReturnQtys({})
+      return
+    }
+    const { voucher_no, lines } = await fetchIssueVoucherReturnLines(tenantId, Number(projectId), Number(voucherId))
+    setIssueVoucherNo(voucher_no)
+    setIssuedMats(lines)
+    setReturnQtys({})
+  }
 
-  useEffect(() => {
-    if (!projectId) { setReservations([]); setReservationId(''); setBookingNo(''); return }
-    fetchProjectReservationContext(tenantId, Number(projectId)).then(ctx => {
-      setReservations(ctx.reservations)
-      if (ctx.material_reservation_id) setReservationId(String(ctx.material_reservation_id))
-      if (ctx.material_reservation_number) setBookingNo(ctx.material_reservation_number)
-    })
-  }, [projectId, tenantId])
+  useEffect(() => { loadIssueVouchers() }, [warehouseId, projectId])
+
+  useEffect(() => { loadReturnLines(issueVoucherId) }, [issueVoucherId, projectId])
 
   async function handleSave() {
     const validRows = Object.entries(returnQtys).filter(([, qty]) => Number(qty) > 0)
     if (validRows.length === 0) { toast.error('أدخل كمية مرتجعة لمادة واحدة على الأقل'); return }
     if (!projectId) { toast.error('اختر المشروع'); return }
-
-    let resolvedResId = reservationId ? Number(reservationId) : null
-    if (!resolvedResId && bookingNo.trim()) {
-      const { data: ensured, error: ensureErr } = await ensureReservationByNumber(
-        tenantId, Number(projectId), bookingNo.trim(),
-      )
-      if (ensureErr || !ensured) {
-        toast.error(ensureErr?.message || 'تعذّر ربط رقم الحجز')
-        return
-      }
-      resolvedResId = ensured.id
-      setReservationId(String(ensured.id))
-      setBookingNo(ensured.reservation_no)
-    }
-    if (!resolvedResId) { toast.error('أدخل رقم الحجز أو اختر حجزاً'); return }
+    if (!issueVoucherId || !issueVoucherNo) { toast.error('اختر إذن الصرف'); return }
 
     setSaving(true)
 
     const wh = warehouses.find(w => w.id === Number(warehouseId))
 
-    // تحقق من الحد الأقصى للإرجاع
     const lines: { material_id: number; qty: number; note?: string }[] = []
-    for (const [pmIdStr, qtyStr] of validRows) {
+    for (const [matIdStr, qtyStr] of validRows) {
       const qty = Number(qtyStr)
-      const pm  = issuedMats.find(m => String(m.id) === pmIdStr)
-      if (!pm) continue
-      const maxReturn = Number(pm.qty_issued)
-      if (qty > maxReturn) {
-        toast.error(`لا يمكن إرجاع أكثر من ${maxReturn} ${pm.material?.unit} من "${pm.material?.name}"`)
+      const line = issuedMats.find(m => m.material_id === Number(matIdStr))
+      if (!line) continue
+      if (qty > line.max_return) {
+        toast.error(`لا يمكن إرجاع أكثر من ${line.max_return} ${line.unit} من "${line.mat_name}"`)
         setSaving(false); return
       }
-      lines.push({ material_id: pm.material_id, qty, note: notes || 'مرتجع موقع' })
+      lines.push({ material_id: line.material_id, qty, note: notes || undefined })
     }
 
     const { data, error } = await submitSiteReturnVoucher(tenantId, branchId, {
@@ -1144,8 +1139,7 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
       whName: wh?.name,
       projectId: Number(projectId),
       projectName,
-      reservationId: resolvedResId,
-      bookingNo: bookingNo || undefined,
+      issueVoucherNo,
       notes: notes || undefined,
       lines,
     })
@@ -1157,8 +1151,8 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
     const voucherNo = data?.voucher_no || ''
     const printRows = lines.map(l => {
-      const pm = issuedMats.find(m => m.material_id === l.material_id)
-      return { name: pm?.material?.name || '', unit: pm?.material?.unit || '', qty: l.qty, note: notes || '' }
+      const line = issuedMats.find(m => m.material_id === l.material_id)
+      return { name: line?.mat_name || '', unit: line?.unit || '', qty: l.qty, note: notes || '' }
     })
 
     setSaving(false)
@@ -1170,7 +1164,7 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
       projectName,
       date,
       rows: printRows,
-      bookingNo: bookingNo || '',
+      bookingNo: issueVoucherNo,
       txnNumber: voucherNo,
     })
 
@@ -1303,20 +1297,26 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '5px' }}>
-              حجز المواد / رقم الحجز <span style={{ color: '#c81e1e' }}>*</span>
+              إذن الصرف <span style={{ color: '#c81e1e' }}>*</span>
             </label>
-            {reservations.length > 0 && (
-              <select value={reservationId} onChange={e => {
-                setReservationId(e.target.value)
-                const r = reservations.find(x => String(x.id) === e.target.value)
-                setBookingNo(r?.reservation_no || '')
-              }} className="select" style={{ marginBottom: '8px' }}>
-                <option value="">— أو أدخل الرقم يدوياً —</option>
-                {reservations.map(r => <option key={r.id} value={r.id}>{r.reservation_no}</option>)}
+            {!warehouseId || !projectId ? (
+              <div style={{ fontSize: '0.78rem', color: '#9ca3af', padding: '8px 10px', background: '#f8fafc', borderRadius: '8px' }}>
+                اختر المستودع والمشروع أولاً
+              </div>
+            ) : issueVouchers.length === 0 ? (
+              <div style={{ fontSize: '0.78rem', color: '#92400e', padding: '8px 10px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                لا توجد أذون صرف مرحّلة لهذا المشروع في هذا المستودع
+              </div>
+            ) : (
+              <select value={issueVoucherId} onChange={e => setIssueVoucherId(e.target.value)} className="select" dir="ltr">
+                <option value="">— اختر إذن الصرف —</option>
+                {issueVouchers.map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.voucher_no}{v.posted_at ? ` — ${new Date(v.posted_at).toLocaleDateString('ar-SA')}` : ''}
+                  </option>
+                ))}
               </select>
             )}
-            <input value={bookingNo} onChange={e => setBookingNo(e.target.value)} className="input"
-              placeholder="رقم حجز SEC" dir="ltr" />
           </div>
 
           <div>
@@ -1340,46 +1340,46 @@ export function ReturnModal({ tenantId, branchId, warehouses, projects, onClose,
 
               {issuedMats.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: 'var(--text3)', fontSize: '0.875rem' }}>
-                  لا توجد مواد مصروفة لهذا المشروع في هذا المستودع
+                  {issueVoucherId ? 'تم إرجاع كل مواد هذا الإذن — لا يتبقى شيء' : 'اختر إذن الصرف لعرض المواد'}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
-                  {issuedMats.map(pm => (
-                    <div key={pm.id} style={{
+                  {issuedMats.map(line => (
+                    <div key={line.material_id} style={{
                       display: 'flex', alignItems: 'center', gap: '12px',
                       padding: '10px 14px', borderRadius: '10px',
-                      background: returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#eff6ff' : '#f8fafc',
-                      border: `1px solid ${returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#bfdbfe' : 'var(--border)'}`,
+                      background: returnQtys[line.material_id] && Number(returnQtys[line.material_id]) > 0 ? '#eff6ff' : '#f8fafc',
+                      border: `1px solid ${returnQtys[line.material_id] && Number(returnQtys[line.material_id]) > 0 ? '#bfdbfe' : 'var(--border)'}`,
                       transition: 'all 0.15s',
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {pm.material?.name || '—'}
+                          {line.mat_name}
                         </div>
                         <div style={{ fontSize: '0.72rem', marginTop: '2px', display: 'flex', gap: '10px' }}>
-                          <span style={{ color: '#c81e1e' }}>مصروف: <strong>{pm.qty_issued}</strong></span>
-                          <span style={{ color: '#0ea77b' }}>الرصيد: <strong>{pm.qty_balance}</strong></span>
-                          <span style={{ color: 'var(--text3)' }}>{pm.material?.unit}</span>
+                          <span style={{ color: '#c81e1e' }}>مصروف: <strong>{line.issued_qty}</strong></span>
+                          <span style={{ color: '#0ea77b' }}>قابل للإرجاع: <strong>{line.max_return}</strong></span>
+                          <span style={{ color: 'var(--text3)' }}>{line.unit}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                         <input
                           type="number"
-                          value={returnQtys[pm.id] || ''}
+                          value={returnQtys[line.material_id] || ''}
                           min="0"
-                          max={pm.qty_issued}
-                          onChange={e => setReturnQtys(prev => ({ ...prev, [pm.id]: e.target.value }))}
+                          max={line.max_return}
+                          onChange={e => setReturnQtys(prev => ({ ...prev, [line.material_id]: e.target.value }))}
                           onKeyDown={e => e.key === 'Enter' && e.preventDefault()}
                           placeholder="0"
                           style={{
                             width: '75px', padding: '6px 8px', borderRadius: '8px',
                             border: '2px solid #bfdbfe', fontSize: '0.875rem',
                             textAlign: 'center', fontWeight: 700,
-                            background: returnQtys[pm.id] && Number(returnQtys[pm.id]) > 0 ? '#eff6ff' : 'white',
+                            background: returnQtys[line.material_id] && Number(returnQtys[line.material_id]) > 0 ? '#eff6ff' : 'white',
                           }}
                         />
                         <span style={{ fontSize: '0.75rem', color: 'var(--text3)', minWidth: '35px' }}>
-                          {pm.material?.unit}
+                          {line.unit}
                         </span>
                       </div>
                     </div>
