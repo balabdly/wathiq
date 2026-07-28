@@ -48,7 +48,8 @@ export default function ReceiveVouchersPage() {
     let q = supabase.from('stock_ledger').select('*')
       .eq('tenant_id', tenantId)
       .order('id', { ascending: false }).limit(FETCH_LIMIT)
-    q = q.eq('type', 'استلام')
+    // استلام + مرتجع موقع (يدخل المستودع — RPC يستخدم type=إرجاع مع movement_category=مرتجع_موقع)
+    q = q.or('type.eq.استلام,and(type.eq.إرجاع,movement_category.eq.مرتجع_موقع)')
       .not('movement_category', 'eq', 'تحويل')
     if (filterWh) q = q.eq('wh_name', filterWh)
     const { data } = await q

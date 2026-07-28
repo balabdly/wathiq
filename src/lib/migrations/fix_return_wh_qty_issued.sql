@@ -52,7 +52,7 @@ begin
   case v_voucher_type
     when 'RECEIVE' then v_ledger_type := 'استلام'; v_txn_prefix := 'استلام';
     when 'ISSUE' then v_ledger_type := 'صرف'; v_txn_prefix := 'صرف';
-    when 'RETURN_WH' then v_ledger_type := 'إرجاع'; v_txn_prefix := 'استلام';
+    when 'RETURN_WH' then v_ledger_type := 'استلام'; v_txn_prefix := 'استلام';
     when 'RETURN_CLIENT' then v_ledger_type := 'إرجاع للعميل'; v_txn_prefix := 'إرجاع للعميل';
     when 'TRANSFER' then v_ledger_type := 'تحويل'; v_txn_prefix := 'نقل مخزني';
     else raise exception 'نوع إذن غير معروف'; end case;
