@@ -1003,6 +1003,16 @@ export default function ProjectsPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="fade-in">
+      <div>
+        <h1 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#1a1a2e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <FolderOpen style={{ width: '20px', height: '20px', color: '#7c3aed' }} />
+          📊 لوحة المتابعة
+        </h1>
+        <p style={{ color: '#9ca3af', fontSize: '0.82rem', marginTop: '2px' }}>
+          متابعة حالة المشاريع — Kanban وجدول — للاطلاع فقط
+        </p>
+      </div>
+
       {/* أدوات اللوحة */}
       <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: 0 }}>
         {filtered.length !== projects.length

@@ -252,12 +252,30 @@ export default function Sidebar() {
   const hasPMO       = perms.includes('pmo')                            && tenantModules.pmo       !== false
 
   const hasTeams     = hasProjects
-  const inProjects = ['/projects','/projects/tasks','/projects/lessons','/projects/risks','/projects/teams','/projects/initiation','/projects/planning','/projects/execution','/projects/field-memos','/projects/framework'].some(p => pathname === p || pathname.startsWith(p+'/'))
-  const lifecycleActive = pathname === '/projects'
-    || pathname.startsWith('/projects/monitoring')
-    || pathname.startsWith('/projects/initiation')
-    || (pathname.startsWith('/projects/planning') && !/\/planning\/\d+/.test(pathname))
-    || (pathname.startsWith('/projects/execution') && !/\/execution\/\d+/.test(pathname))
+  const inProjects = [
+    '/projects',
+    '/projects/monitoring',
+    '/projects/tasks',
+    '/projects/lessons',
+    '/projects/risks',
+    '/projects/teams',
+    '/projects/initiation',
+    '/projects/planning',
+    '/projects/execution',
+    '/projects/close',
+    '/projects/measure',
+    '/projects/field-memos',
+    '/projects/framework',
+  ].some(p => pathname === p || pathname.startsWith(p + '/'))
+  const monitoringActive = pathname === '/projects' || pathname.startsWith('/projects/monitoring')
+  const lifecycleActive =
+    pathname.startsWith('/projects/initiation') ||
+    pathname.startsWith('/projects/planning') ||
+    pathname.startsWith('/projects/execution') ||
+    pathname.startsWith('/projects/close') ||
+    pathname.startsWith('/projects/measure') ||
+    pathname.startsWith('/projects/field-memos') ||
+    pathname.startsWith('/projects/framework')
   const inQHSE     = pathname.startsWith('/qhse')
   const inHR       = pathname.startsWith('/hr')
   const inMyHR     = pathname.startsWith('/my-hr')
@@ -267,7 +285,7 @@ export default function Sidebar() {
   const inAssets   = pathname.startsWith('/assets')
 
   // كل الأقسام مغلقة افتراضياً — تفتح فقط إذا المستخدم فيها (عدا dashboard)
-  const [projectsOpen, setProjectsOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(inProjects)
   const inFleet    = pathname.startsWith('/fleet')
   const [fleetOpen,    setFleetOpen]    = useState(inFleet)
   const [qhseOpen,      setQhseOpen]      = useState(inQHSE)
@@ -345,10 +363,11 @@ export default function Sidebar() {
         {(hasProjects || hasTasks) && (
           <NavSection label="إدارة المشاريع" icon={IC.projects}
             isActive={inProjects} isOpen={projectsOpen} onToggle={() => setProjectsOpen(o => !o)}>
-            {hasProjects   && <SubLink href="/projects/monitoring" label="المشاريع"          icon={IC.projects}   active={lifecycleActive} />}
-            {hasTeams      && <SubLink href="/projects/teams"    label="الفريق والمهام"  icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
-            {hasLessons    && <SubLink href="/projects/lessons"  label="الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
-            {hasRisks      && <SubLink href="/projects/risks"    label="مخاطر المشروع"      icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}
+            {hasProjects   && <SubLink href="/projects/monitoring"          label="📊 لوحة المتابعة"    icon={IC.projects}   active={monitoringActive} />}
+            {hasProjects   && <SubLink href="/projects/initiation/projects" label="🔄 حياة المشروع"     icon={IC.projects}   active={lifecycleActive} />}
+            {hasTeams      && <SubLink href="/projects/teams"               label="👥 الفريق والمهام"   icon={IC.employees}  active={pathname.startsWith('/projects/teams') || pathname.startsWith('/projects/tasks')} />}
+            {hasRisks      && <SubLink href="/projects/risks"               label="⚠️ مخاطر المشروع"    icon={IC.risks}      active={pathname.startsWith('/projects/risks')} />}
+            {hasLessons    && <SubLink href="/projects/lessons"             label="💡 الدروس المستفادة" icon={IC.lessons}    active={pathname.startsWith('/projects/lessons')} />}
           </NavSection>
         )}
 
