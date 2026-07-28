@@ -184,16 +184,12 @@ export default function IssueVouchersPage() {
                       onClick={() => setOpenDoc(open ? null : doc.no)}>
                       <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 700, color: ACCENT, whiteSpace: 'nowrap' }}>
                         {doc.no}
-                        {doc.lines[0].type === 'إرجاع للعميل' && (() => {
-                          const rt = doc.lines[0].return_type || ((doc.wh_name || '').includes('سكراب') ? 'سكراب' : (doc.wh_name || '').includes('رجيع') ? 'فائض' : '')
-                          return (
-                            <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px',
-                              background: rt === 'سكراب' ? '#f3f4f6' : '#fffbeb',
-                              color: rt === 'سكراب' ? '#374151' : '#b45309' }}>
-                              ↩️ {rt ? `إرجاع ${rt}` : 'إرجاع للعميل'}
-                            </span>
-                          )
-                        })()}
+                        {doc.lines[0].type === 'صرف' && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#fef2f2', color: '#c81e1e' }}>📤 صرف</span>
+                        )}
+                        {doc.lines[0].type === 'إرجاع للعميل' && (
+                          <span style={{ marginRight: '6px', fontSize: '0.62rem', fontFamily: 'inherit', fontWeight: 700, borderRadius: '4px', padding: '1px 6px', background: '#fff7ed', color: '#e6820a' }}>↩️ إرجاع للعميل</span>
+                        )}
                         {doc.legacy && <span style={{ marginRight: '6px', fontSize: '0.62rem', color: 'var(--text3)', fontFamily: 'inherit', fontWeight: 400 }}>(قديم)</span>}
                         {hasAttach && <Paperclip style={{ width: '11px', height: '11px', marginRight: '5px', verticalAlign: '-1px', color: 'var(--text3)' }} />}
                       </td>
