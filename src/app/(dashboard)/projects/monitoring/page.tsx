@@ -72,6 +72,12 @@ const MONITORING_HEALTH_FILTERS = [
   { id: 'ملغي',     label: 'ملغي',               icon: '❌' },
 ] as const
 
+const VALID_HEALTH_FILTER_IDS = new Set(['', ...MONITORING_HEALTH_FILTERS.map(f => f.id)])
+
+function normalizeHealthFilter(filter: string): string {
+  return VALID_HEALTH_FILTER_IDS.has(filter) ? filter : ''
+}
+
 function isProjectLate(p: Project, ref: Date): boolean {
   if (p.status === 'متأخر') return true
   if (p.status === 'قيد التنفيذ' && p.end_date) {
@@ -88,11 +94,12 @@ function monitoringDisplayStatus(p: Project, ref: Date): string {
 }
 
 function matchesMonitoringHealthFilter(p: Project, filter: string, ref: Date): boolean {
-  if (!filter) return p.status !== 'ملغي'
-  if (filter === 'ملغي') return p.status === 'ملغي'
-  if (filter === 'متأخر') return isProjectLate(p, ref)
-  if (filter === 'on_track') return p.status !== 'ملغي' && !isProjectLate(p, ref)
-  return true
+  const f = normalizeHealthFilter(filter)
+  if (!f) return p.status !== 'ملغي'
+  if (f === 'ملغي') return p.status === 'ملغي'
+  if (f === 'متأخر') return isProjectLate(p, ref)
+  if (f === 'on_track') return p.status !== 'ملغي' && !isProjectLate(p, ref)
+  return false
 }
 
 function getStatusColor(p: Project): string {
@@ -757,8 +764,15 @@ export default function ProjectsPage() {
   const { tenant, activeBranch, projects, setProjects, currentUser } = useStore()
   const [loading, setLoading]     = useState(projects.length === 0)
   const [search, setSearch]       = useState('')
-  const [statusFilter, setStatus] = useState('')
+  const [healthFilter, setHealthFilter] = useState('')
   const [phaseFilter, setPhaseFilter] = useState('')
+  useEffect(() => {
+    if (healthFilter && !VALID_HEALTH_FILTER_IDS.has(healthFilter)) {
+      setHealthFilter('')
+    }
+  }, [healthFilter])
+
+  const activeHealthFilter = normalizeHealthFilter(healthFilter)
   // مودال QHSE السريع
   const [qhseModal, setQhseModal] = useState<{ type: QhseVisitType; projectId?: number } | null>(null)
   const [typeFilter, setType]     = useState('')
@@ -980,7 +994,7 @@ export default function ProjectsPage() {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = projectMatchesMonitoringPhaseFilter(phaseFilter, phase, p.status)
-    const healthMatch = matchesMonitoringHealthFilter(p, statusFilter, now)
+    const healthMatch = matchesMonitoringHealthFilter(p, activeHealthFilter, now)
     return (
       phaseMatch &&
       healthMatch &&
@@ -1056,7 +1070,7 @@ export default function ProjectsPage() {
           ))}
         </select>
 
-        <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
+        <select value={activeHealthFilter} onChange={e => setHealthFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">صحة المسار — الكل</option>
           {MONITORING_HEALTH_FILTERS.map(f => (
             <option key={f.id} value={f.id}>{f.icon} {f.label}</option>
@@ -1093,8 +1107,8 @@ export default function ProjectsPage() {
           </button>
         )}
 
-        {(search || phaseFilter || statusFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
-          <button onClick={() => { setSearch(''); setPhaseFilter(''); setStatus(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
+        {(search || phaseFilter || activeHealthFilter || typeFilter || clientFilter || teamFilter || myTeamOnly) && (
+          <button onClick={() => { setSearch(''); setPhaseFilter(''); setHealthFilter(''); setType(''); setClient(''); setTeamFilter(''); setMyTeamOnly(false) }}
             className="btn btn-ghost btn-sm" style={{ color: '#9ca3af' }}>مسح الفلاتر</button>
         )}
 
