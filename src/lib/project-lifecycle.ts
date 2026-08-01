@@ -40,6 +40,27 @@ export function projectMatchesLifecycleFilter(filter: string, pmo?: string | nul
   return life === filter
 }
 
+export type MonitoringPhaseFilter = LifecyclePhase | 'completed'
+
+/** خيارات فلتر المراحل في لوحة المتابعة (تشمل المكتملة) */
+export const MONITORING_PHASE_FILTERS: { id: MonitoringPhaseFilter; label: string }[] = [
+  ...LIFECYCLE_PHASES.map(({ id, label }) => ({ id, label })),
+  { id: 'completed', label: 'مكتمل' },
+]
+
+export function projectMatchesMonitoringPhaseFilter(
+  filter: string,
+  pmo?: string | null,
+  status?: string | null,
+): boolean {
+  if (!filter) return true
+  if (filter === 'completed') return status === 'مكتمل'
+  const life = pmoPhaseToLifecycle(pmo)
+  if (!life) return false
+  if (filter === 'closure') return life === 'closure' && status !== 'مكتمل'
+  return life === filter
+}
+
 export function lifecycleStyle(phase: LifecyclePhase | null) {
   const def = LIFECYCLE_PHASES.find(p => p.id === phase)
   return def ? { color: def.color, bg: def.bg, label: def.label } : { color: '#6b7280', bg: '#f3f4f6', label: '—' }

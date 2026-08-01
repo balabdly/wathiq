@@ -15,11 +15,11 @@ import { formatDate, formatCurrency, daysUntil, PROJECT_STAGES } from '@/lib/uti
 import { WORKFLOW_TYPES, statusForPhase } from '@/lib/sec-workflow'
 import type { PmoPhase } from '@/lib/sec-workflow'
 import {
-  LIFECYCLE_PHASES,
   lifecycleForPmoLabel,
   lifecycleStyle,
+  MONITORING_PHASE_FILTERS,
   pmoPhaseToLifecycle,
-  projectMatchesLifecycleFilter,
+  projectMatchesMonitoringPhaseFilter,
 } from '@/lib/project-lifecycle'
 import { fetchAssigneeOptions, type AssigneeOption } from '@/lib/project-teams'
 import { getMissingClosureDocs, formatMissingClosureDocs, isTaskOpen } from '@/lib/project-tasks'
@@ -974,7 +974,7 @@ export default function ProjectsPage() {
   const filtered = projects.filter(p => {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
-    const phaseMatch = projectMatchesLifecycleFilter(phaseFilter, phase)
+    const phaseMatch = projectMatchesMonitoringPhaseFilter(phaseFilter, phase, p.status)
     const healthMatch = matchesMonitoringHealthFilter(p, statusFilter, now)
     return (
       phaseMatch &&
@@ -1046,7 +1046,7 @@ export default function ProjectsPage() {
 
         <select value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل المراحل</option>
-          {LIFECYCLE_PHASES.map(ph => (
+          {MONITORING_PHASE_FILTERS.map(ph => (
             <option key={ph.id} value={ph.id}>{ph.label}</option>
           ))}
         </select>
