@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, Undo2 } from 'lucide-react'
+import { Search, Eye, ArrowRight, ArrowLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
+import { closeProjectPlanning } from '@/lib/project-planning-service'
 import { usePlanning } from './PlanningContext'
 import { formatDate } from '@/lib/utils'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
@@ -17,6 +18,7 @@ export default function PlanningListPage() {
   const { tenantId, projects, reload } = usePlanning()
   const [search, setSearch] = useState('')
   const [returning, setReturning] = useState<number | null>(null)
+  const [advancing, setAdvancing] = useState<number | null>(null)
 
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
@@ -45,6 +47,24 @@ export default function PlanningListPage() {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
     }
     setReturning(null)
+  }
+
+  async function handleAdvanceToExecution(projectId: number, name: string, isComplete: boolean) {
+    if (!tenantId) return
+    if (!isComplete) {
+      toast.error('أكمل جميع أقسام التخطيط قبل الانتقال للتنفيذ')
+      return
+    }
+    if (!confirm(`اعتماد تخطيط «${name}» ونقله إلى مرحلة التنفيذ؟`)) return
+    setAdvancing(projectId)
+    try {
+      await closeProjectPlanning(tenantId, projectId)
+      toast.success('تم اعتماد التخطيط ونقل المشروع للتنفيذ')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الانتقال')
+    }
+    setAdvancing(null)
   }
 
   return (
@@ -100,22 +120,38 @@ export default function PlanningListPage() {
                           </button>
                         )}
                         {canEdit && (
+                          <button
+                            onClick={() => handleReturnToInitiation(p.id, p.name)}
+                            disabled={returning === p.id}
+                            className="btn btn-ghost"
+                            style={{ padding: '6px 10px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
+                            title="إرجاع لمرحلة البدء"
+                          >
+                            <ArrowRight style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            onClick={() => handleAdvanceToExecution(p.id, p.name, !!p.planningProgress?.isComplete)}
+                            disabled={advancing === p.id}
+                            className="btn btn-ghost"
+                            style={{
+                              padding: '6px 10px',
+                              color: p.planningProgress?.isComplete ? '#0ea77b' : '#9ca3af',
+                              border: `1px solid ${p.planningProgress?.isComplete ? '#86efac' : '#e5e7eb'}`,
+                              opacity: advancing === p.id ? 0.6 : 1,
+                            }}
+                            title={p.planningProgress?.isComplete ? 'الانتقال لمرحلة التنفيذ' : 'أكمل التخطيط أولاً'}
+                          >
+                            <ArrowLeft style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                        {canEdit && (
                           <EditEstimateDropdown
                             projectId={p.id}
                             hasEstimate={(p.boqCounts?.materials ?? 0) > 0 || (p.boqCounts?.works ?? 0) > 0}
                             iconOnly
                           />
-                        )}
-                        {canEdit && (
-                          <button
-                            onClick={() => handleReturnToInitiation(p.id, p.name)}
-                            disabled={returning === p.id}
-                            className="btn btn-ghost"
-                            style={{ padding: '6px 10px', color: '#1a56db', border: '1px solid #bfdbfe', opacity: returning === p.id ? 0.6 : 1 }}
-                            title="إرجاع لمرحلة البدء"
-                          >
-                            <Undo2 style={{ width: '16px', height: '16px' }} />
-                          </button>
                         )}
                       </div>
                     </td>

@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, Undo2, Users } from 'lucide-react'
+import { Search, Eye, ArrowRight, ArrowLeft, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
+import { advanceProjectToClose } from '@/lib/project-execution-service'
 import { useExecution } from './ExecutionContext'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -15,6 +16,7 @@ export default function ExecutionListPage() {
   const { tenantId, projects, reload } = useExecution()
   const [search, setSearch] = useState('')
   const [returning, setReturning] = useState<number | null>(null)
+  const [advancing, setAdvancing] = useState<number | null>(null)
 
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
@@ -43,6 +45,24 @@ export default function ExecutionListPage() {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
     }
     setReturning(null)
+  }
+
+  async function handleAdvanceToClose(projectId: number, name: string, progress: number) {
+    if (!tenantId) return
+    if ((progress ?? 0) < 100) {
+      toast.error('يجب أن تصل نسبة الإنجاز إلى 100% قبل الانتقال للإغلاق')
+      return
+    }
+    if (!confirm(`نقل «${name}» إلى مرحلة الإغلاق؟`)) return
+    setAdvancing(projectId)
+    try {
+      await advanceProjectToClose(tenantId, projectId)
+      toast.success('تم نقل المشروع لمرحلة الإغلاق')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الانتقال')
+    }
+    setAdvancing(null)
   }
 
   return (
@@ -118,10 +138,26 @@ export default function ExecutionListPage() {
                             onClick={() => handleReturnToPlanning(p.id, p.name)}
                             disabled={returning === p.id}
                             className="btn btn-ghost"
-                            style={{ padding: '6px 10px', color: '#0ea77b', border: '1px solid #86efac', opacity: returning === p.id ? 0.6 : 1 }}
-                            title="تعديل المقايسة — إرجاع للتخطيط"
+                            style={{ padding: '6px 10px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
+                            title="إرجاع لمرحلة التخطيط"
                           >
-                            <Undo2 style={{ width: '16px', height: '16px' }} />
+                            <ArrowRight style={{ width: '16px', height: '16px' }} />
+                          </button>
+                        )}
+                        {canEdit && p.pmo_phase === '3_EXEC' && (
+                          <button
+                            onClick={() => handleAdvanceToClose(p.id, p.name, p.progress ?? 0)}
+                            disabled={advancing === p.id}
+                            className="btn btn-ghost"
+                            style={{
+                              padding: '6px 10px',
+                              color: (p.progress ?? 0) >= 100 ? '#0ea77b' : '#9ca3af',
+                              border: `1px solid ${(p.progress ?? 0) >= 100 ? '#86efac' : '#e5e7eb'}`,
+                              opacity: advancing === p.id ? 0.6 : 1,
+                            }}
+                            title={(p.progress ?? 0) >= 100 ? 'الانتقال لمرحلة الإغلاق' : 'يجب إكمال نسبة الإنجاز 100%'}
+                          >
+                            <ArrowLeft style={{ width: '16px', height: '16px' }} />
                           </button>
                         )}
                       </div>
