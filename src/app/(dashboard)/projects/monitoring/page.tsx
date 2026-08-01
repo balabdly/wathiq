@@ -88,9 +88,10 @@ function isProjectLate(p: Project, ref: Date): boolean {
   return false
 }
 
-function monitoringDisplayStatus(p: Project, ref: Date): string {
-  if (isProjectLate(p, ref) && p.status === 'قيد التنفيذ') return 'متأخر'
-  return p.status
+function monitoringPathHealth(p: Project, ref: Date): { label: string; color: string; bg: string } {
+  if (p.status === 'ملغي') return { label: 'ملغي', color: '#374151', bg: '#f3f4f6' }
+  if (isProjectLate(p, ref)) return { label: 'متأخر', color: '#c81e1e', bg: '#fef2f2' }
+  return { label: 'على المسار الصحيح', color: '#0ea77b', bg: '#ecfdf5' }
 }
 
 function matchesMonitoringHealthFilter(p: Project, filter: string, ref: Date): boolean {
@@ -1272,7 +1273,7 @@ export default function ProjectsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['رقم', 'اسم المشروع', 'النوع', 'الجهة', 'مرحلة المشروع', 'حالة المشروع', 'الإنجاز', 'القيمة', 'التسليم', ''].map(h => (
+                {['رقم', 'اسم المشروع', 'النوع', 'الجهة', 'مرحلة المشروع', 'صحة المسار', 'الإنجاز', 'القيمة', 'التسليم', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -1285,6 +1286,7 @@ export default function ProjectsPage() {
                 const phaseStyle = p.status === 'مكتمل'
                   ? { label: 'مكتمل', color: '#0ea77b', bg: '#ecfdf5' }
                   : lifecycleStyle(phaseLife)
+                const pathHealth = monitoringPathHealth(p, now)
                 return (
                   <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
                     onClick={() => setDetail(p)}
@@ -1305,8 +1307,11 @@ export default function ProjectsPage() {
                       </span>
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>
-                        {monitoringDisplayStatus(p, now)}
+                      <span style={{
+                        fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
+                        background: pathHealth.bg, color: pathHealth.color, whiteSpace: 'nowrap',
+                      }}>
+                        {pathHealth.label}
                       </span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
