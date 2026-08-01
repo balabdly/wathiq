@@ -65,12 +65,12 @@ const COLUMNS = [
   { id: 'ملغي',         label: 'ملغي',           icon: '❌', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
 ]
 
-/** فلاتر حالة المشروع في لوحة المتابعة — تطابق عمود «حالة المشروع» */
-const MONITORING_STATUS_FILTERS = COLUMNS.map(c => ({
-  id: c.id,
-  label: c.label,
-  icon: c.icon,
-}))
+/** فلاتر صحة المسار في لوحة المتابعة — 3 خيارات فقط */
+const MONITORING_HEALTH_FILTERS = [
+  { id: 'on_track', label: 'على المسار الصحيح', icon: '✅' },
+  { id: 'متأخر',    label: 'متأخر',              icon: '⚠️' },
+  { id: 'ملغي',     label: 'ملغي',               icon: '❌' },
+] as const
 
 function isProjectLate(p: Project, ref: Date): boolean {
   if (p.status === 'متأخر') return true
@@ -87,10 +87,12 @@ function monitoringDisplayStatus(p: Project, ref: Date): string {
   return p.status
 }
 
-function matchesMonitoringStatusFilter(p: Project, filter: string, ref: Date): boolean {
+function matchesMonitoringHealthFilter(p: Project, filter: string, ref: Date): boolean {
   if (!filter) return p.status !== 'ملغي'
+  if (filter === 'ملغي') return p.status === 'ملغي'
   if (filter === 'متأخر') return isProjectLate(p, ref)
-  return monitoringDisplayStatus(p, ref) === filter
+  if (filter === 'on_track') return p.status !== 'ملغي' && !isProjectLate(p, ref)
+  return true
 }
 
 function getStatusColor(p: Project): string {
@@ -978,7 +980,7 @@ export default function ProjectsPage() {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = projectMatchesMonitoringPhaseFilter(phaseFilter, phase, p.status)
-    const healthMatch = matchesMonitoringStatusFilter(p, statusFilter, now)
+    const healthMatch = matchesMonitoringHealthFilter(p, statusFilter, now)
     return (
       phaseMatch &&
       healthMatch &&
@@ -1055,8 +1057,8 @@ export default function ProjectsPage() {
         </select>
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
-          <option value="">كل الحالات</option>
-          {MONITORING_STATUS_FILTERS.map(f => (
+          <option value="">صحة المسار — الكل</option>
+          {MONITORING_HEALTH_FILTERS.map(f => (
             <option key={f.id} value={f.id}>{f.icon} {f.label}</option>
           ))}
         </select>
