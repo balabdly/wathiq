@@ -554,12 +554,12 @@ export default function CloseProjectPage() {
 
           <div style={{
             display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
-            borderRadius: '10px', background: !hasBlockers ? '#ecfdf5' : '#f9fafb', border: `1px solid ${!hasBlockers ? '#86efac' : '#e5e7eb'}`,
+            borderRadius: '10px', background: !hasHardBlockers ? '#ecfdf5' : '#f9fafb', border: `1px solid ${!hasHardBlockers ? '#86efac' : '#e5e7eb'}`,
           }}>
             <span style={{ fontSize: '1.1rem' }}>🔒</span>
             <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>بوابات: مهام + NCR</span>
-            <span style={{ fontSize: '0.78rem', color: !hasBlockers ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
-              {!hasBlockers ? '✓ مكتمل' : '⛔ محظور'}
+            <span style={{ fontSize: '0.78rem', color: !hasHardBlockers ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
+              {!hasHardBlockers ? '✓ مكتمل' : '⛔ محظور'}
             </span>
           </div>
         </div>
