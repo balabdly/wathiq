@@ -47,7 +47,7 @@ export function computeClosureProgress(
     percent,
     completed,
     total: CLOSURE_SECTIONS,
-    label: percent === 100 ? 'مكتمل' : `${percent}%`,
+    label: percent === 100 ? 'جاهز للاعتماد' : `${percent}%`,
     isComplete: percent === 100,
   }
 }

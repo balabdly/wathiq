@@ -1,10 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, ArrowRightCircle } from 'lucide-react'
+import { Search, Eye, ArrowRightCircle, ArrowLeftCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
-import { reopenProjectToExecution } from '@/lib/project-close-service'
+import { approveProjectClosure, reopenProjectToExecution } from '@/lib/project-close-service'
 import { useClose } from './CloseContext'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -15,6 +15,7 @@ export default function CloseListPage() {
   const { tenantId, projects, reload } = useClose()
   const [search, setSearch] = useState('')
   const [returning, setReturning] = useState<number | null>(null)
+  const [approving, setApproving] = useState<number | null>(null)
 
   const canEdit = !!(currentUser?.role === 'مدير عام' || currentUser?.permissions?.includes('projects_edit'))
 
@@ -43,6 +44,24 @@ export default function CloseListPage() {
       toast.error(e instanceof Error ? e.message : 'فشل الإرجاع')
     }
     setReturning(null)
+  }
+
+  async function handleApproveClosure(projectId: number, name: string, isComplete: boolean) {
+    if (!tenantId) return
+    if (!isComplete) {
+      toast.error('أكمل جميع بنود الإغلاق قبل الاعتماد')
+      return
+    }
+    if (!confirm(`اعتماد إغلاق «${name}» ونقله إلى المشاريع المكتملة؟`)) return
+    setApproving(projectId)
+    try {
+      await approveProjectClosure(tenantId, projectId)
+      toast.success('تم إغلاق المشروع ونقله للمكتملة ✅')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الاعتماد')
+    }
+    setApproving(null)
   }
 
   return (
@@ -112,6 +131,22 @@ export default function CloseListPage() {
                               title="إرجاع لمرحلة التنفيذ"
                             >
                               <ArrowRightCircle style={{ width: '14px', height: '14px' }} />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
+                              onClick={() => handleApproveClosure(p.id, p.name, !!p.closureProgress?.isComplete)}
+                              disabled={approving === p.id}
+                              className="btn btn-ghost"
+                              style={{
+                                padding: '6px 8px',
+                                color: p.closureProgress?.isComplete ? '#0ea77b' : '#9ca3af',
+                                border: `1px solid ${p.closureProgress?.isComplete ? '#86efac' : '#e5e7eb'}`,
+                                opacity: approving === p.id ? 0.6 : 1,
+                              }}
+                              title={p.closureProgress?.isComplete ? 'اعتماد الإغلاق ونقل للمكتملة' : 'أكمل بنود الإغلاق أولاً'}
+                            >
+                              <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                             </button>
                           )}
                         </div>
