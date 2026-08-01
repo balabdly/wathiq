@@ -65,12 +65,12 @@ const COLUMNS = [
   { id: 'ملغي',         label: 'ملغي',           icon: '❌', color: '#374151', bg: '#f3f4f6', border: '#d1d5db', autoProgress: null },
 ]
 
-/** فلاتر الحالة في لوحة المتابعة — صحة المسار لا حالة Kanban التفصيلية */
-const MONITORING_HEALTH_FILTERS = [
-  { id: 'on_track', label: 'على المسار الصحيح', icon: '✅' },
-  { id: 'متأخر',    label: 'متأخر',              icon: '⚠️' },
-  { id: 'ملغي',     label: 'ملغي',               icon: '❌' },
-] as const
+/** فلاتر حالة المشروع في لوحة المتابعة — تطابق عمود «حالة المشروع» */
+const MONITORING_STATUS_FILTERS = COLUMNS.map(c => ({
+  id: c.id,
+  label: c.label,
+  icon: c.icon,
+}))
 
 function isProjectLate(p: Project, ref: Date): boolean {
   if (p.status === 'متأخر') return true
@@ -82,12 +82,15 @@ function isProjectLate(p: Project, ref: Date): boolean {
   return false
 }
 
-function matchesMonitoringHealthFilter(p: Project, filter: string, ref: Date): boolean {
+function monitoringDisplayStatus(p: Project, ref: Date): string {
+  if (isProjectLate(p, ref) && p.status === 'قيد التنفيذ') return 'متأخر'
+  return p.status
+}
+
+function matchesMonitoringStatusFilter(p: Project, filter: string, ref: Date): boolean {
   if (!filter) return p.status !== 'ملغي'
-  if (filter === 'ملغي') return p.status === 'ملغي'
   if (filter === 'متأخر') return isProjectLate(p, ref)
-  if (filter === 'on_track') return p.status !== 'ملغي' && !isProjectLate(p, ref)
-  return true
+  return monitoringDisplayStatus(p, ref) === filter
 }
 
 function getStatusColor(p: Project): string {
@@ -975,7 +978,7 @@ export default function ProjectsPage() {
     const q = search.toLowerCase()
     const phase = (p as Project & { pmo_phase?: string }).pmo_phase
     const phaseMatch = projectMatchesMonitoringPhaseFilter(phaseFilter, phase, p.status)
-    const healthMatch = matchesMonitoringHealthFilter(p, statusFilter, now)
+    const healthMatch = matchesMonitoringStatusFilter(p, statusFilter, now)
     return (
       phaseMatch &&
       healthMatch &&
@@ -1053,7 +1056,7 @@ export default function ProjectsPage() {
 
         <select value={statusFilter} onChange={e => setStatus(e.target.value)} className="select" style={{ width: 'auto', minWidth: '180px' }}>
           <option value="">كل الحالات</option>
-          {MONITORING_HEALTH_FILTERS.map(f => (
+          {MONITORING_STATUS_FILTERS.map(f => (
             <option key={f.id} value={f.id}>{f.icon} {f.label}</option>
           ))}
         </select>
@@ -1287,7 +1290,7 @@ export default function ProjectsPage() {
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>
-                        {isLate && p.status === 'قيد التنفيذ' ? 'متأخر' : p.status}
+                        {monitoringDisplayStatus(p, now)}
                       </span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
