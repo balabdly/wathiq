@@ -1,5 +1,4 @@
 import type { ProjectClosure } from '@/lib/project-close-service'
-import type { BillingModel } from '@/lib/sec-workflow'
 
 export type ClosureProgress = {
   percent: number
@@ -11,10 +10,16 @@ export type ClosureProgress = {
 
 export const CLOSURE_SECTIONS = 6
 
+function invoicesComplete(closure: ProjectClosure): boolean {
+  const finalOk = !!(closure.final_invoice_number?.trim() && closure.final_invoice_date)
+  if (!finalOk) return false
+  if (closure.partial_invoice_skipped) return true
+  return !!(closure.partial_invoice_number?.trim() && closure.partial_invoice_date)
+}
+
 export function computeClosureProgress(
   closure: ProjectClosure | null | undefined,
   opts: {
-    billingModel?: BillingModel | null
     docsComplete?: boolean
     tasksComplete?: boolean
     ncrClear?: boolean
@@ -27,14 +32,13 @@ export function computeClosureProgress(
     return { percent: 100, completed: CLOSURE_SECTIONS, total: CLOSURE_SECTIONS, label: 'مكتمل', isComplete: true }
   }
 
-  const billing = opts.billingModel || 'SPLIT_50_50'
   const checks = [
-    closure.final_boq_confirmed,
+    !!closure.assets_handover_date,
+    !!closure.gis_mapping_date,
     !!closure.client_handover_date,
-    closure.as_built_drawings_confirmed,
-    billing === 'FULL_100' || !!(closure.final_invoice_number?.trim()),
-    opts.docsComplete !== false,
-    opts.tasksComplete !== false && opts.ncrClear !== false,
+    !!closure.completion_certificate_date && !!closure.completion_certificate_file_path,
+    invoicesComplete(closure),
+    opts.docsComplete !== false && opts.tasksComplete !== false && opts.ncrClear !== false,
   ]
   const completed = checks.filter(Boolean).length
   const percent = Math.round((completed / CLOSURE_SECTIONS) * 100)

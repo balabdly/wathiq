@@ -12,15 +12,27 @@ import {
   reopenProjectToExecution,
   uploadClosureFile,
   type CloseProjectDetail,
+  type ProjectClosure,
 } from '@/lib/project-close-service'
 import { formatMissingClosureDocs } from '@/lib/project-tasks'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
 
-const CHECKLIST = [
-  { key: 'final_boq_confirmed' as const, label: 'اعتماد BOQ النهائي', emoji: '📐' },
-  { key: 'client_handover_date' as const, label: 'تسليم العميل', emoji: '🤝', dateField: true },
-  { key: 'as_built_drawings_confirmed' as const, label: 'مخططات As-Built', emoji: '📋' },
-  { key: 'final_invoice_number' as const, label: 'مستخلص 50% النهائي', emoji: '🧾', billingOnly: 'SPLIT_50_50' as const },
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+type DateField = 'assets_handover_date' | 'gis_mapping_date' | 'client_handover_date' | 'completion_certificate_date'
+
+const PROCEDURE_ITEMS: {
+  dateField: DateField
+  label: string
+  emoji: string
+  requiresFile?: boolean
+}[] = [
+  { dateField: 'assets_handover_date', label: 'هل تم تسليم المشروع للأصول؟', emoji: '🏢' },
+  { dateField: 'gis_mapping_date', label: 'هل تم رسم المشروع على خريطة GIS؟', emoji: '🗺️' },
+  { dateField: 'client_handover_date', label: 'تسليم العميل (إجراء 155)', emoji: '🤝' },
+  { dateField: 'completion_certificate_date', label: 'هل تم إصدار شهادة إنجاز؟ (إجراء 156)', emoji: '📜', requiresFile: true },
 ]
 
 export default function CloseProjectPage() {
@@ -37,8 +49,10 @@ export default function CloseProjectPage() {
   const [closing, setClosing] = useState(false)
   const [reopening, setReopening] = useState(false)
 
-  const [handoverDate, setHandoverDate] = useState('')
-  const [handoverNotes, setHandoverNotes] = useState('')
+  const [partialNumber, setPartialNumber] = useState('')
+  const [partialDate, setPartialDate] = useState('')
+  const [partialAmount, setPartialAmount] = useState('')
+  const [partialSkipped, setPartialSkipped] = useState(false)
   const [finalNumber, setFinalNumber] = useState('')
   const [finalDate, setFinalDate] = useState('')
   const [finalAmount, setFinalAmount] = useState('')
@@ -50,8 +64,10 @@ export default function CloseProjectPage() {
     const { project: p } = await fetchCloseProject(tenant.id, projectId)
     setProject(p)
     const c = p.closure
-    setHandoverDate(c?.client_handover_date || '')
-    setHandoverNotes(c?.client_handover_notes || '')
+    setPartialNumber(c?.partial_invoice_number || '')
+    setPartialDate(c?.partial_invoice_date || '')
+    setPartialAmount(c?.partial_invoice_amount != null ? String(c.partial_invoice_amount) : '')
+    setPartialSkipped(!!c?.partial_invoice_skipped)
     setFinalNumber(c?.final_invoice_number || '')
     setFinalDate(c?.final_invoice_date || '')
     setFinalAmount(c?.final_invoice_amount != null ? String(c.final_invoice_amount) : '')
@@ -65,12 +81,11 @@ export default function CloseProjectPage() {
     reload().finally(() => setLoading(false))
   }, [tenant?.id, projectId, reload])
 
-  async function toggleFlag(field: 'final_boq_confirmed' | 'as_built_drawings_confirmed', value: boolean) {
+  async function patchClosure(patch: Partial<Omit<ProjectClosure, 'id' | 'tenant_id' | 'project_id'>>) {
     if (!tenant || !canEdit) return
     setSaving(true)
     try {
-      await updateProjectClosure(tenant.id, projectId, { [field]: value })
-      toast.success('تم الحفظ')
+      await updateProjectClosure(tenant.id, projectId, patch)
       await reload()
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'فشل الحفظ')
@@ -78,13 +93,59 @@ export default function CloseProjectPage() {
     setSaving(false)
   }
 
-  async function handleSave() {
+  async function toggleProcedure(dateField: DateField, checked: boolean, currentDate?: string | null) {
+    await patchClosure({ [dateField]: checked ? (currentDate || todayStr()) : null })
+    if (checked) toast.success('تم التسجيل')
+  }
+
+  async function updateProcedureDate(dateField: DateField, value: string) {
+    await patchClosure({ [dateField]: value || null })
+  }
+
+  async function handleUploadCertificate(file: File) {
+    if (!tenant || !canEdit) return
+    setSaving(true)
+    try {
+      const { path, name } = await uploadClosureFile(tenant.id, projectId, file, 'certificate')
+      await updateProjectClosure(tenant.id, projectId, {
+        completion_certificate_file_path: path,
+        completion_certificate_file_name: name,
+        completion_certificate_date: project?.closure?.completion_certificate_date || todayStr(),
+      })
+      toast.success('تم رفع شهادة الإنجاز')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الرفع')
+    }
+    setSaving(false)
+  }
+
+  async function handleUploadInvoice(kind: 'partial' | 'final', file: File) {
+    if (!tenant || !canEdit) return
+    setSaving(true)
+    try {
+      const { path, name } = await uploadClosureFile(tenant.id, projectId, file, kind)
+      const patch = kind === 'partial'
+        ? { partial_invoice_file_path: path, partial_invoice_file_name: name }
+        : { final_invoice_file_path: path, final_invoice_file_name: name }
+      await updateProjectClosure(tenant.id, projectId, patch)
+      toast.success('تم رفع الملف')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الرفع')
+    }
+    setSaving(false)
+  }
+
+  async function handleSaveInvoices() {
     if (!tenant || !canEdit) return
     setSaving(true)
     try {
       await updateProjectClosure(tenant.id, projectId, {
-        client_handover_date: handoverDate || null,
-        client_handover_notes: handoverNotes.trim() || null,
+        partial_invoice_number: partialSkipped ? null : (partialNumber.trim() || null),
+        partial_invoice_date: partialSkipped ? null : (partialDate || null),
+        partial_invoice_amount: partialSkipped ? null : (partialAmount ? Number(partialAmount) : null),
+        partial_invoice_skipped: partialSkipped,
         final_invoice_number: finalNumber.trim() || null,
         final_invoice_date: finalDate || null,
         final_invoice_amount: finalAmount ? Number(finalAmount) : null,
@@ -99,21 +160,23 @@ export default function CloseProjectPage() {
     setSaving(false)
   }
 
-  async function handleUploadFinal(file: File) {
-    if (!tenant || !canEdit) return
-    setSaving(true)
-    try {
-      const { path, name } = await uploadClosureFile(tenant.id, projectId, file, 'final')
-      await updateProjectClosure(tenant.id, projectId, {
-        final_invoice_file_path: path,
-        final_invoice_file_name: name,
-      })
-      toast.success('تم رفع الملف')
-      await reload()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'فشل الرفع')
+  async function handleToggleSkipPartial(checked: boolean) {
+    setPartialSkipped(checked)
+    if (checked) {
+      setPartialNumber('')
+      setPartialDate('')
+      setPartialAmount('')
     }
-    setSaving(false)
+    await patchClosure({
+      partial_invoice_skipped: checked,
+      ...(checked ? {
+        partial_invoice_number: null,
+        partial_invoice_date: null,
+        partial_invoice_amount: null,
+        partial_invoice_file_path: null,
+        partial_invoice_file_name: null,
+      } : {}),
+    })
   }
 
   async function handleApproveClosure() {
@@ -153,19 +216,16 @@ export default function CloseProjectPage() {
   }
 
   const closure = project.closure
-  const billing = project.billing_model || 'SPLIT_50_50'
   const readOnly = closure?.closure_status === 'closed'
   const blockers = project.blockers
-
-  function isCheckDone(key: typeof CHECKLIST[number]['key']): boolean {
-    if (key === 'final_boq_confirmed') return !!closure?.final_boq_confirmed
-    if (key === 'client_handover_date') return !!closure?.client_handover_date
-    if (key === 'as_built_drawings_confirmed') return !!closure?.as_built_drawings_confirmed
-    if (key === 'final_invoice_number') return billing === 'FULL_100' || !!closure?.final_invoice_number?.trim()
-    return false
-  }
-
   const hasBlockers = (blockers?.openTasks || 0) > 0 || (blockers?.openNcr || 0) > 0 || (blockers?.missingDocs?.length || 0) > 0
+
+  function procedureDone(item: typeof PROCEDURE_ITEMS[number]): boolean {
+    const date = closure?.[item.dateField]
+    if (!date) return false
+    if (item.requiresFile) return !!closure?.completion_certificate_file_path
+    return true
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -230,32 +290,116 @@ export default function CloseProjectPage() {
       <div className="card" style={{ padding: '20px' }}>
         <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: '16px' }}>🏁 قائمة الإغلاق والتسليم</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {CHECKLIST.filter(item => !item.billingOnly || item.billingOnly === billing).map(item => {
-            const done = isCheckDone(item.key)
-            const isToggle = !item.dateField && item.key !== 'final_invoice_number'
+          {PROCEDURE_ITEMS.map(item => {
+            const done = procedureDone(item)
+            const dateVal = closure?.[item.dateField] || ''
             return (
-              <div key={item.key} style={{
-                display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
+              <div key={item.dateField} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', flexWrap: 'wrap',
                 borderRadius: '10px', background: done ? '#ecfdf5' : '#f9fafb', border: `1px solid ${done ? '#86efac' : '#e5e7eb'}`,
               }}>
-                <span style={{ fontSize: '1.1rem' }}>{item.emoji}</span>
-                <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>{item.label}</span>
-                {isToggle && canEdit && !readOnly ? (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>
+                <span style={{ fontSize: '1.1rem', marginTop: '2px' }}>{item.emoji}</span>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px' }}>{item.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {canEdit && !readOnly ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!dateVal}
+                          disabled={saving}
+                          onChange={e => toggleProcedure(item.dateField, e.target.checked, dateVal)}
+                        />
+                        تم
+                      </label>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', color: done ? '#0ea77b' : '#9ca3af', fontWeight: 700 }}>
+                        {done ? '✓ مكتمل' : '—'}
+                      </span>
+                    )}
                     <input
-                      type="checkbox"
-                      checked={!!closure?.[item.key as 'final_boq_confirmed']}
-                      disabled={saving}
-                      onChange={e => toggleFlag(item.key as 'final_boq_confirmed', e.target.checked)}
+                      type="date"
+                      value={dateVal}
+                      onChange={e => {
+                        if (canEdit && !readOnly) updateProcedureDate(item.dateField, e.target.value)
+                      }}
+                      disabled={!canEdit || readOnly || saving}
+                      className="input"
+                      dir="ltr"
+                      style={{ width: 'auto', minWidth: '150px', fontSize: '0.78rem', padding: '6px 10px' }}
                     />
-                    {done ? '✓' : 'تأكيد'}
-                  </label>
-                ) : (
-                  <span style={{ fontSize: '0.78rem', color: done ? '#0ea77b' : '#9ca3af', fontWeight: 700 }}>{done ? '✓ مكتمل' : '—'}</span>
-                )}
+                    {item.requiresFile && canEdit && !readOnly && (
+                      <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b' }}>
+                        <Upload style={{ width: '14px', height: '14px' }} /> رفع الشهادة
+                        <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style={{ display: 'none' }}
+                          onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadCertificate(f) }} />
+                      </label>
+                    )}
+                    {item.requiresFile && closure?.completion_certificate_file_name && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>📎 {closure.completion_certificate_file_name}</span>
+                    )}
+                  </div>
+                </div>
               </div>
             )
           })}
+
+          <div style={{ borderTop: '2px solid #e5e7eb', margin: '8px 0' }} />
+
+          <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#374151', marginBottom: '4px' }}>🧾 المستخلصات</div>
+
+          {!partialSkipped && (
+            <div style={{ padding: '12px 14px', borderRadius: '10px', background: '#f9fafb', border: '1px solid #e5e7eb' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: '10px' }}>المستخلص الجزئي</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+                <input value={partialNumber} onChange={e => setPartialNumber(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="رقم المستخلص" />
+                <input type="date" value={partialDate} onChange={e => setPartialDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" />
+                <input type="number" value={partialAmount} onChange={e => setPartialAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="المبلغ" dir="ltr" />
+              </div>
+              {canEdit && !readOnly && (
+                <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b', marginTop: '8px' }}>
+                  <Upload style={{ width: '14px', height: '14px' }} /> رفع ملف الجزئي
+                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadInvoice('partial', f) }} />
+                </label>
+              )}
+              {closure?.partial_invoice_file_name && (
+                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>📎 {closure.partial_invoice_file_name}</span>
+              )}
+            </div>
+          )}
+
+          {canEdit && !readOnly && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', cursor: 'pointer', padding: '4px 0' }}>
+              <input
+                type="checkbox"
+                checked={partialSkipped}
+                disabled={saving}
+                onChange={e => handleToggleSkipPartial(e.target.checked)}
+              />
+              <span style={{ color: '#6b7280' }}>إلغاء المستخلص الجزئي والاكتفاء بالنهائي</span>
+            </label>
+          )}
+
+          <div style={{ padding: '12px 14px', borderRadius: '10px', background: '#f0fdf4', border: '1px solid #86efac' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: '10px' }}>المستخلص النهائي</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
+              <input value={finalNumber} onChange={e => setFinalNumber(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="رقم المستخلص" />
+              <input type="date" value={finalDate} onChange={e => setFinalDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" />
+              <input type="number" value={finalAmount} onChange={e => setFinalAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="المبلغ" dir="ltr" />
+            </div>
+            {canEdit && !readOnly && (
+              <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b', marginTop: '8px' }}>
+                <Upload style={{ width: '14px', height: '14px' }} /> رفع ملف النهائي
+                <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadInvoice('final', f) }} />
+              </label>
+            )}
+            {closure?.final_invoice_file_name && (
+              <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text3)', marginTop: '4px' }}>📎 {closure.final_invoice_file_name}</span>
+            )}
+          </div>
+
           <div style={{
             display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px',
             borderRadius: '10px', background: !hasBlockers ? '#ecfdf5' : '#f9fafb', border: `1px solid ${!hasBlockers ? '#86efac' : '#e5e7eb'}`,
@@ -269,45 +413,16 @@ export default function CloseProjectPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-        <div className="card" style={{ padding: '16px 20px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px' }}>🤝 تسليم العميل</div>
-          <input type="date" value={handoverDate} onChange={e => setHandoverDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" style={{ marginBottom: '8px' }} />
-          <textarea value={handoverNotes} onChange={e => setHandoverNotes(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="محضر التسليم..." style={{ minHeight: '70px' }} />
-        </div>
-
-        {billing === 'SPLIT_50_50' && (
-          <div className="card" style={{ padding: '16px 20px' }}>
-            <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px' }}>🧾 مستخلص 50% النهائي</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <input value={finalNumber} onChange={e => setFinalNumber(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="رقم المستخلص" />
-              <input type="date" value={finalDate} onChange={e => setFinalDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" />
-              <input type="number" value={finalAmount} onChange={e => setFinalAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="المبلغ" dir="ltr" />
-              {canEdit && !readOnly && (
-                <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b' }}>
-                  <Upload style={{ width: '14px', height: '14px' }} /> رفع ملف المستخلص
-                  <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style={{ display: 'none' }}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadFinal(f) }} />
-                </label>
-              )}
-              {closure?.final_invoice_file_name && (
-                <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>📎 {closure.final_invoice_file_name}</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="card" style={{ padding: '16px 20px' }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px' }}>📚 الدروس المستفادة</div>
-          <textarea value={lessons} onChange={e => setLessons(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="ملخص الدروس..." style={{ minHeight: '80px', marginBottom: '8px' }} />
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="ملاحظات الإغلاق..." style={{ minHeight: '60px' }} />
-        </div>
+      <div className="card" style={{ padding: '16px 20px' }}>
+        <div style={{ fontWeight: 700, fontSize: '0.875rem', marginBottom: '12px' }}>📚 الدروس المستفادة وملاحظات</div>
+        <textarea value={lessons} onChange={e => setLessons(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="ملخص الدروس..." style={{ minHeight: '80px', marginBottom: '8px' }} />
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="ملاحظات الإغلاق..." style={{ minHeight: '60px' }} />
       </div>
 
       {canEdit && !readOnly && (
         <div>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b', fontSize: '0.82rem' }}>
-            {saving ? 'جاري الحفظ...' : 'حفظ'}
+          <button onClick={handleSaveInvoices} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b', fontSize: '0.82rem' }}>
+            {saving ? 'جاري الحفظ...' : 'حفظ المستخلصات والملاحظات'}
           </button>
         </div>
       )}

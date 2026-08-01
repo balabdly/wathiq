@@ -16,6 +16,17 @@ export type ProjectClosure = {
   client_handover_date?: string | null
   client_handover_notes?: string | null
   as_built_drawings_confirmed?: boolean | null
+  assets_handover_date?: string | null
+  gis_mapping_date?: string | null
+  completion_certificate_date?: string | null
+  completion_certificate_file_path?: string | null
+  completion_certificate_file_name?: string | null
+  partial_invoice_number?: string | null
+  partial_invoice_date?: string | null
+  partial_invoice_amount?: number | null
+  partial_invoice_file_path?: string | null
+  partial_invoice_file_name?: string | null
+  partial_invoice_skipped?: boolean | null
   final_invoice_number?: string | null
   final_invoice_date?: string | null
   final_invoice_amount?: number | null
@@ -81,7 +92,6 @@ async function attachClosureProgress(
       ...p,
       blockers,
       closureProgress: computeClosureProgress(p.closure, {
-        billingModel: p.billing_model,
         docsComplete: blockers.missingDocs.length === 0,
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
@@ -179,7 +189,6 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
       closure,
       blockers,
       closureProgress: computeClosureProgress(closure, {
-        billingModel: project.billing_model,
         docsComplete: blockers.missingDocs.length === 0,
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
