@@ -1253,7 +1253,7 @@ export default function ProjectsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg2)', borderBottom: '2px solid var(--border)' }}>
-                {['رقم', 'اسم المشروع', 'النوع', 'الجهة', 'الحالة', 'الإنجاز', 'القيمة', 'المهندس', 'التسليم', ''].map(h => (
+                {['رقم', 'اسم المشروع', 'النوع', 'الجهة', 'مرحلة المشروع', 'حالة المشروع', 'الإنجاز', 'القيمة', 'التسليم', ''].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -1262,6 +1262,10 @@ export default function ProjectsPage() {
               {filtered.map(p => {
                 const days   = daysUntil(p.end_date)
                 const isLate = days !== null && days < 0 && p.progress < 100
+                const phaseLife = p.status === 'مكتمل' ? null : pmoPhaseToLifecycle((p as any).pmo_phase)
+                const phaseStyle = p.status === 'مكتمل'
+                  ? { label: 'مكتمل', color: '#0ea77b', bg: '#ecfdf5' }
+                  : lifecycleStyle(phaseLife)
                 return (
                   <tr key={p.id} style={{ borderBottom: '1px solid var(--bg2)', cursor: 'pointer' }}
                     onClick={() => setDetail(p)}
@@ -1274,7 +1278,17 @@ export default function ProjectsPage() {
                       {(p as any).client_name || (p as any).client || '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>{isLate ? 'متأخر' : p.status}</span>
+                      <span style={{
+                        fontSize: '0.7rem', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
+                        background: phaseStyle.bg, color: phaseStyle.color, whiteSpace: 'nowrap',
+                      }}>
+                        {phaseStyle.label}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span className={`badge ${getStatusColor(p)}`} style={{ fontSize: '0.7rem', ...(getStatusColor(p) === 'badge-closing' ? { background: '#f5f3ff', color: '#6d28d9' } : {}) }}>
+                        {isLate && p.status === 'قيد التنفيذ' ? 'متأخر' : p.status}
+                      </span>
                     </td>
                     <td style={{ padding: '10px 12px', minWidth: '110px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1285,7 +1299,6 @@ export default function ProjectsPage() {
                       </div>
                     </td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: '#e6820a', whiteSpace: 'nowrap' }}>{(p as any).estimated_value ? formatCurrency((p as any).estimated_value) : '—'}</td>
-                    <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: 'var(--text3)' }}>{p.engineer || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: '0.78rem', color: isLate ? '#c81e1e' : 'var(--text3)', whiteSpace: 'nowrap' }}>{formatDate(p.end_date) || '—'}</td>
                     <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '3px' }}>
