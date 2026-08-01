@@ -11,6 +11,7 @@ import {
   approveProjectClosure,
   reopenProjectToExecution,
   uploadClosureFile,
+  hasClosureHardBlockers,
   type CloseProjectDetail,
   type ProjectClosure,
 } from '@/lib/project-close-service'
@@ -35,6 +36,29 @@ const PROCEDURE_ITEMS: {
   { dateField: 'completion_certificate_date', label: 'هل تم إصدار شهادة إنجاز؟ (إجراء 156)', emoji: '📜', requiresFile: true },
 ]
 
+const MUNICIPAL_ITEMS = [
+  {
+    emoji: '🏛️',
+    label: 'إتمام الأعمال (البلدية)',
+    numberField: 'work_completion_number' as const,
+    dateField: 'work_completion_date' as const,
+    filePrefix: 'work-completion',
+    filePathField: 'work_completion_file_path' as const,
+    fileNameField: 'work_completion_file_name' as const,
+    requiresFile: false,
+  },
+  {
+    emoji: '✅',
+    label: 'إخلاء الطرف (البلدية)',
+    numberField: 'clearance_number' as const,
+    dateField: 'clearance_date' as const,
+    filePrefix: 'clearance',
+    filePathField: 'clearance_file_path' as const,
+    fileNameField: 'clearance_file_name' as const,
+    requiresFile: true,
+  },
+]
+
 export default function CloseProjectPage() {
   const params = useParams()
   const router = useRouter()
@@ -49,6 +73,10 @@ export default function CloseProjectPage() {
   const [closing, setClosing] = useState(false)
   const [reopening, setReopening] = useState(false)
 
+  const [workCompletionNumber, setWorkCompletionNumber] = useState('')
+  const [workCompletionDate, setWorkCompletionDate] = useState('')
+  const [clearanceNumber, setClearanceNumber] = useState('')
+  const [clearanceDate, setClearanceDate] = useState('')
   const [partialNumber, setPartialNumber] = useState('')
   const [partialDate, setPartialDate] = useState('')
   const [partialAmount, setPartialAmount] = useState('')
@@ -64,6 +92,10 @@ export default function CloseProjectPage() {
     const { project: p } = await fetchCloseProject(tenant.id, projectId)
     setProject(p)
     const c = p.closure
+    setWorkCompletionNumber(c?.work_completion_number || '')
+    setWorkCompletionDate(c?.work_completion_date || '')
+    setClearanceNumber(c?.clearance_number || '')
+    setClearanceDate(c?.clearance_date || '')
     setPartialNumber(c?.partial_invoice_number || '')
     setPartialDate(c?.partial_invoice_date || '')
     setPartialAmount(c?.partial_invoice_amount != null ? String(c.partial_invoice_amount) : '')
@@ -137,11 +169,39 @@ export default function CloseProjectPage() {
     setSaving(false)
   }
 
+  async function handleUploadMunicipal(
+    prefix: string,
+    filePathField: keyof ProjectClosure,
+    fileNameField: keyof ProjectClosure,
+    dateField: keyof ProjectClosure,
+    file: File,
+  ) {
+    if (!tenant || !canEdit) return
+    setSaving(true)
+    try {
+      const { path, name } = await uploadClosureFile(tenant.id, projectId, file, prefix)
+      await updateProjectClosure(tenant.id, projectId, {
+        [filePathField]: path,
+        [fileNameField]: name,
+        [dateField]: closure?.[dateField as keyof ProjectClosure] || todayStr(),
+      } as Partial<ProjectClosure>)
+      toast.success('تم رفع المرفق')
+      await reload()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل الرفع')
+    }
+    setSaving(false)
+  }
+
   async function handleSaveInvoices() {
     if (!tenant || !canEdit) return
     setSaving(true)
     try {
       await updateProjectClosure(tenant.id, projectId, {
+        work_completion_number: workCompletionNumber.trim() || null,
+        work_completion_date: workCompletionDate || null,
+        clearance_number: clearanceNumber.trim() || null,
+        clearance_date: clearanceDate || null,
         partial_invoice_number: partialSkipped ? null : (partialNumber.trim() || null),
         partial_invoice_date: partialSkipped ? null : (partialDate || null),
         partial_invoice_amount: partialSkipped ? null : (partialAmount ? Number(partialAmount) : null),
@@ -218,12 +278,23 @@ export default function CloseProjectPage() {
   const closure = project.closure
   const readOnly = closure?.closure_status === 'closed'
   const blockers = project.blockers
-  const hasBlockers = (blockers?.openTasks || 0) > 0 || (blockers?.openNcr || 0) > 0 || (blockers?.missingDocs?.length || 0) > 0
+  const hasHardBlockers = hasClosureHardBlockers(blockers)
+  const docWarnings = blockers?.missingDocs || []
 
   function procedureDone(item: typeof PROCEDURE_ITEMS[number]): boolean {
     const date = closure?.[item.dateField]
     if (!date) return false
     if (item.requiresFile) return !!closure?.completion_certificate_file_path
+    return true
+  }
+
+  function municipalDone(item: typeof MUNICIPAL_ITEMS[number]): boolean {
+    const c = closure
+    if (!c) return false
+    const num = c[item.numberField]?.trim()
+    const date = c[item.dateField]
+    if (!num || !date) return false
+    if (item.requiresFile) return !!c[item.filePathField]
     return true
   }
 
@@ -251,9 +322,9 @@ export default function CloseProjectPage() {
             </button>
             <button
               onClick={handleApproveClosure}
-              disabled={closing || !project.closureProgress?.isComplete || hasBlockers}
+              disabled={closing || !project.closureProgress?.isComplete || hasHardBlockers}
               className="btn btn-primary"
-              style={{ fontSize: '0.78rem', background: project.closureProgress?.isComplete && !hasBlockers ? '#0ea77b' : '#9ca3af' }}
+              style={{ fontSize: '0.78rem', background: project.closureProgress?.isComplete && !hasHardBlockers ? '#0ea77b' : '#9ca3af' }}
             >
               <CheckCircle2 style={{ width: '14px', height: '14px' }} />
               {closing ? 'جاري الإغلاق...' : 'اعتماد الإغلاق'}
@@ -262,17 +333,12 @@ export default function CloseProjectPage() {
         )}
       </div>
 
-      {hasBlockers && (
+      {hasHardBlockers && (
         <div className="card" style={{ padding: '16px 20px', background: '#fef2f2', border: '1px solid #fecaca' }}>
           <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#c81e1e', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <AlertTriangle style={{ width: '16px', height: '16px' }} /> موانع الإغلاق
           </div>
           <ul style={{ margin: 0, paddingRight: '18px', fontSize: '0.82rem', color: '#991b1b' }}>
-            {(blockers?.missingDocs?.length || 0) > 0 && (
-              <li>مرفقات ناقصة: {formatMissingClosureDocs(blockers!.missingDocs)} —{' '}
-                <Link href="/projects/monitoring" style={{ color: '#1a56db' }}>لوحة المتابعة</Link>
-              </li>
-            )}
             {(blockers?.openTasks || 0) > 0 && (
               <li>{blockers!.openTasks} مهمة مفتوحة —{' '}
                 <Link href="/projects/tasks" style={{ color: '#1a56db' }}>المهام</Link>
@@ -284,6 +350,18 @@ export default function CloseProjectPage() {
               </li>
             )}
           </ul>
+        </div>
+      )}
+
+      {docWarnings.length > 0 && (
+        <div className="card" style={{ padding: '16px 20px', background: '#fffbeb', border: '1px solid #fcd34d' }}>
+          <div style={{ fontWeight: 700, fontSize: '0.875rem', color: '#92400e', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertTriangle style={{ width: '16px', height: '16px' }} /> تنبيهات وثائق (لا تمنع الإغلاق)
+          </div>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#78350f' }}>
+            مرفقات مقترحة ناقصة: {formatMissingClosureDocs(docWarnings)} — يمكن رفعها من{' '}
+            <Link href="/projects/monitoring" style={{ color: '#1a56db' }}>لوحة المتابعة</Link>
+          </p>
         </div>
       )}
 
@@ -337,6 +415,80 @@ export default function CloseProjectPage() {
                     )}
                     {item.requiresFile && closure?.completion_certificate_file_name && (
                       <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>📎 {closure.completion_certificate_file_name}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          {MUNICIPAL_ITEMS.map(item => {
+            const done = municipalDone(item)
+            const numVal = item.numberField === 'work_completion_number' ? workCompletionNumber : clearanceNumber
+            const dateVal = item.numberField === 'work_completion_number' ? workCompletionDate : clearanceDate
+            const setNum = item.numberField === 'work_completion_number' ? setWorkCompletionNumber : setClearanceNumber
+            const setDate = item.numberField === 'work_completion_number' ? setWorkCompletionDate : setClearanceDate
+            const fileName = closure?.[item.fileNameField]
+            return (
+              <div key={item.numberField} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 14px', flexWrap: 'wrap',
+                borderRadius: '10px', background: done ? '#ecfdf5' : '#f9fafb', border: `1px solid ${done ? '#86efac' : '#e5e7eb'}`,
+              }}>
+                <span style={{ fontSize: '1.1rem', marginTop: '2px' }}>{item.emoji}</span>
+                <div style={{ flex: 1, minWidth: '240px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px' }}>{item.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {canEdit && !readOnly ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!dateVal && !!numVal.trim()}
+                          disabled={saving}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              if (!dateVal) setDate(todayStr())
+                            } else {
+                              setDate('')
+                            }
+                          }}
+                        />
+                        تم
+                      </label>
+                    ) : (
+                      <span style={{ fontSize: '0.78rem', color: done ? '#0ea77b' : '#9ca3af', fontWeight: 700 }}>
+                        {done ? '✓ مكتمل' : '—'}
+                      </span>
+                    )}
+                    <input
+                      value={numVal}
+                      onChange={e => setNum(e.target.value)}
+                      disabled={!canEdit || readOnly}
+                      className="input"
+                      dir="ltr"
+                      placeholder="الرقم"
+                      style={{ width: 'auto', minWidth: '120px', fontSize: '0.78rem', padding: '6px 10px' }}
+                    />
+                    <input
+                      type="date"
+                      value={dateVal}
+                      onChange={e => setDate(e.target.value)}
+                      disabled={!canEdit || readOnly || saving}
+                      className="input"
+                      dir="ltr"
+                      style={{ width: 'auto', minWidth: '150px', fontSize: '0.78rem', padding: '6px 10px' }}
+                    />
+                    {canEdit && !readOnly && (
+                      <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b' }}>
+                        <Upload style={{ width: '14px', height: '14px' }} /> رفع مرفق
+                        <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style={{ display: 'none' }}
+                          onChange={e => {
+                            const f = e.target.files?.[0]
+                            if (f) handleUploadMunicipal(item.filePrefix, item.filePathField, item.fileNameField, item.dateField, f)
+                          }} />
+                      </label>
+                    )}
+                    {fileName && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>📎 {fileName}</span>
                     )}
                   </div>
                 </div>
@@ -405,7 +557,7 @@ export default function CloseProjectPage() {
             borderRadius: '10px', background: !hasBlockers ? '#ecfdf5' : '#f9fafb', border: `1px solid ${!hasBlockers ? '#86efac' : '#e5e7eb'}`,
           }}>
             <span style={{ fontSize: '1.1rem' }}>🔒</span>
-            <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>بوابات: مهام + NCR + مرفقات</span>
+            <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600 }}>بوابات: مهام + NCR</span>
             <span style={{ fontSize: '0.78rem', color: !hasBlockers ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
               {!hasBlockers ? '✓ مكتمل' : '⛔ محظور'}
             </span>
@@ -422,7 +574,7 @@ export default function CloseProjectPage() {
       {canEdit && !readOnly && (
         <div>
           <button onClick={handleSaveInvoices} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b', fontSize: '0.82rem' }}>
-            {saving ? 'جاري الحفظ...' : 'حفظ المستخلصات والملاحظات'}
+            {saving ? 'جاري الحفظ...' : 'حفظ البلدية والمستخلصات والملاحظات'}
           </button>
         </div>
       )}

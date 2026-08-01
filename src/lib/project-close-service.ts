@@ -34,14 +34,28 @@ export type ProjectClosure = {
   final_invoice_file_name?: string | null
   lessons_learned?: string | null
   closure_notes?: string | null
+  work_completion_number?: string | null
+  work_completion_date?: string | null
+  work_completion_file_path?: string | null
+  work_completion_file_name?: string | null
+  clearance_number?: string | null
+  clearance_date?: string | null
+  clearance_file_path?: string | null
+  clearance_file_name?: string | null
   closed_at?: string | null
   updated_at?: string | null
 }
 
 export type ClosureBlockers = {
+  /** تحذيرات وثائق — لا تمنع الإغلاق */
   missingDocs: string[]
   openTasks: number
   openNcr: number
+}
+
+export function hasClosureHardBlockers(blockers?: ClosureBlockers | null): boolean {
+  if (!blockers) return false
+  return blockers.openTasks > 0 || blockers.openNcr > 0
 }
 
 export type CloseProject = {
@@ -92,7 +106,6 @@ async function attachClosureProgress(
       ...p,
       blockers,
       closureProgress: computeClosureProgress(p.closure, {
-        docsComplete: blockers.missingDocs.length === 0,
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
       }),
@@ -161,6 +174,44 @@ export async function ensureProjectClosure(tenantId: string, projectId: number) 
   return data as ProjectClosure
 }
 
+/** نقل بيانات إتمام الأعمال/إخلاء الطرف من التخطيط (مرة واحدة) */
+async function syncLegacyMunicipalFromPlanning(
+  tenantId: string,
+  projectId: number,
+  closure: ProjectClosure,
+): Promise<ProjectClosure> {
+  const needsWork = !closure.work_completion_date && !closure.work_completion_number
+  const needsClearance = !closure.clearance_date && !closure.clearance_number
+  if (!needsWork && !needsClearance) return closure
+
+  const { data: planning } = await supabase
+    .from('project_planning')
+    .select('work_completion_number, work_completion_file_path, work_completion_file_name, clearance_number, clearance_file_path, clearance_file_name')
+    .eq('tenant_id', tenantId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+
+  if (!planning) return closure
+
+  const patch: Partial<ProjectClosure> = {}
+  if (needsWork && (planning.work_completion_number || planning.work_completion_file_path)) {
+    patch.work_completion_number = planning.work_completion_number
+    patch.work_completion_file_path = planning.work_completion_file_path
+    patch.work_completion_file_name = planning.work_completion_file_name
+    if (planning.work_completion_number) patch.work_completion_date = new Date().toISOString().slice(0, 10)
+  }
+  if (needsClearance && (planning.clearance_number || planning.clearance_file_path)) {
+    patch.clearance_number = planning.clearance_number
+    patch.clearance_file_path = planning.clearance_file_path
+    patch.clearance_file_name = planning.clearance_file_name
+    if (planning.clearance_number) patch.clearance_date = new Date().toISOString().slice(0, 10)
+  }
+  if (!Object.keys(patch).length) return closure
+
+  await updateProjectClosure(tenantId, projectId, patch)
+  return { ...closure, ...patch }
+}
+
 export async function fetchCloseProject(tenantId: string, projectId: number) {
   const { data: project, error } = await supabase
     .from('projects')
@@ -180,7 +231,8 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
     project.status = statusForPhase('5_CLOSE')
   }
 
-  const closure = await ensureProjectClosure(tenantId, projectId)
+  let closure = await ensureProjectClosure(tenantId, projectId)
+  closure = await syncLegacyMunicipalFromPlanning(tenantId, projectId, closure)
   const blockers = await fetchClosureBlockers(tenantId, projectId)
 
   return {
@@ -189,7 +241,6 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
       closure,
       blockers,
       closureProgress: computeClosureProgress(closure, {
-        docsComplete: blockers.missingDocs.length === 0,
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
       }),
@@ -229,9 +280,6 @@ export async function approveProjectClosure(tenantId: string, projectId: number)
   }
 
   const blockers: string[] = []
-  if (project.blockers?.missingDocs.length) {
-    blockers.push(`مرفقات ناقصة: ${project.blockers.missingDocs.join('، ')}`)
-  }
   if ((project.blockers?.openTasks || 0) > 0) {
     blockers.push(`${project.blockers!.openTasks} مهمة مفتوحة`)
   }

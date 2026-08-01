@@ -8,7 +8,7 @@ export type ClosureProgress = {
   isComplete: boolean
 }
 
-export const CLOSURE_SECTIONS = 6
+export const CLOSURE_SECTIONS = 8
 
 function invoicesComplete(closure: ProjectClosure): boolean {
   const finalOk = !!(closure.final_invoice_number?.trim() && closure.final_invoice_date)
@@ -20,7 +20,6 @@ function invoicesComplete(closure: ProjectClosure): boolean {
 export function computeClosureProgress(
   closure: ProjectClosure | null | undefined,
   opts: {
-    docsComplete?: boolean
     tasksComplete?: boolean
     ncrClear?: boolean
   },
@@ -37,8 +36,10 @@ export function computeClosureProgress(
     !!closure.gis_mapping_date,
     !!closure.client_handover_date,
     !!closure.completion_certificate_date && !!closure.completion_certificate_file_path,
+    !!(closure.work_completion_date && closure.work_completion_number?.trim()),
+    !!(closure.clearance_date && closure.clearance_number?.trim() && closure.clearance_file_path),
     invoicesComplete(closure),
-    opts.docsComplete !== false && opts.tasksComplete !== false && opts.ncrClear !== false,
+    opts.tasksComplete !== false && opts.ncrClear !== false,
   ]
   const completed = checks.filter(Boolean).length
   const percent = Math.round((completed / CLOSURE_SECTIONS) * 100)

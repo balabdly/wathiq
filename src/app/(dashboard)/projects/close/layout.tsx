@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { useStore } from '@/hooks/useStore'
-import { fetchCloseProjects, type CloseProject } from '@/lib/project-close-service'
+import { fetchCloseProjects, hasClosureHardBlockers, type CloseProject } from '@/lib/project-close-service'
 import { CloseContext, type CloseContextValue } from './CloseContext'
 
 export default function CloseLayout({ children }: { children: React.ReactNode }) {
@@ -22,10 +22,7 @@ export default function CloseLayout({ children }: { children: React.ReactNode })
     setKpis({
       total: list.length,
       ready: list.filter(p => p.closureProgress?.isComplete).length,
-      blocked: list.filter(p => {
-        const b = p.blockers
-        return (b?.openTasks || 0) > 0 || (b?.openNcr || 0) > 0 || (b?.missingDocs?.length || 0) > 0
-      }).length,
+      blocked: list.filter(p => hasClosureHardBlockers(p.blockers)).length,
     })
   }, [tenant?.id, activeBranch?.id])
 

@@ -7,12 +7,8 @@ import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-plannin
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
-function Divider() {
-  return <hr style={{ border: 'none', borderTop: '2px solid #e5e7eb', margin: '20px 0' }} />
-}
-
-function FileField({ label, fileName, filePath, onUpload }: {
-  label: string; fileName?: string | null; filePath?: string | null
+function FileField({ label, fileName, onUpload }: {
+  label: string; fileName?: string | null
   onUpload: (file: File) => Promise<void>
 }) {
   return (
@@ -40,8 +36,6 @@ export default function PermitTabPage() {
     permit_number: planning?.permit_number || '',
     permit_start: planning?.permit_start || '',
     permit_end: planning?.permit_end || '',
-    work_completion_number: planning?.work_completion_number || '',
-    clearance_number: planning?.clearance_number || '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -51,8 +45,6 @@ export default function PermitTabPage() {
       permit_number: planning.permit_number || '',
       permit_start: planning.permit_start || '',
       permit_end: planning.permit_end || '',
-      work_completion_number: planning.work_completion_number || '',
-      clearance_number: planning.clearance_number || '',
     })
   }, [planning?.id, planning?.updated_at])
 
@@ -63,8 +55,6 @@ export default function PermitTabPage() {
         permit_number: form.permit_number || null,
         permit_start: form.permit_start || null,
         permit_end: form.permit_end || null,
-        work_completion_number: form.work_completion_number || null,
-        clearance_number: form.clearance_number || null,
         ...extra,
       })
       await reload()
@@ -85,6 +75,9 @@ export default function PermitTabPage() {
       <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <FileText style={{ width: '17px', height: '17px', color: '#1a56db' }} /> تصريح البلدية
       </h3>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '14px' }}>
+        إتمام الأعمال وإخلاء الطرف يُسجّلان في مرحلة الإغلاق بعد انتهاء التنفيذ.
+      </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
         <div>
@@ -101,32 +94,8 @@ export default function PermitTabPage() {
         </div>
       </div>
       <div style={{ marginTop: '12px' }}>
-        <FileField label="مرفق التصريح" fileName={planning?.permit_file_name} filePath={planning?.permit_file_path}
+        <FileField label="مرفق التصريح" fileName={planning?.permit_file_name}
           onUpload={f => upload('permit', 'permit_file_path', 'permit_file_name', f)} />
-      </div>
-
-      <Divider />
-
-      <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px' }}>اتمام الاعمال</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
-        <div>
-          <label style={lbl}>رقم اتمام الاعمال</label>
-          <input value={form.work_completion_number} onChange={e => set('work_completion_number', e.target.value)} className="input" dir="ltr" />
-        </div>
-        <FileField label="مرفقات اتمام الاعمال" fileName={planning?.work_completion_file_name} filePath={planning?.work_completion_file_path}
-          onUpload={f => upload('completion', 'work_completion_file_path', 'work_completion_file_name', f)} />
-      </div>
-
-      <Divider />
-
-      <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px' }}>اخلاء الطرف</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '12px' }}>
-        <div>
-          <label style={lbl}>رقم اخلاء الطرف</label>
-          <input value={form.clearance_number} onChange={e => set('clearance_number', e.target.value)} className="input" dir="ltr" />
-        </div>
-        <FileField label="مرفقات اخلاء الطرف" fileName={planning?.clearance_file_name} filePath={planning?.clearance_file_path}
-          onUpload={f => upload('clearance', 'clearance_file_path', 'clearance_file_name', f)} />
       </div>
 
       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>

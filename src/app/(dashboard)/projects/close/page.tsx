@@ -70,7 +70,8 @@ export default function CloseListPage() {
               </thead>
               <tbody>
                 {paginated.map(p => {
-                  const blockerCount = (p.blockers?.openTasks || 0) + (p.blockers?.openNcr || 0) + (p.blockers?.missingDocs?.length || 0)
+                  const blockerCount = (p.blockers?.openTasks || 0) + (p.blockers?.openNcr || 0)
+                  const warningCount = p.blockers?.missingDocs?.length || 0
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '10px 12px', minWidth: '120px' }}>
@@ -86,6 +87,8 @@ export default function CloseListPage() {
                       <td style={{ padding: '10px 12px' }}>
                         {blockerCount > 0 ? (
                           <span style={{ fontSize: '0.72rem', color: '#c81e1e', fontWeight: 700 }}>{blockerCount} مانع</span>
+                        ) : warningCount > 0 ? (
+                          <span style={{ fontSize: '0.72rem', color: '#e6820a', fontWeight: 600 }}>{warningCount} تنبيه</span>
                         ) : (
                           <span style={{ fontSize: '0.72rem', color: '#0ea77b' }}>—</span>
                         )}
