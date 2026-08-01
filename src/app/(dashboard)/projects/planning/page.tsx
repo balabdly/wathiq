@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Search, Eye, ArrowRightCircle, ArrowLeftCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectToInitiation } from '@/lib/project-initiation-service'
@@ -124,10 +124,10 @@ export default function PlanningListPage() {
                             onClick={() => handleReturnToInitiation(p.id, p.name)}
                             disabled={returning === p.id}
                             className="btn btn-ghost"
-                            style={{ padding: '6px 10px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
+                            style={{ padding: '6px 8px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
                             title="إرجاع لمرحلة البدء"
                           >
-                            <ArrowRight style={{ width: '16px', height: '16px' }} />
+                            <ArrowRightCircle style={{ width: '14px', height: '14px' }} />
                           </button>
                         )}
                         {canEdit && (
@@ -136,14 +136,14 @@ export default function PlanningListPage() {
                             disabled={advancing === p.id}
                             className="btn btn-ghost"
                             style={{
-                              padding: '6px 10px',
+                              padding: '6px 8px',
                               color: p.planningProgress?.isComplete ? '#0ea77b' : '#9ca3af',
                               border: `1px solid ${p.planningProgress?.isComplete ? '#86efac' : '#e5e7eb'}`,
                               opacity: advancing === p.id ? 0.6 : 1,
                             }}
                             title={p.planningProgress?.isComplete ? 'الانتقال لمرحلة التنفيذ' : 'أكمل التخطيط أولاً'}
                           >
-                            <ArrowLeft style={{ width: '16px', height: '16px' }} />
+                            <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                           </button>
                         )}
                         {canEdit && (

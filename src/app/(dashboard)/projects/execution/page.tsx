@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, ArrowRight, ArrowLeft, Users } from 'lucide-react'
+import { Search, Eye, ArrowRightCircle, ArrowLeftCircle, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectPlanning } from '@/lib/project-planning-service'
@@ -138,10 +138,10 @@ export default function ExecutionListPage() {
                             onClick={() => handleReturnToPlanning(p.id, p.name)}
                             disabled={returning === p.id}
                             className="btn btn-ghost"
-                            style={{ padding: '6px 10px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
+                            style={{ padding: '6px 8px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
                             title="إرجاع لمرحلة التخطيط"
                           >
-                            <ArrowRight style={{ width: '16px', height: '16px' }} />
+                            <ArrowRightCircle style={{ width: '14px', height: '14px' }} />
                           </button>
                         )}
                         {canEdit && p.pmo_phase === '3_EXEC' && (
@@ -150,14 +150,14 @@ export default function ExecutionListPage() {
                             disabled={advancing === p.id}
                             className="btn btn-ghost"
                             style={{
-                              padding: '6px 10px',
+                              padding: '6px 8px',
                               color: (p.progress ?? 0) >= 100 ? '#0ea77b' : '#9ca3af',
                               border: `1px solid ${(p.progress ?? 0) >= 100 ? '#86efac' : '#e5e7eb'}`,
                               opacity: advancing === p.id ? 0.6 : 1,
                             }}
                             title={(p.progress ?? 0) >= 100 ? 'الانتقال لمرحلة الإغلاق' : 'يجب إكمال نسبة الإنجاز 100%'}
                           >
-                            <ArrowLeft style={{ width: '16px', height: '16px' }} />
+                            <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                           </button>
                         )}
                       </div>

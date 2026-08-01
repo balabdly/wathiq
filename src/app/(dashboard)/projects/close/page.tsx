@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Eye, Undo2 } from 'lucide-react'
+import { Search, Eye, ArrowRightCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useStore } from '@/hooks/useStore'
 import { reopenProjectToExecution } from '@/lib/project-close-service'
@@ -105,10 +105,10 @@ export default function CloseListPage() {
                               onClick={() => handleReturnToExecution(p.id, p.name)}
                               disabled={returning === p.id}
                               className="btn btn-ghost"
-                              style={{ padding: '6px 10px', color: '#e6820a', border: '1px solid #fcd34d', opacity: returning === p.id ? 0.6 : 1 }}
+                              style={{ padding: '6px 8px', color: '#c81e1e', border: '1px solid #fecaca', opacity: returning === p.id ? 0.6 : 1 }}
                               title="إرجاع لمرحلة التنفيذ"
                             >
-                              <Undo2 style={{ width: '16px', height: '16px' }} />
+                              <ArrowRightCircle style={{ width: '14px', height: '14px' }} />
                             </button>
                           )}
                         </div>
