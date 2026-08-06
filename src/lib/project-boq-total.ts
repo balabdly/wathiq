@@ -64,7 +64,7 @@ export async function computeBoqGrandTotal(
 ): Promise<number> {
   if (frameworkPriceByCode) {
     const frameworkMap = buildFrameworkMap(
-      [...frameworkPriceByCode.entries()].map(([item_code, unit_price]) => ({
+      Array.from(frameworkPriceByCode.entries()).map(([item_code, unit_price]) => ({
         item_code,
         unit: 'EA',
         unit_price,
