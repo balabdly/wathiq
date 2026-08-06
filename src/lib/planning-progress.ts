@@ -7,7 +7,7 @@ export type PlanningProgress = {
   label: string
   isComplete: boolean
   /** مقايسة الأعمال جاهزة (المواد اختيارية) */
-  boqReady: boolean
+  boqReady?: boolean
 }
 
 export const PLANNING_SECTIONS = 7
