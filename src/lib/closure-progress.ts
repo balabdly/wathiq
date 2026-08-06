@@ -10,11 +10,20 @@ export type ClosureProgress = {
 
 export const CLOSURE_SECTIONS = 8
 
-function invoicesComplete(closure: ProjectClosure): boolean {
-  const finalOk = !!(closure.final_invoice_number?.trim() && closure.final_invoice_date)
+function invoicesComplete(closure: ProjectClosure, extractsMatchWorksBoq = true): boolean {
+  const finalOk = !!(
+    closure.final_invoice_number?.trim()
+    && closure.final_invoice_date
+    && Number(closure.final_invoice_amount) > 0
+  )
   if (!finalOk) return false
+  if (!extractsMatchWorksBoq) return false
   if (closure.partial_invoice_skipped) return true
-  return !!(closure.partial_invoice_number?.trim() && closure.partial_invoice_date)
+  return !!(
+    closure.partial_invoice_number?.trim()
+    && closure.partial_invoice_date
+    && Number(closure.partial_invoice_amount) > 0
+  )
 }
 
 export function computeClosureProgress(
@@ -22,6 +31,7 @@ export function computeClosureProgress(
   opts: {
     tasksComplete?: boolean
     ncrClear?: boolean
+    extractsMatchWorksBoq?: boolean
   },
 ): ClosureProgress {
   if (!closure) {
@@ -38,7 +48,7 @@ export function computeClosureProgress(
     !!closure.completion_certificate_date && !!closure.completion_certificate_file_path,
     !!(closure.work_completion_date && closure.work_completion_number?.trim()),
     !!(closure.clearance_date && closure.clearance_number?.trim() && closure.clearance_file_path),
-    invoicesComplete(closure),
+    invoicesComplete(closure, opts.extractsMatchWorksBoq !== false),
     opts.tasksComplete !== false && opts.ncrClear !== false,
   ]
   const completed = checks.filter(Boolean).length

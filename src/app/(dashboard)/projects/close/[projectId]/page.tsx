@@ -17,6 +17,11 @@ import {
 } from '@/lib/project-close-service'
 import { formatMissingClosureDocs } from '@/lib/project-tasks'
 import PlanningProgressBadge from '@/components/projects/PlanningProgressBadge'
+import {
+  closureExtractAmountsReady,
+  sumClosureExtractAmounts,
+  closureExtractsMatchWorksBoq,
+} from '@/lib/project-boq-total'
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
@@ -195,6 +200,23 @@ export default function CloseProjectPage() {
 
   async function handleSaveInvoices() {
     if (!tenant || !canEdit) return
+    const mergedClosure = {
+      partial_invoice_skipped: partialSkipped,
+      partial_invoice_amount: partialSkipped ? null : (partialAmount ? Number(partialAmount) : null),
+      final_invoice_amount: finalAmount ? Number(finalAmount) : null,
+    }
+    const worksTotal = project?.worksBoqTotal ?? 0
+    if (closureExtractAmountsReady(mergedClosure)) {
+      const extractSum = sumClosureExtractAmounts(mergedClosure)
+      if (worksTotal <= 0) {
+        toast.error('لا توجد مقايسة أعمال معتمدة — أكمل مقايسة الأعمال في التخطيط')
+        return
+      }
+      if (!closureExtractsMatchWorksBoq(extractSum, worksTotal)) {
+        toast.error(`مجموع المستخلصات (${extractSum.toLocaleString('ar-SA')} ر.س) يجب أن يطابق مقايسة الأعمال (${worksTotal.toLocaleString('ar-SA')} ر.س)`)
+        return
+      }
+    }
     setSaving(true)
     try {
       await updateProjectClosure(tenant.id, projectId, {
@@ -297,6 +319,19 @@ export default function CloseProjectPage() {
     if (item.requiresFile) return !!c[item.filePathField]
     return true
   }
+
+  const worksBoqTotal = project.worksBoqTotal ?? 0
+  const liveExtractSum = sumClosureExtractAmounts({
+    partial_invoice_skipped: partialSkipped,
+    partial_invoice_amount: partialSkipped ? null : (partialAmount ? Number(partialAmount) : null),
+    final_invoice_amount: finalAmount ? Number(finalAmount) : null,
+  })
+  const extractsReady = closureExtractAmountsReady({
+    partial_invoice_skipped: partialSkipped,
+    partial_invoice_amount: partialSkipped ? null : (partialAmount ? Number(partialAmount) : null),
+    final_invoice_amount: finalAmount ? Number(finalAmount) : null,
+  })
+  const extractsMatch = !extractsReady || closureExtractsMatchWorksBoq(liveExtractSum, worksBoqTotal)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -499,6 +534,28 @@ export default function CloseProjectPage() {
           <div style={{ borderTop: '2px solid #e5e7eb', margin: '8px 0' }} />
 
           <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#374151', marginBottom: '4px' }}>🧾 المستخلصات</div>
+
+          <div style={{
+            padding: '10px 14px', borderRadius: '10px', marginBottom: '8px',
+            background: worksBoqTotal > 0 ? '#eff6ff' : '#fffbeb',
+            border: `1px solid ${worksBoqTotal > 0 ? '#bfdbfe' : '#fcd34d'}`,
+            fontSize: '0.78rem',
+          }}>
+            <div style={{ fontWeight: 700, color: worksBoqTotal > 0 ? '#1a56db' : '#92400e', marginBottom: '4px' }}>
+              مقايسة الأعمال (المرجع)
+            </div>
+            <div style={{ color: '#374151' }}>
+              {worksBoqTotal > 0
+                ? `${worksBoqTotal.toLocaleString('ar-SA')} ر.س`
+                : 'لا توجد مقايسة أعمال — أكملها من مرحلة التخطيط'}
+            </div>
+            {extractsReady && (
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1', color: extractsMatch ? '#0ea77b' : '#c81e1e', fontWeight: 700 }}>
+                مجموع المستخلصات: {liveExtractSum.toLocaleString('ar-SA')} ر.س
+                {extractsMatch ? ' ✓ مطابق' : ` — يجب أن يساوي ${worksBoqTotal.toLocaleString('ar-SA')} ر.س`}
+              </div>
+            )}
+          </div>
 
           {!partialSkipped && (
             <div style={{ padding: '12px 14px', borderRadius: '10px', background: '#f9fafb', border: '1px solid #e5e7eb' }}>

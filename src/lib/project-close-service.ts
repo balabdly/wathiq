@@ -6,6 +6,13 @@ import { isTaskOpen } from '@/lib/project-tasks'
 import { statusForPhase } from '@/lib/sec-workflow'
 import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
 import type { BillingModel } from '@/lib/sec-workflow'
+import {
+  closureExtractAmountsReady,
+  computeWorksBoqTotal,
+  sumClosureExtractAmounts,
+  validateClosureExtractTotals,
+  closureExtractsMatchWorksBoq,
+} from '@/lib/project-boq-total'
 
 export type ProjectClosure = {
   id: number
@@ -78,6 +85,9 @@ export type CloseProject = {
 
 export type CloseProjectDetail = CloseProject & {
   description?: string | null
+  worksBoqTotal?: number
+  closureExtractSum?: number
+  extractsMatchWorksBoq?: boolean
 }
 
 export async function fetchClosureBlockers(tenantId: string, projectId: number): Promise<ClosureBlockers> {
@@ -102,12 +112,20 @@ async function attachClosureProgress(
 ): Promise<CloseProject[]> {
   return Promise.all(projects.map(async p => {
     const blockers = await fetchClosureBlockers(tenantId, p.id)
+    const closure = p.closure
+    let extractsMatchWorksBoq = true
+    if (closure && closureExtractAmountsReady(closure)) {
+      const worksTotal = await computeWorksBoqTotal(tenantId, p.id)
+      const extractSum = sumClosureExtractAmounts(closure)
+      extractsMatchWorksBoq = closureExtractsMatchWorksBoq(extractSum, worksTotal)
+    }
     return {
       ...p,
       blockers,
       closureProgress: computeClosureProgress(p.closure, {
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
+        extractsMatchWorksBoq,
       }),
     }
   }))
@@ -234,15 +252,23 @@ export async function fetchCloseProject(tenantId: string, projectId: number) {
   let closure = await ensureProjectClosure(tenantId, projectId)
   closure = await syncLegacyMunicipalFromPlanning(tenantId, projectId, closure)
   const blockers = await fetchClosureBlockers(tenantId, projectId)
+  const worksBoqTotal = await computeWorksBoqTotal(tenantId, projectId)
+  const closureExtractSum = sumClosureExtractAmounts(closure)
+  const extractsMatchWorksBoq = !closureExtractAmountsReady(closure)
+    || closureExtractsMatchWorksBoq(closureExtractSum, worksBoqTotal)
 
   return {
     project: {
       ...project,
       closure,
       blockers,
+      worksBoqTotal,
+      closureExtractSum,
+      extractsMatchWorksBoq,
       closureProgress: computeClosureProgress(closure, {
         tasksComplete: blockers.openTasks === 0,
         ncrClear: blockers.openNcr === 0,
+        extractsMatchWorksBoq,
       }),
     } as CloseProjectDetail,
   }
@@ -255,13 +281,25 @@ export async function updateProjectClosure(
 ) {
   const { data: row } = await supabase
     .from('project_closure')
-    .select('closure_status')
+    .select('*')
     .eq('tenant_id', tenantId)
     .eq('project_id', projectId)
     .maybeSingle()
 
   if (row?.closure_status === 'closed') {
     throw new Error('المشروع مُغلق — للعرض فقط')
+  }
+
+  const merged = { ...(row as ProjectClosure | null), ...patch } as ProjectClosure
+  const touchesExtractAmounts = [
+    'partial_invoice_amount',
+    'final_invoice_amount',
+    'partial_invoice_skipped',
+  ].some(k => k in patch)
+
+  if (touchesExtractAmounts) {
+    const validation = await validateClosureExtractTotals(tenantId, projectId, merged)
+    if (!validation.ok) throw new Error(validation.message)
   }
 
   await ensureProjectClosure(tenantId, projectId)
@@ -288,6 +326,11 @@ export async function approveProjectClosure(tenantId: string, projectId: number)
   }
   if (blockers.length) {
     throw new Error(blockers.join(' — '))
+  }
+
+  const validation = await validateClosureExtractTotals(tenantId, projectId, project.closure!)
+  if (!validation.ok) {
+    throw new Error(validation.message)
   }
 
   const now = new Date().toISOString()
