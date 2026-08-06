@@ -512,12 +512,31 @@ export async function submitDailyLog(
   authorId: number | null | undefined,
   notes: string,
   files: File[],
-  progressPercent?: number | null,
+  /** نسبة إنجاز اليوم (زيادة) — ليس التراكمي */
+  progressIncrement?: number | null,
 ) {
   const logDate = todayDateStr()
-  const progress = progressPercent != null
-    ? Math.min(100, Math.max(0, Math.round(progressPercent)))
-    : null
+  let increment: number | null = null
+  let newTotal: number | null = null
+
+  if (progressIncrement != null && !Number.isNaN(progressIncrement)) {
+    increment = Math.round(progressIncrement)
+    if (increment <= 0) {
+      throw new Error('نسبة إنجاز اليوم يجب أن تكون أكبر من صفر')
+    }
+    const { data: proj, error: pErr } = await supabase
+      .from('projects')
+      .select('progress')
+      .eq('tenant_id', tenantId)
+      .eq('id', projectId)
+      .single()
+    if (pErr) throw pErr
+    const current = Math.round(Number(proj?.progress ?? 0))
+    if (current + increment > 100) {
+      throw new Error(`لا يمكن تجاوز 100% — المتبقي ${100 - current}% فقط`)
+    }
+    newTotal = current + increment
+  }
 
   const { data: logRow, error } = await supabase.from('team_project_logs').insert({
     tenant_id: tenantId,
@@ -527,13 +546,13 @@ export async function submitDailyLog(
     author_name: authorName,
     notes: notes.trim() || null,
     log_date: logDate,
-    progress_percent: progress,
+    progress_percent: increment,
   }).select('id').single()
 
   if (error || !logRow) throw error || new Error('فشل الحفظ')
 
-  if (progress != null) {
-    await updateProjectProgress(tenantId, projectId, progress)
+  if (newTotal != null) {
+    await updateProjectProgress(tenantId, projectId, newTotal)
   }
 
   for (const file of files) {

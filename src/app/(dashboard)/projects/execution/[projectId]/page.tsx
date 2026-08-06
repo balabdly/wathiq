@@ -53,7 +53,7 @@ export default function ExecutionProjectPage() {
   const [loadingLogs, setLoadingLogs] = useState(true)
   const [assigning, setAssigning] = useState(false)
   const [notes, setNotes] = useState('')
-  const [progressPct, setProgressPct] = useState(0)
+  const [todayIncrement, setTodayIncrement] = useState<number | ''>('')
   const [files, setFiles] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [reopening, setReopening] = useState(false)
@@ -69,7 +69,6 @@ export default function ExecutionProjectPage() {
     if (!tenant) return
     const { project: p } = await fetchExecutionProject(tenant.id, projectId)
     setProject(p)
-    setProgressPct(p?.progress ?? 0)
     setSelectedTeamId('')
     if (activeBranch) {
       const t = await fetchActiveTeams(tenant.id, activeBranch.id)
@@ -165,9 +164,17 @@ export default function ExecutionProjectPage() {
       toast.error('اكتب ملاحظة أو أرفق ملفاً')
       return
     }
-    if (Number.isNaN(progressPct) || progressPct < 0 || progressPct > 100) {
-      toast.error('أدخل نسبة إنجاز بين 0 و 100')
-      return
+    const currentProgress = project.progress ?? 0
+    const increment = todayIncrement === '' ? null : Number(todayIncrement)
+    if (increment != null) {
+      if (Number.isNaN(increment) || increment <= 0) {
+        toast.error('أدخل نسبة إنجاز اليوم أكبر من صفر')
+        return
+      }
+      if (currentProgress + increment > 100) {
+        toast.error(`لا يمكن تجاوز 100% — المتبقي ${100 - currentProgress}% فقط`)
+        return
+      }
     }
     setSaving(true)
     try {
@@ -179,11 +186,12 @@ export default function ExecutionProjectPage() {
         currentUser?.hr_employee_id,
         notes,
         files,
-        progressPct,
+        increment,
       )
       toast.success('تم تسجيل إنجاز اليوم ✅')
       setNotes('')
       setFiles([])
+      setTodayIncrement('')
       await reload()
       await reloadLogs()
     } catch (e: unknown) {
@@ -475,20 +483,21 @@ export default function ExecutionProjectPage() {
               )}
               <div style={{ marginBottom: '10px' }}>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#92400e', marginBottom: '6px' }}>
-                  نسبة الإنجاز التراكمية (%)
+                  إنجاز اليوم (%)
                 </label>
                 <input
                   type="number"
-                  min={0}
-                  max={100}
-                  value={progressPct}
-                  onChange={e => setProgressPct(Number(e.target.value))}
+                  min={1}
+                  max={Math.max(1, 100 - (project.progress ?? 0))}
+                  value={todayIncrement}
+                  onChange={e => setTodayIncrement(e.target.value === '' ? '' : Number(e.target.value))}
                   className="input"
                   style={{ width: '120px', fontWeight: 700 }}
                   dir="ltr"
+                  placeholder="0"
                 />
                 <span style={{ fontSize: '0.72rem', color: '#92400e', marginRight: '8px' }}>
-                  حدّدها حسب ما تم إنجازه حتى اليوم
+                  يُضاف على التراكمي ({project.progress ?? 0}%) — المتبقي {100 - (project.progress ?? 0)}%
                 </span>
               </div>
               <textarea
@@ -535,7 +544,7 @@ function DailyLogEntry({ log }: { log: TeamProjectLog & { team_name?: string; te
           )}
           {log.progress_percent != null && (
             <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#fffbeb', color: '#e6820a' }}>
-              {Number(log.progress_percent)}%
+              +{Number(log.progress_percent)}%
             </span>
           )}
           <span style={{ fontSize: '0.75rem', color: 'var(--text3)' }}>👤 {log.author_name}</span>
