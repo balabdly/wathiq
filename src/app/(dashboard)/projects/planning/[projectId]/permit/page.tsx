@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Save, Upload, Paperclip, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { isDateRangeInvalid, formatDate } from '@/lib/utils'
 import { useProjectPlanning } from '../ProjectPlanningContext'
 import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
 
@@ -30,7 +31,7 @@ function FileField({ label, fileName, onUpload }: {
 }
 
 export default function PermitTabPage() {
-  const { tenantId, projectId, planning, reload } = useProjectPlanning()
+  const { tenantId, projectId, planning, project, reload } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     permit_number: planning?.permit_number || '',
@@ -38,6 +39,51 @@ export default function PermitTabPage() {
     permit_end: planning?.permit_end || '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const projectStart = project.start_date || ''
+  const permitBeforeProject = !!(projectStart && form.permit_start && form.permit_start < projectStart)
+  const permitEndBeforeProject = !!(projectStart && form.permit_end && form.permit_end < projectStart)
+  const permitRangeInvalid = isDateRangeInvalid(form.permit_start, form.permit_end)
+  const datesInvalid = permitBeforeProject || permitEndBeforeProject || permitRangeInvalid
+
+  function setPermitStart(v: string) {
+    if (projectStart && v && v < projectStart) {
+      toast.error('تاريخ بداية التصريح لا يمكن أن يسبق تاريخ بدء المشروع')
+      return
+    }
+    setForm(f => {
+      const next = { ...f, permit_start: v }
+      if (v && f.permit_end && v > f.permit_end) next.permit_end = ''
+      return next
+    })
+  }
+
+  function setPermitEnd(v: string) {
+    const min = form.permit_start || projectStart
+    if (min && v && v < min) {
+      toast.error(form.permit_start
+        ? 'تاريخ نهاية التصريح يجب أن يكون بعد تاريخ بدايته'
+        : 'تاريخ نهاية التصريح لا يمكن أن يسبق تاريخ بدء المشروع')
+      return
+    }
+    set('permit_end', v)
+  }
+
+  function validateDates(): boolean {
+    if (permitBeforeProject) {
+      toast.error('تاريخ بداية التصريح لا يمكن أن يسبق تاريخ بدء المشروع')
+      return false
+    }
+    if (permitEndBeforeProject) {
+      toast.error('تاريخ نهاية التصريح لا يمكن أن يسبق تاريخ بدء المشروع')
+      return false
+    }
+    if (permitRangeInvalid) {
+      toast.error('تاريخ بداية التصريح يجب أن يكون قبل تاريخ نهايته')
+      return false
+    }
+    return true
+  }
 
   useEffect(() => {
     if (!planning) return
@@ -49,6 +95,7 @@ export default function PermitTabPage() {
   }, [planning?.id, planning?.updated_at])
 
   async function save(extra?: Record<string, string | null>) {
+    if (!validateDates()) return
     setSaving(true)
     try {
       await updateProjectPlanning(tenantId, projectId, {
@@ -77,6 +124,11 @@ export default function PermitTabPage() {
       </h3>
       <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginBottom: '14px' }}>
         إتمام الأعمال وإخلاء الطرف يُسجّلان في مرحلة الإغلاق بعد انتهاء التنفيذ.
+        {projectStart && (
+          <span style={{ display: 'block', marginTop: '4px' }}>
+            تاريخ بدء المشروع: <strong>{formatDate(projectStart)}</strong> — لا يُقبل تصريح يسبق هذا التاريخ.
+          </span>
+        )}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
@@ -86,20 +138,40 @@ export default function PermitTabPage() {
         </div>
         <div>
           <label style={lbl}>تاريخ البداية</label>
-          <input type="date" value={form.permit_start} onChange={e => set('permit_start', e.target.value)} className="input" />
+          <input
+            type="date"
+            value={form.permit_start}
+            min={projectStart || undefined}
+            max={form.permit_end || undefined}
+            onChange={e => setPermitStart(e.target.value)}
+            className="input"
+          />
         </div>
         <div>
           <label style={lbl}>تاريخ النهاية</label>
-          <input type="date" value={form.permit_end} onChange={e => set('permit_end', e.target.value)} className="input" />
+          <input
+            type="date"
+            value={form.permit_end}
+            min={form.permit_start || projectStart || undefined}
+            onChange={e => setPermitEnd(e.target.value)}
+            className="input"
+          />
         </div>
       </div>
+      {datesInvalid && (
+        <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#c81e1e', fontWeight: 600 }}>
+          {permitBeforeProject || permitEndBeforeProject
+            ? 'تواريخ التصريح لا يمكن أن تسبق تاريخ بدء المشروع'
+            : 'تاريخ بداية التصريح يجب أن يكون قبل تاريخ نهايته'}
+        </p>
+      )}
       <div style={{ marginTop: '12px' }}>
         <FileField label="مرفق التصريح" fileName={planning?.permit_file_name}
           onUpload={f => upload('permit', 'permit_file_path', 'permit_file_name', f)} />
       </div>
 
       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => save()} disabled={saving} className="btn btn-primary">
+        <button onClick={() => save()} disabled={saving || datesInvalid} className="btn btn-primary">
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
       </div>
