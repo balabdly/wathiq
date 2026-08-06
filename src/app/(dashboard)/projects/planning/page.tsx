@@ -52,7 +52,7 @@ export default function PlanningListPage() {
   async function handleAdvanceToExecution(projectId: number, name: string, isComplete: boolean) {
     if (!tenantId) return
     if (!isComplete) {
-      toast.error('أكمل جميع أقسام التخطيط قبل الانتقال للتنفيذ')
+      toast.error('احفظ مقايسة الأعمال أولاً — باقي الأقسام يمكن تجاوزها')
       return
     }
     if (!confirm(`اعتماد تخطيط «${name}» ونقله إلى مرحلة التنفيذ؟`)) return
@@ -141,7 +141,7 @@ export default function PlanningListPage() {
                               border: `1px solid ${p.planningProgress?.isComplete ? '#86efac' : '#e5e7eb'}`,
                               opacity: advancing === p.id ? 0.6 : 1,
                             }}
-                            title={p.planningProgress?.isComplete ? 'الانتقال لمرحلة التنفيذ' : 'أكمل التخطيط أولاً'}
+                            title={p.planningProgress?.isComplete ? 'الانتقال لمرحلة التنفيذ' : 'احفظ مقايسة الأعمال أولاً'}
                           >
                             <ArrowLeftCircle style={{ width: '14px', height: '14px' }} />
                           </button>

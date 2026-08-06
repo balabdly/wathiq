@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { statusForPhase } from '@/lib/sec-workflow'
 import { updateProjectPmoPhase } from '@/lib/project-phase-history-service'
-import { fetchBoqVersions, fetchProjectBoqCategoryCounts, projectHasActiveBoqLines, ensureReservationByNumber, formatSupabaseError } from '@/lib/pmc-service'
+import { fetchBoqVersions, fetchProjectBoqCategoryCounts, ensureReservationByNumber, formatSupabaseError } from '@/lib/pmc-service'
 import { resolveMaterialReservationId } from '@/lib/planning-materials-warehouse'
 import { computePlanningProgress, type PlanningProgress, type BoqCategoryCounts } from '@/lib/planning-progress'
 import { buildTenantStoragePath } from '@/lib/storage-path'
@@ -58,6 +58,12 @@ export type ProjectPlanning = {
   quality_plan_file_path?: string | null
   quality_plan_file_name?: string | null
   cost_plan_notes?: string | null
+  permit_skipped?: boolean | null
+  timeline_skipped?: boolean | null
+  safe_work_skipped?: boolean | null
+  risks_skipped?: boolean | null
+  quality_skipped?: boolean | null
+  costs_skipped?: boolean | null
   boq_revision_snapshot?: BoqRevisionSnapshotLine[] | null
   boq_revision_approval_file_path?: string | null
   boq_revision_approval_file_name?: string | null
@@ -297,6 +303,21 @@ export async function updateProjectPlanning(tenantId: string, projectId: number,
   if (error) throw error
 }
 
+export type PlanningSkippableSection = 'permit' | 'timeline' | 'safe_work' | 'risks' | 'quality' | 'costs'
+
+const PLANNING_SKIP_FIELDS: Record<PlanningSkippableSection, keyof ProjectPlanning> = {
+  permit: 'permit_skipped',
+  timeline: 'timeline_skipped',
+  safe_work: 'safe_work_skipped',
+  risks: 'risks_skipped',
+  quality: 'quality_skipped',
+  costs: 'costs_skipped',
+}
+
+export async function skipPlanningSection(tenantId: string, projectId: number, section: PlanningSkippableSection) {
+  await updateProjectPlanning(tenantId, projectId, { [PLANNING_SKIP_FIELDS[section]]: true } as Partial<ProjectPlanning>)
+}
+
 export async function closeProjectPlanning(tenantId: string, projectId: number) {
   const [{ data: planning }, { data: costRows }] = await Promise.all([
     supabase.from('project_planning').select('*').eq('tenant_id', tenantId).eq('project_id', projectId).maybeSingle(),
@@ -304,12 +325,10 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
   ])
 
   const costComplete = (costRows || []).some(r => Number(r.planned_amount) > 0)
-  const hasBoq = await projectHasActiveBoqLines(tenantId, projectId)
-  if (!hasBoq) {
-    throw new Error('يجب حفظ المقايسة (مواد + أعمال) قبل اعتماد التخطيط')
-  }
-
   const boqCounts = await fetchProjectBoqCategoryCounts(tenantId, projectId)
+  if (boqCounts.works <= 0) {
+    throw new Error('يجب حفظ مقايسة الأعمال قبل اعتماد التخطيط — مقايسة المواد اختيارية')
+  }
 
   const isRevision = !!(planning as ProjectPlanning | null)?.cost_plan_notes?.includes('[تعديل مقايسة]')
 
@@ -319,7 +338,7 @@ export async function closeProjectPlanning(tenantId: string, projectId: number) 
 
   const progress = computePlanningProgress(planning as ProjectPlanning | null, costComplete ? 1 : 0, 0, boqCounts)
   if (!progress.isComplete) {
-    throw new Error(`يجب إكمال جميع أقسام التخطيط (${progress.completed}/${progress.total}) قبل الاعتماد`)
+    throw new Error('يجب حفظ مقايسة الأعمال قبل اعتماد التخطيط')
   }
 
   const closePatch: Partial<ProjectPlanning> = { planning_status: 'closed' }

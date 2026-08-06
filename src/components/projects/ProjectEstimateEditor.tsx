@@ -682,8 +682,8 @@ export default function ProjectEstimateEditor({
     if (!tenant || readOnly) return
     const validMats = materialLines.filter(l => l.description.trim())
     const validWorks = workLines.filter(l => l.description.trim() && l.qty > 0)
-    if (!validMats.some(l => l.qty > 0) && !validWorks.length) {
-      toast.error('أضف مواد أو أعمال على الأقل')
+    if (!validWorks.length) {
+      toast.error('يجب إضافة بنود أعمال — مقايسة المواد اختيارية')
       return
     }
     if (totalDiffersFromLines && !totalNote.trim()) {

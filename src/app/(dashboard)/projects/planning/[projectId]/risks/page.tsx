@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react'
 import { Save, ShieldAlert, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-import { updateProjectPlanning } from '@/lib/project-planning-service'
+import { updateProjectPlanning, skipPlanningSection } from '@/lib/project-planning-service'
+import PlanningSectionSkip from '@/components/projects/PlanningSectionSkip'
 
 export default function RisksTabPage() {
-  const { tenantId, projectId, planning, reload } = useProjectPlanning()
+  const { tenantId, projectId, planning, reload, readOnly } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
 
@@ -28,12 +29,26 @@ export default function RisksTabPage() {
     setSaving(false)
   }
 
+  async function handleSkip() {
+    try {
+      await skipPlanningSection(tenantId, projectId, 'risks')
+      await reload()
+      toast.success('تم تجاوز تقييم المخاطر')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التجاوز')
+    }
+  }
+
+  const skipped = !!planning?.risks_skipped
+
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <PlanningSectionSkip sectionLabel="تقييم المخاطر" skipped={skipped} readOnly={readOnly} onSkip={handleSkip} />
       <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <ShieldAlert style={{ width: '17px', height: '17px', color: '#c81e1e' }} /> تقييم المخاطر
       </h3>
 
+      <div style={{ opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
       <label style={{
         display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer',
         padding: '14px 16px', background: done ? '#fef2f2' : 'var(--bg2)', borderRadius: '10px',
@@ -49,9 +64,10 @@ export default function RisksTabPage() {
       </p>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-        <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#c81e1e' }}>
+        <button onClick={handleSave} disabled={saving || skipped || readOnly} className="btn btn-primary" style={{ background: '#c81e1e' }}>
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
+      </div>
       </div>
     </div>
   )

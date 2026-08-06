@@ -3,12 +3,13 @@ import { useState } from 'react'
 import { Save, Upload, Paperclip, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
+import { updateProjectPlanning, uploadPlanningFile, skipPlanningSection } from '@/lib/project-planning-service'
+import PlanningSectionSkip from '@/components/projects/PlanningSectionSkip'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
 export default function QualityTabPage() {
-  const { tenantId, projectId, planning, reload } = useProjectPlanning()
+  const { tenantId, projectId, planning, reload, readOnly } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [content, setContent] = useState(planning?.quality_plan_content || '')
 
@@ -30,11 +31,25 @@ export default function QualityTabPage() {
     setSaving(false)
   }
 
+  async function handleSkip() {
+    try {
+      await skipPlanningSection(tenantId, projectId, 'quality')
+      await reload()
+      toast.success('تم تجاوز خطط الجودة')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التجاوز')
+    }
+  }
+
+  const skipped = !!planning?.quality_skipped
+
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <PlanningSectionSkip sectionLabel="خطط الجودة" skipped={skipped} readOnly={readOnly} onSkip={handleSkip} />
       <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <CheckCircle2 style={{ width: '17px', height: '17px', color: '#0ea77b' }} /> خطط الجودة
       </h3>
+      <div style={{ opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
       <div style={{ marginBottom: '14px' }}>
         <label style={lbl}>خطة الجودة</label>
         <textarea value={content} onChange={e => setContent(e.target.value)} className="input" rows={8} placeholder="معايير الجودة، نقاط الفحص، ITP..." />
@@ -54,9 +69,10 @@ export default function QualityTabPage() {
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => handleSave()} disabled={saving} className="btn btn-primary" style={{ background: '#0ea77b' }}>
+        <button onClick={() => handleSave()} disabled={saving || skipped || readOnly} className="btn btn-primary" style={{ background: '#0ea77b' }}>
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
+      </div>
       </div>
     </div>
   )

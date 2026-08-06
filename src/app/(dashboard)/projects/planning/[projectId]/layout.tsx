@@ -94,10 +94,14 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
 
   async function handleClosePlanning() {
     if (!tenant || !progress?.isComplete) {
-      toast.error('أكمل جميع أقسام التخطيط قبل الاعتماد')
+      toast.error('احفظ مقايسة الأعمال أولاً — باقي الأقسام يمكن تجاوزها')
       return
     }
-    if (!confirm('اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟')) return
+    const optionalPending = progress.completed < progress.total
+    const msg = optionalPending
+      ? 'اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟\n\nملاحظة: بعض أقسام التخطيط لم تُكتمل أو لم تُتجاوز — على مسؤوليتك.'
+      : 'اعتماد التخطيط ونقل المشروع إلى سلة التنفيذ؟'
+    if (!confirm(msg)) return
     try {
       await closeProjectPlanning(tenant.id, projectId)
       toast.success('تم اعتماد التخطيط')
@@ -179,7 +183,7 @@ export default function ProjectPlanningLayout({ children }: { children: React.Re
           )}
           {!readOnly && planning?.planning_status === 'active' && progress && !progress.isComplete && (
             <span style={{ marginRight: 'auto', fontSize: '0.78rem', color: '#e6820a', fontWeight: 600 }}>
-              أكمل {progress.completed}/{progress.total} أقسام للاعتماد
+              احفظ مقايسة الأعمال للاعتماد — باقي الأقسام اختيارية أو قابلة للتجاوز ({progress.completed}/{progress.total})
             </span>
           )}
         </div>

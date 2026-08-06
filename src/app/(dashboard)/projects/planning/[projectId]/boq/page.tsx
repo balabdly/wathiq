@@ -114,8 +114,8 @@ function PlanningBoqPageInner() {
           </h3>
           <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text3)' }}>
             {hasEstimate
-              ? 'المواد في الأعلى (بنفسجي) — خط فاصل — الأعمال في الأسفل (أزرق) — كما في نموذج الكهرباء'
-              : 'أضف بنود المواد والأعمال ثم اضغط «حفظ المقايسة» — بعد الحفظ يظهر زر التعديل'}
+              ? 'المواد (اختياري) في الأعلى — الأعمال (إلزامي) في الأسفل — كما في نموذج الكهرباء'
+              : 'أضف بنود الأعمال (إلزامي) — المواد اختيارية — ثم «حفظ المقايسة»'}
           </p>
         </div>
         {viewOnly && !readOnly && hasEstimate && (
@@ -136,7 +136,7 @@ function PlanningBoqPageInner() {
           padding: '12px 16px', borderRadius: '10px', marginBottom: '16px',
           background: '#ecfdf5', border: '1px solid #86efac', fontSize: '0.82rem', color: '#065f46',
         }}>
-          <strong>إنشاء مقايسة جديدة</strong> — أضف المواد (أعلى) والأعمال (أسفل)، ثم احفظ. بعد الحفظ ستتمكن من العرض والتعديل.
+          <strong>إنشاء مقايسة جديدة</strong> — أضف بنود الأعمال (إلزامي)، والمواد اختيارية إن وُجدت، ثم احفظ.
         </div>
       )}
 

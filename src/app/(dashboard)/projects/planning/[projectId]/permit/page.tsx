@@ -4,7 +4,8 @@ import { Save, Upload, Paperclip, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isDateRangeInvalid, formatDate } from '@/lib/utils'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-import { updateProjectPlanning, uploadPlanningFile } from '@/lib/project-planning-service'
+import { updateProjectPlanning, uploadPlanningFile, skipPlanningSection } from '@/lib/project-planning-service'
+import PlanningSectionSkip from '@/components/projects/PlanningSectionSkip'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
@@ -31,7 +32,7 @@ function FileField({ label, fileName, onUpload }: {
 }
 
 export default function PermitTabPage() {
-  const { tenantId, projectId, planning, project, reload } = useProjectPlanning()
+  const { tenantId, projectId, planning, project, reload, readOnly } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     permit_number: planning?.permit_number || '',
@@ -117,8 +118,21 @@ export default function PermitTabPage() {
     await save({ [fieldPath]: path, [fieldName]: name })
   }
 
+  async function handleSkip() {
+    try {
+      await skipPlanningSection(tenantId, projectId, 'permit')
+      await reload()
+      toast.success('تم تجاوز تصريح البلدية')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التجاوز')
+    }
+  }
+
+  const skipped = !!planning?.permit_skipped
+
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <PlanningSectionSkip sectionLabel="تصريح البلدية" skipped={skipped} readOnly={readOnly} onSkip={handleSkip} />
       <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <FileText style={{ width: '17px', height: '17px', color: '#1a56db' }} /> تصريح البلدية
       </h3>
@@ -131,7 +145,7 @@ export default function PermitTabPage() {
         )}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
         <div>
           <label style={lbl}>رقم التصريح</label>
           <input value={form.permit_number} onChange={e => set('permit_number', e.target.value)} className="input" dir="ltr" />
@@ -165,13 +179,13 @@ export default function PermitTabPage() {
             : 'تاريخ بداية التصريح يجب أن يكون قبل تاريخ نهايته'}
         </p>
       )}
-      <div style={{ marginTop: '12px' }}>
+      <div style={{ marginTop: '12px', opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
         <FileField label="مرفق التصريح" fileName={planning?.permit_file_name}
           onUpload={f => upload('permit', 'permit_file_path', 'permit_file_name', f)} />
       </div>
 
       <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => save()} disabled={saving || datesInvalid} className="btn btn-primary">
+        <button onClick={() => save()} disabled={saving || skipped || readOnly || datesInvalid} className="btn btn-primary">
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ'}
         </button>
       </div>

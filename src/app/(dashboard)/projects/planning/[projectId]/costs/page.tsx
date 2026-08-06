@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { Eye, Pencil, Plus, Save, Trash2, X, DollarSign } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-import { fetchCostItems, saveCostItems, updateProjectPlanning, type PlanningCostItem } from '@/lib/project-planning-service'
+import { fetchCostItems, saveCostItems, updateProjectPlanning, skipPlanningSection, type PlanningCostItem } from '@/lib/project-planning-service'
+import PlanningSectionSkip from '@/components/projects/PlanningSectionSkip'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
@@ -22,7 +23,7 @@ function emptyItem(projectId: number): PlanningCostItem {
 }
 
 export default function CostsTabPage() {
-  const { tenantId, projectId, project, planning, reload } = useProjectPlanning()
+  const { tenantId, projectId, project, planning, reload, readOnly } = useProjectPlanning()
   const [items, setItems] = useState<PlanningCostItem[]>([])
   const [notes, setNotes] = useState(planning?.cost_plan_notes || '')
   const [loading, setLoading] = useState(true)
@@ -69,8 +70,22 @@ export default function CostsTabPage() {
     setEditOpen(true)
   }
 
+  async function handleSkip() {
+    try {
+      await skipPlanningSection(tenantId, projectId, 'costs')
+      await reload()
+      toast.success('تم تجاوز خطة التكاليف')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التجاوز')
+    }
+  }
+
+  const skipped = !!planning?.costs_skipped
+
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <PlanningSectionSkip sectionLabel="خطة التكاليف" skipped={skipped} readOnly={readOnly} onSkip={handleSkip} />
+      <div style={{ opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
         <h3 style={{ fontWeight: 700, fontSize: '0.95rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <DollarSign style={{ width: '17px', height: '17px', color: '#0891b2' }} /> خطة التكاليف
@@ -133,6 +148,7 @@ export default function CostsTabPage() {
           </div>
         </>
       )}
+      </div>
 
       {viewOpen && (
         <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && setViewOpen(false)}>

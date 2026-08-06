@@ -3,13 +3,14 @@ import { useState, useEffect } from 'react'
 import { Save, Calendar } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useProjectPlanning } from '../ProjectPlanningContext'
-import { updateProjectPlanning } from '@/lib/project-planning-service'
+import { updateProjectPlanning, skipPlanningSection } from '@/lib/project-planning-service'
+import PlanningSectionSkip from '@/components/projects/PlanningSectionSkip'
 import { formatDate } from '@/lib/utils'
 
 const lbl: React.CSSProperties = { display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '6px' }
 
 export default function TimelineTabPage() {
-  const { tenantId, projectId, project, planning, reload } = useProjectPlanning()
+  const { tenantId, projectId, project, planning, reload, readOnly } = useProjectPlanning()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     timeline_start: planning?.timeline_start || project.start_date || '',
@@ -47,8 +48,21 @@ export default function TimelineTabPage() {
     setSaving(false)
   }
 
+  async function handleSkip() {
+    try {
+      await skipPlanningSection(tenantId, projectId, 'timeline')
+      await reload()
+      toast.success('تم تجاوز الخطة الزمنية')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'فشل التجاوز')
+    }
+  }
+
+  const skipped = !!planning?.timeline_skipped
+
   return (
     <div className="card" style={{ padding: '20px' }}>
+      <PlanningSectionSkip sectionLabel="الخطة الزمنية" skipped={skipped} readOnly={readOnly} onSkip={handleSkip} />
       <h3 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Calendar style={{ width: '17px', height: '17px', color: '#7c3aed' }} /> الخطة الزمنية
       </h3>
@@ -56,6 +70,7 @@ export default function TimelineTabPage() {
         التواريخ مأخوذة من مرحلة بدء المشروع — يمكن تعديلها عند تأخر إصدار التصريح
       </p>
 
+      <div style={{ opacity: skipped ? 0.55 : 1, pointerEvents: skipped ? 'none' : 'auto' }}>
       <div style={{ background: '#f5f3ff', borderRadius: '10px', padding: '14px', marginBottom: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', fontSize: '0.82rem' }}>
         <div><span style={{ color: 'var(--text3)' }}>بداية المشروع:</span> <strong>{project.start_date ? formatDate(project.start_date) : '—'}</strong></div>
         <div><span style={{ color: 'var(--text3)' }}>نهاية متوقعة:</span> <strong>{project.end_date ? formatDate(project.end_date) : '—'}</strong></div>
@@ -88,9 +103,10 @@ export default function TimelineTabPage() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ background: '#7c3aed' }}>
+        <button onClick={handleSave} disabled={saving || skipped || readOnly} className="btn btn-primary" style={{ background: '#7c3aed' }}>
           <Save style={{ width: '14px', height: '14px' }} /> {saving ? 'جاري الحفظ...' : 'حفظ الخطة'}
         </button>
+      </div>
       </div>
     </div>
   )
