@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { X, Save, Upload, Paperclip, Trash2 } from 'lucide-react'
 import { recordInitialProjectPhase } from '@/lib/project-phase-history-service'
 import toast from 'react-hot-toast'
+import { isDateRangeInvalid } from '@/lib/utils'
 import type { ProjectTypeRow } from './ManageProjectTypesModal'
 import type { InitiationProject } from '@/app/(dashboard)/projects/initiation/InitiationContext'
 
@@ -53,6 +54,24 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
     description: project?.description || '',
   })
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const dateRangeInvalid = isDateRangeInvalid(form.start_date, form.end_date)
+
+  function setStartDate(v: string) {
+    setForm(f => {
+      const next = { ...f, start_date: v }
+      if (v && f.end_date && v > f.end_date) next.end_date = ''
+      return next
+    })
+  }
+
+  function setEndDate(v: string) {
+    if (v && form.start_date && v < form.start_date) {
+      toast.error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية')
+      return
+    }
+    set('end_date', v)
+  }
 
   useEffect(() => {
     supabase.from('finance_clients')
@@ -134,6 +153,10 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
     if (!form.name.trim()) { toast.error('اسم المشروع مطلوب'); return }
     if (!form.client_id) { toast.error('العميل إلزامي — اختر عميلاً من القائمة'); return }
     if (!form.type) { toast.error('نوع المشروع مطلوب'); return }
+    if (dateRangeInvalid) {
+      toast.error('تاريخ البداية يجب أن يكون قبل تاريخ النهاية')
+      return
+    }
     setSaving(true)
 
     const payload: Record<string, unknown> = {
@@ -292,13 +315,30 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
                 <label style={lbl}>تاريخ البداية</label>
-                <input type="date" value={form.start_date} onChange={e => set('start_date', e.target.value)} className="input" />
+                <input
+                  type="date"
+                  value={form.start_date}
+                  max={form.end_date || undefined}
+                  onChange={e => setStartDate(e.target.value)}
+                  className="input"
+                />
               </div>
               <div>
                 <label style={lbl}>تاريخ النهاية</label>
-                <input type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} className="input" />
+                <input
+                  type="date"
+                  value={form.end_date}
+                  min={form.start_date || undefined}
+                  onChange={e => setEndDate(e.target.value)}
+                  className="input"
+                />
               </div>
             </div>
+            {dateRangeInvalid && (
+              <p style={{ margin: '-6px 0 0', fontSize: '0.75rem', color: '#c81e1e', fontWeight: 600 }}>
+                تاريخ البداية يجب أن يكون قبل تاريخ النهاية
+              </p>
+            )}
 
             <div>
               <label style={lbl}>وصف المشروع</label>
@@ -341,7 +381,7 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
-            <button type="submit" disabled={saving || uploading || !form.client_id || clients.length === 0} className="btn btn-primary">
+            <button type="submit" disabled={saving || uploading || !form.client_id || clients.length === 0 || dateRangeInvalid} className="btn btn-primary">
               <Save style={{ width: '14px', height: '14px' }} />
               {saving || uploading ? 'جاري الحفظ...' : 'حفظ'}
             </button>

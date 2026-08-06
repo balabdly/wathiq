@@ -27,6 +27,12 @@ export function isOverdue(date?: string | null): boolean {
   return days !== null && days < 0
 }
 
+/** yyyy-mm-dd — true إذا كان start بعد end */
+export function isDateRangeInvalid(start?: string | null, end?: string | null): boolean {
+  if (!start || !end) return false
+  return start > end
+}
+
 export const PROJECT_STAGES = [
   { id:'s1', name:'استلام المشروع',     icon:'📋', pct:5,  requiresAttach:false },
   { id:'s2', name:'كشف مبدئي',         icon:'🔍', pct:15, requiresAttach:false },
