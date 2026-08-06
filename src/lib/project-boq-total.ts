@@ -56,25 +56,6 @@ export async function computeWorksBoqTotalWithFramework(
   return total
 }
 
-/** @deprecated استخدم computeWorksBoqTotal */
-export async function computeBoqGrandTotal(
-  tenantId: string,
-  projectId: number,
-  frameworkPriceByCode?: Map<string, number>,
-): Promise<number> {
-  if (frameworkPriceByCode) {
-    const frameworkMap = buildFrameworkMap(
-      Array.from(frameworkPriceByCode.entries()).map(([item_code, unit_price]) => ({
-        item_code,
-        unit: 'EA',
-        unit_price,
-      })),
-    )
-    return computeWorksBoqTotalWithFramework(tenantId, projectId, frameworkMap)
-  }
-  return computeWorksBoqTotal(tenantId, projectId)
-}
-
 export function sumClosureExtractAmounts(closure: ClosureExtractFields): number {
   const partial = closure.partial_invoice_skipped ? 0 : (Number(closure.partial_invoice_amount) || 0)
   const final = Number(closure.final_invoice_amount) || 0
