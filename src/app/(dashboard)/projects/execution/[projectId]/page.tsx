@@ -368,13 +368,19 @@ export default function ExecutionProjectPage() {
                 />
               )}
 
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <button
                   type="button"
                   onClick={handleAssignTeam}
                   disabled={assigning || !selectedTeamId}
                   className="btn btn-primary"
-                  style={{ fontSize: '0.78rem', flex: 1, opacity: !selectedTeamId ? 0.55 : 1, background: hasActiveTeam ? '#e6820a' : undefined }}
+                  style={{
+                    fontSize: '0.78rem',
+                    padding: '8px 14px',
+                    opacity: !selectedTeamId ? 0.55 : 1,
+                    background: hasActiveTeam ? '#e6820a' : undefined,
+                    whiteSpace: 'nowrap',
+                  }}
                 >
                   <ArrowLeft style={{ width: '14px', height: '14px' }} />
                   {assigning ? 'جاري...' : hasActiveTeam ? 'إسناد للفريق التالي' : 'اعتماد الفريق'}
@@ -385,7 +391,7 @@ export default function ExecutionProjectPage() {
                     onClick={handleClearTeam}
                     disabled={assigning}
                     className="btn btn-ghost"
-                    style={{ fontSize: '0.78rem', color: '#c81e1e', border: '1px solid #fecaca' }}
+                    style={{ fontSize: '0.78rem', padding: '8px 14px', color: '#c81e1e', border: '1px solid #fecaca', whiteSpace: 'nowrap' }}
                   >
                     إلغاء الإسناد
                   </button>
