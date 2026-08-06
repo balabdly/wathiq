@@ -4,6 +4,63 @@ import { lookupSecCodeMap } from '@/lib/sec-item-code'
 import { ensureDefaultSecContract, fetchFrameworkBoqItems } from '@/lib/sec-workflow-service'
 
 export const CLOSURE_AMOUNT_TOLERANCE = 0.01
+export const PARTIAL_EXTRACT_RATIO = 0.5
+
+function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100
+}
+
+/** مبلغ تنبؤي للمستخلص الجزئي — 50% من مقايسة الأعمال */
+export function suggestPartialExtractAmount(worksBoqTotal: number): number {
+  if (worksBoqTotal <= 0) return 0
+  return roundMoney(worksBoqTotal * PARTIAL_EXTRACT_RATIO)
+}
+
+/** مبلغ تنبؤي للمستخلص النهائي — المتبقي أو 100% عند تخطي الجزئي */
+export function suggestFinalExtractAmount(
+  worksBoqTotal: number,
+  opts: { partialSkipped: boolean; partialAmount?: number | null },
+): number {
+  if (worksBoqTotal <= 0) return 0
+  if (opts.partialSkipped) return roundMoney(worksBoqTotal)
+  const partial = Number(opts.partialAmount)
+  if (Number.isFinite(partial) && partial > 0) {
+    return roundMoney(Math.max(0, worksBoqTotal - partial))
+  }
+  return suggestPartialExtractAmount(worksBoqTotal)
+}
+
+export function applyExtractAmountSuggestions(
+  worksBoqTotal: number,
+  opts: {
+    partialSkipped: boolean
+    savedPartial?: number | null
+    savedFinal?: number | null
+  },
+): { partial: string; final: string } {
+  if (worksBoqTotal <= 0) {
+    return {
+      partial: opts.savedPartial != null ? String(opts.savedPartial) : '',
+      final: opts.savedFinal != null ? String(opts.savedFinal) : '',
+    }
+  }
+
+  const partialNum = opts.savedPartial != null
+    ? opts.savedPartial
+    : (opts.partialSkipped ? null : suggestPartialExtractAmount(worksBoqTotal))
+
+  const finalNum = opts.savedFinal != null
+    ? opts.savedFinal
+    : suggestFinalExtractAmount(worksBoqTotal, {
+      partialSkipped: opts.partialSkipped,
+      partialAmount: partialNum,
+    })
+
+  return {
+    partial: partialNum != null ? String(partialNum) : '',
+    final: finalNum != null ? String(finalNum) : '',
+  }
+}
 
 export type ClosureExtractFields = {
   partial_invoice_skipped?: boolean | null

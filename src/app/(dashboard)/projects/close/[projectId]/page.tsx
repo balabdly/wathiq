@@ -21,6 +21,10 @@ import {
   closureExtractAmountsReady,
   sumClosureExtractAmounts,
   closureExtractsMatchWorksBoq,
+  applyExtractAmountSuggestions,
+  suggestPartialExtractAmount,
+  suggestFinalExtractAmount,
+  CLOSURE_AMOUNT_TOLERANCE,
 } from '@/lib/project-boq-total'
 
 function todayStr() {
@@ -103,11 +107,18 @@ export default function CloseProjectPage() {
     setClearanceDate(c?.clearance_date || '')
     setPartialNumber(c?.partial_invoice_number || '')
     setPartialDate(c?.partial_invoice_date || '')
-    setPartialAmount(c?.partial_invoice_amount != null ? String(c.partial_invoice_amount) : '')
-    setPartialSkipped(!!c?.partial_invoice_skipped)
+    const skipped = !!c?.partial_invoice_skipped
+    const worksTotal = p.worksBoqTotal ?? 0
+    const suggested = applyExtractAmountSuggestions(worksTotal, {
+      partialSkipped: skipped,
+      savedPartial: c?.partial_invoice_amount,
+      savedFinal: c?.final_invoice_amount,
+    })
+    setPartialAmount(c?.partial_invoice_amount != null ? String(c.partial_invoice_amount) : suggested.partial)
+    setPartialSkipped(skipped)
     setFinalNumber(c?.final_invoice_number || '')
     setFinalDate(c?.final_invoice_date || '')
-    setFinalAmount(c?.final_invoice_amount != null ? String(c.final_invoice_amount) : '')
+    setFinalAmount(c?.final_invoice_amount != null ? String(c.final_invoice_amount) : suggested.final)
     setLessons(c?.lessons_learned || '')
     setNotes(c?.closure_notes || '')
   }, [tenant?.id, projectId])
@@ -243,11 +254,19 @@ export default function CloseProjectPage() {
   }
 
   async function handleToggleSkipPartial(checked: boolean) {
+    const worksTotal = project?.worksBoqTotal ?? 0
     setPartialSkipped(checked)
     if (checked) {
       setPartialNumber('')
       setPartialDate('')
       setPartialAmount('')
+      if (worksTotal > 0) {
+        setFinalAmount(String(suggestFinalExtractAmount(worksTotal, { partialSkipped: true })))
+      }
+    } else if (worksTotal > 0) {
+      const partial = suggestPartialExtractAmount(worksTotal)
+      setPartialAmount(String(partial))
+      setFinalAmount(String(suggestFinalExtractAmount(worksTotal, { partialSkipped: false, partialAmount: partial })))
     }
     await patchClosure({
       partial_invoice_skipped: checked,
@@ -332,6 +351,23 @@ export default function CloseProjectPage() {
     final_invoice_amount: finalAmount ? Number(finalAmount) : null,
   })
   const extractsMatch = !extractsReady || closureExtractsMatchWorksBoq(liveExtractSum, worksBoqTotal)
+  const suggestedPartial = suggestPartialExtractAmount(worksBoqTotal)
+  const suggestedFinal = suggestFinalExtractAmount(worksBoqTotal, {
+    partialSkipped,
+    partialAmount: partialAmount ? Number(partialAmount) : null,
+  })
+
+  function handlePartialAmountChange(value: string) {
+    setPartialAmount(value)
+    if (partialSkipped || worksBoqTotal <= 0 || value === '') return
+    const partial = Number(value)
+    if (!Number.isFinite(partial) || partial <= 0) return
+    const newFinal = suggestFinalExtractAmount(worksBoqTotal, { partialSkipped: false, partialAmount: partial })
+    const oldPartial = Number(partialAmount) || suggestedPartial
+    const oldFinal = Number(finalAmount)
+    const wasAutoSplit = !finalAmount || Math.abs(oldPartial + oldFinal - worksBoqTotal) <= CLOSURE_AMOUNT_TOLERANCE
+    if (wasAutoSplit) setFinalAmount(String(newFinal))
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -563,8 +599,13 @@ export default function CloseProjectPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
                 <input value={partialNumber} onChange={e => setPartialNumber(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="رقم المستخلص" />
                 <input type="date" value={partialDate} onChange={e => setPartialDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" />
-                <input type="number" value={partialAmount} onChange={e => setPartialAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="المبلغ" dir="ltr" />
+                <input type="number" value={partialAmount} onChange={e => handlePartialAmountChange(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder={suggestedPartial > 0 ? String(suggestedPartial) : 'المبلغ'} dir="ltr" />
               </div>
+              {suggestedPartial > 0 && (
+                <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '6px' }}>
+                  التنبؤي: {suggestedPartial.toLocaleString('ar-SA')} ر.س (50%)
+                </div>
+              )}
               {canEdit && !readOnly && (
                 <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b', marginTop: '8px' }}>
                   <Upload style={{ width: '14px', height: '14px' }} /> رفع ملف الجزئي
@@ -595,8 +636,14 @@ export default function CloseProjectPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px' }}>
               <input value={finalNumber} onChange={e => setFinalNumber(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="رقم المستخلص" />
               <input type="date" value={finalDate} onChange={e => setFinalDate(e.target.value)} disabled={!canEdit || readOnly} className="input" dir="ltr" />
-              <input type="number" value={finalAmount} onChange={e => setFinalAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder="المبلغ" dir="ltr" />
+              <input type="number" value={finalAmount} onChange={e => setFinalAmount(e.target.value)} disabled={!canEdit || readOnly} className="input" placeholder={suggestedFinal > 0 ? String(suggestedFinal) : 'المبلغ'} dir="ltr" />
             </div>
+            {suggestedFinal > 0 && (
+              <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '6px' }}>
+                التنبؤي: {suggestedFinal.toLocaleString('ar-SA')} ر.س
+                {partialSkipped ? ' (100%)' : ' (المتبقي)'}
+              </div>
+            )}
             {canEdit && !readOnly && (
               <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#0ea77b', marginTop: '8px' }}>
                 <Upload style={{ width: '14px', height: '14px' }} /> رفع ملف النهائي
