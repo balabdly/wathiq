@@ -12,13 +12,25 @@ create index if not exists idx_project_consultants_tenant on project_consultants
 
 alter table project_consultants enable row level security;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies where tablename = 'project_consultants' and policyname = 'project_consultants_tenant_all'
-  ) then
-    create policy project_consultants_tenant_all on project_consultants
-      for all using (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid)
-      with check (tenant_id = (auth.jwt() ->> 'tenant_id')::uuid);
-  end if;
-end $$;
+drop policy if exists project_consultants_tenant_all on project_consultants;
+drop policy if exists project_consultants_select on project_consultants;
+drop policy if exists project_consultants_insert on project_consultants;
+drop policy if exists project_consultants_update on project_consultants;
+drop policy if exists project_consultants_delete on project_consultants;
+
+create policy project_consultants_select on project_consultants
+  for select to authenticated
+  using (wathiq_tenant_match(tenant_id::text));
+
+create policy project_consultants_insert on project_consultants
+  for insert to authenticated
+  with check (wathiq_tenant_match(tenant_id::text));
+
+create policy project_consultants_update on project_consultants
+  for update to authenticated
+  using (wathiq_tenant_match(tenant_id::text))
+  with check (wathiq_tenant_match(tenant_id::text));
+
+create policy project_consultants_delete on project_consultants
+  for delete to authenticated
+  using (wathiq_tenant_match(tenant_id::text));

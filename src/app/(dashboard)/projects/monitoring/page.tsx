@@ -853,7 +853,7 @@ export default function ProjectsPage() {
     if (!tenant || !activeBranch) return
     if (projects.length === 0) setLoading(true)
     try {
-      await cleanupLegacyMonitoringProjects(tenant.id, activeBranch.id, 2)
+      await cleanupLegacyMonitoringProjects(tenant.id, activeBranch.id)
     } catch {
       // تجاهل — قد تفشل بسبب صلاحيات RLS
     }

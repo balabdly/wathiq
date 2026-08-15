@@ -15,6 +15,8 @@ import {
   type ProjectPhaseHistoryRow,
 } from '@/lib/project-phase-history-service'
 import { formatDate, formatCurrency } from '@/lib/utils'
+import { attachmentsForPhase, categorizeMonitoringAttachment } from '@/lib/monitoring-attachments'
+import type { ProjectClosure } from '@/lib/project-close-service'
 import {
   ArrowRight, Download, FileText, Image, File, ClipboardList, HardHat, Archive, Rocket, Clock,
 } from 'lucide-react'
@@ -23,9 +25,9 @@ import type { ProjectTeamAssignment } from '@/lib/project-teams'
 import type { Project } from '@/types'
 
 type Attachment = {
-  id: number; file_name: string; file_path: string
-  file_size: number; file_type: string; category: string
-  created_at: string; public_url?: string
+  id?: number; file_name: string; file_path: string
+  file_size?: number; file_type?: string; category: string
+  created_at?: string; public_url?: string
 }
 
 const PHASE_TABS = [
@@ -45,23 +47,29 @@ const TAB_TO_LIFECYCLE: Record<Exclude<PhaseTab, 'visits'>, ProjectPhaseHistoryR
   close: 'closure',
 }
 
-function PhaseTimingBlock({ rows, lifecycle }: { rows: ProjectPhaseHistoryRow[]; lifecycle: ProjectPhaseHistoryRow['lifecycle_phase'] }) {
+function PhaseTimingBlock({ rows, lifecycle, fallbackExit }: {
+  rows: ProjectPhaseHistoryRow[]
+  lifecycle: ProjectPhaseHistoryRow['lifecycle_phase']
+  fallbackExit?: string | null
+}) {
   const matches = rows.filter(r => r.lifecycle_phase === lifecycle)
   if (!matches.length) {
     return (
       <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: '0 0 12px', padding: '8px 10px', background: '#f9fafb', borderRadius: '8px' }}>
-        لم يصل المشروع إلى هذه المرحلة بعد
+        لا توجد بيانات توقيت مسجّلة لهذه المرحلة
       </p>
     )
   }
   return (
     <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {matches.map((row, idx) => (
+      {matches.map((row, idx) => {
+        const exitAt = row.exited_at || (idx === matches.length - 1 ? fallbackExit : null)
+        return (
         <div key={`${row.lifecycle_phase}-${row.entered_at}-${idx}`} style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fafafa', fontSize: '0.78rem' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
             <span><strong>دخول:</strong> {formatDate(row.entered_at)}</span>
-            <span><strong>خروج:</strong> {row.exited_at ? formatDate(row.exited_at) : '— ما زال في المرحلة —'}</span>
-            <span><strong>المدة:</strong> {formatPhaseDuration(row.entered_at, row.exited_at)}</span>
+            <span><strong>خروج:</strong> {exitAt ? formatDate(String(exitAt).slice(0, 10)) : '— جاري —'}</span>
+            <span><strong>المدة:</strong> {formatPhaseDuration(row.entered_at, exitAt)}</span>
           </div>
           {row.synthetic && (
             <div style={{ marginTop: '4px', fontSize: '0.72rem', color: '#e6820a' }}>
@@ -69,12 +77,13 @@ function PhaseTimingBlock({ rows, lifecycle }: { rows: ProjectPhaseHistoryRow[];
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
-function fileIcon(type: string) {
+function fileIcon(type?: string) {
   if (type?.startsWith('image/')) return <Image style={{ width: '16px', height: '16px', color: '#0ea77b' }} />
   if (type?.includes('pdf')) return <FileText style={{ width: '16px', height: '16px', color: '#c81e1e' }} />
   return <File style={{ width: '16px', height: '16px', color: '#1a56db' }} />
@@ -97,7 +106,7 @@ function AttachmentsList({ items }: { items: Attachment[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       {items.map(a => (
-        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fafafa' }}>
+        <div key={a.id ?? a.file_path} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', background: '#fafafa' }}>
           {fileIcon(a.file_type)}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.file_name}</div>
@@ -132,6 +141,7 @@ export default function ProjectMonitoringDetail({
   const [boqSummary, setBoqSummary] = useState({ materials: 0, works: 0, lines: 0 })
   const [teamAssignments, setTeamAssignments] = useState<ProjectTeamAssignment[]>([])
   const [phaseHistory, setPhaseHistory] = useState<ProjectPhaseHistoryRow[]>([])
+  const [closureFiles, setClosureFiles] = useState<Attachment[]>([])
 
   useEffect(() => {
     if (!tenant) return
@@ -163,6 +173,31 @@ export default function ProjectMonitoringDetail({
     setClosure(closureRes.data)
     setTeamAssignments(assignRes)
     setPhaseHistory(historyRes)
+
+    const c = closureRes.data as ProjectClosure | null
+    if (c) {
+      const fileEntries: { category: string; path?: string | null; name?: string | null }[] = [
+        { category: 'الإغلاق — شهادة الإنجاز', path: c.completion_certificate_file_path, name: c.completion_certificate_file_name },
+        { category: 'الإغلاق — المستخلص الجزئي', path: c.partial_invoice_file_path, name: c.partial_invoice_file_name },
+        { category: 'الإغلاق — المستخلص النهائي', path: c.final_invoice_file_path, name: c.final_invoice_file_name },
+        { category: 'الإغلاق — إتمام الأعمال', path: c.work_completion_file_path, name: c.work_completion_file_name },
+        { category: 'الإغلاق — إخلاء الطرف', path: c.clearance_file_path, name: c.clearance_file_name },
+      ]
+      const signed = await Promise.all(fileEntries.filter(e => e.path).map(async e => {
+        const { data: urlData } = await supabase.storage.from('project-attachments').createSignedUrl(e.path!, 3600)
+        return {
+          file_path: e.path!,
+          file_name: e.name || e.category,
+          category: e.category,
+          file_type: 'application/pdf',
+          public_url: urlData?.signedUrl,
+        } as Attachment
+      }))
+      setClosureFiles(signed)
+    } else {
+      setClosureFiles([])
+    }
+
     setExecution({
       team: teamRes.team,
       engineer: (project as Project & { engineer?: string }).engineer,
@@ -195,19 +230,27 @@ export default function ProjectMonitoringDetail({
     responsible_consultant?: string
     client_name?: string
     description?: string
+    status?: string
   }
 
-  function filterAttachments(match: (cat: string) => boolean) {
-    return attachments.filter(a => match(a.category || ''))
-  }
+  const initiationAtt = attachmentsForPhase(attachments, 'initiation')
+  const planningAtt = attachmentsForPhase(attachments, 'planning')
+  const executionAtt = attachmentsForPhase(attachments, 'execution')
+  const closeAtt = [
+    ...attachmentsForPhase(attachments, 'close'),
+    ...closureFiles.filter(cf => !attachments.some(a => a.file_path === cf.file_path)),
+  ]
+  const otherAtt = attachments.filter(a => categorizeMonitoringAttachment(a.category) === 'other')
+  const isCompleted = p.status === 'مكتمل' || p.progress >= 100
+  const closureExit = closure?.closed_at || null
 
-  const initiationAtt = filterAttachments(c => c.startsWith('مرحلة البدء'))
-  const planningAtt = filterAttachments(c =>
-    !c.startsWith('مرحلة البدء') && (
-      c.includes('تصريح') || c.includes('جودة') || c.includes('مقايسة') || c.includes('موافقة')
-    ))
-  const executionAtt = filterAttachments(c => c.includes('تنفيذ') || c.includes('team-logs'))
-  const closeAtt = filterAttachments(c => c.includes('إغلاق') || c.includes('closure') || c.includes('مستخلص'))
+  const tabCounts: Partial<Record<PhaseTab, number>> = {
+    initiation: initiationAtt.length,
+    planning: planningAtt.length,
+    execution: executionAtt.length,
+    close: closeAtt.length,
+    visits: visits.length,
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} className="fade-in">
@@ -218,7 +261,7 @@ export default function ProjectMonitoringDetail({
         <div>
           <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{p.name}</h2>
           <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
-            {p.code || '—'} · {lifecycleForPmoLabel(p.pmo_phase)} · عرض للاطلاع فقط
+            {p.code || '—'} · {isCompleted ? 'مكتمل' : lifecycleForPmoLabel(p.pmo_phase)} · أرشيف المراحل
           </p>
         </div>
       </div>
@@ -235,6 +278,14 @@ export default function ProjectMonitoringDetail({
                 fontWeight: 600, fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px',
               }}>
               <Icon style={{ width: '14px', height: '14px' }} /> {t.label}
+              {(tabCounts[t.id] ?? 0) > 0 && (
+                <span style={{
+                  fontSize: '0.65rem', padding: '1px 6px', borderRadius: '8px',
+                  background: active ? 'rgba(255,255,255,0.25)' : '#e5e7eb', color: active ? 'white' : '#6b7280',
+                }}>
+                  {tabCounts[t.id]}
+                </span>
+              )}
             </button>
           )
         })}
@@ -360,6 +411,11 @@ export default function ProjectMonitoringDetail({
                   )}
                   <InfoRow label="سجلات يومية" value={String(execution.logCount ?? 0)} />
                   <InfoRow label="آخر سجل" value={execution.lastLogDate} />
+                  <div style={{ marginTop: '12px' }}>
+                    <Link href={`/projects/execution/${project.id}`} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+                      فتح صفحة التنفيذ (للاطلاع)
+                    </Link>
+                  </div>
                 </>
               )}
               <div style={{ marginTop: '16px' }}>
@@ -372,17 +428,36 @@ export default function ProjectMonitoringDetail({
           {tab === 'close' && (
             <>
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>مرحلة الإغلاق</h3>
-              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.close} />
+              <PhaseTimingBlock rows={phaseHistory} lifecycle={TAB_TO_LIFECYCLE.close} fallbackExit={closureExit} />
               {!closure ? (
-                <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم يُغلق المشروع بعد</p>
+                <p style={{ color: '#9ca3af', fontSize: '0.82rem' }}>لم تُسجَّل بيانات إغلاق بعد</p>
               ) : (
                 <>
-                  <InfoRow label="حالة الإغلاق" value={closure.closure_status} />
-                  <InfoRow label="تاريخ الإغلاق" value={closure.closed_at?.split('T')[0]} />
+                  <InfoRow label="حالة الإغلاق" value={closure.closure_status === 'closed' ? 'مُغلق' : 'قيد الإغلاق'} />
+                  <InfoRow label="تاريخ الإغلاق" value={closure.closed_at ? formatDate(closure.closed_at.slice(0, 10)) : undefined} />
+                  <InfoRow label="تسليم العميل" value={closure.client_handover_date ? formatDate(closure.client_handover_date) : undefined} />
+                  <InfoRow label="شهادة الإنجاز" value={closure.completion_certificate_date ? formatDate(closure.completion_certificate_date) : undefined} />
+                  <InfoRow label="إتمام الأعمال (البلدية)" value={closure.work_completion_number} />
+                  <InfoRow label="إخلاء الطرف" value={closure.clearance_number} />
+                  {!closure.partial_invoice_skipped && (
+                    <>
+                      <InfoRow label="المستخلص الجزئي" value={closure.partial_invoice_number} />
+                      <InfoRow label="مبلغ الجزئي" value={closure.partial_invoice_amount != null ? `${Number(closure.partial_invoice_amount).toLocaleString('ar-SA')} ر.س` : undefined} />
+                    </>
+                  )}
+                  <InfoRow label="المستخلص النهائي" value={closure.final_invoice_number} />
+                  <InfoRow label="مبلغ النهائي" value={closure.final_invoice_amount != null ? `${Number(closure.final_invoice_amount).toLocaleString('ar-SA')} ر.س` : undefined} />
+                  <InfoRow label="الدروس المستفادة" value={closure.lessons_learned} />
+                  <InfoRow label="ملاحظات الإغلاق" value={closure.closure_notes} />
+                  <div style={{ marginTop: '12px' }}>
+                    <Link href={`/projects/close/${project.id}`} className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>
+                      فتح صفحة الإغلاق (للاطلاع)
+                    </Link>
+                  </div>
                 </>
               )}
               <div style={{ marginTop: '16px' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px' }}>مرفقات الإغلاق</div>
+                <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px' }}>مرفقات الإغلاق ({closeAtt.length})</div>
                 <AttachmentsList items={closeAtt} />
               </div>
             </>
@@ -419,6 +494,15 @@ export default function ProjectMonitoringDetail({
                 </div>
               )}
             </>
+          )}
+
+          {otherAtt.length > 0 && tab !== 'visits' && (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed #e5e7eb' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: '8px', color: '#92400e' }}>
+                مرفقات أخرى ({otherAtt.length})
+              </div>
+              <AttachmentsList items={otherAtt} />
+            </div>
           )}
         </div>
       )}
