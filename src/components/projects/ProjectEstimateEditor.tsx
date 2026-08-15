@@ -187,6 +187,7 @@ function EstimateSectionTable({
   onSelectFramework,
   onRemove,
   onAdd,
+  onClearAll,
   onImport,
   onMaterialSecLookup,
   reservationSlot,
@@ -205,6 +206,7 @@ function EstimateSectionTable({
   onSelectFramework: (globalIdx: number, code: string) => void
   onRemove: (globalIdx: number) => void
   onAdd: () => void
+  onClearAll?: () => void
   onImport?: (kind: BoqImportKind) => void
   onMaterialSecLookup?: (globalIdx: number, query: string) => void
   reservationSlot?: React.ReactNode
@@ -232,6 +234,11 @@ function EstimateSectionTable({
             <button type="button" onClick={onAdd} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: style.titleColor, border: `1px solid ${style.headerBorder}`, background: 'white' }}>
               <Plus style={{ width: '12px', height: '12px' }} /> بند
             </button>
+            {onClearAll && lines.length > 0 && (
+              <button type="button" onClick={onClearAll} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '4px 10px', color: '#c81e1e', border: '1px solid #fecaca', background: '#fef2f2' }}>
+                <Trash2 style={{ width: '12px', height: '12px' }} /> حذف الكل
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -262,7 +269,15 @@ function EstimateSectionTable({
             </tr>
           </thead>
           <tbody>
-            {lines.map((line, localIdx) => {
+            {lines.length === 0 ? (
+              <tr>
+                <td colSpan={20} style={{ padding: '24px', textAlign: 'center', color: 'var(--text3)', fontSize: '0.82rem' }}>
+                  {category === 'MATERIAL'
+                    ? 'لا توجد مواد — اختياري. أضف بنداً أو استورد من Excel / PDF / صورة.'
+                    : 'لا توجد بنود — أضف بند أعمال.'}
+                </td>
+              </tr>
+            ) : lines.map((line, localIdx) => {
               const globalIdx = lineIndices[localIdx]
               const qtyChanged = isRevision && line.qty_previous != null && line.qty !== line.qty_previous
               const isNewRow = !!line.is_new
@@ -509,7 +524,7 @@ export default function ProjectEstimateEditor({
       workRows = mergeRevisionCategoryRows(workRows, revisionSnapshot, 'WORK')
     }
 
-    if (!materialRows.length) materialRows = [emptyLine('MATERIAL')]
+    if (!materialRows.length && !versionId) materialRows = [emptyLine('MATERIAL')]
     if (!workRows.length) workRows = [emptyLine('WORK')]
 
     setLines([...materialRows, ...workRows])
@@ -583,8 +598,19 @@ export default function ProjectEstimateEditor({
 
   function removeLine(idx: number) {
     const cat = lines[idx]?.line_category
-    if (lines.filter(l => l.line_category === cat).length <= 1) return
+    const sameCategoryCount = lines.filter(l => l.line_category === cat).length
+    if (cat === 'WORK' && sameCategoryCount <= 1) {
+      toast.error('يجب بقاء بند أعمال واحد على الأقل')
+      return
+    }
     setLines(l => l.filter((_, i) => i !== idx))
+  }
+
+  function removeAllMaterials() {
+    if (!materialLines.length) return
+    if (!confirm(`حذف جميع بنود المواد (${materialLines.length})؟`)) return
+    setLines(l => l.filter(line => line.line_category !== 'MATERIAL'))
+    toast.success('تم حذف بنود المواد — احفظ المقايسة لتثبيت التغيير')
   }
 
   function appendImportedRows(category: BoqLineCategory, imported: BoqImportLine[]) {
@@ -797,6 +823,7 @@ export default function ProjectEstimateEditor({
         lines={materialLines} lineIndices={materialIndices} frameworkItems={[]} frameworkMap={frameworkMap}
         readOnly={!!readOnly} isRevision={isRevision} onUpdate={updateLine} onSelectFramework={selectFramework}
         onRemove={removeLine} onAdd={() => addLine('MATERIAL')}
+        onClearAll={readOnly ? undefined : removeAllMaterials}
         onImport={readOnly ? undefined : kind => openImport('MATERIAL', kind)}
         onMaterialSecLookup={applyMaterialSecLookup}
         reservationSlot={tenantId && projectName ? (
