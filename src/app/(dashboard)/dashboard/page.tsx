@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore'
 import Link from 'next/link'
 import { loadDashboardStats, type DashboardStats } from '@/lib/dashboard-stats'
 import { canShowDashboardSection, DASHBOARD_DEPARTMENT_SECTIONS, type DashboardSectionKey } from '@/lib/dashboard-sections'
+import { dashboardGridStyle, isExpandedDashboardLayout } from '@/lib/dashboard-layout'
 import DashboardCustomizeModal from '@/components/dashboard/DashboardCustomizeModal'
 import { LIFECYCLE_PHASES } from '@/lib/project-lifecycle'
 import {
@@ -15,9 +16,9 @@ import {
 const fmt  = (n: number) => Number(n).toLocaleString('ar-SA', { maximumFractionDigits: 0 })
 const fmtK = (n: number) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'م' : n >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n))
 
-function KpiCard({ label, value, sub, subOk, icon, color, href }: {
+function KpiCard({ label, value, sub, subOk, icon, color, href, expanded }: {
   label: string; value: string | number; sub: string; subOk: boolean
-  icon: React.ReactNode; color: string; href: string
+  icon: React.ReactNode; color: string; href: string; expanded?: boolean
 }) {
   const colors: Record<string, { bg: string; icon: string; border: string }> = {
     blue:   { bg: '#eff6ff', icon: '#1a56db', border: '#bfdbfe' },
@@ -32,23 +33,23 @@ function KpiCard({ label, value, sub, subOk, icon, color, href }: {
   return (
     <Link href={href} style={{
       display: 'block', textDecoration: 'none', background: 'white', borderRadius: '14px',
-      border: `1px solid ${c.border}`, padding: '18px 20px', transition: 'all 0.2s',
+      border: `1px solid ${c.border}`, padding: expanded ? '22px 24px' : '18px 20px', transition: 'all 0.2s',
     }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280' }}>{label}</span>
-        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.icon }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: expanded ? '18px' : '14px' }}>
+        <span style={{ fontSize: expanded ? '0.82rem' : '0.75rem', fontWeight: 600, color: '#6b7280' }}>{label}</span>
+        <div style={{ width: expanded ? '42px' : '36px', height: expanded ? '42px' : '36px', borderRadius: '10px', background: c.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: c.icon }}>
           {icon}
         </div>
       </div>
-      <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1a1a2e', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.72rem', marginTop: '6px', color: subOk ? '#0ea77b' : '#e6820a', fontWeight: 600 }}>{sub}</div>
+      <div style={{ fontSize: expanded ? '2.2rem' : '1.8rem', fontWeight: 800, color: '#1a1a2e', lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: expanded ? '0.78rem' : '0.72rem', marginTop: '6px', color: subOk ? '#0ea77b' : '#e6820a', fontWeight: 600 }}>{sub}</div>
     </Link>
   )
 }
 
-function SectionCard({ title, icon, href, color, bg, stats, alert }: {
+function SectionCard({ title, icon, href, color, bg, stats, alert, expanded }: {
   title: string
   icon: React.ReactNode
   href: string
@@ -56,21 +57,23 @@ function SectionCard({ title, icon, href, color, bg, stats, alert }: {
   bg: string
   stats: { label: string; value: string | number; warn?: boolean }[]
   alert?: string | null
+  expanded?: boolean
 }) {
+  const statCols = expanded && stats.length <= 4 ? '1fr 1fr 1fr 1fr' : '1fr 1fr'
   return (
-    <Link href={href} style={{ textDecoration: 'none', display: 'block' }}>
+    <Link href={href} style={{ textDecoration: 'none', display: 'block', maxWidth: expanded ? '100%' : undefined }}>
       <div className="card" style={{
-        padding: '18px', height: '100%', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+        padding: expanded ? '22px 24px' : '18px', height: '100%', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
         borderRight: `4px solid ${color}`,
       }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)' }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
+            <div style={{ width: expanded ? '48px' : '40px', height: expanded ? '48px' : '40px', borderRadius: '10px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
               {icon}
             </div>
-            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text)' }}>{title}</span>
+            <span style={{ fontWeight: 700, fontSize: expanded ? '1.05rem' : '0.92rem', color: 'var(--text)' }}>{title}</span>
           </div>
           <ArrowLeft style={{ width: '14px', height: '14px', color: 'var(--text3)' }} />
         </div>
@@ -79,11 +82,11 @@ function SectionCard({ title, icon, href, color, bg, stats, alert }: {
             ⚠ {alert}
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: statCols, gap: expanded ? '10px' : '8px' }}>
           {stats.map(st => (
-            <div key={st.label} style={{ background: 'var(--bg2)', borderRadius: '8px', padding: '10px' }}>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: st.warn ? '#c81e1e' : color }}>{st.value}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '2px' }}>{st.label}</div>
+            <div key={st.label} style={{ background: 'var(--bg2)', borderRadius: '8px', padding: expanded ? '14px 12px' : '10px' }}>
+              <div style={{ fontSize: expanded ? '1.35rem' : '1.15rem', fontWeight: 800, color: st.warn ? '#c81e1e' : color }}>{st.value}</div>
+              <div style={{ fontSize: expanded ? '0.72rem' : '0.68rem', color: 'var(--text3)', marginTop: '2px' }}>{st.label}</div>
             </div>
           ))}
         </div>
@@ -130,6 +133,47 @@ export default function DashboardPage() {
   }), [perms, tenantModules])
 
   const show = (key: DashboardSectionKey) => canShowDashboardSection(access, dashboardSections, key)
+
+  const visibleSectionCount = useMemo(
+    () => DASHBOARD_DEPARTMENT_SECTIONS.filter(s => show(s.key)).length,
+    [access, dashboardSections],
+  )
+
+  const visibleKpiCount = useMemo(() => {
+    if (!show('quickKpis')) return 0
+    return [
+      show('projects') && access.projects,
+      show('qhse') && access.qhse,
+      show('inventory') && access.inventory,
+      show('hr') && access.hr,
+      show('fleet') && access.fleet,
+      show('finance') && access.finance,
+    ].filter(Boolean).length
+  }, [access, dashboardSections])
+
+  const visiblePanelCount = useMemo(() => [
+    show('alerts'),
+    show('deadlines') && access.projects,
+    show('recentInvoices') && access.finance,
+  ].filter(Boolean).length, [access, dashboardSections])
+
+  const visibleQuickLinkCount = useMemo(() => [
+    show('projects') && access.projects,
+    show('projects') && access.projects,
+    show('inventory') && access.inventory,
+    show('qhse') && access.qhse,
+    show('hr') && access.hr,
+    show('finance') && access.finance,
+    show('finance') && access.finance,
+    show('purchases') && (access.purchases || access.finance),
+    show('assets') && access.assets,
+    show('fleet') && access.fleet,
+    show('visits') && access.visits,
+    show('reports') && access.reports,
+  ].filter(Boolean).length, [access, dashboardSections])
+
+  const sectionLayoutExpanded = isExpandedDashboardLayout(visibleSectionCount)
+  const kpiLayoutExpanded = isExpandedDashboardLayout(visibleKpiCount)
 
   useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
@@ -243,34 +287,40 @@ export default function DashboardPage() {
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
           مؤشرات سريعة
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
+        <div style={dashboardGridStyle(visibleKpiCount, 'kpi')}>
           {show('projects') && access.projects && (
             <KpiCard label="المشاريع النشطة" value={stats?.projects.active || 0}
+              expanded={kpiLayoutExpanded}
               sub={stats?.projects.delayed ? `⚠ ${stats.projects.delayed} متأخر` : '✅ كلها في الوقت'}
               subOk={!stats?.projects.delayed} icon={<FolderOpen style={{ width: '18px', height: '18px' }} />} color="blue" href="/projects/monitoring" />
           )}
           {show('qhse') && access.qhse && (
             <KpiCard label="NCR معلقة" value={stats?.qhse.openNcr || 0}
+              expanded={kpiLayoutExpanded}
               sub={stats?.qhse.openNcr ? 'تحتاج إجراء تصحيحي' : '✅ لا توجد ملاحظات'}
               subOk={!stats?.qhse.openNcr} icon={<AlertTriangle style={{ width: '18px', height: '18px' }} />} color={stats?.qhse.openNcr ? 'red' : 'green'} href="/visits" />
           )}
           {show('inventory') && access.inventory && (
             <KpiCard label="مواد منخفضة" value={stats?.inventory.lowStock || 0}
+              expanded={kpiLayoutExpanded}
               sub={stats?.inventory.lowStock ? 'تحت حد الأمان' : '✅ المخزون آمن'}
               subOk={!stats?.inventory.lowStock} icon={<Package style={{ width: '18px', height: '18px' }} />} color={stats?.inventory.lowStock ? 'amber' : 'green'} href="/inventory/materials" />
           )}
           {show('hr') && access.hr && (
             <KpiCard label="إجمالي الموظفين" value={stats?.hr.totalEmployees || 0}
+              expanded={kpiLayoutExpanded}
               sub={stats?.hr.pendingLeaves ? `${stats.hr.pendingLeaves} طلب إجازة معلق` : '✅ لا طلبات معلقة'}
               subOk={!stats?.hr.pendingLeaves} icon={<Users style={{ width: '18px', height: '18px' }} />} color="purple" href="/hr/dashboard" />
           )}
           {show('fleet') && access.fleet && (
             <KpiCard label="أسطول متاح" value={`${stats?.fleet.available || 0}/${stats?.fleet.totalUnits || 0}`}
+              expanded={kpiLayoutExpanded}
               sub={stats?.fleet.openWorkOrders ? `${stats.fleet.openWorkOrders} أمر عمل مفتوح` : '✅ لا صيانة معلقة'}
               subOk={!stats?.fleet.openWorkOrders} icon={<Truck style={{ width: '18px', height: '18px' }} />} color="teal" href="/fleet" />
           )}
           {show('finance') && access.finance && (
             <KpiCard label="فواتير غير محصّلة" value={fmtK(stats?.finance.unpaidInvoices || 0) + ' ر.س'}
+              expanded={kpiLayoutExpanded}
               sub="فواتير عملاء معتمدة" subOk={!(stats?.finance.unpaidInvoices)}
               icon={<TrendingUp style={{ width: '18px', height: '18px' }} />} color="green" href="/finance/invoices" />
           )}
@@ -284,9 +334,10 @@ export default function DashboardPage() {
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
           نظرة على جميع الأقسام
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
+        <div style={dashboardGridStyle(visibleSectionCount, 'section')}>
           {show('projects') && access.projects && stats && (
             <SectionCard title="إدارة المشاريع" href="/projects/monitoring" color="#1a56db" bg="#eff6ff"
+              expanded={sectionLayoutExpanded}
               icon={<FolderOpen style={{ width: '20px', height: '20px' }} />}
               alert={stats.projects.delayed ? `${stats.projects.delayed} مشروع متأخر` : null}
               stats={[
@@ -304,6 +355,7 @@ export default function DashboardPage() {
 
           {show('inventory') && access.inventory && stats && (
             <SectionCard title="المخزون" href="/inventory/materials" color="#7c3aed" bg="#f5f3ff"
+              expanded={sectionLayoutExpanded}
               icon={<Package style={{ width: '20px', height: '20px' }} />}
               alert={stats.inventory.lowStock ? `${stats.inventory.lowStock} مادة تحت حد الأمان` : null}
               stats={[
@@ -317,6 +369,7 @@ export default function DashboardPage() {
 
           {show('qhse') && access.qhse && stats && (
             <SectionCard title="السلامة والجودة (QHSE)" href="/qhse" color="#c81e1e" bg="#fef2f2"
+              expanded={sectionLayoutExpanded}
               icon={<Shield style={{ width: '20px', height: '20px' }} />}
               alert={stats.qhse.openNcr ? `${stats.qhse.openNcr} NCR معلقة` : null}
               stats={[
@@ -330,6 +383,7 @@ export default function DashboardPage() {
 
           {show('hr') && access.hr && stats && (
             <SectionCard title="الموارد البشرية" href="/hr/dashboard" color="#7c3aed" bg="#f5f3ff"
+              expanded={sectionLayoutExpanded}
               icon={<Users style={{ width: '20px', height: '20px' }} />}
               alert={stats.hr.expiringIqama ? `${stats.hr.expiringIqama} إقامة تنتهي قريباً` : null}
               stats={[
@@ -343,6 +397,7 @@ export default function DashboardPage() {
 
           {show('finance') && access.finance && stats && (
             <SectionCard title="المالية والمحاسبة" href="/finance" color="#0ea77b" bg="#ecfdf5"
+              expanded={sectionLayoutExpanded}
               icon={<Wallet style={{ width: '20px', height: '20px' }} />}
               alert={stats.finance.unpaidInvoices ? `${fmtK(stats.finance.unpaidInvoices)} ر.س غير محصّلة` : null}
               stats={[
@@ -356,6 +411,7 @@ export default function DashboardPage() {
 
           {show('purchases') && (access.purchases || access.finance) && stats && (
             <SectionCard title="المشتريات" href="/finance/purchases" color="#e6820a" bg="#fffbeb"
+              expanded={sectionLayoutExpanded}
               icon={<ShoppingCart style={{ width: '20px', height: '20px' }} />}
               alert={stats.finance.openPurchaseOrders ? `${stats.finance.openPurchaseOrders} أمر شراء مفتوح` : null}
               stats={[
@@ -369,6 +425,7 @@ export default function DashboardPage() {
 
           {show('assets') && access.assets && stats && (
             <SectionCard title="الأصول الثابتة" href="/assets" color="#1e3a5f" bg="#eff6ff"
+              expanded={sectionLayoutExpanded}
               icon={<Building2 style={{ width: '20px', height: '20px' }} />}
               stats={[
                 { label: 'إجمالي الأصول', value: stats.assets.total },
@@ -381,6 +438,7 @@ export default function DashboardPage() {
 
           {show('fleet') && access.fleet && stats && (
             <SectionCard title="إدارة الأسطول" href="/fleet" color="#0d9488" bg="#f0fdfa"
+              expanded={sectionLayoutExpanded}
               icon={<Truck style={{ width: '20px', height: '20px' }} />}
               alert={stats.fleet.expiringDocs ? `${stats.fleet.expiringDocs} وثيقة تحتاج تجديد` : null}
               stats={[
@@ -394,6 +452,7 @@ export default function DashboardPage() {
 
           {show('visits') && access.visits && stats && (
             <SectionCard title="الزيارات الميدانية" href="/visits" color="#374151" bg="#f9fafb"
+              expanded={sectionLayoutExpanded}
               icon={<Eye style={{ width: '20px', height: '20px' }} />}
               alert={stats.visits.open ? `${stats.visits.open} زيارة لم تُعتمد بعد` : null}
               stats={[
@@ -407,6 +466,7 @@ export default function DashboardPage() {
 
           {show('reports') && access.reports && (
             <SectionCard title="التقارير" href="/reports" color="#1a56db" bg="#eff6ff"
+              expanded={sectionLayoutExpanded}
               icon={<BarChart2 style={{ width: '20px', height: '20px' }} />}
               stats={[
                 { label: 'تنفيذية', value: '←' },
@@ -422,7 +482,7 @@ export default function DashboardPage() {
 
       {/* تنبيهات + مواعيد + فواتير */}
       {(show('alerts') || show('deadlines') || show('recentInvoices')) && (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+      <div style={dashboardGridStyle(visiblePanelCount, 'panel')}>
         {show('alerts') && (
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -498,7 +558,7 @@ export default function DashboardPage() {
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', marginBottom: '10px' }}>
           وصول سريع
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '10px' }}>
+        <div style={dashboardGridStyle(visibleQuickLinkCount, 'quick')}>
           {[
             show('projects') && access.projects  && { key: 'projects',  label: 'المتابعة',       icon: '📊', href: '/projects/monitoring' },
             show('projects') && access.projects  && { key: 'projects2', label: 'حياة المشروع',   icon: '🔄', href: '/projects/initiation/projects' },
