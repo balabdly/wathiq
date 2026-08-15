@@ -15,6 +15,12 @@ const DEFAULT_PREFS: DisplayPrefs = {
 }
 import { persist } from 'zustand/middleware'
 import type { Tenant, Employee, Branch, Project, Visit, Material, StockLedger, Warehouse, Purchase, Client } from '@/types'
+import {
+  DEFAULT_DASHBOARD_SECTIONS,
+  mergeDashboardSections,
+  type DashboardSectionKey,
+  type DashboardSections,
+} from '@/lib/dashboard-sections'
 
 interface AppState {
   // ── Auth ──
@@ -56,6 +62,11 @@ interface AppState {
   displayPrefs: DisplayPrefs
   setDisplayPrefs: (prefs: Partial<DisplayPrefs>) => void
   updateDisplayPref: (key: keyof DisplayPrefs, value: DisplayView) => void
+  // ── Dashboard Sections ──
+  dashboardSections: DashboardSections
+  setDashboardSections: (sections: Partial<DashboardSections>) => void
+  setDashboardSection: (key: DashboardSectionKey, visible: boolean) => void
+  resetDashboardSections: () => void
   // ── Reset ──
   reset: () => void
 }
@@ -107,6 +118,14 @@ export const useStore = create<AppState>()(
       displayPrefs: DEFAULT_PREFS,
       setDisplayPrefs: (prefs) => set(state => ({ displayPrefs: { ...state.displayPrefs, ...prefs } })),
       updateDisplayPref: (key, value) => set(state => ({ displayPrefs: { ...state.displayPrefs, [key]: value } })),
+      dashboardSections: DEFAULT_DASHBOARD_SECTIONS,
+      setDashboardSections: (sections) => set(state => ({
+        dashboardSections: mergeDashboardSections({ ...state.dashboardSections, ...sections }),
+      })),
+      setDashboardSection: (key, visible) => set(state => ({
+        dashboardSections: { ...state.dashboardSections, [key]: visible },
+      })),
+      resetDashboardSections: () => set({ dashboardSections: DEFAULT_DASHBOARD_SECTIONS }),
       // Reset
       reset: () => set({
         currentUser: null, tenant: null, activeBranch: null,
@@ -125,6 +144,7 @@ export const useStore = create<AppState>()(
         activeBranch: state.activeBranch,
         branches: state.branches,
         displayPrefs: state.displayPrefs,
+        dashboardSections: state.dashboardSections,
       }),
       onRehydrateStorage: () => async (state) => {
         if (!state?.currentUser?.id) return

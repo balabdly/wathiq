@@ -3,11 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import Link from 'next/link'
 import { loadDashboardStats, type DashboardStats } from '@/lib/dashboard-stats'
+import { canShowDashboardSection, DASHBOARD_DEPARTMENT_SECTIONS, type DashboardSectionKey } from '@/lib/dashboard-sections'
+import DashboardCustomizeModal from '@/components/dashboard/DashboardCustomizeModal'
 import { LIFECYCLE_PHASES } from '@/lib/project-lifecycle'
 import {
   FolderOpen, AlertTriangle, Package, Users, TrendingUp,
   Wallet, Building2, Clock, CheckCircle2, ArrowLeft, BarChart2,
-  Truck, Shield, ShoppingCart, Eye,
+  Truck, Shield, ShoppingCart, Eye, LayoutGrid,
 } from 'lucide-react'
 
 const fmt  = (n: number) => Number(n).toLocaleString('ar-SA', { maximumFractionDigits: 0 })
@@ -106,9 +108,10 @@ function AlertItem({ icon, title, sub, href }: { icon: string; title: string; su
 }
 
 export default function DashboardPage() {
-  const { currentUser, tenant } = useStore()
+  const { currentUser, tenant, dashboardSections, setDashboardSections } = useStore()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [customizeOpen, setCustomizeOpen] = useState(false)
 
   const perms: string[] = currentUser?.permissions || []
   const tenantModules = (tenant as { modules?: Record<string, boolean> })?.modules || {}
@@ -125,6 +128,8 @@ export default function DashboardPage() {
     visits:    perms.some(p => p.startsWith('visits')) || perms.some(p => ['projects_view', 'qhse'].includes(p)),
     reports:   perms.includes('reports'),
   }), [perms, tenantModules])
+
+  const show = (key: DashboardSectionKey) => canShowDashboardSection(access, dashboardSections, key)
 
   useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
@@ -173,16 +178,36 @@ export default function DashboardPage() {
           </h1>
           <p style={{ fontSize: '0.78rem', color: 'var(--text3)', marginTop: '3px' }}>{dateStr}</p>
         </div>
-        {access.reports && (
-          <Link href="/reports" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'var(--primary)', color: 'white', borderRadius: '8px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>
-            <BarChart2 style={{ width: '15px', height: '15px' }} />
-            التقارير
-          </Link>
-        )}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setCustomizeOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px',
+              background: 'white', color: 'var(--text)', borderRadius: '8px',
+              border: '1px solid var(--border)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+            }}>
+            <LayoutGrid style={{ width: '15px', height: '15px' }} />
+            تخصيص اللوحة
+          </button>
+          {access.reports && (
+            <Link href="/reports" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'var(--primary)', color: 'white', borderRadius: '8px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 600 }}>
+              <BarChart2 style={{ width: '15px', height: '15px' }} />
+              التقارير
+            </Link>
+          )}
+        </div>
       </div>
 
+      <DashboardCustomizeModal
+        open={customizeOpen}
+        onClose={() => setCustomizeOpen(false)}
+        sections={dashboardSections}
+        access={access}
+        onChange={setDashboardSections}
+      />
+
       {/* ملخص مالي */}
-      {access.finance && stats && (
+      {show('financialSummary') && access.finance && stats && (
         <div style={{
           background: netProfit >= 0 ? 'linear-gradient(135deg, #0D2040, #1a56db)' : 'linear-gradient(135deg, #7f1d1d, #c81e1e)',
           borderRadius: '14px', padding: '20px 24px',
@@ -213,51 +238,54 @@ export default function DashboardPage() {
       )}
 
       {/* KPIs سريعة */}
+      {show('quickKpis') && (
       <div>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
           مؤشرات سريعة
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px' }}>
-          {access.projects && (
+          {show('projects') && access.projects && (
             <KpiCard label="المشاريع النشطة" value={stats?.projects.active || 0}
               sub={stats?.projects.delayed ? `⚠ ${stats.projects.delayed} متأخر` : '✅ كلها في الوقت'}
               subOk={!stats?.projects.delayed} icon={<FolderOpen style={{ width: '18px', height: '18px' }} />} color="blue" href="/projects/monitoring" />
           )}
-          {access.qhse && (
+          {show('qhse') && access.qhse && (
             <KpiCard label="NCR معلقة" value={stats?.qhse.openNcr || 0}
               sub={stats?.qhse.openNcr ? 'تحتاج إجراء تصحيحي' : '✅ لا توجد ملاحظات'}
               subOk={!stats?.qhse.openNcr} icon={<AlertTriangle style={{ width: '18px', height: '18px' }} />} color={stats?.qhse.openNcr ? 'red' : 'green'} href="/visits" />
           )}
-          {access.inventory && (
+          {show('inventory') && access.inventory && (
             <KpiCard label="مواد منخفضة" value={stats?.inventory.lowStock || 0}
               sub={stats?.inventory.lowStock ? 'تحت حد الأمان' : '✅ المخزون آمن'}
               subOk={!stats?.inventory.lowStock} icon={<Package style={{ width: '18px', height: '18px' }} />} color={stats?.inventory.lowStock ? 'amber' : 'green'} href="/inventory/materials" />
           )}
-          {access.hr && (
+          {show('hr') && access.hr && (
             <KpiCard label="إجمالي الموظفين" value={stats?.hr.totalEmployees || 0}
               sub={stats?.hr.pendingLeaves ? `${stats.hr.pendingLeaves} طلب إجازة معلق` : '✅ لا طلبات معلقة'}
               subOk={!stats?.hr.pendingLeaves} icon={<Users style={{ width: '18px', height: '18px' }} />} color="purple" href="/hr/dashboard" />
           )}
-          {access.fleet && (
+          {show('fleet') && access.fleet && (
             <KpiCard label="أسطول متاح" value={`${stats?.fleet.available || 0}/${stats?.fleet.totalUnits || 0}`}
               sub={stats?.fleet.openWorkOrders ? `${stats.fleet.openWorkOrders} أمر عمل مفتوح` : '✅ لا صيانة معلقة'}
               subOk={!stats?.fleet.openWorkOrders} icon={<Truck style={{ width: '18px', height: '18px' }} />} color="teal" href="/fleet" />
           )}
-          {access.finance && (
+          {show('finance') && access.finance && (
             <KpiCard label="فواتير غير محصّلة" value={fmtK(stats?.finance.unpaidInvoices || 0) + ' ر.س'}
               sub="فواتير عملاء معتمدة" subOk={!(stats?.finance.unpaidInvoices)}
               icon={<TrendingUp style={{ width: '18px', height: '18px' }} />} color="green" href="/finance/invoices" />
           )}
         </div>
       </div>
+      )}
 
       {/* بطاقات الأقسام */}
+      {DASHBOARD_DEPARTMENT_SECTIONS.some(s => show(s.key)) && (
       <div>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
           نظرة على جميع الأقسام
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
-          {access.projects && stats && (
+          {show('projects') && access.projects && stats && (
             <SectionCard title="إدارة المشاريع" href="/projects/monitoring" color="#1a56db" bg="#eff6ff"
               icon={<FolderOpen style={{ width: '20px', height: '20px' }} />}
               alert={stats.projects.delayed ? `${stats.projects.delayed} مشروع متأخر` : null}
@@ -274,7 +302,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.inventory && stats && (
+          {show('inventory') && access.inventory && stats && (
             <SectionCard title="المخزون" href="/inventory/materials" color="#7c3aed" bg="#f5f3ff"
               icon={<Package style={{ width: '20px', height: '20px' }} />}
               alert={stats.inventory.lowStock ? `${stats.inventory.lowStock} مادة تحت حد الأمان` : null}
@@ -287,7 +315,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.qhse && stats && (
+          {show('qhse') && access.qhse && stats && (
             <SectionCard title="السلامة والجودة (QHSE)" href="/qhse" color="#c81e1e" bg="#fef2f2"
               icon={<Shield style={{ width: '20px', height: '20px' }} />}
               alert={stats.qhse.openNcr ? `${stats.qhse.openNcr} NCR معلقة` : null}
@@ -300,7 +328,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.hr && stats && (
+          {show('hr') && access.hr && stats && (
             <SectionCard title="الموارد البشرية" href="/hr/dashboard" color="#7c3aed" bg="#f5f3ff"
               icon={<Users style={{ width: '20px', height: '20px' }} />}
               alert={stats.hr.expiringIqama ? `${stats.hr.expiringIqama} إقامة تنتهي قريباً` : null}
@@ -313,7 +341,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.finance && stats && (
+          {show('finance') && access.finance && stats && (
             <SectionCard title="المالية والمحاسبة" href="/finance" color="#0ea77b" bg="#ecfdf5"
               icon={<Wallet style={{ width: '20px', height: '20px' }} />}
               alert={stats.finance.unpaidInvoices ? `${fmtK(stats.finance.unpaidInvoices)} ر.س غير محصّلة` : null}
@@ -326,7 +354,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {(access.purchases || access.finance) && stats && (
+          {show('purchases') && (access.purchases || access.finance) && stats && (
             <SectionCard title="المشتريات" href="/finance/purchases" color="#e6820a" bg="#fffbeb"
               icon={<ShoppingCart style={{ width: '20px', height: '20px' }} />}
               alert={stats.finance.openPurchaseOrders ? `${stats.finance.openPurchaseOrders} أمر شراء مفتوح` : null}
@@ -339,7 +367,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.assets && stats && (
+          {show('assets') && access.assets && stats && (
             <SectionCard title="الأصول الثابتة" href="/assets" color="#1e3a5f" bg="#eff6ff"
               icon={<Building2 style={{ width: '20px', height: '20px' }} />}
               stats={[
@@ -351,7 +379,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.fleet && stats && (
+          {show('fleet') && access.fleet && stats && (
             <SectionCard title="إدارة الأسطول" href="/fleet" color="#0d9488" bg="#f0fdfa"
               icon={<Truck style={{ width: '20px', height: '20px' }} />}
               alert={stats.fleet.expiringDocs ? `${stats.fleet.expiringDocs} وثيقة تحتاج تجديد` : null}
@@ -364,7 +392,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.visits && stats && (
+          {show('visits') && access.visits && stats && (
             <SectionCard title="الزيارات الميدانية" href="/visits" color="#374151" bg="#f9fafb"
               icon={<Eye style={{ width: '20px', height: '20px' }} />}
               alert={stats.visits.open ? `${stats.visits.open} زيارة لم تُعتمد بعد` : null}
@@ -377,7 +405,7 @@ export default function DashboardPage() {
             />
           )}
 
-          {access.reports && (
+          {show('reports') && access.reports && (
             <SectionCard title="التقارير" href="/reports" color="#1a56db" bg="#eff6ff"
               icon={<BarChart2 style={{ width: '20px', height: '20px' }} />}
               stats={[
@@ -390,9 +418,12 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* تنبيهات + مواعيد + فواتير */}
+      {(show('alerts') || show('deadlines') || show('recentInvoices')) && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+        {show('alerts') && (
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <AlertTriangle style={{ width: '15px', height: '15px', color: '#c81e1e' }} />
@@ -407,8 +438,9 @@ export default function DashboardPage() {
             ) : alerts.map((item, i) => <AlertItem key={i} {...item} />)}
           </div>
         </div>
+        )}
 
-        {access.projects && (
+        {show('deadlines') && access.projects && (
           <div className="card" style={{ overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Clock style={{ width: '15px', height: '15px', color: '#1a56db' }} />
@@ -432,7 +464,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {access.finance && (
+        {show('recentInvoices') && access.finance && (
           <div className="card" style={{ overflow: 'hidden' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -458,28 +490,30 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* وصول سريع */}
+      {show('quickLinks') && (
       <div>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text3)', letterSpacing: '1.5px', marginBottom: '10px' }}>
           وصول سريع
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '10px' }}>
           {[
-            access.projects  && { label: 'المتابعة',       icon: '📊', href: '/projects/monitoring' },
-            access.projects  && { label: 'حياة المشروع',   icon: '🔄', href: '/projects/initiation/projects' },
-            access.inventory && { label: 'المخزون',        icon: '📦', href: '/inventory/materials' },
-            access.qhse      && { label: 'QHSE',           icon: '🛡️', href: '/qhse' },
-            access.hr        && { label: 'الموارد البشرية', icon: '👥', href: '/hr/dashboard' },
-            access.finance   && { label: 'فاتورة جديدة',   icon: '🧾', href: '/finance/invoices' },
-            access.finance   && { label: 'مصروف',          icon: '💸', href: '/finance/expenses' },
-            (access.purchases || access.finance) && { label: 'أمر شراء', icon: '🛒', href: '/finance/purchases' },
-            access.assets    && { label: 'الأصول',         icon: '🏢', href: '/assets' },
-            access.fleet     && { label: 'الأسطول',        icon: '🚛', href: '/fleet' },
-            access.visits    && { label: 'زيارة ميدانية',  icon: '🔍', href: '/visits' },
-            access.reports   && { label: 'التقارير',       icon: '📈', href: '/reports' },
+            show('projects') && access.projects  && { key: 'projects',  label: 'المتابعة',       icon: '📊', href: '/projects/monitoring' },
+            show('projects') && access.projects  && { key: 'projects2', label: 'حياة المشروع',   icon: '🔄', href: '/projects/initiation/projects' },
+            show('inventory') && access.inventory && { key: 'inventory', label: 'المخزون',        icon: '📦', href: '/inventory/materials' },
+            show('qhse') && access.qhse      && { key: 'qhse',      label: 'QHSE',           icon: '🛡️', href: '/qhse' },
+            show('hr') && access.hr        && { key: 'hr',        label: 'الموارد البشرية', icon: '👥', href: '/hr/dashboard' },
+            show('finance') && access.finance   && { key: 'finance',   label: 'فاتورة جديدة',   icon: '🧾', href: '/finance/invoices' },
+            show('finance') && access.finance   && { key: 'finance2',  label: 'مصروف',          icon: '💸', href: '/finance/expenses' },
+            show('purchases') && (access.purchases || access.finance) && { key: 'purchases', label: 'أمر شراء', icon: '🛒', href: '/finance/purchases' },
+            show('assets') && access.assets    && { key: 'assets',    label: 'الأصول',         icon: '🏢', href: '/assets' },
+            show('fleet') && access.fleet     && { key: 'fleet',     label: 'الأسطول',        icon: '🚛', href: '/fleet' },
+            show('visits') && access.visits    && { key: 'visits',    label: 'زيارة ميدانية',  icon: '🔍', href: '/visits' },
+            show('reports') && access.reports   && { key: 'reports',   label: 'التقارير',       icon: '📈', href: '/reports' },
           ].filter(Boolean).map(item => item && (
-            <Link key={item.label} href={item.href} style={{
+            <Link key={item.key} href={item.href} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
               padding: '16px 10px', background: 'white', borderRadius: '12px',
               border: '1px solid var(--border)', textDecoration: 'none', transition: 'all 0.2s',
@@ -492,6 +526,7 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+      )}
     </div>
   )
 }
