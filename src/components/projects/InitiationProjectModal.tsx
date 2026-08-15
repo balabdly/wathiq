@@ -7,6 +7,7 @@ import { recordInitialProjectPhase } from '@/lib/project-phase-history-service'
 import toast from 'react-hot-toast'
 import { isDateRangeInvalid } from '@/lib/utils'
 import type { ProjectTypeRow } from './ManageProjectTypesModal'
+import type { ProjectConsultantRow } from './ManageConsultantsModal'
 import type { InitiationProject } from '@/app/(dashboard)/projects/initiation/InitiationContext'
 
 const BASIC_ATTACHMENT_CATEGORIES = [
@@ -29,9 +30,10 @@ type AttachmentRow = {
   pendingFile?: File
 }
 
-export default function InitiationProjectModal({ project, projectTypes, tenantId, branchId, onClose, onSave }: {
+export default function InitiationProjectModal({ project, projectTypes, consultants, tenantId, branchId, onClose, onSave }: {
   project: InitiationProject | null
   projectTypes: ProjectTypeRow[]
+  consultants: ProjectConsultantRow[]
   tenantId: string
   branchId: number
   onClose: () => void
@@ -87,6 +89,10 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
   }, [project?.id])
 
   const selectedClient = clients.find(c => c.id === Number(form.client_id))
+
+  const consultantNames = consultants.map(c => c.name)
+  const legacyConsultant = form.responsible_consultant.trim()
+  const showLegacyConsultant = legacyConsultant && !consultantNames.includes(legacyConsultant)
 
   async function loadAttachments(projectId: number) {
     const { data } = await supabase.from('project_attachments')
@@ -280,12 +286,21 @@ export default function InitiationProjectModal({ project, projectTypes, tenantId
 
             <div>
               <label style={lbl}>الاستشاري المسؤول</label>
-              <input
-                value={form.responsible_consultant}
-                onChange={e => set('responsible_consultant', e.target.value)}
-                className="input"
-                placeholder="اسم الاستشاري أو الشركة الاستشارية"
-              />
+              {consultants.length === 0 && !showLegacyConsultant ? (
+                <div style={{ padding: '10px', background: '#f0fdfa', borderRadius: '8px', fontSize: '0.82rem', color: '#0f766e' }}>
+                  لا يوجد استشاريون — استخدم «إضافة استشاري» أولاً
+                </div>
+              ) : (
+                <select value={form.responsible_consultant} onChange={e => set('responsible_consultant', e.target.value)} className="select">
+                  <option value="">— اختر الاستشاري —</option>
+                  {showLegacyConsultant && (
+                    <option value={legacyConsultant}>{legacyConsultant} (محفوظ سابقاً)</option>
+                  )}
+                  {consultants.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div>

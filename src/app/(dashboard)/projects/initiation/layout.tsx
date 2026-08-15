@@ -14,22 +14,29 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
 
   const [projects, setProjects] = useState<InitiationProject[]>([])
   const [projectTypes, setProjectTypes] = useState<{ id: number; code: string; name: string }[]>([])
+  const [consultants, setConsultants] = useState<{ id: number; name: string }[]>([])
   const [frameworkItems, setFrameworkItems] = useState<FrameworkBoqRow[]>([])
   const [loading, setLoading] = useState(true)
   const [kpis, setKpis] = useState({ total: 0, readyForPlanning: 0, noClient: 0 })
 
   const reloadShared = useCallback(async () => {
     if (!tenant) return
-    const [basketRes, typesRes] = await Promise.all([
+    const [basketRes, typesRes, consultantsRes] = await Promise.all([
       fetchInitiationBasketProjects(tenant.id),
       supabase.from('project_types')
         .select('id, code, name')
         .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('name'),
+      supabase.from('project_consultants')
+        .select('id, name')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('name'),
     ])
     setProjects(basketRes.data || [])
     setProjectTypes(typesRes.data || [])
+    setConsultants(consultantsRes.data || [])
 
     try {
       const contractId = await ensureDefaultSecContract(tenant.id, DEFAULT_SEC_CONTRACT)
@@ -73,6 +80,7 @@ export default function InitiationLayout({ children }: { children: React.ReactNo
       branchId: activeBranch?.id || null,
       projects,
       projectTypes,
+      consultants,
       frameworkItems,
       loading,
       reloadShared,

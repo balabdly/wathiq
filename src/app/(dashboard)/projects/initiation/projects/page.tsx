@@ -6,7 +6,8 @@ import { completeProjectInitiation, cancelProject, fetchInitiationBasketProjects
 import { useInitiation } from '../InitiationContext'
 import InitiationProjectModal from '@/components/projects/InitiationProjectModal'
 import ManageProjectTypesModal from '@/components/projects/ManageProjectTypesModal'
-import { Plus, Search, Pencil, Trash2, Tag, ArrowLeftCircle } from 'lucide-react'
+import ManageConsultantsModal from '@/components/projects/ManageConsultantsModal'
+import { Plus, Search, Pencil, Trash2, Tag, ArrowLeftCircle, UserRound } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import { useFilteredPagination } from '@/hooks/useFilteredPagination'
@@ -21,12 +22,13 @@ function typeLabel(code: string | undefined, types: { code: string; name: string
 export default function InitiationProjectsPage() {
   const router = useRouter()
   const { tenant } = useStore()
-  const { projects, projectTypes, reloadShared, reloadKpis, tenantId, branchId } = useInitiation()
+  const { projects, projectTypes, consultants, reloadShared, reloadKpis, tenantId, branchId } = useInitiation()
   const [search, setSearch] = useState('')
   const [showCancelled, setShowCancelled] = useState(false)
   const [cancelledProjects, setCancelledProjects] = useState<InitiationProject[]>([])
   const [showModal, setShowModal] = useState(false)
   const [showTypes, setShowTypes] = useState(false)
+  const [showConsultants, setShowConsultants] = useState(false)
   const [editProject, setEditProject] = useState<InitiationProject | null>(null)
   const [cancelTarget, setCancelTarget] = useState<InitiationProject | null>(null)
   const [sending, setSending] = useState<number | null>(null)
@@ -107,6 +109,9 @@ export default function InitiationProjectsPage() {
               <>
                 <button onClick={() => setShowTypes(true)} className="btn btn-ghost" style={{ fontSize: '0.82rem', border: '1px solid #ddd6fe', color: '#7c3aed' }}>
                   <Tag style={{ width: '15px', height: '15px' }} /> تحديد أنواع المشاريع
+                </button>
+                <button onClick={() => setShowConsultants(true)} className="btn btn-ghost" style={{ fontSize: '0.82rem', border: '1px solid #99f6e4', color: '#0d9488' }}>
+                  <UserRound style={{ width: '15px', height: '15px' }} /> إضافة استشاري
                 </button>
                 <button onClick={() => { setEditProject(null); setShowModal(true) }} className="btn btn-primary" style={{ fontSize: '0.82rem' }}>
                   <Plus style={{ width: '16px', height: '16px' }} /> مشروع جديد
@@ -197,10 +202,19 @@ export default function InitiationProjectsPage() {
         <InitiationProjectModal
           project={editProject}
           projectTypes={projectTypes}
+          consultants={consultants}
           tenantId={tenantId}
           branchId={branchId}
           onClose={() => { setShowModal(false); setEditProject(null) }}
           onSave={async () => { await reloadShared(); await reloadKpis() }}
+        />
+      )}
+
+      {showConsultants && tenant && (
+        <ManageConsultantsModal
+          tenantId={tenant.id}
+          onClose={() => setShowConsultants(false)}
+          onChanged={reloadShared}
         />
       )}
 

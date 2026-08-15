@@ -1,6 +1,7 @@
 'use client'
 import { createContext, useContext } from 'react'
 import type { ProjectTypeRow } from '@/components/projects/ManageProjectTypesModal'
+import type { ProjectConsultantRow } from '@/components/projects/ManageConsultantsModal'
 
 export type InitiationProject = {
   id: number
@@ -35,6 +36,7 @@ export type InitiationContextValue = {
   branchId: number | null
   projects: InitiationProject[]
   projectTypes: ProjectTypeRow[]
+  consultants: ProjectConsultantRow[]
   frameworkItems: FrameworkBoqRow[]
   loading: boolean
   reloadShared: () => Promise<void>
