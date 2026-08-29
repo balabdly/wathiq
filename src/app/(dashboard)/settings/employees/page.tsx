@@ -422,6 +422,7 @@ export default function EmployeesSettingsPage() {
   }
 
   async function handleToggleActive(emp: Emp) {
+    if (!tenant) return
     const check = canDisableLoginAccount(emp, currentUser?.id)
     if (!check.allowed) { toast.error(check.reason!); return }
     const newStatus = !emp.is_active
