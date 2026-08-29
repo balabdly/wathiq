@@ -10,6 +10,7 @@ import {
   bulkImportFleetUnits,
   type FleetImportRow,
 } from '@/lib/fleet-import'
+import { readFileAsJson } from '@/lib/excel-io'
 
 type FinanceAsset = { id: number; asset_no: string }
 
@@ -37,7 +38,7 @@ export function FleetImportModal({
     if (!file) return
 
     const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
+    if (!['xlsx', 'csv'].includes(ext ?? '')) {
       toast.error('نوع الملف غير مدعوم — استخدم .xlsx أو .csv')
       return
     }
@@ -45,39 +46,30 @@ export function FleetImportModal({
 
     const assetMap = new Map(assets.map(a => [a.asset_no.toUpperCase(), a.id]))
 
-    const reader = new FileReader()
-    reader.onload = async ev => {
-      try {
-        const XLSX = await import('xlsx')
-        const data = new Uint8Array(ev.target!.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
-        const sheetName = wb.SheetNames.find(n => n.includes('الأسطول')) || wb.SheetNames[0]
-        const ws = wb.Sheets[sheetName]
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', raw: false })
+    try {
+      const json = await readFileAsJson<Record<string, unknown>>(file, 'الأسطول')
 
-        if (json.length === 0) {
-          toast.error('الملف فارغ')
-          setRows([])
-          return
-        }
-
-        const headers = Object.keys(json[0])
-        const missing = FLEET_IMPORT_REQUIRED.filter(c => !headers.includes(c))
-        if (missing.length > 0) {
-          toast.error(`أعمدة مفقودة: ${missing.join('، ')} — حمّل النموذج الرسمي`)
-          setRows([])
-          return
-        }
-
-        const parsed = parseFleetExcelRows(json, assetMap)
-        setRows(parsed)
-        toast.success(`تم قراءة ${parsed.length} صف`)
-      } catch {
-        toast.error('تعذّر قراءة الملف')
+      if (json.length === 0) {
+        toast.error('الملف فارغ')
         setRows([])
+        return
       }
+
+      const headers = Object.keys(json[0])
+      const missing = FLEET_IMPORT_REQUIRED.filter(c => !headers.includes(c))
+      if (missing.length > 0) {
+        toast.error(`أعمدة مفقودة: ${missing.join('، ')} — حمّل النموذج الرسمي`)
+        setRows([])
+        return
+      }
+
+      const parsed = parseFleetExcelRows(json, assetMap)
+      setRows(parsed)
+      toast.success(`تم قراءة ${parsed.length} صف`)
+    } catch {
+      toast.error('تعذّر قراءة الملف')
+      setRows([])
     }
-    reader.readAsArrayBuffer(file)
   }
 
   async function handleImport() {

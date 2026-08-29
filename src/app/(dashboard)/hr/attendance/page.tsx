@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { formatDate } from '@/lib/utils'
 import { Clock, Plus, Search, Pencil, Trash2, X, Save, Upload, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import * as XLSX from 'xlsx'
+import { downloadExcelWorkbook, readFileAsJson } from '@/lib/excel-io'
 
 type Attendance = {
   id: number
@@ -54,15 +54,15 @@ type ImportRow = {
 }
 
 // ─── تحميل قالب Excel ────────────────────────────────────────────────────────
-function downloadTemplate() {
-  const ws = XLSX.utils.aoa_to_sheet([
-    TEMPLATE_COLUMNS,
-    ['أحمد محمد', new Date().toISOString().split('T')[0], 'حضور', '08:00', '17:00', '8', '0', ''],
-  ])
-  ws['!cols'] = TEMPLATE_COLUMNS.map(() => ({ wch: 20 }))
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'الحضور')
-  XLSX.writeFile(wb, 'قالب_الحضور.xlsx')
+async function downloadTemplate() {
+  await downloadExcelWorkbook([{
+    name: 'الحضور',
+    rows: [
+      TEMPLATE_COLUMNS,
+      ['أحمد محمد', new Date().toISOString().split('T')[0], 'حضور', '08:00', '17:00', '8', '0', ''],
+    ],
+    colWidths: TEMPLATE_COLUMNS.map(() => 20),
+  }], 'قالب_الحضور.xlsx')
 }
 
 // ─── تحليل وتحقق من صف الاستيراد ─────────────────────────────────────────
@@ -180,49 +180,39 @@ function ImportModal({
   const validRows   = rows.filter(r => r.valid)
   const invalidRows = rows.filter(r => !r.valid)
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
     const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!['xlsx', 'xls', 'csv'].includes(ext ?? '')) {
+    if (!['xlsx', 'csv'].includes(ext ?? '')) {
       toast.error('نوع الملف غير مدعوم. يُرجى رفع ملف .xlsx أو .csv')
       return
     }
     setFileName(file.name)
 
-    const reader = new FileReader()
-    reader.onload = ev => {
-      try {
-        const data = new Uint8Array(ev.target!.result as ArrayBuffer)
-        const wb   = XLSX.read(data, { type: 'array', cellDates: false })
-        const ws   = wb.Sheets[wb.SheetNames[0]]
-        const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
-          defval: '',
-          raw: false,
-        })
+    try {
+      const json = await readFileAsJson<Record<string, unknown>>(file)
 
-        if (json.length === 0) {
-          toast.error('الملف فارغ أو لا يحتوي على بيانات')
-          return
-        }
-
-        // التحقق من وجود الأعمدة الإلزامية
-        const headers = Object.keys(json[0])
-        const missing = REQUIRED_COLUMNS.filter(c => !headers.includes(c))
-        if (missing.length > 0) {
-          toast.error(`الأعمدة التالية مفقودة: ${missing.join('، ')}`)
-          setRows([])
-          return
-        }
-
-        const parsed = json.map((raw, i) => parseAndValidateRow(raw, i + 2, employees))
-        setRows(parsed)
-      } catch {
-        toast.error('تعذّر قراءة الملف. تأكد أن الملف غير تالف.')
+      if (json.length === 0) {
+        toast.error('الملف فارغ أو لا يحتوي على بيانات')
+        return
       }
+
+      // التحقق من وجود الأعمدة الإلزامية
+      const headers = Object.keys(json[0])
+      const missing = REQUIRED_COLUMNS.filter(c => !headers.includes(c))
+      if (missing.length > 0) {
+        toast.error(`الأعمدة التالية مفقودة: ${missing.join('، ')}`)
+        setRows([])
+        return
+      }
+
+      const parsed = json.map((raw, i) => parseAndValidateRow(raw, i + 2, employees))
+      setRows(parsed)
+    } catch {
+      toast.error('تعذّر قراءة الملف. تأكد أن الملف غير تالف.')
     }
-    reader.readAsArrayBuffer(file)
   }
 
   async function handleImport() {

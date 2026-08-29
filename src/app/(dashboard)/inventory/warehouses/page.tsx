@@ -12,6 +12,7 @@ import {
   parseExcelMaterialRows,
   type NormalizedMaterialImportRow,
 } from '@/lib/materials-excel-import'
+import { downloadExcelWorkbook, readFileAsJson } from '@/lib/excel-io'
 
 type WH = {
   id: number; name: string; location?: string
@@ -297,35 +298,23 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
     onSave(); onClose()
   }
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return
-    const reader = new FileReader()
-    reader.onload = async ev => {
-      try {
-        const XLSX = await import('xlsx')
-        const data = new Uint8Array(ev.target?.result as ArrayBuffer)
-        const wb   = XLSX.read(data, { type: 'array' })
-        const ws   = wb.Sheets[wb.SheetNames[0]]
-        const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        const format = detectExcelImportFormat(rows)
-        const valid = parseExcelMaterialRows(rows)
-        setImportFormat(format)
-        setImportData(valid)
-        toast.success(
-          format === 'sec'
-            ? `تم قراءة ${valid.length} مادة SEC (Item No + Description) ✅`
-            : `تم قراءة ${valid.length} مادة ✅`,
-        )
-      } catch { toast.error('خطأ في قراءة الملف — تأكد أنه ملف Excel صحيح') }
-    }
-    reader.readAsArrayBuffer(file)
+    try {
+      const rows = await readFileAsJson<Record<string, unknown>>(file)
+      const format = detectExcelImportFormat(rows)
+      const valid = parseExcelMaterialRows(rows)
+      setImportFormat(format)
+      setImportData(valid)
+      toast.success(
+        format === 'sec'
+          ? `تم قراءة ${valid.length} مادة SEC (Item No + Description) ✅`
+          : `تم قراءة ${valid.length} مادة ✅`,
+      )
+    } catch { toast.error('خطأ في قراءة الملف — تأكد أنه ملف Excel صحيح') }
   }
 
   async function downloadTemplate() {
-    const XLSX = await import('xlsx')
-    const wb   = XLSX.utils.book_new()
-
-    // ── ورقة المواد ──
     const headers = ['اسم المادة', 'الوحدة', 'المصدر', 'رقم الكتالوج', 'رقم SEC', 'الكمية', 'حد الأمان', 'الموقع في المستودع']
     const examples = [
       ['كيبل نحاسي 4×10مم', 'متر', 'خاص', 'CAT-1001', 'SEC-2001', 0, 50, 'رف A - قسم 1'],
@@ -333,38 +322,34 @@ function MaterialDefineModal({ tenantId, branchId, warehouses, onClose, onSave }
       ['لوحة تحكم كهربائية', 'قطعة', 'خاص', 'CAT-1003', '', 0, 1, ''],
       ...Array(20).fill(['', 'قطعة', 'خاص', '', '', 0, 0, '']),
     ]
-    const wsData = [headers, ...examples]
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
 
-    // عرض الأعمدة
-    ws['!cols'] = [
-      { wch: 30 }, { wch: 12 }, { wch: 10 },
-      { wch: 16 }, { wch: 16 }, { wch: 10 },
-      { wch: 12 }, { wch: 25 },
-    ]
-    XLSX.utils.book_append_sheet(wb, ws, 'المواد')
-
-    // ── ورقة التوضيحات ──
-    const wsInfo = XLSX.utils.aoa_to_sheet([
-      ['الحقل', 'إلزامي؟', 'القيم المسموحة', 'ملاحظة'],
-      ['اسم المادة', 'نعم', '—', 'لا يتكرر في نفس المستودع'],
-      ['الوحدة', 'نعم', 'متر / كجم / قطعة / لتر / علبة / رول / طن / م² / م³ / كيس / برميل / أمبير / متر كيبل', ''],
-      ['المصدر', 'نعم', 'خاص / SEC', 'خاص = مواد الشركة | SEC = مواد العميل'],
-      ['رقم الكتالوج', 'لا', '—', 'فريد على مستوى الشركة'],
-      ['رقم SEC', 'لا', '—', 'فريد على مستوى الشركة'],
-      ['الكمية', 'لا', 'رقم', 'الكمية الافتتاحية — 0 افتراضياً'],
-      ['حد الأمان', 'لا', 'رقم', 'تنبيه عند الوصول لهذا الحد'],
-      ['الموقع في المستودع', 'لا', '—', 'مثال: رف A - قسم 1'],
-      ['', '', '', ''],
-      ['— قائمة SEC الرسمية —', '', '', ''],
-      ['Item No', 'نعم', '—', 'رقم الصنف (908101001)'],
-      ['Description', 'نعم', '—', 'اسم المادة بالإنجليزية'],
-      ['Unit', 'نعم', 'MTR / EA / KIT / ROLL', 'تُحوَّل تلقائياً للعربية'],
-    ])
-    wsInfo['!cols'] = [{ wch: 22 }, { wch: 10 }, { wch: 55 }, { wch: 30 }]
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'تعليمات')
-
-    XLSX.writeFile(wb, 'نموذج_استيراد_المواد.xlsx')
+    await downloadExcelWorkbook([
+      {
+        name: 'المواد',
+        rows: [headers, ...examples],
+        colWidths: [30, 12, 10, 16, 16, 10, 12, 25],
+      },
+      {
+        name: 'تعليمات',
+        rows: [
+          ['الحقل', 'إلزامي؟', 'القيم المسموحة', 'ملاحظة'],
+          ['اسم المادة', 'نعم', '—', 'لا يتكرر في نفس المستودع'],
+          ['الوحدة', 'نعم', 'متر / كجم / قطعة / لتر / علبة / رول / طن / م² / م³ / كيس / برميل / أمبير / متر كيبل', ''],
+          ['المصدر', 'نعم', 'خاص / SEC', 'خاص = مواد الشركة | SEC = مواد العميل'],
+          ['رقم الكتالوج', 'لا', '—', 'فريد على مستوى الشركة'],
+          ['رقم SEC', 'لا', '—', 'فريد على مستوى الشركة'],
+          ['الكمية', 'لا', 'رقم', 'الكمية الافتتاحية — 0 افتراضياً'],
+          ['حد الأمان', 'لا', 'رقم', 'تنبيه عند الوصول لهذا الحد'],
+          ['الموقع في المستودع', 'لا', '—', 'مثال: رف A - قسم 1'],
+          ['', '', '', ''],
+          ['— قائمة SEC الرسمية —', '', '', ''],
+          ['Item No', 'نعم', '—', 'رقم الصنف (908101001)'],
+          ['Description', 'نعم', '—', 'اسم المادة بالإنجليزية'],
+          ['Unit', 'نعم', 'MTR / EA / KIT / ROLL', 'تُحوَّل تلقائياً للعربية'],
+        ],
+        colWidths: [22, 10, 55, 30],
+      },
+    ], 'نموذج_استيراد_المواد.xlsx')
   }
 
   return (

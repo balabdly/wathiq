@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx'
+import { readFileAsJson } from '@/lib/excel-io'
 import { supabase } from '@/lib/supabase'
 
 export type PlanningMaterialLine = {
@@ -96,69 +96,43 @@ function parseQty(v: unknown): number {
 }
 
 /** استيراد بنود من Excel / CSV */
-export function parseMaterialsSpreadsheet(file: File): Promise<PlanningMaterialLine[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: 'array' })
-        const sheet = wb.Sheets[wb.SheetNames[0]]
-        if (!sheet) { resolve([]); return }
+export async function parseMaterialsSpreadsheet(file: File): Promise<PlanningMaterialLine[]> {
+  const rows = await readFileAsJson<Record<string, unknown>>(file)
+  if (!rows.length) return []
 
-        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-        if (!rows.length) { resolve([]); return }
-
-        const firstKeys = Object.keys(rows[0])
-        const colMap = new Map<string, keyof PlanningMaterialLine>()
-        for (const key of firstKeys) {
-          const norm = normalizeHeader(key)
-          for (const [alias, field] of Object.entries(HEADER_ALIASES)) {
-            if (normalizeHeader(alias) === norm || norm.includes(normalizeHeader(alias))) {
-              colMap.set(key, field)
-              break
-            }
-          }
-        }
-
-        const hasDescription = Array.from(colMap.values()).includes('description')
-        const lines: PlanningMaterialLine[] = []
-
-        for (const row of rows) {
-          const line: PlanningMaterialLine = {
-            project_id: 0,
-            description: '',
-            unit: 'قطعة',
-            qty_planned: 0,
-          }
-
-          colMap.forEach((field, col) => {
-            const val = row[col]
-            if (field === 'qty_planned') line.qty_planned = parseQty(val)
-            else if (field === 'description') line.description = String(val ?? '').trim()
-            else if (field === 'unit') line.unit = String(val ?? 'قطعة').trim() || 'قطعة'
-            else if (field === 'catalog_no') line.catalog_no = String(val ?? '').trim() || null
-            else if (field === 'notes') line.notes = String(val ?? '').trim() || null
-          })
-
-          if (!hasDescription) {
-            const vals = Object.values(row).map(v => String(v ?? '').trim())
-            line.description = vals[0] || ''
-            line.qty_planned = parseQty(vals[1]) || line.qty_planned
-            if (vals[2]) line.unit = vals[2]
-          }
-
-          if (line.description && line.qty_planned > 0) {
-            lines.push(line)
-          }
-        }
-
-        resolve(lines)
-      } catch (err) {
-        reject(err)
+  const firstKeys = Object.keys(rows[0])
+  const colMap = new Map<string, keyof PlanningMaterialLine>()
+  for (const key of firstKeys) {
+    const norm = normalizeHeader(key)
+    for (const [alias, field] of Object.entries(HEADER_ALIASES)) {
+      if (normalizeHeader(alias) === norm || norm.includes(normalizeHeader(alias))) {
+        colMap.set(key, field)
+        break
       }
     }
-    reader.onerror = () => reject(new Error('فشل قراءة الملف'))
-    reader.readAsArrayBuffer(file)
-  })
+  }
+
+  const lines: PlanningMaterialLine[] = []
+
+  for (const row of rows) {
+    const line: PlanningMaterialLine = {
+      project_id: 0,
+      description: '',
+      unit: 'قطعة',
+      qty_planned: 0,
+    }
+
+    for (const [col, field] of colMap.entries()) {
+      const val = row[col]
+      if (field === 'qty_planned') line.qty_planned = parseQty(val)
+      else if (field === 'description') line.description = String(val ?? '').trim()
+      else if (field === 'unit') line.unit = String(val ?? '').trim() || 'قطعة'
+      else if (field === 'catalog_no') line.catalog_no = String(val ?? '').trim() || null
+      else if (field === 'notes') line.notes = String(val ?? '').trim() || null
+    }
+
+    if (line.description && line.qty_planned > 0) lines.push(line)
+  }
+
+  return lines
 }

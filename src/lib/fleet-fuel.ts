@@ -1,5 +1,4 @@
-import * as XLSX from 'xlsx'
-import { supabase } from '@/lib/supabase'
+import { readSpreadsheetAsRows, parseExcelSerialDate } from '@/lib/excel-io'
 
 export type FuelMode = 'manual' | 'drees'
 
@@ -83,32 +82,15 @@ function cellNum(v: unknown): number {
 }
 
 function parseExcelDate(v: unknown): string {
-  if (v == null || v === '') return new Date().toISOString().split('T')[0]
-  if (typeof v === 'number') {
-    const parsed = XLSX.SSF.parse_date_code(v)
-    if (parsed) {
-      const mm = String(parsed.m).padStart(2, '0')
-      const dd = String(parsed.d).padStart(2, '0')
-      return `${parsed.y}-${mm}-${dd}`
-    }
-  }
-  const s = cellStr(v)
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10)
-  const d = new Date(s)
-  if (!Number.isNaN(d.getTime())) return d.toISOString().split('T')[0]
-  return new Date().toISOString().split('T')[0]
+  return parseExcelSerialDate(v)
 }
 
 function normalizeCardNo(v: string): string {
   return v.replace(/\s+/g, '').replace(/^0+/, '') || v.trim()
 }
 
-export function parseDreesSpreadsheet(buffer: ArrayBuffer): ParsedDreesRow[] {
-  const wb = XLSX.read(buffer, { type: 'array', cellDates: true })
-  const sheet = wb.Sheets[wb.SheetNames[0]]
-  if (!sheet) return []
-
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }) as unknown[][]
+export async function parseDreesSpreadsheet(buffer: ArrayBuffer): Promise<ParsedDreesRow[]> {
+  const rows = await readSpreadsheetAsRows(buffer)
   if (rows.length < 2) return []
 
   let headerRowIdx = 0

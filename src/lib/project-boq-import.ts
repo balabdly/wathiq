@@ -1,3 +1,5 @@
+import { downloadExcelWorkbook, readFileAsJson } from '@/lib/excel-io'
+
 /** استيراد كميات المشروع — Excel / CSV / PDF / صورة UDS */
 
 import {
@@ -344,28 +346,31 @@ export function boqImportSummary(lines: BoqImportLine[]) {
 }
 
 export async function downloadBoqImportTemplate() {
-  const XLSX = await import('xlsx')
-  const wb = XLSX.utils.book_new()
-  const ws = XLSX.utils.aoa_to_sheet([
-    [...BOQ_IMPORT_COLUMNS],
-    ['201020101', 'استبدال عمود حديدي', 5, 'EA', ''],
-    ['101000001', 'المسح الأرضي', 2.5, 'KM', ''],
-    ['', 'بند بدون كود — يدوي', 1, 'EA', ''],
-  ])
-  ws['!cols'] = [{ wch: 14 }, { wch: 36 }, { wch: 10 }, { wch: 8 }, { wch: 12 }]
-  XLSX.utils.book_append_sheet(wb, ws, 'كميات UDS')
-  const wsInfo = XLSX.utils.aoa_to_sheet([
-    ['تعليمات استيراد كميات المشروع'],
-    [''],
-    ['① حمّل هذا النموذج أو صدّر من UDS'],
-    ['② املأ: كود البند، الوصف، الكمية، الوحدة'],
-    ['③ سعر الوحدة اختياري — يُملأ من العقد الإطاري إن وُجد الكود'],
-    ['④ ارفع الملف في تبويب الكميات الابتدائية'],
-    [''],
-    ['ملاحظة: البنود غير المطابقة للعقد تظهر للمراجعة — أضفها يدوياً'],
-  ])
-  XLSX.utils.book_append_sheet(wb, wsInfo, 'تعليمات')
-  XLSX.writeFile(wb, 'نموذج_كميات_المشروع.xlsx')
+  await downloadExcelWorkbook([
+    {
+      name: 'كميات UDS',
+      rows: [
+        [...BOQ_IMPORT_COLUMNS],
+        ['201020101', 'استبدال عمود حديدي', 5, 'EA', ''],
+        ['101000001', 'المسح الأرضي', 2.5, 'KM', ''],
+        ['', 'بند بدون كود — يدوي', 1, 'EA', ''],
+      ],
+      colWidths: [14, 36, 10, 8, 12],
+    },
+    {
+      name: 'تعليمات',
+      rows: [
+        ['تعليمات استيراد كميات المشروع'],
+        [''],
+        ['① حمّل هذا النموذج أو صدّر من UDS'],
+        ['② املأ: كود البند، الوصف، الكمية، الوحدة'],
+        ['③ سعر الوحدة اختياري — يُملأ من العقد الإطاري إن وُجد الكود'],
+        ['④ ارفع الملف في تبويب الكميات الابتدائية'],
+        [''],
+        ['ملاحظة: البنود غير المطابقة للعقد تظهر للمراجعة — أضفها يدوياً'],
+      ],
+    },
+  ], 'نموذج_كميات_المشروع.xlsx')
 }
 
 export async function readBoqImportFile(
@@ -383,11 +388,9 @@ export async function readBoqImportFile(
   }
 
   if (ext === 'xlsx' || ext === 'xls') {
-    const XLSX = await import('xlsx')
-    const buffer = await file.arrayBuffer()
-    const wb = XLSX.read(buffer, { type: 'array', cellDates: false })
-    const ws = wb.Sheets[wb.SheetNames[0]]
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', raw: false })
+    if (ext === 'xls') throw new Error('صيغة .xls القديمة غير مدعومة — احفظ الملف كـ .xlsx')
+    const { readSpreadsheetAsJson } = await import('@/lib/excel-io')
+    const json = await readSpreadsheetAsJson<Record<string, unknown>>(await file.arrayBuffer())
     return { lines: parseBoqImportRows(json, frameworkMap, 'excel'), source: 'excel' }
   }
 
