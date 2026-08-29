@@ -9,14 +9,14 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.3.0",
-    "@supabase/supabase-js": "^2.43.0",
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.49.0",
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.383.0",
-    "next": "14.2.0",
-    "pdfjs-dist": "^6.1.200",
+    "next": "14.2.35",
+    "pdfjs-dist": "^6.2.108",
     "react": "^18",
     "react-dom": "^18",
     "react-hot-toast": "^2.4.1",
@@ -31,9 +31,9 @@
     "@types/react-dom": "^18",
     "autoprefixer": "^10.5.0",
     "eslint": "^8",
-    "eslint-config-next": "14.2.0",
+    "eslint-config-next": "14.2.35",
     "jszip": "^3.10.1",
-    "postcss": "^8.5.15",
+    "postcss": "^8.5.23",
     "typescript": "^5"
   }
 }

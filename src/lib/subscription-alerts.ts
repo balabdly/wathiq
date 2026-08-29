@@ -105,7 +105,7 @@ export async function processSubscriptionAlerts(
     if (emailConfig.operator_email) recipients.push(emailConfig.operator_email)
     if (emailConfig.notify_tenant && tenant.email?.trim()) recipients.push(tenant.email.trim())
 
-    const uniqueRecipients = [...new Set(recipients)]
+    const uniqueRecipients = Array.from(new Set(recipients))
     if (!uniqueRecipients.length) {
       result.skipped++
       continue
