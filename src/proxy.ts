@@ -16,7 +16,7 @@ const PAGE_PERMISSIONS: Record<string, string[]> = {
   '/settings/permissions': ['مدير عام'],
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // تجاهل الـ API routes والملفات الثابتة

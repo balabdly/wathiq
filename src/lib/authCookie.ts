@@ -1,6 +1,6 @@
 import type { Employee } from '@/types'
 
-/** مزامنة cookie الـ middleware مع بيانات المستخدم الحالية */
+/** مزامنة cookie الـ proxy مع بيانات المستخدم الحالية */
 export function syncUserCookie(user: Pick<Employee, 'id' | 'name' | 'role' | 'permissions'> | null) {
   if (typeof document === 'undefined') return
   if (user) {
