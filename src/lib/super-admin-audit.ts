@@ -8,6 +8,7 @@ export type SuperAdminAuditAction =
   | 'admin_password_reset'
   | 'maintenance_toggled'
   | 'tenant_exported'
+  | 'subscription_alerts_sent'
 
 export async function logSuperAdminAction(
   admin: SupabaseClient,

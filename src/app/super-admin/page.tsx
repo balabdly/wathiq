@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TenantDetailPanel } from '@/components/super-admin/TenantDetailPanel'
+import { EmailSettingsPanel } from '@/components/super-admin/EmailSettingsPanel'
 import type { PlanTemplate } from '@/lib/plan-templates'
 import {
   PLANS,
@@ -547,6 +548,8 @@ export default function SuperAdminPage() {
             </div>
           </div>
         )}
+
+        <EmailSettingsPanel />
 
         <div className="card" style={{ overflow: 'hidden' }}>
           <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
