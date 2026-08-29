@@ -26,6 +26,7 @@ import {
   LOGIN_USERNAME_LABEL,
   LOGIN_USERNAME_PLACEHOLDER,
 } from '@/lib/loginUsername'
+import { assertTenantUserLimit } from '@/lib/tenant-user-limit'
 
 const ALL_PERMISSIONS = [
   { key: 'dashboard',      label: 'لوحة التحكم' },
@@ -384,6 +385,9 @@ export default function EmployeesSettingsPage() {
     if (availErr) { toast.error('خطأ: ' + availErr); return }
     if (!available) { toast.error('رقم الموظف / اسم المستخدم مستخدم من قبل موظف آخر'); return }
 
+    const limitCheck = await assertTenantUserLimit(supabase, tenant.id, (tenant as { max_users?: number }).max_users)
+    if (!limitCheck.ok) { toast.error(limitCheck.error); return }
+
     const payload: any = {
       tenant_id:       tenant.id,
       name:            data.name,
@@ -422,6 +426,10 @@ export default function EmployeesSettingsPage() {
     if (!check.allowed) { toast.error(check.reason!); return }
     const newStatus = !emp.is_active
     if (!confirm((newStatus ? 'تفعيل ' : 'تعطيل ') + emp.name + '؟')) return
+    if (newStatus) {
+      const limitCheck = await assertTenantUserLimit(supabase, tenant.id, (tenant as { max_users?: number }).max_users)
+      if (!limitCheck.ok) { toast.error(limitCheck.error); return }
+    }
     await supabase.from('employees').update({ is_active: newStatus }).eq('id', emp.id)
     await load()
     toast.success(newStatus ? '✅ تم تفعيل ' + emp.name : '⛔ تم تعطيل ' + emp.name)

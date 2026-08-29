@@ -75,9 +75,10 @@ export function createSuperAdminSessionToken(secret?: string): { token: string; 
   return { token: `${payload}.${sig}`, maxAge }
 }
 
-export function verifySuperAdminSessionToken(token: string | undefined | null): boolean {
+export async function verifySuperAdminSessionToken(token: string | undefined | null): Promise<boolean> {
   if (!token) return false
-  const signingSecret = getSecretSync()
+  await loadSuperAdminConfig()
+  const signingSecret = cachedConfig?.secret || getSecretSync()
   if (!signingSecret) return false
 
   const dot = token.lastIndexOf('.')
@@ -128,7 +129,7 @@ export function clearSuperAdminCookie(): void {
 export async function requireSuperAdmin(_request?: Request): Promise<NextResponse | null> {
   await loadSuperAdminConfig()
   const token = cookies().get(SUPER_ADMIN_COOKIE)?.value
-  if (!verifySuperAdminSessionToken(token)) {
+  if (!(await verifySuperAdminSessionToken(token))) {
     return NextResponse.json({ ok: false, error: 'غير مصرح — سجّل الدخول كـ Super Admin' }, { status: 401 })
   }
   return null

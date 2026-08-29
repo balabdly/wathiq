@@ -62,3 +62,62 @@ export function authEmailForEmployee(employeeId: number | string) {
 export function supabaseAuthPassword(employeeId: number | string, employeePassword: string) {
   return `wathiq:${employeeId}:${employeePassword}`
 }
+
+type AdminAuthClient = {
+  auth: {
+    admin: {
+      createUser: (args: {
+        email: string
+        password: string
+        email_confirm?: boolean
+        app_metadata?: Record<string, unknown>
+        user_metadata?: Record<string, unknown>
+      }) => Promise<{ data: unknown; error: { message?: string } | null }>
+      listUsers: (args: { page: number; perPage: number }) => Promise<{
+        data: { users?: Array<{ id: string; email?: string }> } | null
+        error: { message?: string } | null
+      }>
+      updateUserById: (id: string, args: {
+        password?: string
+        app_metadata?: Record<string, unknown>
+        user_metadata?: Record<string, unknown>
+      }) => Promise<{ error: { message?: string } | null }>
+    }
+  }
+}
+
+/** إنشاء أو تحديث مستخدم Supabase Auth (مشترك بين login و Super Admin) */
+export async function ensureAuthUser(
+  admin: AdminAuthClient,
+  email: string,
+  authPassword: string,
+  appMeta: Record<string, unknown>,
+  userMeta: Record<string, unknown>,
+): Promise<void> {
+  const { error: createError } = await admin.auth.admin.createUser({
+    email,
+    password: authPassword,
+    email_confirm: true,
+    app_metadata: appMeta,
+    user_metadata: userMeta,
+  })
+
+  if (!createError) return
+
+  const alreadyExists = createError.message?.toLowerCase().includes('already')
+    || createError.message?.toLowerCase().includes('registered')
+  if (!alreadyExists) throw createError
+
+  const { data: listed, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  if (listError) throw listError
+
+  const existing = listed?.users?.find(u => u.email === email)
+  if (!existing) throw new Error('تعذّر العثور على مستخدم المصادقة')
+
+  const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
+    password: authPassword,
+    app_metadata: appMeta,
+    user_metadata: userMeta,
+  })
+  if (updateError) throw updateError
+}

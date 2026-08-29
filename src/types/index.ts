@@ -66,6 +66,7 @@ export interface Employee {
   is_active: boolean
   hr_employee_id?: number
   is_tenant_owner?: boolean
+  last_login_at?: string
   created_at: string
 }
 

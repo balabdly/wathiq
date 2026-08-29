@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react'
 import {
   Building2, Plus, Pencil, X, Save, Shield, CheckCircle2,
-  AlertTriangle, Users, Lock, LogOut,
+  AlertTriangle, Users, Lock, LogOut, Eye,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { TenantDetailPanel } from '@/components/super-admin/TenantDetailPanel'
 import {
   PLANS,
   MODULE_LABELS,
@@ -50,7 +51,9 @@ function CompanyModal({ company, onClose, onSave }: {
 
   function applyPlan(planKey: TenantPlanKey) {
     set('plan', planKey)
-    setModules({ ...defaultModulesForPlan(planKey) })
+    if (!company) {
+      setModules({ ...defaultModulesForPlan(planKey) })
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -216,6 +219,8 @@ export default function SuperAdminPage() {
   const [companies, setCompanies] = useState<any[]>([])
   const [showModal, setShowModal] = useState(false)
   const [editCompany, setEdit]    = useState<any | null>(null)
+  const [detailId, setDetailId]   = useState<string | null>(null)
+  const [globalAudit, setGlobalAudit] = useState<any[]>([])
 
   useEffect(() => {
     fetch('/api/super-admin/session', fetchOpts)
@@ -224,6 +229,7 @@ export default function SuperAdminPage() {
         if (data.ok) {
           setAuth(true)
           loadCompanies()
+          loadGlobalAudit()
         }
       })
       .finally(() => setCheckingSession(false))
@@ -244,6 +250,7 @@ export default function SuperAdminPage() {
         setAuth(true)
         setPassword('')
         loadCompanies()
+        loadGlobalAudit()
       } else {
         toast.error(data.error || 'كلمة المرور غير صحيحة')
       }
@@ -258,6 +265,16 @@ export default function SuperAdminPage() {
     await fetch('/api/super-admin/logout', { method: 'POST', ...fetchOpts })
     setAuth(false)
     setCompanies([])
+  }
+
+  async function loadGlobalAudit() {
+    try {
+      const res = await fetch('/api/super-admin/audit-log?limit=30', fetchOpts)
+      const data = await res.json()
+      if (data.ok) setGlobalAudit(data.entries || [])
+    } catch {
+      /* optional */
+    }
   }
 
   async function loadCompanies() {
@@ -313,6 +330,7 @@ export default function SuperAdminPage() {
       }
 
       await loadCompanies()
+      await loadGlobalAudit()
       setShowModal(false)
       setEdit(null)
     } catch (err: unknown) {
@@ -332,6 +350,7 @@ export default function SuperAdminPage() {
       const result = await res.json()
       if (!result.ok) throw new Error(result.error)
       await loadCompanies()
+      await loadGlobalAudit()
       toast.success(result.is_active ? 'تم تفعيل الشركة ✅' : 'تم تعطيل الشركة')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
@@ -500,10 +519,16 @@ export default function SuperAdminPage() {
                         </button>
                       </td>
                       <td style={{ padding: '16px' }}>
-                        <button onClick={() => { setEdit(c); setShowModal(true) }}
-                          className="btn btn-ghost" style={{ padding: '5px 8px', fontSize: '0.72rem' }}>
-                          <Pencil style={{ width: '14px', height: '14px' }} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button onClick={() => setDetailId(c.id)}
+                            className="btn btn-ghost" style={{ padding: '5px 8px', fontSize: '0.72rem' }} title="التفاصيل">
+                            <Eye style={{ width: '14px', height: '14px' }} />
+                          </button>
+                          <button onClick={() => { setEdit(c); setShowModal(true) }}
+                            className="btn btn-ghost" style={{ padding: '5px 8px', fontSize: '0.72rem' }}>
+                            <Pencil style={{ width: '14px', height: '14px' }} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -531,7 +556,34 @@ export default function SuperAdminPage() {
             </div>
           </div>
         )}
+
+        {globalAudit.length > 0 && (
+          <div className="card" style={{ padding: '16px' }}>
+            <h3 style={{ fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '12px' }}>آخر العمليات</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+              {globalAudit.map(entry => (
+                <div key={entry.id} style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                  <span>
+                    <strong>{entry.tenant_name || '—'}</strong>
+                    <span style={{ color: 'var(--text3)', marginRight: '6px' }}>{entry.action}</span>
+                  </span>
+                  <span style={{ color: 'var(--text3)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                    {new Date(entry.created_at).toLocaleString('ar-EG')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {detailId && (
+        <TenantDetailPanel
+          tenantId={detailId}
+          onClose={() => setDetailId(null)}
+          onUpdated={() => { loadCompanies(); loadGlobalAudit() }}
+        />
+      )}
 
       {showModal && (
         <CompanyModal

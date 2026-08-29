@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
 import {
   authEmailForEmployee,
+  ensureAuthUser,
   hashPasswordServer,
   supabaseAuthPassword,
   verifyPasswordServer,
@@ -16,41 +17,6 @@ function createAnonClient() {
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
-}
-
-async function ensureAuthUser(
-  admin: ReturnType<typeof createAdminClient>,
-  email: string,
-  authPassword: string,
-  appMeta: Record<string, unknown>,
-  userMeta: Record<string, unknown>,
-) {
-  const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email,
-    password: authPassword,
-    email_confirm: true,
-    app_metadata: appMeta,
-    user_metadata: userMeta,
-  })
-
-  if (!createError) return
-
-  const alreadyExists = createError.message?.toLowerCase().includes('already')
-    || createError.message?.toLowerCase().includes('registered')
-  if (!alreadyExists) throw createError
-
-  const { data: listed, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-  if (listError) throw listError
-
-  const existing = listed?.users?.find(u => u.email === email)
-  if (!existing) throw new Error('تعذّر العثور على مستخدم المصادقة')
-
-  const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
-    password: authPassword,
-    app_metadata: appMeta,
-    user_metadata: userMeta,
-  })
-  if (updateError) throw updateError
 }
 
 export async function POST(request: Request) {
@@ -139,6 +105,8 @@ export async function POST(request: Request) {
       console.error('[auth/login] signIn', signInError)
       return NextResponse.json({ error: 'فشل تسجيل الدخول' }, { status: 500 })
     }
+
+    await admin.from('employees').update({ last_login_at: new Date().toISOString() }).eq('id', emp.id)
 
     const [{ data: tenant }, { data: branches }] = await Promise.all([
       admin.from('tenants').select('*').eq('id', emp.tenant_id).single(),

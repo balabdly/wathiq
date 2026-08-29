@@ -3,20 +3,31 @@ import { requireSuperAdmin } from '@/lib/super-admin-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logSuperAdminAction } from '@/lib/super-admin-audit'
 
+function addDays(base: Date, days: number): string {
+  const d = new Date(base)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 export async function POST(request: Request) {
   const denied = await requireSuperAdmin(request)
   if (denied) return denied
 
   try {
-    const { id } = await request.json()
+    const { id, days } = await request.json()
     if (!id) {
       return NextResponse.json({ ok: false, error: 'معرّف الشركة مطلوب' }, { status: 400 })
+    }
+
+    const extendDays = Number(days)
+    if (!Number.isFinite(extendDays) || extendDays <= 0 || extendDays > 3650) {
+      return NextResponse.json({ ok: false, error: 'عدد الأيام غير صالح' }, { status: 400 })
     }
 
     const admin = createAdminClient()
     const { data: current, error: fetchError } = await admin
       .from('tenants')
-      .select('is_active, name')
+      .select('id, name, expires_at, is_active')
       .eq('id', id)
       .single()
 
@@ -24,10 +35,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: fetchError?.message || 'الشركة غير موجودة' }, { status: 404 })
     }
 
-    const nextActive = !current.is_active
-    const { data, error } = await admin
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    let base = today
+    if (current.expires_at) {
+      const exp = new Date(current.expires_at)
+      exp.setHours(0, 0, 0, 0)
+      if (exp.getTime() > base.getTime()) base = exp
+    }
+
+    const newExpires = addDays(base, extendDays)
+
+    const { data: tenant, error } = await admin
       .from('tenants')
-      .update({ is_active: nextActive })
+      .update({
+        expires_at: newExpires,
+        is_active: true,
+      })
       .eq('id', id)
       .select()
       .single()
@@ -37,13 +61,17 @@ export async function POST(request: Request) {
     }
 
     await logSuperAdminAction(admin, {
-      action: 'tenant_toggled',
+      action: 'subscription_extended',
       tenantId: id,
       tenantName: current.name,
-      details: { is_active: nextActive },
+      details: {
+        days: extendDays,
+        previous_expires_at: current.expires_at,
+        new_expires_at: newExpires,
+      },
     })
 
-    return NextResponse.json({ ok: true, tenant: data, is_active: nextActive })
+    return NextResponse.json({ ok: true, tenant, expires_at: newExpires })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

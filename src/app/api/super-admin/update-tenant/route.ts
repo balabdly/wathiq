@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireSuperAdmin } from '@/lib/super-admin-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mergeTenantModules, normalizePlan, planMaxUsers } from '@/lib/tenant-plans'
+import { logSuperAdminAction } from '@/lib/super-admin-audit'
 
 export async function PATCH(request: Request) {
   const denied = await requireSuperAdmin(request)
@@ -42,6 +43,13 @@ export async function PATCH(request: Request) {
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
     }
+
+    await logSuperAdminAction(admin, {
+      action: 'tenant_updated',
+      tenantId: id,
+      tenantName: data.name,
+      details: { plan: normalizedPlan, is_active: data.is_active },
+    })
 
     return NextResponse.json({ ok: true, tenant: data })
   } catch (err: unknown) {

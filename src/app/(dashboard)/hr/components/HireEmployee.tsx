@@ -8,6 +8,7 @@ import type { HREmployee, Department, JobTitle } from '../hr_types'
 import { calcGOSI } from '../hr_utils'
 import { hashPassword } from '@/lib/auth'
 import { normalizeLoginUsername } from '@/lib/loginUsername'
+import { assertTenantUserLimit } from '@/lib/tenant-user-limit'
 
 const WORK_LOCATIONS = ['الرياض','جدة','مكة المكرمة','المدينة المنورة','الدمام','الخبر','الأحساء','القطيف','حائل','تبوك','الجوف','نجران','عسير','جازان','الباحة']
 const CONTRACT_TYPES = ['دوام كامل','دوام جزئي','مؤقت','موسمي']
@@ -117,6 +118,9 @@ export default function HireEmployee({ onSuccess }: { onSuccess: () => void }) {
       const { data: existingEmp } = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('name', fullName).eq('is_active', true).maybeSingle()
       let newEmp = existingEmp
       if (!existingEmp) {
+        const limitCheck = await assertTenantUserLimit(supabase, tenant.id, (tenant as { max_users?: number }).max_users)
+        if (!limitCheck.ok) { toast.error(limitCheck.error); setSaving(false); return }
+
         const loginUsername = normalizeLoginUsername(String(empNum))
         const tempPassword = await hashPassword(crypto.randomUUID())
         const { data: createdEmp } = await supabase.from('employees').insert({
