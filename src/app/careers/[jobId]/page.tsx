@@ -6,11 +6,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export default async function CareersPage({ params }: { params: { jobId: string } }) {
+export default async function CareersPage({ params }: { params: Promise<{ jobId: string }> }) {
+  const { jobId } = await params
   const { data: job } = await supabase
     .from('hr_jobs')
     .select('*, tenant:tenants(name, logo_url)')
-    .eq('id', params.jobId)
+    .eq('id', jobId)
     .single()
 
   if (!job) {

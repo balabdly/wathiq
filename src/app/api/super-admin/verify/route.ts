@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     }
 
     const { token, maxAge } = createSuperAdminSessionToken(config.secret)
-    setSuperAdminCookie(token, maxAge)
+    await setSuperAdminCookie(token, maxAge)
 
     return NextResponse.json({ ok: true })
   } catch {

@@ -105,8 +105,9 @@ export async function verifySuperAdminPassword(password: string): Promise<boolea
   return password === config.password
 }
 
-export function setSuperAdminCookie(token: string, maxAge: number): void {
-  cookies().set(SUPER_ADMIN_COOKIE, token, {
+export async function setSuperAdminCookie(token: string, maxAge: number): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(SUPER_ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -115,8 +116,9 @@ export function setSuperAdminCookie(token: string, maxAge: number): void {
   })
 }
 
-export function clearSuperAdminCookie(): void {
-  cookies().set(SUPER_ADMIN_COOKIE, '', {
+export async function clearSuperAdminCookie(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(SUPER_ADMIN_COOKIE, '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -128,7 +130,8 @@ export function clearSuperAdminCookie(): void {
 /** يُرجع NextResponse 401 إذا غير مصرح، وإلا null */
 export async function requireSuperAdmin(_request?: Request): Promise<NextResponse | null> {
   await loadSuperAdminConfig()
-  const token = cookies().get(SUPER_ADMIN_COOKIE)?.value
+  const cookieStore = await cookies()
+  const token = cookieStore.get(SUPER_ADMIN_COOKIE)?.value
   if (!(await verifySuperAdminSessionToken(token))) {
     return NextResponse.json({ ok: false, error: 'غير مصرح — سجّل الدخول كـ Super Admin' }, { status: 401 })
   }

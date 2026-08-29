@@ -8,7 +8,7 @@ import {
 
 export async function GET() {
   await loadSuperAdminConfig()
-  const token = cookies().get(SUPER_ADMIN_COOKIE)?.value
+  const token = (await cookies()).get(SUPER_ADMIN_COOKIE)?.value
   const ok = await verifySuperAdminSessionToken(token)
   return NextResponse.json({ ok })
 }
