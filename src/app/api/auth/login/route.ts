@@ -58,13 +58,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'هذا الحساب معطّل' }, { status: 403 })
     }
 
-    const { data: tenantRow, error: tenantError } = await admin
+    const tenantSelectWithMaintenance =
+      'is_active, expires_at, maintenance_mode, maintenance_message'
+    let tenantResult = await admin
       .from('tenants')
-      .select('is_active, expires_at, maintenance_mode, maintenance_message')
+      .select(tenantSelectWithMaintenance)
       .eq('id', emp.tenant_id)
       .single()
 
+    // fallback إذا لم تُطبَّق migration وضع الصيانة بعد
+    if (
+      tenantResult.error &&
+      /maintenance_mode|maintenance_message|column/.test(tenantResult.error.message || '')
+    ) {
+      tenantResult = await admin
+        .from('tenants')
+        .select('is_active, expires_at')
+        .eq('id', emp.tenant_id)
+        .single()
+      if (tenantResult.data) {
+        tenantResult.data = {
+          ...tenantResult.data,
+          maintenance_mode: false,
+          maintenance_message: null,
+        }
+      }
+    }
+
+    const { data: tenantRow, error: tenantError } = tenantResult
+
     if (tenantError || !tenantRow) {
+      console.error('[auth/login] tenant', tenantError)
       return NextResponse.json({ error: 'تعذّر التحقق من بيانات الشركة' }, { status: 500 })
     }
 
