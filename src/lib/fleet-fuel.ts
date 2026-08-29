@@ -1,4 +1,5 @@
 import { readSpreadsheetAsRows, parseExcelSerialDate } from '@/lib/excel-io'
+import { supabase } from '@/lib/supabase'
 
 export type FuelMode = 'manual' | 'drees'
 

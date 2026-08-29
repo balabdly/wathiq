@@ -122,7 +122,7 @@ export async function parseMaterialsSpreadsheet(file: File): Promise<PlanningMat
       qty_planned: 0,
     }
 
-    for (const [col, field] of colMap.entries()) {
+    for (const [col, field] of Array.from(colMap.entries())) {
       const val = row[col]
       if (field === 'qty_planned') line.qty_planned = parseQty(val)
       else if (field === 'description') line.description = String(val ?? '').trim()
