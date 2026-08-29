@@ -48,6 +48,11 @@ export interface Tenant {
   footer_text?: string
   plan: 'basic' | 'pro'
   is_active: boolean
+  max_users?: number
+  maintenance_mode?: boolean
+  maintenance_message?: string | null
+  expires_at?: string | null
+  modules?: Record<string, boolean>
   created_at: string
 }
 

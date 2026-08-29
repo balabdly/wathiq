@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Building2, X, Users, FolderKanban, KeyRound, CalendarPlus, RefreshCw,
-  Clock, Shield,
+  Clock, Shield, Wrench, Download,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { PLANS, normalizePlan } from '@/lib/tenant-plans'
@@ -16,6 +16,8 @@ const ACTION_LABELS: Record<string, string> = {
   tenant_toggled: 'تفعيل/إيقاف',
   subscription_extended: 'تمديد اشتراك',
   admin_password_reset: 'إعادة تعيين كلمة مرور الأدمن',
+  maintenance_toggled: 'وضع الصيانة',
+  tenant_exported: 'تصدير بيانات',
 }
 
 type TenantDetailPanelProps = {
@@ -30,6 +32,9 @@ export function TenantDetailPanel({ tenantId, onClose, onUpdated }: TenantDetail
   const [newPassword, setNewPassword] = useState('')
   const [resetting, setResetting] = useState(false)
   const [extending, setExtending] = useState<number | null>(null)
+  const [maintenanceMsg, setMaintenanceMsg] = useState('')
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +53,61 @@ export function TenantDetailPanel({ tenantId, onClose, onUpdated }: TenantDetail
   }, [tenantId, onClose])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (detail?.tenant?.maintenance_message) {
+      setMaintenanceMsg(detail.tenant.maintenance_message)
+    }
+  }, [detail?.tenant?.maintenance_message])
+
+  async function toggleMaintenance(enable?: boolean) {
+    setMaintenanceBusy(true)
+    try {
+      const res = await fetch('/api/super-admin/set-maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        ...fetchOpts,
+        body: JSON.stringify({
+          id: tenantId,
+          maintenance_mode: enable,
+          maintenance_message: maintenanceMsg,
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error)
+      toast.success(data.maintenance_mode ? 'تم تفعيل وضع الصيانة' : 'تم إيقاف وضع الصيانة')
+      await load()
+      onUpdated()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'فشل تغيير وضع الصيانة')
+    } finally {
+      setMaintenanceBusy(false)
+    }
+  }
+
+  async function exportTenant() {
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/super-admin/export-tenant?id=${tenantId}`, fetchOpts)
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'فشل التصدير')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `wathiq-export-${detail?.tenant?.name || tenantId}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('تم تصدير البيانات ✅')
+      await load()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'فشل التصدير')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   async function extendSubscription(days: number) {
     setExtending(days)
@@ -154,6 +214,32 @@ export function TenantDetailPanel({ tenantId, onClose, onUpdated }: TenantDetail
                   )}
                 </div>
               )}
+
+              <div style={{ marginBottom: '20px', padding: '14px', borderRadius: '12px', border: `1px solid ${tenant?.maintenance_mode ? '#fcd34d' : 'var(--border)'}`, background: tenant?.maintenance_mode ? '#fffbeb' : 'var(--bg2, #f8fafc)' }}>
+                <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Wrench style={{ width: '16px', height: '16px' }} /> وضع الصيانة
+                  {tenant?.maintenance_mode && <span style={{ fontSize: '0.72rem', color: '#b45309' }}>(مفعّل)</span>}
+                </div>
+                <input
+                  value={maintenanceMsg}
+                  onChange={e => setMaintenanceMsg(e.target.value)}
+                  className="input"
+                  placeholder="رسالة تظهر للمستخدمين عند محاولة الدخول"
+                  style={{ marginBottom: '8px' }}
+                />
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="button" disabled={maintenanceBusy} onClick={() => toggleMaintenance(true)} className="btn btn-ghost">
+                    تفعيل الصيانة
+                  </button>
+                  <button type="button" disabled={maintenanceBusy || !tenant?.maintenance_mode} onClick={() => toggleMaintenance(false)} className="btn btn-ghost">
+                    إيقاف الصيانة
+                  </button>
+                  <button type="button" disabled={exporting} onClick={exportTenant} className="btn btn-ghost" style={{ marginRight: 'auto' }}>
+                    <Download style={{ width: '14px', height: '14px' }} />
+                    {exporting ? 'جاري التصدير...' : 'تصدير JSON'}
+                  </button>
+                </div>
+              </div>
 
               <div style={{ marginBottom: '20px' }}>
                 <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>

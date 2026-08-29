@@ -138,9 +138,18 @@ export async function requireSuperAdmin(_request?: Request): Promise<NextRespons
 export function assertTenantLoginAllowed(tenant: {
   is_active?: boolean | null
   expires_at?: string | null
+  maintenance_mode?: boolean | null
+  maintenance_message?: string | null
 }): { ok: true } | { ok: false; error: string; status: number } {
   if (tenant.is_active === false) {
     return { ok: false, error: 'حساب الشركة موقوف — تواصل مع الدعم', status: 403 }
+  }
+  if (tenant.maintenance_mode) {
+    return {
+      ok: false,
+      error: tenant.maintenance_message?.trim() || 'النظام تحت الصيانة — حاول لاحقاً',
+      status: 503,
+    }
   }
   if (tenant.expires_at) {
     const exp = new Date(tenant.expires_at)

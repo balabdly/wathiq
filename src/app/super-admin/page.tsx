@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react'
 import {
   Building2, Plus, Pencil, X, Save, Shield, CheckCircle2,
-  AlertTriangle, Users, Lock, LogOut, Eye,
+  AlertTriangle, Users, Lock, LogOut, Eye, Search,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { TenantDetailPanel } from '@/components/super-admin/TenantDetailPanel'
+import type { PlanTemplate } from '@/lib/plan-templates'
 import {
   PLANS,
   MODULE_LABELS,
@@ -23,10 +24,12 @@ const lbl: React.CSSProperties = {
 
 const fetchOpts = { credentials: 'include' as RequestCredentials }
 
-function CompanyModal({ company, onClose, onSave }: {
+function CompanyModal({ company, onClose, onSave, templates, onSaveTemplate }: {
   company: any | null
   onClose: () => void
   onSave: (data: any) => Promise<void>
+  templates: PlanTemplate[]
+  onSaveTemplate: (name: string, plan: TenantPlanKey, modules: Record<string, boolean>) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
   const initialPlan = normalizePlan(company?.plan)
@@ -47,7 +50,13 @@ function CompanyModal({ company, onClose, onSave }: {
       ? mergeTenantModules(company.modules, initialPlan)
       : defaultModulesForPlan('basic'),
   )
+  const [templateName, setTemplateName] = useState('')
   const set = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }))
+
+  function applyTemplate(t: PlanTemplate) {
+    set('plan', t.plan)
+    setModules({ ...t.modules })
+  }
 
   function applyPlan(planKey: TenantPlanKey) {
     set('plan', planKey)
@@ -82,6 +91,30 @@ function CompanyModal({ company, onClose, onSave }: {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
+            {!company && templates.length > 0 && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '12px', background: 'var(--bg2, #f8fafc)', border: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '8px' }}>قوالب الخطط المحفوظة</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {templates.map(t => (
+                    <button key={t.id} type="button" onClick={() => applyTemplate(t)} className="btn btn-ghost" style={{ fontSize: '0.8rem' }}>
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!company && (
+              <div style={{ marginBottom: '16px', display: 'flex', gap: '8px' }}>
+                <input value={templateName} onChange={e => setTemplateName(e.target.value)} className="input" placeholder="اسم قالب جديد (اختياري)" style={{ flex: 1 }} />
+                <button type="button" className="btn btn-ghost" onClick={async () => {
+                  if (!templateName.trim()) { toast.error('أدخل اسم القالب'); return }
+                  await onSaveTemplate(templateName.trim(), form.plan, modules)
+                  setTemplateName('')
+                }}>حفظ كقالب</button>
+              </div>
+            )}
+
             <div style={{ fontWeight: 600, color: 'var(--text2, #374151)', fontSize: '0.875rem', marginBottom: '8px' }}>بيانات الشركة</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
@@ -221,6 +254,11 @@ export default function SuperAdminPage() {
   const [editCompany, setEdit]    = useState<any | null>(null)
   const [detailId, setDetailId]   = useState<string | null>(null)
   const [globalAudit, setGlobalAudit] = useState<any[]>([])
+  const [platformStats, setPlatformStats] = useState<any>(null)
+  const [planTemplates, setPlanTemplates] = useState<PlanTemplate[]>([])
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended' | 'expired' | 'maintenance'>('all')
+  const [planFilter, setPlanFilter] = useState<'all' | TenantPlanKey>('all')
 
   useEffect(() => {
     fetch('/api/super-admin/session', fetchOpts)
@@ -230,6 +268,8 @@ export default function SuperAdminPage() {
           setAuth(true)
           loadCompanies()
           loadGlobalAudit()
+          loadPlatformStats()
+          loadPlanTemplates()
         }
       })
       .finally(() => setCheckingSession(false))
@@ -251,6 +291,8 @@ export default function SuperAdminPage() {
         setPassword('')
         loadCompanies()
         loadGlobalAudit()
+        loadPlatformStats()
+        loadPlanTemplates()
       } else {
         toast.error(data.error || 'كلمة المرور غير صحيحة')
       }
@@ -265,6 +307,35 @@ export default function SuperAdminPage() {
     await fetch('/api/super-admin/logout', { method: 'POST', ...fetchOpts })
     setAuth(false)
     setCompanies([])
+  }
+
+  async function loadPlatformStats() {
+    try {
+      const res = await fetch('/api/super-admin/platform-stats', fetchOpts)
+      const data = await res.json()
+      if (data.ok) setPlatformStats(data.stats)
+    } catch { /* optional */ }
+  }
+
+  async function loadPlanTemplates() {
+    try {
+      const res = await fetch('/api/super-admin/plan-templates', fetchOpts)
+      const data = await res.json()
+      if (data.ok) setPlanTemplates(data.templates || [])
+    } catch { /* optional */ }
+  }
+
+  async function savePlanTemplate(name: string, plan: TenantPlanKey, modules: Record<string, boolean>) {
+    const res = await fetch('/api/super-admin/plan-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name, plan, modules }),
+    })
+    const data = await res.json()
+    if (!data.ok) throw new Error(data.error)
+    setPlanTemplates(data.templates || [])
+    toast.success('تم حفظ القالب ✅')
   }
 
   async function loadGlobalAudit() {
@@ -331,6 +402,7 @@ export default function SuperAdminPage() {
 
       await loadCompanies()
       await loadGlobalAudit()
+      await loadPlatformStats()
       setShowModal(false)
       setEdit(null)
     } catch (err: unknown) {
@@ -340,6 +412,7 @@ export default function SuperAdminPage() {
   }
 
   async function toggleActive(company: any) {
+    if (company.is_active && !confirm(`تعطيل شركة "${company.name}"؟\n\nلن يتمكن مستخدموها من الدخول.`)) return
     try {
       const res = await fetch('/api/super-admin/toggle-tenant', {
         method: 'POST',
@@ -351,6 +424,7 @@ export default function SuperAdminPage() {
       if (!result.ok) throw new Error(result.error)
       await loadCompanies()
       await loadGlobalAudit()
+      await loadPlatformStats()
       toast.success(result.is_active ? 'تم تفعيل الشركة ✅' : 'تم تعطيل الشركة')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'خطأ غير متوقع'
@@ -401,10 +475,28 @@ export default function SuperAdminPage() {
 
   const activeCount  = companies.filter(c => c.is_active).length
   const expiringSoon = companies.filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 14 && d > 0 }).length
-  const revenue      = companies.filter(c => c.is_active).reduce((s, c) => {
+  const expiredCount = companies.filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 0 }).length
+  const revenue = platformStats?.mrr ?? companies.filter(c => c.is_active).reduce((s, c) => {
     const plan = PLANS[normalizePlan(c.plan)]
     return s + (plan?.price || 0)
   }, 0)
+
+  const userCounts: Record<string, number> = platformStats?.userCountsByTenant || {}
+
+  const filteredCompanies = companies.filter(c => {
+    const q = search.trim().toLowerCase()
+    if (q) {
+      const hay = `${c.name} ${c.name_en || ''} ${c.email || ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    if (planFilter !== 'all' && normalizePlan(c.plan) !== planFilter) return false
+    const days = daysLeft(c.expires_at)
+    if (statusFilter === 'active' && !c.is_active) return false
+    if (statusFilter === 'suspended' && c.is_active !== false) return false
+    if (statusFilter === 'expired' && (days === null || days > 0)) return false
+    if (statusFilter === 'maintenance' && !c.maintenance_mode) return false
+    return true
+  })
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg2, #f8fafc)', padding: '24px' }}>
@@ -427,12 +519,14 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
           {[
-            { label: 'إجمالي الشركات', value: companies.length,   color: '#2563eb', bg: '#eff6ff' },
-            { label: 'شركات نشطة',     value: activeCount,         color: '#059669', bg: '#ecfdf5' },
-            { label: 'تنتهي قريباً',   value: expiringSoon,        color: expiringSoon > 0 ? '#d97706' : '#4b5563', bg: expiringSoon > 0 ? '#fffbeb' : '#f3f4f6' },
-            { label: 'الإيراد الشهري', value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: '#7c3aed', bg: '#f5f3ff' },
+            { label: 'إجمالي الشركات', value: platformStats?.totalTenants ?? companies.length, color: '#2563eb' },
+            { label: 'شركات نشطة', value: platformStats?.activeTenants ?? activeCount, color: '#059669' },
+            { label: 'اشتراكات منتهية', value: platformStats?.expiringAlerts?.expired?.length ?? expiredCount, color: expiredCount > 0 ? '#dc2626' : '#4b5563' },
+            { label: 'تنتهي خلال 14 يوم', value: expiringSoon, color: expiringSoon > 0 ? '#d97706' : '#4b5563' },
+            { label: 'مستخدمون نشطون', value: platformStats?.totalActiveUsers ?? '—', color: '#0ea5e9' },
+            { label: 'MRR (تقديري)', value: `${revenue.toLocaleString('ar-EG')} ر.س`, color: '#7c3aed' },
           ].map(k => (
             <div key={k.label} className="card" style={{ padding: '20px' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: k.color }}>{k.value}</div>
@@ -441,10 +535,44 @@ export default function SuperAdminPage() {
           ))}
         </div>
 
+        {platformStats?.topModules?.length > 0 && (
+          <div className="card" style={{ padding: '16px' }}>
+            <h3 style={{ fontWeight: 600, marginBottom: '10px', fontSize: '0.875rem' }}>أكثر الوحدات تفعيلاً</h3>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {platformStats.topModules.slice(0, 5).map((m: { key: string; count: number }) => (
+                <span key={m.key} style={{ fontSize: '0.8rem', padding: '4px 10px', borderRadius: '8px', background: 'var(--bg2, #f8fafc)' }}>
+                  {MODULE_LABELS[m.key as keyof typeof MODULE_LABELS] || m.key}: {m.count}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={{ fontWeight: 600, color: 'var(--text2, #374151)' }}>الشركات المشتركة</h3>
-            {loading && <span style={{ width: '16px', height: '16px', border: '2px solid rgba(26,86,219,0.3)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />}
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <h3 style={{ fontWeight: 600, color: 'var(--text2, #374151)' }}>الشركات المشتركة</h3>
+              {loading && <span style={{ width: '16px', height: '16px', border: '2px solid rgba(26,86,219,0.3)', borderTopColor: '#1a56db', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 220px' }}>
+                <Search style={{ width: '16px', height: '16px', position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }} />
+                <input value={search} onChange={e => setSearch(e.target.value)} className="input" placeholder="بحث بالاسم أو البريد..." style={{ paddingRight: '34px' }} />
+              </div>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)} className="input" style={{ width: 'auto', minWidth: '140px' }}>
+                <option value="all">كل الحالات</option>
+                <option value="active">نشطة</option>
+                <option value="suspended">موقوفة</option>
+                <option value="expired">منتهية</option>
+                <option value="maintenance">صيانة</option>
+              </select>
+              <select value={planFilter} onChange={e => setPlanFilter(e.target.value as typeof planFilter)} className="input" style={{ width: 'auto', minWidth: '120px' }}>
+                <option value="all">كل الخطط</option>
+                {(Object.keys(PLANS) as TenantPlanKey[]).map(k => (
+                  <option key={k} value={k}>{PLANS[k].label}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', fontSize: '0.875rem', borderCollapse: 'collapse' }}>
@@ -453,17 +581,18 @@ export default function SuperAdminPage() {
                   <th style={{ textAlign: 'right', padding: '10px 20px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الشركة</th>
                   <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الخطة</th>
                   <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الوحدات</th>
+                  <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>المستخدمون</th>
                   <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الانتهاء</th>
                   <th style={{ textAlign: 'center', padding: '10px 16px', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text3)' }}>الحالة</th>
                   <th style={{ padding: '10px 16px' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {companies.length === 0 ? (
+                {filteredCompanies.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text3)' }}>لا توجد شركات مضافة</td>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text3)' }}>لا توجد شركات مطابقة</td>
                   </tr>
-                ) : companies.map(c => {
+                ) : filteredCompanies.map(c => {
                   const plan = PLANS[normalizePlan(c.plan)]
                   const days = daysLeft(c.expires_at)
                   const mods = mergeTenantModules(c.modules, c.plan)
@@ -472,6 +601,7 @@ export default function SuperAdminPage() {
                     <tr key={c.id} style={{ borderTop: '1px solid var(--bg2, #f8fafc)', opacity: c.is_active ? 1 : 0.6 }}>
                       <td style={{ padding: '16px 20px' }}>
                         <div style={{ fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
+                        {c.maintenance_mode && <span style={{ fontSize: '0.65rem', color: '#b45309', fontWeight: 600 }}>🔧 صيانة</span>}
                         {c.name_en && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }} dir="ltr">{c.name_en}</div>}
                         {c.email && <div style={{ fontSize: '0.72rem', color: 'var(--text3)' }}>{c.email}</div>}
                       </td>
@@ -491,6 +621,12 @@ export default function SuperAdminPage() {
                               style={{ width: '8px', height: '8px', borderRadius: '50%', background: mods[key] ? '#34d399' : 'var(--bg2, #e5e7eb)' }} />
                           ))}
                         </div>
+                      </td>
+                      <td style={{ padding: '16px', textAlign: 'center', fontSize: '0.875rem', fontWeight: 600 }}>
+                        {userCounts[c.id] ?? '—'}
+                        {c.max_users && c.max_users < 999 && (
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text3)' }}>/ {c.max_users}</div>
+                        )}
                       </td>
                       <td style={{ padding: '16px', textAlign: 'center' }}>
                         {c.expires_at ? (
@@ -538,6 +674,25 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
+        {expiredCount > 0 && (
+          <div className="card" style={{ padding: '16px', border: '1px solid #fecaca', background: 'rgba(254,242,242,0.6)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+              <AlertTriangle style={{ width: '20px', height: '20px', color: '#dc2626' }} />
+              <span style={{ fontWeight: 600, color: '#b91c1c' }}>اشتراكات منتهية ({expiredCount})</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {companies
+                .filter(c => { const d = daysLeft(c.expires_at); return d !== null && d <= 0 })
+                .map(c => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                    <span style={{ color: 'var(--text2, #374151)' }}>{c.name}</span>
+                    <button type="button" className="btn btn-ghost" style={{ fontSize: '0.72rem' }} onClick={() => setDetailId(c.id)}>تمديد</button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
         {expiringSoon > 0 && (
           <div className="card" style={{ padding: '16px', border: '1px solid #fde68a', background: 'rgba(255,251,235,0.5)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -581,7 +736,7 @@ export default function SuperAdminPage() {
         <TenantDetailPanel
           tenantId={detailId}
           onClose={() => setDetailId(null)}
-          onUpdated={() => { loadCompanies(); loadGlobalAudit() }}
+          onUpdated={() => { loadCompanies(); loadGlobalAudit(); loadPlatformStats() }}
         />
       )}
 
@@ -590,6 +745,8 @@ export default function SuperAdminPage() {
           company={editCompany}
           onClose={() => { setShowModal(false); setEdit(null) }}
           onSave={handleSave}
+          templates={planTemplates}
+          onSaveTemplate={savePlanTemplate}
         />
       )}
     </div>

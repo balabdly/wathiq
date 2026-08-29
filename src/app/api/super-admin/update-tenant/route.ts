@@ -10,7 +10,7 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json()
-    const { id, name, name_en, phone, email, plan, modules, is_active, expires_at, max_users } = body
+    const { id, name, name_en, phone, email, plan, modules, is_active, expires_at, max_users, maintenance_mode, maintenance_message } = body
 
     if (!id) {
       return NextResponse.json({ ok: false, error: 'معرّف الشركة مطلوب' }, { status: 400 })
@@ -35,6 +35,8 @@ export async function PATCH(request: Request) {
         is_active: is_active ?? true,
         expires_at: expires_at || null,
         max_users: max_users ?? planMaxUsers(normalizedPlan),
+        ...(maintenance_mode !== undefined ? { maintenance_mode: !!maintenance_mode } : {}),
+        ...(maintenance_message !== undefined ? { maintenance_message: maintenance_message?.trim() || null } : {}),
       })
       .eq('id', id)
       .select()

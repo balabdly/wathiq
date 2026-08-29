@@ -60,7 +60,7 @@ export async function POST(request: Request) {
 
     const { data: tenantRow, error: tenantError } = await admin
       .from('tenants')
-      .select('is_active, expires_at')
+      .select('is_active, expires_at, maintenance_mode, maintenance_message')
       .eq('id', emp.tenant_id)
       .single()
 
