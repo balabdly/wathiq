@@ -33,3 +33,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
           NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'ci-placeholder'
+
+      - name: Enforce ESLint result
+        if: always() && steps.lint.outcome == 'failure'
+        run: |
+          echo 'ESLint reported errors. Build success does not mean validation passed.'
+          exit 1
