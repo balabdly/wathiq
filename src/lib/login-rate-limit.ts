@@ -4,13 +4,14 @@
  */
 const WINDOW_MS = 15 * 60 * 1000
 const MAX_ATTEMPTS = 5
+const MAX_IP_ATTEMPTS = 30
 const MAX_KEYS = 10000
 const attempts = new Map<string, { count: number; expires: number }>()
 
-export function loginAttemptAllowed(key: string): boolean {
+export function loginAttemptAllowed(key: string, maxAttempts = MAX_ATTEMPTS): boolean {
   const now = Date.now()
   const previous = attempts.get(key)
-  if (previous && previous.expires > now) return previous.count < MAX_ATTEMPTS
+  if (previous && previous.expires > now) return previous.count < maxAttempts
   attempts.delete(key)
   return true
 }
@@ -31,4 +32,13 @@ export function recordFailedLogin(key: string): void {
 
 export function clearLoginFailures(key: string): void {
   attempts.delete(key)
+}
+
+/** Separate per-IP ceiling prevents password spraying across many usernames. */
+export function loginIpAllowed(ip: string): boolean {
+  return loginAttemptAllowed('ip:' + ip, MAX_IP_ATTEMPTS)
+}
+
+export function recordFailedLoginIp(ip: string): void {
+  recordFailedLogin('ip:' + ip)
 }
