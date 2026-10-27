@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const { data: candidates, error: lookupError } = await admin
       .from('employees')
       .select('*')
-      .ilike('username', username.trim().replace(/[\\%_]/g, '\\.ilike('username', username.trim())'))
+      .ilike('username', username.trim().replace(/[%_\\]/g, '\\$&'))
 
     if (lookupError) {
       console.error('[auth/login] lookup', lookupError)
