@@ -86,7 +86,7 @@ export async function confirmCashSpend(
   amount: number
 ): Promise<boolean> {
   const balance = await getCashLedgerBalance(tenantId, account.id)
-  if (balance === null) return true   // تعذر الفحص — لا نعطل العملية
+  if (balance === null) return false // Fail closed when ledger balance cannot be verified
   if (amount <= balance + 0.001) return true
 
   const isBox = account.account_type === 'صندوق' || account.account_type === 'نقدية'
@@ -107,7 +107,7 @@ export async function confirmCashSpendById(tenantId: string, cashAccountId: numb
   const { data } = await supabase.from('finance_cash_accounts')
     .select('id, name, account_type')
     .eq('id', cashAccountId).single()
-  if (!data) return true
+  if (!data) return false
   return confirmCashSpend(tenantId, data as { id: number; name: string; account_type: string }, amount)
 }
 
@@ -117,13 +117,14 @@ export async function confirmCashSpendById(tenantId: string, cashAccountId: numb
 /** هل الفترة الشهرية لتاريخ معين مفتوحة للترحيل؟ (الفترة مفتوحة ما لم يوجد صف يقفلها) */
 export async function isPeriodOpen(tenantId: string, date: string): Promise<boolean> {
   const d = new Date(date)
-  const { data } = await supabase.from('finance_fiscal_periods')
+  const { data, error } = await supabase.from('finance_fiscal_periods')
     .select('id')
     .eq('tenant_id', tenantId)
     .eq('year', d.getFullYear())
     .eq('month', d.getMonth() + 1)
     .eq('status', 'مقفلة')
     .maybeSingle()
+  if (error || Number.isNaN(d.getTime())) return false
   return !data
 }
 
@@ -165,13 +166,14 @@ export async function createJournalEntry(
   }
 
   // رفض الترحيل على حسابات تجميعية (is_parent)
-  const { data: parentAccounts } = await supabase
+  const { data: parentAccounts, error: parentError } = await supabase
     .from('finance_accounts')
     .select('code, name')
     .eq('tenant_id', tenantId)
     .in('code', uniqueCodes)
     .eq('is_parent', true)
 
+  if (parentError) return null
   if (parentAccounts && parentAccounts.length > 0) {
     const { default: toast } = await import('react-hot-toast')
     const labels = parentAccounts.map(a => `${a.code} (${a.name})`).join('، ')
