@@ -53,7 +53,7 @@ export default function LoginPage() {
       setTenant(data.tenant)
       setBranches(data.branches || [])
 
-      const userBranch = data.branches?.find((b: any) => b.id === emp.branch_id) || data.branches?.[0]
+      const userBranch = data.branches?.find((b: { id: string | number }) => String(b.id) === String(emp.branch_id)) || data.branches?.[0]
       if (userBranch) setActiveBranch(userBranch)
 
       toast.success(`أهلاً ${emp.name} 👋`)
