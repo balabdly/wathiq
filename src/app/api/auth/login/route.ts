@@ -21,7 +21,12 @@ function createAnonClient() {
 
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json()
+    const body = await request.json()
+    const username = typeof body?.username === 'string' ? body.username : ''
+    const password = typeof body?.password === 'string' ? body.password : ''
+    if (username.length > 128 || password.length > 1024) {
+      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 400 })
+    }
     if (!username?.trim() || !password) {
       return NextResponse.json({ error: 'يرجى إدخال بيانات الدخول' }, { status: 400 })
     }
