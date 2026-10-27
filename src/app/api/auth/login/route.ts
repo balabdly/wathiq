@@ -74,7 +74,6 @@ export async function POST(request: Request) {
     }
 
     if (!emp) {
-      recordFailedLogin(limitKey)
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
     if (!emp.is_active) {
