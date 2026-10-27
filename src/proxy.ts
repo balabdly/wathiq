@@ -31,8 +31,7 @@ export function proxy(request: NextRequest) {
     pathname === '/sw.js' ||
     pathname === '/offline' ||
     pathname === '/login' ||
-    pathname === '/unauthorized' ||
-    pathname.includes('.')
+    pathname === '/unauthorized'
   ) {
     return NextResponse.next()
   }
