@@ -143,6 +143,8 @@ export async function createJournalEntry(
   const { tenantId, date, description, referenceType, referenceId, lines, source = 'آلي' } = params
 
   // ══ 1. جلب كل account_ids بـ query واحد (بدل N queries) ══
+  if (!tenantId || !Array.isArray(lines) || lines.length < 2 || lines.some(l => !Number.isFinite(l.debit) || !Number.isFinite(l.credit) || l.debit < 0 || l.credit < 0 || (l.debit > 0 && l.credit > 0) || !l.accountCode)) return null
+
   const uniqueCodes = Array.from(new Set(lines.map(l => l.accountCode)))
 
   const { data: accountRows, error: accError } = await supabase
