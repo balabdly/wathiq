@@ -145,12 +145,14 @@ export async function POST(request: Request) {
 
     const { password: _pw, ...safeEmp } = emp
     const secret = process.env.WATHIQ_SESSION_SECRET
-    if (!secret) {
+    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
       console.error('[auth/login] WATHIQ_SESSION_SECRET is not configured')
       return NextResponse.json({ error: 'إعدادات جلسة الدخول غير مكتملة' }, { status: 503 })
     }
     const maxAge = 8 * 60 * 60
     const payload = Buffer.from(JSON.stringify({
+      employeeId: emp.id,
+      tenantId: String(emp.tenant_id),
       role: emp.role,
       permissions: Array.isArray(emp.permissions) ? emp.permissions : [],
       exp: Date.now() + maxAge * 1000,
