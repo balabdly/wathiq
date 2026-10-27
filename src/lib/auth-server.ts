@@ -43,13 +43,16 @@ export async function verifyPasswordServer(
   const parts = stored.split(':')
   if (parts.length !== 4) return { valid: false, needsUpgrade: false }
 
-  const iterations = parseInt(parts[1], 10)
+  const iterations = Number(parts[1])
+  if (!Number.isSafeInteger(iterations) || iterations < 10000 || iterations > 1000000) return { valid: false, needsUpgrade: false }
   const salt = fromBase64(parts[2])
   const expected = fromBase64(parts[3])
+  if (salt.length !== 16 || expected.length !== HASH_BYTES) return { valid: false, needsUpgrade: false }
   const actual = await pbkdf2(password, salt, iterations)
 
+  const { timingSafeEqual } = await import('crypto')
   const valid = actual.length === expected.length &&
-    actual.every((b, i) => b === expected[i])
+    timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
 
   return { valid, needsUpgrade: false }
 }
