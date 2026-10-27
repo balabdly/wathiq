@@ -102,7 +102,9 @@ export async function verifySuperAdminSessionToken(token: string | undefined | n
 export async function verifySuperAdminPassword(password: string): Promise<boolean> {
   const config = await loadSuperAdminConfig()
   if (!config?.password) return false
-  return password === config.password
+  const supplied = Buffer.from(password, 'utf8')
+  const expected = Buffer.from(config.password, 'utf8')
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected)
 }
 
 export async function setSuperAdminCookie(token: string, maxAge: number): Promise<void> {
