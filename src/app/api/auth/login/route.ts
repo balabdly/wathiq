@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
-import { clearLoginFailures, loginAttemptAllowed, recordFailedLogin } from '@/lib/login-rate-limit'
+import { clearLoginFailures, loginAttemptAllowed, loginIpAllowed, recordFailedLogin, recordFailedLoginIp } from '@/lib/login-rate-limit'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
     const limitKey = ip + ':' + username.trim().toLowerCase()
-    if (!loginAttemptAllowed(limitKey)) {
+    if (!loginAttemptAllowed(limitKey) || !loginIpAllowed(ip)) {
       return NextResponse.json({ error: 'محاولات كثيرة. حاول مجددًا بعد 15 دقيقة' }, { status: 429, headers: { 'Retry-After': '900' } })
     }
 
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
     }
     if (!candidates?.length) {
       recordFailedLogin(limitKey)
+      recordFailedLoginIp(ip)
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
 
