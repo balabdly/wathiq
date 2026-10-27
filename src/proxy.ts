@@ -40,7 +40,7 @@ export function proxy(request: NextRequest) {
   // Never authorize from the client-writable wathiq_user cookie.
   const signed = request.cookies.get('wathiq_access')?.value
   const secret = process.env.WATHIQ_SESSION_SECRET
-  if (!signed || !secret) return NextResponse.redirect(new URL('/login', request.url))
+  if (!signed || !secret || Buffer.byteLength(secret, 'utf8') < 32) return NextResponse.redirect(new URL('/login', request.url))
   const separator = signed.lastIndexOf('.')
   if (separator < 1) return NextResponse.redirect(new URL('/login', request.url))
   const payload = signed.slice(0, separator)
@@ -51,13 +51,16 @@ export function proxy(request: NextRequest) {
   if (actualBytes.length !== expectedBytes.length || !timingSafeEqual(actualBytes, expectedBytes)) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
-  let user: { role: string; permissions: string[]; exp: number }
+  let user: { employeeId: number | string; tenantId: string; role: string; permissions: string[]; exp: number }
   try {
     user = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
   } catch {
     return NextResponse.redirect(new URL('/login', request.url))
   }
-  if (!Number.isFinite(user.exp) || user.exp <= Date.now() || !Array.isArray(user.permissions)) {
+  if (!user || !user.employeeId || typeof user.tenantId !== 'string' || !user.tenantId ||
+      typeof user.role !== 'string' || !Number.isFinite(user.exp) ||
+      user.exp <= Date.now() || user.exp > Date.now() + 8 * 60 * 60 * 1000 ||
+      !Array.isArray(user.permissions) || !user.permissions.every(p => typeof p === 'string')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
@@ -68,7 +71,7 @@ export function proxy(request: NextRequest) {
 
   // التحقق من الصلاحيات
   for (const [route, required] of Object.entries(PAGE_PERMISSIONS)) {
-    if (pathname.startsWith(route)) {
+    if (pathname === route || pathname.startsWith(route + '/')) {
       const hasAccess = required.some(p => userPerms.includes(p))
       if (!hasAccess) {
         return NextResponse.redirect(new URL('/unauthorized', request.url))
