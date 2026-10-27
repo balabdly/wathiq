@@ -86,7 +86,11 @@ export async function confirmCashSpend(
   amount: number
 ): Promise<boolean> {
   const balance = await getCashLedgerBalance(tenantId, account.id)
-  if (balance === null) return false // Fail closed when ledger balance cannot be verified
+  if (balance === null) {
+    const { default: toast } = await import('react-hot-toast')
+    toast.error('تعذر التحقق من الرصيد الحالي. تم إيقاف الصرف مؤقتاً حفاظاً على سلامة الحسابات.')
+    return false
+  }
   if (amount <= balance + 0.001) return true
 
   const isBox = account.account_type === 'صندوق' || account.account_type === 'نقدية'
