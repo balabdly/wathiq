@@ -32,6 +32,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'يرجى إدخال بيانات الدخول' }, { status: 400 })
     }
 
+    const secret = process.env.WATHIQ_SESSION_SECRET
+    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
+      console.error('[auth/login] WATHIQ_SESSION_SECRET is not configured')
+      return NextResponse.json({ error: 'إعدادات جلسة الدخول غير مكتملة' }, { status: 503 })
+    }
+
     const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
     // Centralized, atomic limit shared by all Vercel instances.
     // Count attempts before credential verification, so failures cannot race past the limit.
@@ -52,7 +58,7 @@ export async function POST(request: Request) {
     const { data: candidates, error: lookupError } = await admin
       .from('employees')
       .select('*')
-      .ilike('username', username.trim())
+      .ilike('username', username.trim().replace(/[\\%_]/g, '\\.ilike('username', username.trim())'))
 
     if (lookupError) {
       console.error('[auth/login] lookup', lookupError)
@@ -160,11 +166,6 @@ export async function POST(request: Request) {
     ])
 
     const { password: _pw, ...safeEmp } = emp
-    const secret = process.env.WATHIQ_SESSION_SECRET
-    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
-      console.error('[auth/login] WATHIQ_SESSION_SECRET is not configured')
-      return NextResponse.json({ error: 'إعدادات جلسة الدخول غير مكتملة' }, { status: 503 })
-    }
     const maxAge = 8 * 60 * 60
     const payload = Buffer.from(JSON.stringify({
       employeeId: emp.id,
