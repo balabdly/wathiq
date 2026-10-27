@@ -110,7 +110,7 @@ export async function confirmCashSpend(
 export async function confirmCashSpendById(tenantId: string, cashAccountId: number, amount: number): Promise<boolean> {
   const { data } = await supabase.from('finance_cash_accounts')
     .select('id, name, account_type')
-    .eq('id', cashAccountId).single()
+    .eq('id', cashAccountId).eq('tenant_id', tenantId).single()
   if (!data) return false
   return confirmCashSpend(tenantId, data as { id: number; name: string; account_type: string }, amount)
 }
