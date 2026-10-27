@@ -121,6 +121,7 @@ export async function confirmCashSpendById(tenantId: string, cashAccountId: numb
 /** هل الفترة الشهرية لتاريخ معين مفتوحة للترحيل؟ (الفترة مفتوحة ما لم يوجد صف يقفلها) */
 export async function isPeriodOpen(tenantId: string, date: string): Promise<boolean> {
   const d = new Date(date)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) return false
   const { data, error } = await supabase.from('finance_fiscal_periods')
     .select('id')
     .eq('tenant_id', tenantId)
