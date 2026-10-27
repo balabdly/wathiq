@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createHmac } from 'node:crypto'
+import { clearLoginFailures, loginAttemptAllowed, recordFailedLogin } from '@/lib/login-rate-limit'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
@@ -32,6 +33,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'يرجى إدخال بيانات الدخول' }, { status: 400 })
     }
 
+    const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    const limitKey = ip + ':' + username.trim().toLowerCase()
+    if (!loginAttemptAllowed(limitKey)) {
+      return NextResponse.json({ error: 'محاولات كثيرة. حاول مجددًا بعد 15 دقيقة' }, { status: 429, headers: { 'Retry-After': '900' } })
+    }
+
     const admin = createAdminClient()
     const { data: candidates, error: lookupError } = await admin
       .from('employees')
@@ -43,6 +50,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'خطأ في الاتصال بقاعدة البيانات' }, { status: 500 })
     }
     if (!candidates?.length) {
+      recordFailedLogin(limitKey)
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
 
@@ -58,6 +66,7 @@ export async function POST(request: Request) {
     }
 
     if (!emp) {
+      recordFailedLogin(limitKey)
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
     if (!emp.is_active) {
@@ -143,6 +152,7 @@ export async function POST(request: Request) {
       admin.from('branches').select('*').eq('tenant_id', emp.tenant_id).order('id'),
     ])
 
+    clearLoginFailures(limitKey)
     const { password: _pw, ...safeEmp } = emp
     const secret = process.env.WATHIQ_SESSION_SECRET
     if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
