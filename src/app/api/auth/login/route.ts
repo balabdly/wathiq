@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createHmac } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
@@ -143,12 +144,29 @@ export async function POST(request: Request) {
     ])
 
     const { password: _pw, ...safeEmp } = emp
-    return NextResponse.json({
+    const secret = process.env.WATHIQ_SESSION_SECRET
+    if (!secret) {
+      console.error('[auth/login] WATHIQ_SESSION_SECRET is not configured')
+      return NextResponse.json({ error: 'إعدادات جلسة الدخول غير مكتملة' }, { status: 503 })
+    }
+    const maxAge = 8 * 60 * 60
+    const payload = Buffer.from(JSON.stringify({
+      role: emp.role,
+      permissions: Array.isArray(emp.permissions) ? emp.permissions : [],
+      exp: Date.now() + maxAge * 1000,
+    })).toString('base64url')
+    const signature = createHmac('sha256', secret).update(payload).digest('base64url')
+    const response = NextResponse.json({
       employee: { ...safeEmp, permissions: emp.permissions || [] },
       tenant,
       branches: branches || [],
       session: sessionData.session,
     })
+    response.cookies.set('wathiq_access', payload + '.' + signature, {
+      httpOnly: true, secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax', path: '/', maxAge,
+    })
+    return response
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {
