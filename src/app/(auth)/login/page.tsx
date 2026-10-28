@@ -32,22 +32,26 @@ export default function LoginPage() {
         return
       }
 
-      if (data.session) {
-        try {
-          await supabase.auth.setSession({
-            access_token: data.session.access_token,
-            refresh_token: data.session.refresh_token,
-          })
-        } catch (sessionErr) {
-          console.warn('setSession failed:', sessionErr)
-        }
-      }
-
       const emp = data.employee
       if (!emp) {
         toast.error('بيانات المستخدم غير مكتملة')
         return
       }
+
+      if (data.session) {
+        try {
+          const { error } = await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+          if (error) throw error
+        } catch (sessionErr) {
+          console.error('setSession failed:', sessionErr)
+          toast.error('تعذر تهيئة جلسة الدخول، يرجى المحاولة مرة أخرى')
+          return
+        }
+      }
+
       setCurrentUser(emp)
       syncUserCookie(emp)
       setTenant(data.tenant)
@@ -69,7 +73,6 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div style={{ width: '100%', maxWidth: '420px' }} className="fade-in">
-        {/* Logo */}
         <div className="text-center mb-6">
           <div className="login-logo">
             <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="white" strokeWidth="2">
@@ -81,23 +84,13 @@ export default function LoginPage() {
             نظام إدارة مقاولي الكهرباء
           </p>
         </div>
-
-        {/* Card */}
         <div className="login-card">
           <h2 className="text-center mb-6" style={{ fontSize: '1.25rem' }}>تسجيل الدخول</h2>
           <form onSubmit={handleLogin}>
             <div className="form-group">
               <label>{LOGIN_USERNAME_LABEL}</label>
-              <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder={LOGIN_USERNAME_PLACEHOLDER}
-                autoComplete="username"
-                autoFocus
-                dir="ltr"
-                inputMode="text"
-              />
+              <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+                placeholder={LOGIN_USERNAME_PLACEHOLDER} autoComplete="username" autoFocus dir="ltr" inputMode="text" />
               <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '6px' }}>
                 للموظفين: أدخل الرقم الوظيفي · للمدير أو الحسابات الخاصة: اسم المستخدم
               </p>
@@ -105,20 +98,14 @@ export default function LoginPage() {
             <div className="form-group">
               <label>كلمة المرور</label>
               <div className="relative">
-                <input
-                  type={showPass ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="أدخل كلمة المرور"
-                  autoComplete="current-password"
-                  style={{ paddingLeft: '40px' }}
-                />
+                <input type={showPass ? 'text' : 'password'} value={password}
+                  onChange={e => setPassword(e.target.value)} placeholder="أدخل كلمة المرور"
+                  autoComplete="current-password" style={{ paddingLeft: '40px' }} />
                 <button type="button" onClick={() => setShowPass(!showPass)}
-                  style={{
-                    position: 'absolute', left: '10px', top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none', border: 'none', padding: '4px', color: '#9ca3af',
-                  }}>
+                  aria-label={showPass ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                  style={{ position: 'absolute', left: '10px', top: '50%',
+                    transform: 'translateY(-50%)', background: 'none', border: 'none',
+                    padding: '4px', color: '#9ca3af' }}>
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
                     {showPass ? (
                       <>
@@ -128,7 +115,7 @@ export default function LoginPage() {
                       </>
                     ) : (
                       <>
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/>
                         <circle cx="12" cy="12" r="3"/>
                       </>
                     )}
@@ -136,25 +123,18 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn-primary w-full"
+            <button type="submit" disabled={loading} className="btn-primary w-full"
               style={{ justifyContent: 'center', padding: '12px', fontSize: '1rem', marginTop: '8px' }}>
               {loading ? (
                 <>
-                  <span style={{
-                    width: 18, height: 18,
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTopColor: 'white', borderRadius: '50%',
-                  }} className="animate-spin" />
+                  <span style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: 'white', borderRadius: '50%' }} className="animate-spin" />
                   جاري الدخول...
                 </>
               ) : 'دخول'}
             </button>
           </form>
         </div>
-
         <p className="text-center mt-4" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
           وثيق © {new Date().getFullYear()} — نظام إدارة مقاولي SEC
         </p>
