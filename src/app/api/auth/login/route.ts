@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
 
-    let emp: any = null
+    let emp: NonNullable<typeof candidates>[number] | null = null
     let needsUpgrade = false
     for (const e of candidates) {
       const result = await verifyPasswordServer(password, e.password)
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
 
     try {
       await ensureAuthUser(admin, authEmail, authPassword, appMeta, userMeta)
-    } catch (authErr: any) {
+    } catch (authErr: unknown) {
       console.error('[auth/login] ensureAuthUser', authErr)
       return NextResponse.json({ error: 'فشل إنشاء جلسة المصادقة' }, { status: 500 })
     }
