@@ -2,6 +2,10 @@
 
 Audit date: 2026-10-28. Source: Supabase pg_proc definitions and privilege inspection. This document does not apply changes to production functions.
 
+## Current status (2026-10-28, verified against live Supabase security advisor)
+
+The table below is the **original audit inventory**, not the list of functions still exposed. Six function signatures have since been changed to SECURITY INVOKER or had authenticated EXECUTE revoked; see `privileged-rpc-applied-20261028.sql` and `privileged-rpc-applied-phase2-20261028.sql` for the recorded changes. The remaining **four exposed SECURITY DEFINER RPC signatures** are `finalize_reservation_reconciliation(uuid,bigint,bigint,text)`, both overloads of `increment_pm_received`, and `post_inventory_voucher(jsonb)`. Do not change these without staging tests of tenant isolation and legitimate inventory operations. These database changes were made separately from the GitHub branch; GitHub CI does not validate live database behavior.
+
 ## Confirmed exposure
 
 All ten overloads/functions below are SECURITY DEFINER and callable by authenticated:
