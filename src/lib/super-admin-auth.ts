@@ -86,7 +86,8 @@ export async function verifySuperAdminSessionToken(token: string | undefined | n
   const payload = token.slice(0, dot)
   const sig = token.slice(dot + 1)
   const exp = Number(payload)
-  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false
+  const now = Math.floor(Date.now() / 1000)
+  if (!Number.isSafeInteger(exp) || exp <= now || exp > now + SESSION_HOURS * 3600) return false
 
   const expected = signPayload(payload, signingSecret)
   try {
