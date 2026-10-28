@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Only the latest commit needs full validation for each branch/PR.
+concurrency:
+  group: security-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
