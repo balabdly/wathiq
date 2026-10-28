@@ -13,8 +13,10 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
-  const crypto = await import('crypto')
-  const hash = crypto.pbkdf2Sync(password, salt, iterations, HASH_BYTES, 'sha256')
+  const crypto = await import('node:crypto')
+  const { promisify } = await import('node:util')
+  // Avoid blocking the Node.js event loop while checking password hashes.
+  const hash = await promisify(crypto.pbkdf2)(password, Buffer.from(salt), iterations, HASH_BYTES, 'sha256')
   return new Uint8Array(hash)
 }
 
