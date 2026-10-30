@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createHmac, createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertTenantLoginAllowed } from '@/lib/super-admin-auth'
@@ -21,26 +22,53 @@ function createAnonClient() {
 
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json()
+    const body = await request.json()
+    const username = typeof body?.username === 'string' ? body.username : ''
+    const password = typeof body?.password === 'string' ? body.password : ''
+    if (username.length > 128 || password.length > 1024) {
+      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 400 })
+    }
     if (!username?.trim() || !password) {
       return NextResponse.json({ error: 'يرجى إدخال بيانات الدخول' }, { status: 400 })
     }
 
+    const secret = process.env.WATHIQ_SESSION_SECRET
+    if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {
+      console.error('[auth/login] WATHIQ_SESSION_SECRET is not configured')
+      return NextResponse.json({ error: 'إعدادات جلسة الدخول غير مكتملة' }, { status: 503 })
+    }
+
+    const ip = request.headers.get('x-real-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    // Centralized, atomic limit shared by all Vercel instances.
+    // Count attempts before credential verification, so failures cannot race past the limit.
     const admin = createAdminClient()
+    const key = (value: string) => createHash('sha256').update(value).digest('hex')
+    const [accountLimit, ipLimit] = await Promise.all([
+      admin.rpc('wathiq_login_limit_hit', { p_key: key('account:' + ip + ':' + username.trim().toLowerCase()), p_max: 5 }),
+      admin.rpc('wathiq_login_limit_hit', { p_key: key('ip:' + ip), p_max: 30 }),
+    ])
+    if (accountLimit.error || ipLimit.error) {
+      console.error('[auth/login] centralized rate limiter unavailable')
+      return NextResponse.json({ error: 'تعذّر التحقق من حماية تسجيل الدخول، حاول لاحقًا' }, { status: 503 })
+    }
+    if (!accountLimit.data || !ipLimit.data) {
+      return NextResponse.json({ error: 'محاولات كثيرة. حاول مجددًا بعد 15 دقيقة' }, { status: 429, headers: { 'Retry-After': '900' } })
+    }
+
     const { data: candidates, error: lookupError } = await admin
       .from('employees')
       .select('*')
-      .ilike('username', username.trim())
+      .ilike('username', username.trim().replace(/[%_\\]/g, '\\$&'))
 
     if (lookupError) {
       console.error('[auth/login] lookup', lookupError)
       return NextResponse.json({ error: 'خطأ في الاتصال بقاعدة البيانات' }, { status: 500 })
     }
     if (!candidates?.length) {
-      return NextResponse.json({ error: 'رقم الموظف أو اسم المستخدم غير موجود' }, { status: 401 })
+      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
 
-    let emp: any = null
+    let emp: NonNullable<typeof candidates>[number] | null = null
     let needsUpgrade = false
     for (const e of candidates) {
       const result = await verifyPasswordServer(password, e.password)
@@ -52,7 +80,7 @@ export async function POST(request: Request) {
     }
 
     if (!emp) {
-      return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 })
+      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 })
     }
     if (!emp.is_active) {
       return NextResponse.json({ error: 'هذا الحساب معطّل' }, { status: 403 })
@@ -114,7 +142,7 @@ export async function POST(request: Request) {
 
     try {
       await ensureAuthUser(admin, authEmail, authPassword, appMeta, userMeta)
-    } catch (authErr: any) {
+    } catch (authErr: unknown) {
       console.error('[auth/login] ensureAuthUser', authErr)
       return NextResponse.json({ error: 'فشل إنشاء جلسة المصادقة' }, { status: 500 })
     }
@@ -138,12 +166,26 @@ export async function POST(request: Request) {
     ])
 
     const { password: _pw, ...safeEmp } = emp
-    return NextResponse.json({
+    const maxAge = 8 * 60 * 60
+    const payload = Buffer.from(JSON.stringify({
+      employeeId: emp.id,
+      tenantId: String(emp.tenant_id),
+      role: emp.role,
+      permissions: Array.isArray(emp.permissions) ? emp.permissions : [],
+      exp: Date.now() + maxAge * 1000,
+    })).toString('base64url')
+    const signature = createHmac('sha256', secret).update(payload).digest('base64url')
+    const response = NextResponse.json({
       employee: { ...safeEmp, permissions: emp.permissions || [] },
       tenant,
       branches: branches || [],
       session: sessionData.session,
     })
+    response.cookies.set('wathiq_access', payload + '.' + signature, {
+      httpOnly: true, secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax', path: '/', maxAge,
+    })
+    return response
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     if (msg.includes('SUPABASE_SERVICE_ROLE_KEY')) {

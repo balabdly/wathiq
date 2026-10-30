@@ -13,8 +13,10 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<Uint8Array> {
-  const crypto = await import('crypto')
-  const hash = crypto.pbkdf2Sync(password, salt, iterations, HASH_BYTES, 'sha256')
+  const crypto = await import('node:crypto')
+  const { promisify } = await import('node:util')
+  // Avoid blocking the Node.js event loop while checking password hashes.
+  const hash = await promisify(crypto.pbkdf2)(password, Buffer.from(salt), iterations, HASH_BYTES, 'sha256')
   return new Uint8Array(hash)
 }
 
@@ -43,13 +45,16 @@ export async function verifyPasswordServer(
   const parts = stored.split(':')
   if (parts.length !== 4) return { valid: false, needsUpgrade: false }
 
-  const iterations = parseInt(parts[1], 10)
+  const iterations = Number(parts[1])
+  if (!Number.isSafeInteger(iterations) || iterations < 10000 || iterations > 1000000) return { valid: false, needsUpgrade: false }
   const salt = fromBase64(parts[2])
   const expected = fromBase64(parts[3])
+  if (salt.length !== 16 || expected.length !== HASH_BYTES) return { valid: false, needsUpgrade: false }
   const actual = await pbkdf2(password, salt, iterations)
 
+  const { timingSafeEqual } = await import('crypto')
   const valid = actual.length === expected.length &&
-    actual.every((b, i) => b === expected[i])
+    timingSafeEqual(Buffer.from(actual), Buffer.from(expected))
 
   return { valid, needsUpgrade: false }
 }
@@ -108,10 +113,15 @@ export async function ensureAuthUser(
     || createError.message?.toLowerCase().includes('registered')
   if (!alreadyExists) throw createError
 
-  const { data: listed, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-  if (listError) throw listError
-
-  const existing = listed?.users?.find(u => u.email === email)
+  // Paginate: an existing user may be beyond the first 1000 accounts.
+  let existing: { id: string; email?: string } | undefined
+  for (let page = 1; page <= 100; page++) {
+    const { data: listed, error: listError } = await admin.auth.admin.listUsers({ page, perPage: 1000 })
+    if (listError) throw listError
+    const users = listed?.users || []
+    existing = users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+    if (existing || users.length < 1000) break
+  }
   if (!existing) throw new Error('تعذّر العثور على مستخدم المصادقة')
 
   const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {

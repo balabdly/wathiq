@@ -70,7 +70,7 @@ export async function nextDocNumber(tenantId: string, docType: string, prefix: s
 export async function getCashLedgerBalance(tenantId: string, cashAccountId: number): Promise<number | null> {
   const { data, error } = await supabase.rpc('get_cash_account_balances', { p_tenant_id: tenantId })
   if (error || !data) return null
-  const row = (data as any[]).find(b => Number(b.cash_account_id) === Number(cashAccountId))
+  const row = (data as Array<{ cash_account_id: number | string; ledger_balance: number | string }>).find(b => Number(b.cash_account_id) === Number(cashAccountId))
   return row ? Number(row.ledger_balance) : 0
 }
 
@@ -86,7 +86,11 @@ export async function confirmCashSpend(
   amount: number
 ): Promise<boolean> {
   const balance = await getCashLedgerBalance(tenantId, account.id)
-  if (balance === null) return true   // تعذر الفحص — لا نعطل العملية
+  if (balance === null) {
+    const { default: toast } = await import('react-hot-toast')
+    toast.error('تعذر التحقق من الرصيد الحالي. تم إيقاف الصرف مؤقتاً حفاظاً على سلامة الحسابات.')
+    return false
+  }
   if (amount <= balance + 0.001) return true
 
   const isBox = account.account_type === 'صندوق' || account.account_type === 'نقدية'
@@ -106,8 +110,8 @@ export async function confirmCashSpend(
 export async function confirmCashSpendById(tenantId: string, cashAccountId: number, amount: number): Promise<boolean> {
   const { data } = await supabase.from('finance_cash_accounts')
     .select('id, name, account_type')
-    .eq('id', cashAccountId).single()
-  if (!data) return true
+    .eq('id', cashAccountId).eq('tenant_id', tenantId).single()
+  if (!data) return false
   return confirmCashSpend(tenantId, data as { id: number; name: string; account_type: string }, amount)
 }
 
@@ -117,13 +121,15 @@ export async function confirmCashSpendById(tenantId: string, cashAccountId: numb
 /** هل الفترة الشهرية لتاريخ معين مفتوحة للترحيل؟ (الفترة مفتوحة ما لم يوجد صف يقفلها) */
 export async function isPeriodOpen(tenantId: string, date: string): Promise<boolean> {
   const d = new Date(date)
-  const { data } = await supabase.from('finance_fiscal_periods')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== date) return false
+  const { data, error } = await supabase.from('finance_fiscal_periods')
     .select('id')
     .eq('tenant_id', tenantId)
     .eq('year', d.getFullYear())
     .eq('month', d.getMonth() + 1)
     .eq('status', 'مقفلة')
     .maybeSingle()
+  if (error || Number.isNaN(d.getTime())) return false
   return !data
 }
 
@@ -137,6 +143,8 @@ export async function createJournalEntry(
   const { tenantId, date, description, referenceType, referenceId, lines, source = 'آلي' } = params
 
   // ══ 1. جلب كل account_ids بـ query واحد (بدل N queries) ══
+  if (!tenantId || !Array.isArray(lines) || lines.length < 2 || lines.some(l => !Number.isFinite(l.debit) || !Number.isFinite(l.credit) || l.debit < 0 || l.credit < 0 || (l.debit > 0 && l.credit > 0) || !l.accountCode)) return null
+
   const uniqueCodes = Array.from(new Set(lines.map(l => l.accountCode)))
 
   const { data: accountRows, error: accError } = await supabase
@@ -165,13 +173,14 @@ export async function createJournalEntry(
   }
 
   // رفض الترحيل على حسابات تجميعية (is_parent)
-  const { data: parentAccounts } = await supabase
+  const { data: parentAccounts, error: parentError } = await supabase
     .from('finance_accounts')
     .select('code, name')
     .eq('tenant_id', tenantId)
     .in('code', uniqueCodes)
     .eq('is_parent', true)
 
+  if (parentError) return null
   if (parentAccounts && parentAccounts.length > 0) {
     const { default: toast } = await import('react-hot-toast')
     const labels = parentAccounts.map(a => `${a.code} (${a.name})`).join('، ')

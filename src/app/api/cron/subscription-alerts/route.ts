@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processSubscriptionAlerts } from '@/lib/subscription-alerts'
 
@@ -11,7 +12,9 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const provided = searchParams.get('secret') || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
-  if (provided !== secret) {
+  const actual = Buffer.from(provided || '', 'utf8')
+  const expected = Buffer.from(secret, 'utf8')
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
     return NextResponse.json({ ok: false, error: 'غير مصرح' }, { status: 401 })
   }
 

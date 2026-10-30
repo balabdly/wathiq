@@ -175,8 +175,6 @@ export default function DashboardPage() {
   const sectionLayoutExpanded = isExpandedDashboardLayout(visibleSectionCount)
   const kpiLayoutExpanded = isExpandedDashboardLayout(visibleKpiCount)
 
-  useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
-
   async function loadStats() {
     if (!tenant) return
     setLoading(true)
@@ -186,6 +184,8 @@ export default function DashboardPage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => { if (tenant) loadStats() }, [tenant?.id])
 
   const greeting = new Date().getHours() < 12 ? 'صباح الخير' : new Date().getHours() < 17 ? 'مساء الخير' : 'مساء النور'
   const dateStr  = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })

@@ -1,0 +1,46 @@
+name: Security validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [security/hardening-phase-1-20261027]
+
+permissions:
+  contents: read
+
+# Only the latest commit needs full validation for each branch/PR.
+concurrency:
+  group: security-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript check
+        run: npx tsc --noEmit
+      - name: ESLint
+        id: lint
+        continue-on-error: true
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'ci-placeholder'
+
+      - name: Enforce ESLint result
+        if: always() && steps.lint.outcome == 'failure'
+        run: |
+          echo 'ESLint reported errors. Build success does not mean validation passed.'
+          exit 1

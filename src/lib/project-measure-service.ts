@@ -141,7 +141,7 @@ export async function fetchMeasureProject(tenantId: string, projectId: number) {
     throw new Error('المشروع ليس في مرحلة المقايسة')
   }
 
-  let measure = await ensureProjectMeasure(tenantId, projectId)
+  const measure = await ensureProjectMeasure(tenantId, projectId)
   const hasAsBuiltBoq = await hasActiveAsBuiltBoq(tenantId, projectId)
 
   return {
