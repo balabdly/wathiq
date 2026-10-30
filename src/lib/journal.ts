@@ -70,7 +70,7 @@ export async function nextDocNumber(tenantId: string, docType: string, prefix: s
 export async function getCashLedgerBalance(tenantId: string, cashAccountId: number): Promise<number | null> {
   const { data, error } = await supabase.rpc('get_cash_account_balances', { p_tenant_id: tenantId })
   if (error || !data) return null
-  const row = (data as any[]).find(b => Number(b.cash_account_id) === Number(cashAccountId))
+  const row = (data as Array<{ cash_account_id: number | string; ledger_balance: number | string }>).find(b => Number(b.cash_account_id) === Number(cashAccountId))
   return row ? Number(row.ledger_balance) : 0
 }
 
