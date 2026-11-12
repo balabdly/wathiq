@@ -34,6 +34,8 @@ jobs:
         run: npm run test:vat
       - name: ZATCA Phase 2 foundation tests
         run: npm run test:zatca
+      - name: ZATCA EGS ledger schema and state tests
+        run: npm run test:zatca:egs
       - name: Saudi HR compliance calculation tests
         run: npm run test:hr
       - name: ESLint
