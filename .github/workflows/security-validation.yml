@@ -32,6 +32,8 @@ jobs:
         run: npm run test:financial
       - name: Saudi HR compliance calculation tests
         run: npm run test:hr
+      - name: VAT reconciliation calculation tests
+        run: npm run test:vat
       - name: ESLint
         id: lint
         continue-on-error: true

@@ -374,6 +374,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
     if (!form.invoice_number.trim()) { toast.error('رقم الفاتورة مطلوب'); return }
     if (!form.client_id) { toast.error('يجب اختيار عميل من القائمة'); return }
     if (items.every(i => !i.description.trim())) { toast.error('أضف بنداً واحداً على الأقل'); return }
+    if (!asDraft && Number(form.vat_rate) === 0) { toast.error('لا يمكن إصدار فاتورة بنسبة 0% قبل إضافة تصنيف ضريبي يفرق بين الصفر والمعفى'); return }
     setSaving(true)
 
     const finalStatus = asDraft ? 'مسودة' : 'مرسلة'
@@ -391,40 +392,58 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
       client_address: [selectedClient!.street, selectedClient!.district, selectedClient!.city].filter(Boolean).join('، ') || null,
       project_id: form.project_id ? Number(form.project_id) : null, extract_ref: form.extract_ref || null,
       subtotal, vat_amount: vatAmount, total_amount: total,
-      vat_rate: Number(form.vat_rate), status: finalStatus, notes: form.notes || null,
+      vat_rate: Number(form.vat_rate), status: 'مسودة', notes: form.notes || null,
     }
 
     let invoiceId = invoice?.id
-    if (invoice) {
-      await supabase.from('finance_invoices').update(payload).eq('id', invoice.id)
-      await supabase.from('finance_invoice_items').delete().eq('invoice_id', invoice.id)
-    } else {
-      const { data, error } = await supabase.from('finance_invoices').insert(payload).select('id').single()
-      if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
-      invoiceId = data.id
-    }
-
-    const validItems = items.filter(i => i.description.trim())
-    if (validItems.length > 0) {
-      await supabase.from('finance_invoice_items').insert(validItems.map(i => ({ invoice_id: invoiceId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
-    }
-
-    if (invoiceId) await saveAttachments(tenantId, 'فاتورة مبيعات', invoiceId, attachments)
-
-    if (finalStatus === 'مرسلة' && invoiceId) {
-      const journalResult = await createJournalEntry({
-        tenantId, date: payload.invoice_date, description: `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
-        referenceType: 'فاتورة مبيعات', referenceId: invoiceId, source: 'آلي',
-        lines: [
-          { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: payload.total_amount, credit: 0, description: `فاتورة ${payload.invoice_number}` },
-          { accountCode: ACC.SALES_REVENUE, debit: 0, credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
-          ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_OUTPUT, debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
-        ]
-      })
-      if (!journalResult) {
-        toast.error('⚠️ الفاتورة حُفظت لكن القيد المحاسبي فشل — راجع شجرة الحسابات أو الفترة المحاسبية. الفاتورة الآن في حالة "مرسلة" بلا قيد!', { duration: 10000 })
-        onSave(); setSaving(false); return
+    try {
+      if (invoice) {
+        const { error: invError } = await supabase.from('finance_invoices')
+          .update(payload).eq('id', invoice.id).eq('tenant_id', tenantId)
+        if (invError) throw invError
+        const { error: deleteError } = await supabase.from('finance_invoice_items')
+          .delete().eq('invoice_id', invoice.id)
+        if (deleteError) throw deleteError
+      } else {
+        const { data, error } = await supabase.from('finance_invoices')
+          .insert(payload).select('id').single()
+        if (error || !data) throw new Error(error?.message || 'تعذر حفظ رأس الفاتورة')
+        invoiceId = data.id
       }
+
+      const validItems = items.filter(i => i.description.trim())
+      const { error: itemError } = await supabase.from('finance_invoice_items')
+        .insert(validItems.map(i => ({
+          invoice_id: invoiceId, description: i.description,
+          quantity: Number(i.quantity), unit: i.unit,
+          unit_price: Number(i.unit_price), total: Number(i.total),
+        })))
+      if (itemError) throw new Error('فشل حفظ بنود الفاتورة: ' + itemError.message)
+
+      if (invoiceId) await saveAttachments(tenantId, 'فاتورة مبيعات', invoiceId, attachments)
+
+      if (finalStatus === 'مرسلة' && invoiceId) {
+        const journalResult = await createJournalEntry({
+          tenantId, date: payload.invoice_date,
+          description: `فاتورة مبيعات ${payload.invoice_number} — ${payload.client_name}`,
+          referenceType: 'فاتورة مبيعات', referenceId: invoiceId, source: 'آلي',
+          lines: [
+            { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: payload.total_amount, credit: 0, description: `فاتورة ${payload.invoice_number}` },
+            { accountCode: ACC.SALES_REVENUE, debit: 0, credit: payload.subtotal, description: `إيرادات ${payload.invoice_number}` },
+            ...(payload.vat_amount > 0 ? [{ accountCode: ACC.VAT_OUTPUT, debit: 0, credit: payload.vat_amount, description: 'ضريبة القيمة المضافة' }] : []),
+          ],
+        })
+        if (!journalResult) throw new Error('تم حفظ الفاتورة كمسودة لكن تعذر ترحيل القيد؛ راجع الحسابات والفترة قبل إعادة المحاولة')
+        const { error: issueError } = await supabase.from('finance_invoices')
+          .update({ status: 'مرسلة' }).eq('id', invoiceId).eq('tenant_id', tenantId)
+        if (issueError) throw new Error('قيد الفاتورة موجود لكن تعذر تحويل الحالة إلى مرسلة: ' + issueError.message + ' — لا تكرر الترحيل قبل التسوية')
+      }
+    } catch (error: unknown) {
+      toast.error('تعذر إكمال العملية؛ راجع الفاتورة قبل إعادة المحاولة. ' +
+        (error instanceof Error ? error.message : 'خطأ غير معروف'), { duration: 13000 })
+      setSaving(false)
+      onSave()
+      return
     }
 
     toast.success(asDraft ? '💾 تم الحفظ كمسودة' : '✅ تم إنشاء الفاتورة وإرسالها')
@@ -457,7 +476,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label><select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select"><option value="">— اختياري —</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المستخلص</label><input value={form.extract_ref} onChange={e => set('extract_ref', e.target.value)} className="input" dir="ltr" placeholder="اختياري" /></div>
-            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label><select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}><option value={15}>15% — المعيارية</option><option value={0}>0% — معفي</option></select></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label><select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}><option value={15}>15% — المعيارية</option><option value={0}>0% — يتطلب تصنيف (صفر/معفى)</option></select></div>
           </div>
           <ItemsTable items={items} onChange={setItems} catalogItems={catalogItems} />
           <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
@@ -597,17 +616,27 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: Invoice
 
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
 
-    await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
-    await createJournalEntry({
-      tenantId, date: form.payment_date, description: `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${accountLabel})`,
-      referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
-      lines: [
-        { accountCode: getDebitAccountCode(), debit: netDue, credit: 0, description: `${form.payment_method} — ${accountLabel}` },
-        { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
-      ]
-    })
-    toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
-    onSave(); setSaving(false)
+    try {
+      const journalResult = await createJournalEntry({
+        tenantId, date: form.payment_date,
+        description: `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${accountLabel})`,
+        referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
+        lines: [
+          { accountCode: getDebitAccountCode(), debit: netDue, credit: 0, description: `${form.payment_method} — ${accountLabel}` },
+          { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
+        ],
+      })
+      if (!journalResult) throw new Error('لم يُسجّل قيد التحصيل؛ لم تُغيّر حالة الفاتورة')
+      const { error } = await supabase.from('finance_invoices')
+        .update({ status: 'مدفوعة' }).eq('id', invoice.id).eq('tenant_id', tenantId)
+      if (error) throw new Error('سُجّل قيد التحصيل لكن تحديث حالة الفاتورة فشل؛ لا تكرر القيد: ' + error.message)
+      toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
+      onSave()
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'فشل تسجيل التحصيل', { duration: 11000 })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
