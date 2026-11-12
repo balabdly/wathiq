@@ -27,12 +27,19 @@ export function getWorkingDaysInMonth(month: number, year: number): number {
 
 /** الراتب اليومي للخصومات */
 export function dailyRate(basic: number, housing: number, transport: number, other: number, workingDays = DEFAULT_WORKING_DAYS): number {
-  return (basic + housing + transport + other) / workingDays
+  // For monthly-paid employees the daily wage is based on a 30-day month,
+  // not the number of scheduled working days (26 was over-deducting).
+  void workingDays
+  return (basic + housing + transport + other) / 30
 }
 
 /** أجر الساعة الإضافية — 150% من الأجر الأساسي/ساعة */
-export function overtimeHourlyRate(basic: number): number {
-  return (basic / 30 / 8) * 1.5
+export function overtimeHourlyRate(basic: number, housing = 0, transport = 0, other = 0): number {
+  // Saudi Labor Law art. 107: ACTUAL hourly wage plus half BASIC hourly wage.
+  // Ordinary fixed allowances are included in the actual hourly wage.
+  const actualHourly = (basic + housing + transport + other) / 30 / 8
+  const basicHourly = basic / 30 / 8
+  return actualHourly + basicHourly * 0.5
 }
 
 type AttendanceRow = {
@@ -77,7 +84,7 @@ export function calcAttendanceStats(
 
   const daily = dailyRate(salary.basic, salary.housing, salary.transport, salary.other, workingDays)
   const absenceDeduct = Math.round(daily * absent)
-  const overtimePay = Math.round(overtimeHourlyRate(salary.basic) * overtimeHours)
+  const overtimePay = Math.round(overtimeHourlyRate(salary.basic, salary.housing, salary.transport, salary.other) * overtimeHours)
 
   return {
     present_days: present + leave,

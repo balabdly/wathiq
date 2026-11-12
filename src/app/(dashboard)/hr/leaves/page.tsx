@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/utils'
 import { Calendar, Plus, Pencil, Trash2, X, Save, Clock, CheckCircle2, XCircle, AlertTriangle, Info, Search, ChevronDown, ChevronUp, FileText, Eye } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { calcAnnualLeaveBalance } from '@/lib/hrLeaveCalculations'
 
 // ── أنواع الإجازات ──
 const LEAVE_TYPES = [
@@ -14,23 +15,12 @@ const LEAVE_TYPES = [
   { value: 'أمومة',    label: 'وضع/أمومة',       icon: '👶', paid: 'كامل',  maxDays: 84,   note: '12 أسبوع (84 يوم)' },
   { value: 'حج',       label: 'حج',              icon: '🕋', paid: 'كامل',  maxDays: 15,   note: 'مرة واحدة طوال الخدمة' },
   { value: 'زواج',     label: 'زواج',            icon: '💍', paid: 'كامل',  maxDays: 5,    note: '5 أيام' },
-  { value: 'وفاة',     label: 'وفاة ذوي القربى', icon: '🖤', paid: 'كامل',  maxDays: 5,    note: '5 أيام' },
-  { value: 'مولود',    label: 'مولود جديد',      icon: '🍼', paid: 'كامل',  maxDays: 5,    note: '5 أيام' },
+  { value: 'وفاة',     label: 'وفاة زوج أو أصل أو فرع', icon: '🖤', paid: 'كامل',  maxDays: 5,    note: '5 أيام' },
+  { value: 'وفاة أخ أو أخت', label: 'وفاة أخ أو أخت', icon: '🖤', paid: 'كامل', maxDays: 3, note: '3 أيام' },
+  { value: 'مولود',    label: 'مولود جديد',      icon: '🍼', paid: 'كامل',  maxDays: 3,    note: '3 أيام خلال 7 أيام من الولادة' },
   { value: 'امتحانات', label: 'امتحانات',        icon: '📚', paid: 'كامل',  maxDays: null, note: 'بحسب جدول الاختبارات' },
   { value: 'بدون راتب',label: 'بدون راتب',       icon: '📋', paid: 'لا',    maxDays: null, note: 'باتفاق الطرفين' },
 ]
-
-// ── حساب رصيد الإجازة السنوية ──
-function calcAnnualLeaveBalance(hireDateStr: string, takenDays: number) {
-  if (!hireDateStr) return { yearsOfService: 0, annualEntitlement: 21, totalEarned: 0, balance: 0 }
-  const hireDate = new Date(hireDateStr)
-  const today = new Date()
-  const yearsOfService = (today.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-  const annualEntitlement = yearsOfService >= 5 ? 30 : 21
-  const totalEarned = Math.floor(yearsOfService * annualEntitlement)
-  const balance = Math.max(0, totalEarned - takenDays)
-  return { yearsOfService, annualEntitlement, totalEarned, balance }
-}
 
 // ── حساب أجر الإجازة المرضية ──
 function calcSickLeavePay(totalSickDaysThisYear: number, newDays: number) {
@@ -109,6 +99,7 @@ function LeaveModal({ leave, hrEmployees, sickDaysMap, annualTakenMap, canChange
     e.preventDefault()
     if (!form.employee_id) { toast.error('اختر الموظف'); return }
     if (!form.start_date || !form.end_date) { toast.error('أدخل التواريخ'); return }
+    if (form.end_date < form.start_date || days <= 0) { toast.error('تواريخ الإجازة غير صحيحة'); return }
     if (form.leave_type === 'سنوية' && annualBalance && days > annualBalance.balance) {
       if (!confirm(`تنبيه: الرصيد المتاح ${annualBalance.balance} يوم فقط، هل تريد المتابعة؟`)) return
     }
@@ -481,13 +472,27 @@ export default function LeavesPage() {
   // ── جلب كل الإجازات لحساب الأرصدة (تاب رصيد) ──
   const [allLeaves, setAllLeaves] = useState<Leave[]>([])
   useEffect(() => {
-    if (!tenant || activeTab !== 'balance') return
-    supabase.from('hr_leaves')
-      .select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
-      .eq('tenant_id', tenant.id)
-      .eq('status', 'موافق')
-      .then(({ data }) => setAllLeaves(data || []))
-  }, [tenant?.id, activeTab])
+    if (!tenant) return
+    let cancelled = false
+    async function loadApprovedLeaves() {
+      const all: Leave[] = []
+      const pageSize = 500
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from('hr_leaves')
+          .select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
+          .eq('tenant_id', tenant!.id)
+          .eq('status', 'موافق')
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (error) { toast.error('تعذر جلب أرصدة الإجازات كاملة'); return }
+        all.push(...((data || []) as Leave[]))
+        if ((data || []).length < pageSize) break
+      }
+      if (!cancelled) setAllLeaves(all)
+    }
+    void loadApprovedLeaves()
+    return () => { cancelled = true }
+  }, [tenant?.id])
 
   // ── الحسابات ──
   const currentYear = new Date().getFullYear()
