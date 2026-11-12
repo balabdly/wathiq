@@ -2,7 +2,8 @@
 \echo [ZATCA DB] Preparing isolated PostgreSQL fixture
 CREATE ROLE anon NOLOGIN;
 CREATE ROLE authenticated NOLOGIN;
-CREATE ROLE service_role NOLOGIN;
+-- Supabase service_role has BYPASSRLS; model it explicitly in the throwaway database.
+CREATE ROLE service_role NOLOGIN BYPASSRLS;
 CREATE TABLE public.tenants (
   id uuid PRIMARY KEY,
   name text NOT NULL
