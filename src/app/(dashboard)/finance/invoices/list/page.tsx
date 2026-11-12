@@ -396,8 +396,10 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
     let invoiceId = invoice?.id
     if (invoice) {
-      await supabase.from('finance_invoices').update(payload).eq('id', invoice.id)
-      await supabase.from('finance_invoice_items').delete().eq('invoice_id', invoice.id)
+      const { error: updateError } = await supabase.from('finance_invoices').update(payload).eq('id', invoice.id).eq('tenant_id', tenantId)
+      if (updateError) { toast.error('تعذر تعديل الفاتورة: ' + updateError.message); setSaving(false); return }
+      const { error: deleteItemsError } = await supabase.from('finance_invoice_items').delete().eq('invoice_id', invoice.id)
+      if (deleteItemsError) { toast.error('تعذر تحديث بنود الفاتورة: ' + deleteItemsError.message); setSaving(false); return }
     } else {
       const { data, error } = await supabase.from('finance_invoices').insert(payload).select('id').single()
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
@@ -406,7 +408,8 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
 
     const validItems = items.filter(i => i.description.trim())
     if (validItems.length > 0) {
-      await supabase.from('finance_invoice_items').insert(validItems.map(i => ({ invoice_id: invoiceId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
+      const { error: itemsError } = await supabase.from('finance_invoice_items').insert(validItems.map(i => ({ invoice_id: invoiceId, description: i.description, quantity: Number(i.quantity), unit: i.unit, unit_price: Number(i.unit_price), total: Number(i.total) })))
+      if (itemsError) { toast.error('تم حفظ رأس الفاتورة لكن تعذر حفظ البنود؛ راجع الفاتورة: ' + itemsError.message, { duration: 10000 }); setSaving(false); return }
     }
 
     if (invoiceId) await saveAttachments(tenantId, 'فاتورة مبيعات', invoiceId, attachments)
@@ -457,7 +460,7 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>المشروع</label><select value={form.project_id} onChange={e => set('project_id', e.target.value)} className="select"><option value="">— اختياري —</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>رقم المستخلص</label><input value={form.extract_ref} onChange={e => set('extract_ref', e.target.value)} className="input" dir="ltr" placeholder="اختياري" /></div>
-            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label><select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}><option value={15}>15% — المعيارية</option><option value={0}>0% — معفي</option></select></div>
+            <div><label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>نسبة ضريبة القيمة المضافة</label><select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}><option value={15}>15% — المعيارية</option><option value={0}>0% — يتطلب تصنيف التوريد (صفرية / معفاة)</option></select></div>
           </div>
           <ItemsTable items={items} onChange={setItems} catalogItems={catalogItems} />
           <TotalsBox subtotal={subtotal} vatRate={Number(form.vat_rate)} vatAmount={vatAmount} total={total} />
@@ -597,8 +600,17 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: Invoice
 
     const accountLabel = selectedAccount ? `${selectedAccount.name}${selectedAccount.bank_name ? ` — ${selectedAccount.bank_name}` : ''}` : form.payment_method
 
-    await supabase.from('finance_invoices').update({ status: 'مدفوعة' }).eq('id', invoice.id)
-    await createJournalEntry({
+    // Post collection first; do not mark invoice paid on a failed journal.
+    const { data: existingPayment, error: paymentCheckError } = await supabase
+      .from('finance_journal_entries').select('id')
+      .eq('tenant_id', tenantId).eq('reference_type', 'تحصيل فاتورة')
+      .eq('reference_id', invoice.id).eq('status', 'معتمد').limit(1)
+    if (paymentCheckError) { toast.error('تعذر التحقق من قيود التحصيل السابقة'); setSaving(false); return }
+    if (existingPayment?.length) {
+      toast.error('يوجد قيد تحصيل سابق لهذه الفاتورة؛ راجع دفتر الأستاذ قبل إعادة التحصيل')
+      setSaving(false); return
+    }
+    const paymentEntry = await createJournalEntry({
       tenantId, date: form.payment_date, description: `تحصيل فاتورة ${invoice.invoice_number} — ${invoice.client_name} (${accountLabel})`,
       referenceType: 'تحصيل فاتورة', referenceId: invoice.id, source: 'آلي',
       lines: [
@@ -606,6 +618,13 @@ function PaymentModal({ invoice, tenantId, onClose, onSave }: { invoice: Invoice
         { accountCode: ACC.CUSTOMER_RECEIVABLE, debit: 0, credit: netDue, description: `إقفال ذمة ${invoice.client_name}` },
       ]
     })
+    if (!paymentEntry) { toast.error('فشل قيد التحصيل؛ لم تُغيّر حالة الفاتورة'); setSaving(false); return }
+    const { error: paidError } = await supabase.from('finance_invoices')
+      .update({ status: 'مدفوعة' }).eq('id', invoice.id).eq('tenant_id', tenantId)
+    if (paidError) {
+      toast.error('حُفظ قيد التحصيل لكن تعذر تحديث حالة الفاتورة؛ لا تكرر التحصيل: ' + paidError.message, { duration: 12000 })
+      setSaving(false); return
+    }
     toast.success('✅ تم تسجيل الدفعة والقيد المحاسبي')
     onSave(); setSaving(false)
   }
