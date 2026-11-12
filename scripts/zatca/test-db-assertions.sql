@@ -169,7 +169,7 @@ END $$;
 RESET ROLE;
 
 -- Even a database owner must pass through the immutable event trigger.
-DO $
+DO $$
 DECLARE v_failed boolean := false;
 BEGIN
   BEGIN
@@ -180,17 +180,17 @@ BEGIN
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'Audit modification allowed to table owner'; END IF;
   RAISE NOTICE 'PASS: database owner cannot bypass append-only trigger';
-END $;
+END $$;
 
-DO $
+DO $$
 BEGIN
   IF has_table_privilege('service_role','public.zatca_document_events','UPDATE') THEN
     RAISE EXCEPTION 'Service role must not have UPDATE on audit events';
   END IF;
   RAISE NOTICE 'PASS: service_role has no audit UPDATE privilege';
-END $;
+END $$;
 
-DO $
+DO $$
 BEGIN
   IF (SELECT last_icv FROM public.zatca_egs_state
      WHERE egs_unit_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') <> 1 THEN
