@@ -10,6 +10,7 @@ import {
   Printer, Save, X, CheckCircle2, XCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { calcAnnualLeaveBalance } from '@/lib/hrLeaveCalculations'
 
 // ══════════════════════════════════════
 // Types
@@ -280,6 +281,7 @@ export default function EmployeeProfilePage() {
 
   // بيانات التابات
   const [leaves, setLeaves] = useState<any[]>([])
+  const [annualTakenAll, setAnnualTakenAll] = useState<number | null>(null)
   const [attendance, setAttendance] = useState<any[]>([])
   const [disciplinary, setDisciplinary] = useState<any[]>([])
   const [payrolls, setPayrolls] = useState<any[]>([])
@@ -353,6 +355,24 @@ export default function EmployeeProfilePage() {
     ])
 
     setLeaves(leavesRes.data || [])
+    // The profile only displays 20 recent leaves, but the balance must use
+    // ALL approved annual leave throughout the employee's service.
+    let takenTotal = 0
+    let allLeavesComplete = true
+    for (let offset = 0; ; offset += 500) {
+      const { data: approved, error: approvedError } = await supabase.from('hr_leaves')
+        .select('id, days').eq('tenant_id', tenant.id).eq('employee_id', hrEmpId)
+        .eq('leave_type', 'سنوية').in('status', ['موافق', 'معتمد'])
+        .order('id', { ascending: true }).range(offset, offset + 499)
+      if (approvedError) {
+        allLeavesComplete = false
+        console.error('[employeeProfile] incomplete leave balance', approvedError)
+        break
+      }
+      takenTotal += (approved || []).reduce((total, leave) => total + Number(leave.days || 0), 0)
+      if ((approved || []).length < 500) break
+    }
+    setAnnualTakenAll(allLeavesComplete ? takenTotal : null)
     setAttendance(attRes.data || [])
     setDisciplinary(discRes.data || [])
     setPayrolls(payRes.data || [])
@@ -381,7 +401,7 @@ export default function EmployeeProfilePage() {
   const empName = [emp.first_name, emp.father_name, emp.grandfather_name, emp.family_name].filter(Boolean).join(' ') || emp.first_name_en || '—'
   const totalSalary = emp.basic_salary + emp.housing_allow + emp.transport_allow + emp.other_allow
   const activeWarnings = disciplinary.filter(d => d.status === 'نافذ').length
-  const annualTaken = leaves.filter(l => l.leave_type === 'سنوية' && l.status === 'موافق').reduce((s, l) => s + l.days, 0)
+  const annualBalance = annualTakenAll === null ? null : calcAnnualLeaveBalance(emp.hire_date || '', annualTakenAll).balance
   const iqamaDays = emp.iqama_expiry ? Math.ceil((new Date(emp.iqama_expiry).getTime() - now.getTime()) / 86400000) : null
 
   const TABS = [
@@ -424,7 +444,7 @@ export default function EmployeeProfilePage() {
               )}
               {activeWarnings >= 3 && (
                 <span style={{ background: '#fef2f2', color: '#c81e1e', borderRadius: '20px', padding: '2px 10px', fontSize: '0.72rem', fontWeight: 700 }}>
-                  ⚠ مؤهل للفصل
+                  ⚠ 3 إنذارات نافذة — تتطلب مراجعة
                 </span>
               )}
             </h1>
@@ -448,7 +468,7 @@ export default function EmployeeProfilePage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: 'إجمالي الراتب',    value: `${totalSalary.toLocaleString()} ر.س`, color: '#0ea77b', bg: '#ecfdf5' },
-          { label: 'رصيد الإجازة',     value: `${Math.max(0, Math.floor((new Date().getFullYear() - (emp.hire_date ? new Date(emp.hire_date).getFullYear() : 0)) * 21) - annualTaken)} يوم`, color: '#1a56db', bg: '#eff6ff' },
+          { label: 'رصيد الإجازة',     value: annualBalance === null ? '—' : `${annualBalance} يوم`, color: '#1a56db', bg: '#eff6ff' },
           { label: 'إنذارات نافذة',    value: activeWarnings, color: activeWarnings > 0 ? '#c81e1e' : '#0ea77b', bg: activeWarnings > 0 ? '#fef2f2' : '#ecfdf5' },
           { label: iqamaDays !== null ? 'انتهاء الإقامة' : 'الجنسية', value: iqamaDays !== null ? `${iqamaDays} يوم` : emp.nationality, color: iqamaDays !== null && iqamaDays <= 60 ? '#c81e1e' : '#6b7280', bg: '#f9fafb' },
         ].map(kpi => (

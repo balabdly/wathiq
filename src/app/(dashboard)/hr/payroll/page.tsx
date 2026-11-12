@@ -5,9 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { Banknote, Pencil, X, Save, ChevronDown, ChevronUp, CheckSquare, Square, FileText, Palmtree, Download, ShieldCheck, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { calcGOSI } from '../hr_utils'
+import { calcAnnualLeaveBalance } from '@/lib/hrLeaveCalculations'
 import {
-  fetchAttendanceByEmployee, calcAttendanceStats, calcDisciplinaryDeduct,
-  getWorkingDaysInMonth, dailyRate,
+  fetchAttendanceByEmployee, calcAttendanceStats,
+  getWorkingDaysInMonth,
 } from '@/lib/payrollAttendance'
 import { journalSettlement, journalLeaveCompensation } from '@/lib/journal'
 
@@ -26,13 +27,13 @@ type Payroll = {
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
   other_deduct: number; gross_salary: number; net_salary: number
-  present_days: number; absent_days: number; notes?: string; status: string; emp_name?: string
+  present_days: number; absent_days: number; overtime_hours?: number; notes?: string; status: string; emp_name?: string
 }
 type PayrollRow = {
   employee_id: number; name: string; role: string; included: boolean
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
-  other_deduct: number; present_days: number; notes: string; gross: number; net: number; existingId?: number
+  other_deduct: number; present_days: number; absent_days: number; overtime_hours: number; notes: string; gross: number; net: number; existingId?: number
   _pendingDeductIds?: number[]
 }
 type Termination = {
@@ -165,12 +166,9 @@ function SettlementsTab({ tenant, hrEmployees }: { tenant: any; hrEmployees: HRE
     const workedDays = lastDay.getDate()
     const daily = dailySalary(emp)
     const monthSalaryAmt = Math.round(daily * workedDays)
-    const { data: leaveData } = await supabase.from('hr_leaves').select('days, leave_type').eq('employee_id', term.hr_employee_id).eq('tenant_id', tenant.id).eq('status', 'معتمد')
-    const yearsOfService = (new Date(term.last_working_day).getTime() - new Date(emp.hire_date || term.termination_date).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-    const annualEntitlement = yearsOfService >= 5 ? 30 : 21
-    const totalEntitled = Math.floor(yearsOfService * annualEntitlement)
-    const takenDays = (leaveData || []).filter((l: any) => l.leave_type === 'سنوية').reduce((s: number, l: any) => s + (l.days || 0), 0)
-    const leaveBalance = Math.max(0, totalEntitled - takenDays)
+    const { data: leaveData } = await supabase.from('hr_leaves').select('days, leave_type').eq('employee_id', term.hr_employee_id).eq('tenant_id', tenant.id).in('status', ['موافق', 'معتمد'])
+    const takenDays = (leaveData || []).filter((l: any) => l.leave_type === 'سنوية').reduce((s: number, l: any) => s + Number(l.days || 0), 0)
+    const leaveBalance = calcAnnualLeaveBalance(emp.hire_date || '', takenDays, term.last_working_day).balance
     const leaveCompensation = Math.round(daily * leaveBalance)
     const totalEnt = term.gratuity_amount + monthSalaryAmt + leaveCompensation
     const { error } = await supabase.from('hr_settlements').insert({
@@ -296,6 +294,12 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
   async function handleSave() {
     if (!form.employee_id) { toast.error('اختر الموظف'); return }
     if (!form.leave_days || Number(form.leave_days) <= 0) { toast.error('أدخل عدد الأيام'); return }
+    // Labor Law art. 109 prohibits replacing annual leave with cash during service.
+    // Cash-out of unused days is normally due when employment ends (art. 111).
+    const { data: termRows, error: terminationError } = await supabase.from('hr_terminations')
+      .select('id').eq('tenant_id', tenant.id).eq('hr_employee_id', Number(form.employee_id)).limit(1)
+    if (terminationError) { toast.error('تعذر التحقق من انتهاء الخدمة: ' + terminationError.message); return }
+    if (!termRows?.length) { toast.error('لا يجوز صرف بدل نقدي عن الإجازة السنوية أثناء الخدمة؛ سجّل إنهاء الخدمة والتسوية أولاً'); return }
     setSaving(true)
     const { error } = await supabase.from('hr_leave_compensations').insert({
       tenant_id: tenant.id, employee_id: Number(form.employee_id),
@@ -468,7 +472,7 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, onEditPayroll, exportCSV }: { p
                   <div style={{ borderTop: '2px solid var(--primary)', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                       <thead><tr style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-                        {['الموظف','الأساسي','البدلات','الإجمالي','الخصومات','الصافي','حضور','الحالة'].map(h => (
+                        {['الموظف','الأساسي','البدلات','الإجمالي','الخصومات','الصافي','حضور مسجل','الحالة'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: '0.72rem', background: h==='الصافي'?'#ecfdf5':'transparent', color: h==='الصافي'?'#0ea77b':h==='الخصومات'?'#c81e1e':h==='الإجمالي'?'var(--primary)':'var(--text3)' }}>{h}</th>
                         ))}
                       </tr></thead>
@@ -615,8 +619,8 @@ export default function PayrollPage() {
     if (!check.allowed) { toast.error(check.reason || 'غير مسموح بإنشاء مسير لهذا الشهر'); return }
     const existing = payrolls.filter(p => p.month === filterMonth && p.year === filterYear)
     if (existing.length > 0) {
-      if (existing.every(p => p.status === 'مدفوع')) {
-        toast.error(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} مدفوع بالفعل ولا يمكن تعديله`)
+      if (existing.some(p => ['معتمد', 'مدفوع', 'مرحّل للمالية'].includes(p.status))) {
+        toast.error('لا يمكن تعديل مسير معتمد أو مدفوع؛ يلزم إجراء تصحيح موثّق')
         return
       }
       if (!confirm(`مسير ${ARABIC_MONTHS[filterMonth-1]} ${filterYear} موجود مسبقاً (${existing.length} موظف).\nهل تريد فتحه للتعديل؟`)) return
@@ -638,10 +642,10 @@ export default function PayrollPage() {
       }, workingDays)
 
       const empDeducts = pendingDeducts.filter(d => d.employee_id === emp.id)
-      const daily = dailyRate(emp.basic_salary, emp.housing_allow, emp.transport_allow, emp.other_allow, workingDays)
-      const disciplinaryDeduct = calcDisciplinaryDeduct(empDeducts, daily)
-
-      const absenceDeduct = ex?.absence_deduct ?? (attStats.absence_deduct + disciplinaryDeduct)
+      // Disciplinary deductions are separate and must be explicitly selected.
+      // Do NOT silently include them in absence deductions as that double-charges
+      // them when the operator clicks "تطبيق الخصم".
+      const absenceDeduct = ex?.absence_deduct ?? attStats.absence_deduct
       const overtimePay   = ex?.overtime_pay ?? attStats.overtime_pay
       const presentDays   = ex?.present_days ?? attStats.present_days
 
@@ -657,6 +661,8 @@ export default function PayrollPage() {
         absence_deduct: absenceDeduct,
         other_deduct: ex?.other_deduct ?? 0,
         present_days: presentDays,
+        absent_days: ex?.absent_days ?? attStats.absent_days,
+        overtime_hours: ex?.overtime_hours ?? attStats.overtime_hours,
         notes: attStats.has_records
           ? (ex?.notes || `حضور: ${attStats.present_days} | غياب: ${attStats.absent_days} | إضافي: ${attStats.overtime_hours}س`)
           : (ex?.notes ?? ''),
@@ -683,72 +689,80 @@ export default function PayrollPage() {
   async function handleSaveBulk() {
     if (!tenant || includedRows.length === 0) { toast.error('اختر موظفاً واحداً على الأقل'); return }
     setSaving(true)
-    const workingDays = getWorkingDaysInMonth(filterMonth, filterYear)
-    for (const row of includedRows) {
-      const payload = {
-        tenant_id: tenant.id, branch_id: activeBranch?.id || 0,
-        employee_id: row.employee_id, month: filterMonth, year: filterYear,
-        basic_salary: row.basic_salary, housing_allow: row.housing_allow,
-        transport_allow: row.transport_allow, other_allow: row.other_allow,
-        overtime_pay: row.overtime_pay, bonuses: row.bonuses,
-        gosi_deduction: row.gosi_deduction, gosi_employer_amount: row.gosi_employer_amount, absence_deduct: row.absence_deduct,
-        other_deduct: row.other_deduct, present_days: row.present_days,
-        absent_days: workingDays - row.present_days, overtime_hours: 0,
-        gross_salary: row.gross, net_salary: row.net,
-        notes: row.notes || null, status: 'مسودة', working_days: workingDays,
+    try {
+      const workingDays = getWorkingDaysInMonth(filterMonth, filterYear)
+      for (const row of includedRows) {
+        const payload = {
+          tenant_id: tenant.id, branch_id: activeBranch?.id || 0,
+          employee_id: row.employee_id, month: filterMonth, year: filterYear,
+          basic_salary: row.basic_salary, housing_allow: row.housing_allow,
+          transport_allow: row.transport_allow, other_allow: row.other_allow,
+          overtime_pay: row.overtime_pay, bonuses: row.bonuses,
+          gosi_deduction: row.gosi_deduction, gosi_employer_amount: row.gosi_employer_amount,
+          absence_deduct: row.absence_deduct, other_deduct: row.other_deduct,
+          present_days: row.present_days, absent_days: row.absent_days,
+          overtime_hours: row.overtime_hours,
+          gross_salary: row.gross, net_salary: row.net,
+          notes: row.notes || null, status: 'مسودة', working_days: workingDays,
+        }
+        const { error } = row.existingId
+          ? await supabase.from('hr_payroll').update(payload).eq('id', row.existingId).eq('tenant_id', tenant.id)
+          : await supabase.from('hr_payroll').insert(payload)
+        if (error) throw new Error(`فشل حفظ مسير ${row.name}: ${error.message}`)
       }
-      if (row.existingId) await supabase.from('hr_payroll').update(payload).eq('id', row.existingId)
-      else await supabase.from('hr_payroll').insert(payload)
-    }
 
-    // ══ إنشاء/تحديث رأس مسير الرواتب — يحمل هوية من أنشأه ومسار الاعتماد الهرمي ══
-    const hrHeadRes = await supabase.from('employees').select('id').eq('tenant_id', tenant.id).eq('role', 'مدير الموارد البشرية').eq('is_active', true).limit(1).maybeSingle()
-    const runNumber = `PR-${tenant.id.slice(0, 4)}-${filterYear}-${String(filterMonth).padStart(2, '0')}`
-    const runPayload = {
-      tenant_id: tenant.id, branch_id: activeBranch?.id || 0, run_number: runNumber,
-      month: filterMonth, year: filterYear, status: 'مسودة',
-      employee_count: includedRows.length,
-      total_basic: includedRows.reduce((s, r) => s + r.basic_salary, 0),
-      total_allowances: includedRows.reduce((s, r) => s + r.housing_allow + r.transport_allow + r.other_allow + r.overtime_pay + r.bonuses, 0),
-      total_gosi_employee: includedRows.reduce((s, r) => s + r.gosi_deduction, 0),
-      total_gosi_employer: includedRows.reduce((s, r) => s + r.gosi_employer_amount, 0),
-      total_deductions: includedRows.reduce((s, r) => s + r.absence_deduct + r.other_deduct, 0),
-      total_gross: totalGross, total_net: totalNet,
-      created_by: currentUser?.id || null,
-      hr_head_id: hrHeadRes.data?.id || null,
-    }
-    const { data: runRow } = await supabase.from('hr_payroll_runs')
-      .upsert(runPayload, { onConflict: 'tenant_id,month,year,branch_id' })
-      .select('id')
-      .single()
+      const hrHeadRes = await supabase.from('employees').select('id')
+        .eq('tenant_id', tenant.id).eq('role', 'مدير الموارد البشرية')
+        .eq('is_active', true).limit(1).maybeSingle()
+      if (hrHeadRes.error) throw hrHeadRes.error
+      const runNumber = `PR-${tenant.id.slice(0, 4)}-${filterYear}-${String(filterMonth).padStart(2, '0')}`
+      const runPayload = {
+        tenant_id: tenant.id, branch_id: activeBranch?.id || 0, run_number: runNumber,
+        month: filterMonth, year: filterYear, status: 'مسودة',
+        employee_count: includedRows.length,
+        total_basic: includedRows.reduce((sum, row) => sum + row.basic_salary, 0),
+        total_allowances: includedRows.reduce((sum, row) =>
+          sum + row.housing_allow + row.transport_allow + row.other_allow + row.overtime_pay + row.bonuses, 0),
+        total_gosi_employee: includedRows.reduce((sum, row) => sum + row.gosi_deduction, 0),
+        total_gosi_employer: includedRows.reduce((sum, row) => sum + row.gosi_employer_amount, 0),
+        total_deductions: includedRows.reduce((sum, row) => sum + row.absence_deduct + row.other_deduct, 0),
+        total_gross: totalGross, total_net: totalNet,
+        created_by: currentUser?.id || null, hr_head_id: hrHeadRes.data?.id || null,
+      }
+      const { data: runRow, error: runError } = await supabase.from('hr_payroll_runs')
+        .upsert(runPayload, { onConflict: 'tenant_id,month,year,branch_id' })
+        .select('id').single()
+      if (runError || !runRow?.id) throw new Error('تعذر إنشاء رأس المسير: ' + (runError?.message || 'لا توجد نتيجة'))
+      const { error: linkError } = await supabase.from('hr_payroll')
+        .update({ run_id: runRow.id }).eq('tenant_id', tenant.id)
+        .eq('month', filterMonth).eq('year', filterYear)
+      if (linkError) throw new Error('تعذر ربط المسير: ' + linkError.message)
 
-    if (runRow?.id) {
-      await supabase.from('hr_payroll')
-        .update({ run_id: runRow.id })
-        .eq('tenant_id', tenant.id)
-        .eq('month', filterMonth)
-        .eq('year', filterYear)
+      if (approvedDeducts.size > 0) {
+        const { error: deductionError } = await supabase.from('hr_disciplinary')
+          .update({ deduct_applied: true, deduct_applied_month: filterMonth, deduct_applied_year: filterYear })
+          .eq('tenant_id', tenant.id).in('id', Array.from(approvedDeducts))
+        if (deductionError) throw new Error('تعذر تأكيد الخصومات التأديبية: ' + deductionError.message)
+        setPendingDeducts(prev => prev.filter(d => !approvedDeducts.has(d.id)))
+        setApprovedDeducts(new Set())
+      }
+      await load()
+      setMode('view')
+      toast.success('✅ تم حفظ مسير ' + ARABIC_MONTHS[filterMonth - 1] + ' — ' + includedRows.length + ' موظف')
+    } catch (error: unknown) {
+      console.error('[hr/payroll] payroll save failed', error)
+      toast.error('قد تكون بعض أسطر المسير حُفظت؛ راجع المسير قبل إعادة المحاولة. ' +
+        (error instanceof Error ? error.message : 'خطأ غير معروف'), { duration: 12000 })
+    } finally {
+      setSaving(false)
     }
-
-    await load(); setMode('view'); setSaving(false)
-    // تسجيل الإنذارات المطبقة كـ deduct_applied
-    if (approvedDeducts.size > 0) {
-      await supabase.from('hr_disciplinary')
-        .update({
-          deduct_applied: true,
-          deduct_applied_month: filterMonth,
-          deduct_applied_year: filterYear,
-        })
-        .in('id', Array.from(approvedDeducts))
-      setPendingDeducts(prev => prev.filter(d => !approvedDeducts.has(d.id)))
-      setApprovedDeducts(new Set())
-    }
-
-    toast.success('✅ تم حفظ مسير ' + ARABIC_MONTHS[filterMonth - 1] + ' — ' + includedRows.length + ' موظف')
   }
 
   async function handleEditSave(data: any) {
-    await supabase.from('hr_payroll').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id)
+    if (!tenant) return
+    const { error } = await supabase.from('hr_payroll')
+      .update({ ...data, tenant_id: tenant.id }).eq('id', data.id).eq('tenant_id', tenant.id)
+    if (error) { toast.error('تعذر تعديل الراتب: ' + error.message); return }
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
   }
 
@@ -757,10 +771,15 @@ export default function PayrollPage() {
     if (!isHRHead) { toast.error('⛔ اعتماد مسير الرواتب صلاحية حصرية لرئيس الموارد البشرية'); return }
     if (!confirm(`اعتماد مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nبعد الاعتماد لا يمكن تعديله.`)) return
     const recs = payrolls.filter(p => p.month === month && p.year === year)
-    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id)))
-    await supabase.from('hr_payroll_runs').update({
+    for (const payroll of recs) {
+      const { error } = await supabase.from('hr_payroll')
+        .update({ status: 'معتمد' }).eq('id', payroll.id).eq('tenant_id', tenant!.id)
+      if (error) { toast.error('فشل اعتماد أحد الموظفين؛ تحقق من حالة المسير قبل المحاولة مجددًا: ' + error.message); return }
+    }
+    const { error: runError } = await supabase.from('hr_payroll_runs').update({
       status: 'معتمد', approved_by: currentUser?.id || null, approved_at: new Date().toISOString(),
     }).eq('tenant_id', tenant!.id).eq('month', month).eq('year', year)
+    if (runError) { toast.error('تعذر اعتماد رأس المسير رغم اعتماد الأسطر؛ راجع الحالة: ' + runError.message); return }
     await load()
     toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]} بواسطة ${currentUser?.name || 'رئيس الموارد البشرية'}`)
   }
@@ -908,7 +927,7 @@ export default function PayrollPage() {
           : mode === 'create' ? (
             <div className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span>💡</span><span>أزل علامة الاختيار عن الموظفين في إجازة أو لا يستحقون راتب هذا الشهر</span>
+                <span>💡</span><span>الإجازة المدفوعة لا تلغي استحقاق الراتب. راجع استثناء الموظفين بعناية</span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -991,6 +1010,13 @@ export default function PayrollPage() {
                                               updateRow(idx, 'other_deduct', Math.max(0, row.other_deduct - deductAmt))
                                             } else {
                                               next.add(did)
+                                              const selectedDays = pendingDeducts
+                                                .filter(d => d.employee_id === row.employee_id && next.has(d.id))
+                                                .reduce((sum, d) => sum + Number(d.salary_deduct_days || 0), 0)
+                                              if (selectedDays > 5) {
+                                                toast.error('لا يجوز اقتطاع غرامات تتجاوز أجر خمسة أيام للموظف في الشهر')
+                                                return
+                                              }
                                               updateRow(idx, 'other_deduct', row.other_deduct + deductAmt)
                                             }
                                             setApprovedDeducts(next)

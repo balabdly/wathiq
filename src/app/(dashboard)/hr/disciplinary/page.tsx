@@ -55,6 +55,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
   onSave: (d: any) => Promise<void>
 }) {
   const [saving, setSaving] = useState(false)
+  const [legalConfirmation, setLegalConfirmation] = useState(false)
   const [form, setForm] = useState({
     employee_id:       record?.employee_id      ? String(record.employee_id) : '',
     violation_type_id: record?.violation_type_id ? String(record.violation_type_id) : '',
@@ -94,7 +95,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
     set('penalty_type', p || '')
     // استخراج أيام الخصم من النص
     const match = p?.match(/خصم (\d+) يوم/)
-    set('salary_deduct_days', match ? parseInt(match[1]) : 0)
+    set('salary_deduct_days', match ? Math.min(5, parseInt(match[1])) : 0)
   }
 
   // حساب عدد الإنذارات السابقة للموظف المختار
@@ -109,10 +110,9 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
       .then(({ count }) => {
         const prev = count || 0
         setPrevCount(prev)
-        const suggested = Math.min(prev + 1, 3)
-        set('penalty_degree', suggested)
-        const v = violationTypes.find(x => String(x.id) === form.violation_type_id)
-        if (v) autoSetPenalty(v, suggested)
+        // Prior warnings must NOT automatically trigger penalty escalation.
+        // Saudi Labor Law art. 68 requires checking the SAME violation and
+        // the 180-day notice window; this form lacks a notice-date field.
       })
   }, [form.employee_id])
 
@@ -121,6 +121,8 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
     if (!form.employee_id) { toast.error('اختر الموظف'); return }
     if (!form.violation_name.trim()) { toast.error('حدد نوع المخالفة'); return }
     if (!form.incident_date) { toast.error('أدخل تاريخ الحادثة'); return }
+    if (Number(form.salary_deduct_days) < 0 || Number(form.salary_deduct_days) > 5) { toast.error('لا يجوز أن تتجاوز غرامة المخالفة الواحدة أجر خمسة أيام'); return }
+    if (!legalConfirmation) { toast.error('يجب تأكيد توثيق إجراءات التحقيق وإبلاغ الموظف بالقرار قبل حفظ الجزاء'); return }
     setSaving(true)
     await onSave({
       ...(record ? { id: record.id } : {}),
@@ -155,7 +157,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
               {prevCount > 0 && (
                 <div style={{ marginTop: '6px', padding: '6px 10px', background: '#fffbeb', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <AlertTriangle style={{ width: '13px', height: '13px' }} />
-                  لهذا الموظف {prevCount} إنذار نافذ — الدرجة المقترحة: <strong>{DEGREE_LABEL[Math.min(prevCount + 1, 3)]}</strong>
+                  لهذا الموظف {prevCount} إنذار نافذ سابق — التشديد يحتاج مراجعة نوع المخالفة وتاريخ الإبلاغ (180 يومًا).
                 </div>
               )}
             </div>
@@ -230,7 +232,7 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>أيام الخصم من الراتب</label>
                 <input type="number" value={form.salary_deduct_days}
                   onChange={e => set('salary_deduct_days', e.target.value)}
-                  className="input" min="0" max="30" />
+                  className="input" min="0" max="5" />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text2, #374151)', marginBottom: '6px' }}>حالة الإنذار</label>
@@ -245,6 +247,10 @@ function DisciplinaryModal({ record, employees, violationTypes, onClose, onSave 
               <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
                 className="input" style={{ minHeight: '70px', resize: 'none' }} />
             </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '0.8rem', color: '#92400e' }}>
+              <input type="checkbox" checked={legalConfirmation} onChange={e => setLegalConfirmation(e.target.checked)} />
+              أؤكد توثيق التحقيق وسماع دفاع الموظف، والتحقق من اللائحة المعتمدة، وإبلاغه بحقه في التظلم وفق نظام العمل.
+            </label>
           </div>
           <div className="modal-footer">
             <button type="button" onClick={onClose} className="btn btn-ghost">إلغاء</button>
@@ -540,8 +546,10 @@ export default function DisciplinaryPage() {
   async function handleSave(data: any) {
     if (!tenant) return
     const payload = { ...data, tenant_id: tenant.id, issued_by: currentUser?.id || null }
-    if (data.id) await supabase.from('hr_disciplinary').update(payload).eq('id', data.id)
-    else await supabase.from('hr_disciplinary').insert(payload)
+    const { error } = data.id
+      ? await supabase.from('hr_disciplinary').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
+      : await supabase.from('hr_disciplinary').insert(payload)
+    if (error) { toast.error('تعذر حفظ الجزاء: ' + error.message); return }
     await load()
     setShowModal(false); setEditRecord(null)
     toast.success('تم الحفظ ✅')
@@ -549,7 +557,9 @@ export default function DisciplinaryPage() {
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا الإنذار؟')) return
-    await supabase.from('hr_disciplinary').delete().eq('id', id)
+    const { error } = await supabase.from('hr_disciplinary')
+      .delete().eq('id', id).eq('tenant_id', tenant!.id)
+    if (error) { toast.error('تعذر حذف الجزاء: ' + error.message); return }
     setRecords(r => r.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }

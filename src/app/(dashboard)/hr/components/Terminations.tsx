@@ -26,7 +26,7 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
 
   const selectedHR = hrEmployees.find(e => e.id === Number(form.hr_employee_id))
   const gratuity = selectedHR && form.last_working_day
-    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, Number(selectedHR.basic_salary || 0), form.termination_type)
+    ? calcGratuity(selectedHR.hire_date || '', form.last_working_day, Number(selectedHR.basic_salary || 0) + Number(selectedHR.housing_allow || 0) + Number(selectedHR.transport_allow || 0) + Number(selectedHR.other_allow || 0), form.termination_type)
     : null
 
   useEffect(() => { loadData() }, [])
@@ -53,6 +53,8 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
     if (!form.termination_date) { toast.error('أدخل تاريخ الإنهاء'); return }
     if (!form.last_working_day) { toast.error('أدخل آخر يوم عمل'); return }
     if (!selectedHR) return
+    if (selectedHR.hire_date && form.last_working_day <= selectedHR.hire_date) { toast.error('آخر يوم عمل لا بد أن يكون بعد تاريخ المباشرة'); return }
+    if (form.termination_type === 'فصل تأديبي' && !confirm('فصل المادة 80 يستلزم تحقق الشروط والإثباتات النظامية. هل تم استكمال التحقيق والتوثيق والتأكد من انطباق المادة 80؟')) return
 
     setSaving(true)
     const payload = {
@@ -68,19 +70,33 @@ export default function TerminationTab({ tenantId, hrEmployees }: { tenantId: st
       status: form.status,
     }
 
-    if (editId) {
-      await supabase.from('hr_terminations').update(payload).eq('id', editId)
-    } else {
-      await supabase.from('hr_terminations').insert(payload)
-      // تعطيل الموظف تلقائياً
-      await supabase.from('hr_employees').update({ is_active: false }).eq('id', selectedHR.id)
-      await supabase.from('employees').update({ is_active: false }).eq('id', selectedHR.employee_id)
-    }
+    try {
+      if (editId) {
+        const { error } = await supabase.from('hr_terminations')
+          .update(payload).eq('id', editId).eq('tenant_id', tenantId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('hr_terminations').insert(payload)
+        if (error) throw error
+        // Only deactivate after the termination record is stored successfully.
+        const { error: hrError } = await supabase.from('hr_employees')
+          .update({ is_active: false }).eq('id', selectedHR.id).eq('tenant_id', tenantId)
+        if (hrError) throw new Error('تم حفظ إنهاء الخدمة، لكن تعذر تعطيل ملف الموارد البشرية: ' + hrError.message)
+        if (selectedHR.employee_id) {
+          const { error: loginError } = await supabase.from('employees')
+            .update({ is_active: false }).eq('id', selectedHR.employee_id).eq('tenant_id', tenantId)
+          if (loginError) throw new Error('تم حفظ الإنهاء، لكن تعذر تعطيل صلاحية الدخول: ' + loginError.message)
+        }
+      }
 
-    await loadData()
-    resetForm()
-    setSaving(false)
-    toast.success('تم حفظ إنهاء الخدمة ✅')
+      await loadData()
+      resetForm()
+      toast.success('تم حفظ إنهاء الخدمة ✅')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ إنهاء الخدمة')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete(id: number) {

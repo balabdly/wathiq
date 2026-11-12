@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [security/hardening-phase-1-20261027]
+    branches: [security/hardening-phase-1-20261027, 'fix/**']
 
 permissions:
   contents: read
@@ -30,6 +30,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Financial calculation functional tests
         run: npm run test:financial
+      - name: Saudi HR compliance calculation tests
+        run: npm run test:hr
       - name: ESLint
         id: lint
         continue-on-error: true

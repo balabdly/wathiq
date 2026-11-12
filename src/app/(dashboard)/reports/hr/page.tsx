@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
+import { calcGOSI } from '@/app/(dashboard)/hr/hr_utils'
 import { Users, Search, X, Printer } from 'lucide-react'
 
 // ══════════════════════════════════════
@@ -29,7 +30,7 @@ const REPORTS = [
     title: 'تقرير التأمينات الاجتماعية',
     icon: '🏥',
     color: '#0891b2', bg: '#ecfeff', border: '#a5f3fc',
-    desc: 'اشتراكات GOSI — حصة الشركة (12%) وحصة الموظف (10%)',
+    desc: 'اشتراكات GOSI — النسبة حسب فئة المشترك',
     filters: [],
   },
   {
@@ -188,17 +189,20 @@ export default function ReportsHRPage() {
     else if (selected === 'gosi') {
       const { data } = await supabase
         .from('hr_employees')
-        .select('id, name, employee_number, department, job_title, basic_salary, housing_allow, gosi_enrolled, gosi_pct')
+        .select('id, name, employee_number, department, job_title, basic_salary, housing_allow, nationality, gosi_enrolled, gosi_pct')
         .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .eq('gosi_enrolled', true)
         .order('name')
 
       const rows = (data || []).map(e => {
-        // GOSI يحسب على الأساسي + السكن
-        const base = Number(e.basic_salary || 0) + Number(e.housing_allow || 0)
-        const empShare  = Math.round(base * 0.10 * 100) / 100   // 10% موظف
-        const compShare = Math.round(base * 0.12 * 100) / 100   // 12% شركة
+        const basic = Number(e.basic_salary || 0)
+        const housing = Number(e.housing_allow || 0)
+        // Use the same statutory contribution logic as payroll.
+        const contribution = calcGOSI(e.nationality || '', basic, housing)
+        const base = Math.min(basic + housing, 45000)
+        const empShare = contribution.employeeDeduction
+        const compShare = contribution.employerContribution
         return { ...e, gosi_base: base, emp_share: empShare, comp_share: compShare, total: empShare + compShare }
       })
 
@@ -346,7 +350,7 @@ export default function ReportsHRPage() {
       <tr class="total-row"><td colspan="2">الإجمالي</td><td>${fmt(summary['إجمالي الرواتب'])}</td><td colspan="3">${fmt(summary['إجمالي الاستقطاعات'])}</td><td>${fmt(summary['صافي الرواتب'])}</td><td></td></tr></tbody></table>`
     }
     if (selected === 'gosi') {
-      return `<table><thead><tr><th>الرقم</th><th>الموظف</th><th>القسم</th><th>وعاء GOSI</th><th>حصة الموظف 10%</th><th>حصة الشركة 12%</th><th>الإجمالي</th></tr></thead>
+      return `<table><thead><tr><th>الرقم</th><th>الموظف</th><th>القسم</th><th>وعاء GOSI</th><th>حصة الموظف حسب الفئة</th><th>حصة الشركة حسب الفئة</th><th>الإجمالي</th></tr></thead>
       <tbody>${results.map(r => `<tr><td>${r.employee_number || '—'}</td><td>${r.name}</td><td>${r.department || '—'}</td><td>${fmt(r.gosi_base)}</td><td>${fmt(r.emp_share)}</td><td>${fmt(r.comp_share)}</td><td>${fmt(r.total)}</td></tr>`).join('')}
       <tr class="total-row"><td colspan="3">الإجمالي</td><td>${fmt(summary['وعاء GOSI'])}</td><td>${fmt(summary['حصة الموظفين'])}</td><td>${fmt(summary['حصة الشركة'])}</td><td>${fmt(summary['الإجمالي'])}</td></tr></tbody></table>`
     }
@@ -586,7 +590,7 @@ export default function ReportsHRPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead>
                     <tr style={{ background: '#ecfeff' }}>
-                      {['الرقم الوظيفي', 'الموظف', 'القسم', 'الأساسي', 'السكن', 'وعاء GOSI', 'حصة الموظف 10%', 'حصة الشركة 12%', 'الإجمالي'].map(h => (
+                      {['الرقم الوظيفي', 'الموظف', 'القسم', 'الأساسي', 'السكن', 'وعاء GOSI', 'حصة الموظف حسب الفئة', 'حصة الشركة حسب الفئة', 'الإجمالي'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#0891b2', borderBottom: '2px solid #a5f3fc', fontSize: '0.75rem' }}>{h}</th>
                       ))}
                     </tr>
