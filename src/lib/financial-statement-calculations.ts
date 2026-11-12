@@ -55,8 +55,10 @@ export function buildBalanceSheet<T extends FinancialAccount>(accounts: T[]) {
   const totalNonCurrentLiab = -sum(nonCurrentLiab, a => a.balanceAsOf)
   const totalLiab = totalCurrentLiab + totalNonCurrentLiab
   // Income statement accounts already closed to retained earnings have net zero.
-  const netProfit = -sum(leaves.filter(a => a.account_type === 'إيرادات'), a => a.balanceAsOf)
+  const rawProfit = -sum(leaves.filter(a => a.account_type === 'إيرادات'), a => a.balanceAsOf)
     - sum(leaves.filter(a => a.account_type === 'مصروفات' || a.account_type === 'تكلفة'), a => a.balanceAsOf)
+  // Avoid displaying a negative zero after a complete year-end close.
+  const netProfit = rawProfit === 0 ? 0 : rawProfit
   const totalEquity = -sum(equity, a => a.balanceAsOf) + netProfit
   const totalLiabEq = totalLiab + totalEquity
   const isBalanced = Math.abs(totalAssets - totalLiabEq) < 0.01
