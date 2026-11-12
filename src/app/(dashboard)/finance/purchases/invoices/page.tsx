@@ -350,7 +350,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div><label style={lbl}>ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
-                  <option value={15}>15%</option><option value={0}>0% — معفي</option>
+                  <option value={15}>15%</option><option value={0}>0% — يتطلب تصنيفًا: صفرية أم معفاة</option>
                 </select>
               </div>
               <div><label style={lbl}>ملاحظات</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>
@@ -598,35 +598,52 @@ function VendorInvoicesPage() {
   }
 
   async function approveInvoice(inv: VendorInvoice) {
+    if (!tenantId || inv.status !== 'مسودة') { toast.error('يمكن اعتماد المسودات فقط'); return }
     const debitCode = getPurchaseDebitAccountCode(inv.delivery_to || '', (inv as { asset_type?: string }).asset_type)
-    await supabase.from('finance_vendor_invoices').update({ status: 'معتمدة' }).eq('id', inv.id)
-    const jr = await createJournalEntry({ tenantId: tenantId!, date: inv.invoice_date, description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`, referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
-      lines: [
-        { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
-        ...(Number(inv.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
-        { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
-      ]
-    })
-    if (!jr) {
-      toast.error('⚠️ اعتُمدت الفاتورة لكن القيد المحاسبي فشل — راجع شجرة الحسابات', { duration: 8000 })
-    } else {
-      if (inv.delivery_to === 'أصل ثابت') {
-        const assetId = await registerAssetFromVendorInvoice({
-          tenantId: tenantId!,
-          invoiceId: inv.id,
-          invoiceNumber: inv.invoice_number,
-          invoiceDate: inv.invoice_date,
-          vendorName: inv.vendor_name,
-          subtotal: Number(inv.subtotal),
-          assetAccountCode: debitCode,
-          projectId: inv.project_id,
-          description: `أصل — ${inv.vendor_name}`,
-        })
-        if (assetId) toast.success('📦 تم إنشاء سجل الأصل في سجل الأصول الثابتة')
-      }
-      await syncFleetWorkOrderFromApprovedInvoice({ poId: inv.po_id, invoiceId: inv.id })
-      toast.success('تم الاعتماد والقيد المحاسبي')
+    const { data: existingJournal, error: lookupError } = await supabase.from('finance_journal_entries')
+      .select('id, total_debit')
+      .eq('tenant_id', tenantId).eq('reference_type', 'فاتورة مورد')
+      .eq('reference_id', inv.id).eq('status', 'معتمد').limit(1)
+    if (lookupError) { toast.error('تعذر التحقق من قيد الفاتورة: ' + lookupError.message); return }
+    if (existingJournal?.length &&
+        Math.abs(Number(existingJournal[0].total_debit) - Number(inv.total_amount)) > 0.01) {
+      toast.error('يوجد قيد سابق مختلف لهذه الفاتورة؛ يلزم تسوية قبل اعتمادها')
+      return
     }
+    const jr = existingJournal?.length
+      ? { entryNumber: 'سابق' }
+      : await createJournalEntry({
+          tenantId, date: inv.invoice_date,
+          description: `فاتورة مورد ${inv.invoice_number} — ${inv.vendor_name}`,
+          referenceType: 'فاتورة مورد', referenceId: inv.id, source: 'آلي',
+          lines: [
+            { accountCode: debitCode, debit: Number(inv.subtotal), credit: 0, description: `فاتورة ${inv.invoice_number}` },
+            ...(Number(inv.vat_amount) > 0 ? [{ accountCode: ACC.VAT_INPUT, debit: Number(inv.vat_amount), credit: 0, description: 'ضريبة المدخلات' }] : []),
+            { accountCode: ACC.SUPPLIER_PAYABLE, debit: 0, credit: Number(inv.total_amount), description: `مستحق للمورد ${inv.vendor_name}` },
+          ],
+        })
+    if (!jr) {
+      toast.error('فشل ترحيل القيد؛ بقيت فاتورة المورد مسودة', { duration: 8500 })
+      return
+    }
+    const { error: approveError } = await supabase.from('finance_vendor_invoices')
+      .update({ status: 'معتمدة' }).eq('tenant_id', tenantId).eq('id', inv.id)
+    if (approveError) {
+      toast.error('تم حفظ قيد المورد، لكن فشل تغيير حالة الفاتورة: ' + approveError.message, { duration: 10000 })
+      return
+    }
+    if (inv.delivery_to === 'أصل ثابت') {
+      const assetId = await registerAssetFromVendorInvoice({
+        tenantId, invoiceId: inv.id,
+        invoiceNumber: inv.invoice_number, invoiceDate: inv.invoice_date,
+        vendorName: inv.vendor_name, subtotal: Number(inv.subtotal),
+        assetAccountCode: debitCode, projectId: inv.project_id,
+        description: `أصل — ${inv.vendor_name}`,
+      })
+      if (assetId) toast.success('📦 تم إنشاء سجل الأصل في سجل الأصول الثابتة')
+    }
+    await syncFleetWorkOrderFromApprovedInvoice({ poId: inv.po_id, invoiceId: inv.id })
+    toast.success('تم الاعتماد والقيد المحاسبي')
     loadVendorInvoices(invPagination.page); reloadKpis()
   }
 
