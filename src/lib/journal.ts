@@ -262,8 +262,17 @@ export async function createJournalEntry(
 
   if (linesError) {
     console.error('[journal] خطأ في إدراج الأسطر:', linesError.message)
-    // القيد أُنشئ لكن الأسطر فشلت — نحذفه للحفاظ على التوازن
-    await supabase.from('finance_journal_entries').delete().eq('id', entry.id)
+    // The header and lines are currently separate writes. Explicitly verify
+    // compensation so a failed rollback is never reported as safely resolved.
+    const { error: rollbackError } = await supabase.from('finance_journal_entries')
+      .delete().eq('id', entry.id).eq('tenant_id', tenantId)
+    if (rollbackError) {
+      console.error('[journal] URGENT: orphaned journal header', {
+        entryId: entry.id, entryNumber, rollbackError: rollbackError.message,
+      })
+      const { default: toast } = await import('react-hot-toast')
+      toast.error(`تعذر إكمال القيد ${entryNumber} والتراجع عنه. راجع رقم القيد لدى المحاسب قبل إعادة المحاولة.`, { duration: 12000 })
+    }
     return null
   }
 

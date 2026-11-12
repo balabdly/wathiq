@@ -84,6 +84,24 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
   async function handleSave() {
     if (!form.name.trim()) { toast.error('اسم الحساب مطلوب'); return }
     setSaving(true)
+    if (account && !form.is_parent && accounts.some(a => a.parent_id === account.id)) {
+      toast.error('لا يمكن تحويل حساب رئيسي إلى فرعي ما دام له حسابات تابعة')
+      setSaving(false)
+      return
+    }
+    if (account && form.parent_id) {
+      let parentId = Number(form.parent_id)
+      const visited = new Set<number>()
+      while (parentId && !visited.has(parentId)) {
+        if (parentId === account.id) {
+          toast.error('لا يمكن نقل الحساب أسفل نفسه أو أحد فروعه')
+          setSaving(false)
+          return
+        }
+        visited.add(parentId)
+        parentId = accounts.find(a => a.id === parentId)?.parent_id || 0
+      }
+    }
 
     // توليد الكود النهائي
     let finalCode = form.code.trim()
@@ -122,14 +140,16 @@ function AccountModal({ account, accounts, defaultParent, tenantId, onClose, onS
       notes:          form.notes || null,
     }
     if (account) {
-      const { error } = await supabase.from('finance_accounts').update(payload).eq('id', account.id)
+      const { error } = await supabase.from('finance_accounts').update(payload).eq('id', account.id).eq('tenant_id', tenantId)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
     } else {
       const { error } = await supabase.from('finance_accounts').insert(payload)
       if (error) { toast.error('خطأ: ' + error.message); setSaving(false); return }
       // تحديث الأب تلقائياً → is_parent = true
       if (payload.parent_id) {
-        await supabase.from('finance_accounts').update({ is_parent: true }).eq('id', payload.parent_id)
+        const { error: parentError } = await supabase.from('finance_accounts')
+          .update({ is_parent: true }).eq('id', payload.parent_id).eq('tenant_id', tenantId)
+        if (parentError) toast.error('أضيف الحساب، لكن تعذر تحديث تصنيف الحساب الأب: ' + parentError.message)
       }
     }
     toast.success(account ? 'تم التعديل ✅' : `✅ تمت إضافة الحساب (${finalCode})`)
@@ -671,18 +691,23 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
     const hasChildren = accounts.some(a => a.parent_id === account.id)
     if (hasChildren) { toast.error('لا يمكن حذف حساب له فروع'); return }
     // فحص وجود قيود محاسبية على الحساب
-    const { count } = await supabase.from('finance_journal_lines')
+    const { count, error: countError } = await supabase.from('finance_journal_lines')
       .select('*', { count: 'exact', head: true }).eq('account_id', account.id)
+    if (countError) { toast.error('تعذر التحقق من وجود قيود لهذا الحساب'); return }
     if ((count || 0) > 0) {
       // يوجد قيود — عطّل بدل الحذف
       if (!confirm(`الحساب "${account.name}" عليه ${count} قيد محاسبي ولا يمكن حذفه.\nهل تريد تعطيله بدلاً من الحذف؟`)) return
-      await supabase.from('finance_accounts').update({ is_active: false }).eq('id', account.id)
+      const { error } = await supabase.from('finance_accounts')
+        .update({ is_active: false }).eq('id', account.id).eq('tenant_id', tenantId)
+      if (error) { toast.error('تعذر تعطيل الحساب: ' + error.message); return }
       await loadAll(); toast.success('تم تعطيل الحساب ✅')
       return
     }
     if (!confirm('حذف الحساب "' + account.name + '"؟')) return
     const parentId = account.parent_id
-    await supabase.from('finance_accounts').delete().eq('id', account.id)
+    const { error: deleteError } = await supabase.from('finance_accounts')
+      .delete().eq('id', account.id).eq('tenant_id', tenantId)
+    if (deleteError) { toast.error('تعذر حذف الحساب: ' + deleteError.message); return }
     // إذا الأب لم يعد له أبناء → is_parent = false
     if (parentId) {
       const { count } = await supabase.from('finance_accounts')
