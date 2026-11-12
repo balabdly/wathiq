@@ -214,7 +214,7 @@ function TrialBalance({ accounts, period }: { accounts: Account[]; period: Perio
 function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Period }) {
   const {
     revenues, costAccounts, opexAccounts, otherExpenses,
-    totalRevenue, totalCost, totalOpex, grossProfit, operatingProfit, netProfit,
+    totalRevenue, totalCost, totalOpex, totalOther, grossProfit, operatingProfit, netProfit,
   } = buildIncomeStatement(accounts)
 
   const fmt = (n: number) => n.toLocaleString('ar-SA', { minimumFractionDigits: 2 })
