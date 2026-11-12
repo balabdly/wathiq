@@ -46,10 +46,13 @@ function CostCentersTab({ tenantId }: { tenantId: string }) {
       is_active: form.is_active, notes: form.notes || null,
     }
     if (editId) {
-      await supabase.from('finance_cost_centers').update(payload).eq('id', editId)
+      const { error } = await supabase.from('finance_cost_centers').update(payload)
+        .eq('id', editId).eq('tenant_id', tenantId)
+      if (error) { toast.error('فشل تعديل مركز التكلفة: ' + error.message); return }
       toast.success('تم التعديل ✅')
     } else {
-      await supabase.from('finance_cost_centers').insert(payload)
+      const { error } = await supabase.from('finance_cost_centers').insert(payload)
+      if (error) { toast.error('فشل إضافة مركز التكلفة: ' + error.message); return }
       toast.success('✅ تمت الإضافة')
     }
     setShowForm(false); setEditId(null)

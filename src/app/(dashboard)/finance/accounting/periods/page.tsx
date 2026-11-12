@@ -68,8 +68,9 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
     if (isClosed) {
       if (!confirm(`فتح فترة ${MONTH_NAMES[month - 1]} ${year}؟\nسيصبح الترحيل والتعديل فيها ممكناً مرة أخرى.`)) return
       setWorking(month)
-      await supabase.from('finance_fiscal_periods').delete()
+      const { error } = await supabase.from('finance_fiscal_periods').delete()
         .eq('tenant_id', tenantId).eq('year', year).eq('month', month)
+      if (error) { toast.error('تعذر فتح الفترة: ' + error.message); setWorking(null); return }
       toast.success(`🔓 فُتحت فترة ${MONTH_NAMES[month - 1]} ${year}`)
     } else {
       if (!confirm(`إقفال فترة ${MONTH_NAMES[month - 1]} ${year}؟\nبعد الإقفال لن يمكن ترحيل أو تعديل أو حذف أي قيد بتاريخ يقع فيها — حتى تُفتح مرة أخرى.`)) return
@@ -97,26 +98,30 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
     )) return
 
     setClosingYear(true)
+    let decemberOpened = false
+    let annualJournalCreated = false
     try {
-      // 1) قيود السنة المعتمدة
-      const { data: entries } = await supabase.from('finance_journal_entries')
-        .select('id')
-        .eq('tenant_id', tenantId).eq('status', 'معتمد')
-        .gte('entry_date', `${year}-01-01`).lte('entry_date', `${year}-12-31`)
-      const ids = (entries || []).map((e: any) => e.id)
-
-      // 2) أرصدة حسابات الإيرادات والمصروفات ضمن السنة
+      // Collect the complete year's approved journal lines, even when >1000.
+      // The old .in(entry_id, ids) approach could silently omit movements.
       const byCode: Record<string, { code: string; name: string; net: number }> = {}
-      if (ids.length) {
-        const { data: jls } = await supabase.from('finance_journal_lines')
-          .select('debit, credit, account:finance_accounts(code, name, account_type)')
-          .in('entry_id', ids)
-        ;(jls || []).forEach((l: any) => {
-          const acc = l.account
-          if (!acc || (acc.account_type !== 'إيرادات' && acc.account_type !== 'مصروفات')) return
+      const pageSize = 500
+      for (let offset = 0; ; offset += pageSize) {
+        const { data: jls, error: journalError } = await supabase.from('finance_journal_lines')
+          .select('id, debit, credit, account:finance_accounts(code, name, account_type), finance_journal_entries!inner(tenant_id, entry_date, status)')
+          .eq('finance_journal_entries.tenant_id', tenantId)
+          .eq('finance_journal_entries.status', 'معتمد')
+          .gte('finance_journal_entries.entry_date', `${year}-01-01`)
+          .lte('finance_journal_entries.entry_date', `${year}-12-31`)
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (journalError) throw journalError
+        for (const line of jls || []) {
+          const acc = line.account as unknown as { code: string; name: string; account_type: string } | null
+          if (!acc || (acc.account_type !== 'إيرادات' && acc.account_type !== 'مصروفات' && acc.account_type !== 'تكلفة')) continue
           if (!byCode[acc.code]) byCode[acc.code] = { code: acc.code, name: acc.name, net: 0 }
-          byCode[acc.code].net += Number(l.debit || 0) - Number(l.credit || 0)
-        })
+          byCode[acc.code].net += Number(line.debit || 0) - Number(line.credit || 0)
+        }
+        if ((jls || []).length < pageSize) break
       }
 
       // 3) بناء سطور الإقفال: عكس صافي كل حساب لتصفيره
@@ -147,8 +152,10 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
 
         // 4) فتح ديسمبر مؤقتاً إن كان مقفلاً حتى يمر قيد الإقفال
         if (closed[12]) {
-          await supabase.from('finance_fiscal_periods').delete()
+          const { error: reopenError } = await supabase.from('finance_fiscal_periods').delete()
             .eq('tenant_id', tenantId).eq('year', year).eq('month', 12)
+          if (reopenError) throw new Error('تعذر فتح ديسمبر مؤقتاً: ' + reopenError.message)
+          decemberOpened = true
         }
 
         const result = await createJournalEntry({
@@ -159,15 +166,17 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
           source: 'آلي',
           lines: closingLines,
         })
-        if (!result) { toast.error('تعذر ترحيل قيد الإقفال'); setClosingYear(false); load(); return }
+        if (!result) throw new Error('تعذر ترحيل قيد الإقفال')
+        annualJournalCreated = true
         entryNo = result.entryNumber
       }
 
       // 5) إقفال كل فترات السنة
-      await supabase.from('finance_fiscal_periods').upsert(
+      const { error: closeError } = await supabase.from('finance_fiscal_periods').upsert(
         Array.from({ length: 12 }, (_, i) => ({ tenant_id: tenantId, year, month: i + 1, status: 'مقفلة' })),
         { onConflict: 'tenant_id,year,month' }
       )
+      if (closeError) throw new Error('تعذر إقفال فترات السنة: ' + closeError.message)
 
       toast.success(
         entryNo
@@ -175,8 +184,20 @@ function FiscalPeriodsTab({ tenantId }: { tenantId: string }) {
           : `🏁 أُقفلت فترات السنة ${year} — لا توجد إيرادات أو مصروفات تتطلب قيد إقفال`,
         { duration: 9000 }
       )
-    } catch (err: any) {
-      toast.error('خطأ في الإقفال السنوي: ' + err.message)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'خطأ غير معروف'
+      if (decemberOpened) {
+        const { error: restoreError } = await supabase.from('finance_fiscal_periods').upsert(
+          { tenant_id: tenantId, year, month: 12, status: 'مقفلة' },
+          { onConflict: 'tenant_id,year,month' }
+        )
+        if (restoreError) toast.error('تنبيه: تعذر إعادة إقفال ديسمبر؛ راجع الفترة فوراً', { duration: 12000 })
+      }
+      if (annualJournalCreated) {
+        toast.error('تم تسجيل قيد الإقفال، لكن بعض الفترات لم تقفل؛ راجعها قبل إعادة المحاولة. ' + message, { duration: 12000 })
+      } else {
+        toast.error('خطأ في الإقفال السنوي: ' + message)
+      }
     }
     setClosingYear(false)
     load()

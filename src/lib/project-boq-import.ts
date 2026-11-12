@@ -231,7 +231,7 @@ export function parseBoqFromRawText(
     const codeMatch = line.match(/\b(\d{6,9})\b/)
     if (!codeMatch) continue
     const code = codeMatch[1]
-    let rest = line.replace(code, ' ').replace(/\s+/g, ' ').trim()
+    const rest = line.replace(code, ' ').replace(/\s+/g, ' ').trim()
     const unitMatch = rest.match(/\b(EA|KM|M|LS|NO|SET|HR|MT|FT|LOT)\b/i)
     const unit = unitMatch ? unitMatch[1].toUpperCase() : 'EA'
     const qtyMatches = Array.from(rest.matchAll(/(\d+(?:\.\d+)?)/g)).map(m => m[1])
