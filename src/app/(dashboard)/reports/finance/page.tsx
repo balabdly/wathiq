@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { DollarSign, Search, X, Download, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ACC } from '@/lib/account-codes'
+import { calculateVatSnapshot } from '@/lib/vat-reconciliation'
 
 // ═══════════════════════════════════════════════════
 // قواعد المحاسبة حسب IFRS
@@ -717,31 +718,57 @@ export default function ReportsFinancePage() {
     // الضريبة
     // ══════════════════════════════════════════
     } else if (selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_net') {
-      const isPurch = selected === 'tax_purchases'
-      const table   = isPurch ? 'finance_purchase_orders' : 'finance_invoices'
-      const dateCol = isPurch ? 'po_date' : 'invoice_date'
-      const { data: salesData } = await supabase.from(table).select('*')
-        .eq('tenant_id', tenant.id).gte(dateCol, fDateFrom).lte(dateCol, fDateTo).gt('vat_amount', 0).order(dateCol)
+      // VAT report is a reconciliation preview, NOT a tax return.
+      // Purchase orders do not establish input VAT entitlement.
+      // Only issued sales and approved supplier invoices are considered.
+      type VatRow = { id?: number; status?: string; vat_amount?: number | null; subtotal?: number | null; total_amount?: number | null; [key: string]: unknown }
+      async function loadVatDocuments(tableName: string, dateColumn: string, statuses: string[]): Promise<VatRow[]> {
+        const allRows: VatRow[] = []
+        const pageSize = 500
+        for (let offset = 0; ; offset += pageSize) {
+          const { data, error } = await supabase.from(tableName).select('*')
+            .eq('tenant_id', tenant!.id).gte(dateColumn, fDateFrom).lte(dateColumn, fDateTo)
+            .in('status', statuses)
+            .order('id', { ascending: true }).range(offset, offset + pageSize - 1)
+          if (error) throw new Error(`تعذر استخراج ${tableName}: ${error.message}`)
+          allRows.push(...((data || []) as VatRow[]))
+          if ((data || []).length < pageSize) return allRows
+        }
+      }
+      try {
+        const sales = await loadVatDocuments('finance_invoices', 'invoice_date', ['مرسلة', 'مدفوعة', 'متأخرة'])
+        const purchases = await loadVatDocuments('finance_vendor_invoices', 'invoice_date', ['معتمدة', 'مدفوعة', 'مرتجعة'])
+        const creditNotes = await loadVatDocuments('finance_credit_notes', 'note_date', ['معتمد'])
+        const purchaseReturns = await loadVatDocuments('finance_purchase_returns', 'return_date', ['معتمد'])
+        const purchaseDebitNotes = await loadVatDocuments('finance_debit_notes', 'note_date', ['معتمد'])
+        const vat = calculateVatSnapshot({ sales, purchases, creditNotes, purchaseReturns, purchaseDebitNotes })
 
-      if (selected === 'tax_net') {
-        // صافي الضريبة
-        const { data: purchData } = await supabase.from('finance_purchase_orders').select('vat_amount, subtotal, total_amount')
-          .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo).gt('vat_amount', 0)
-        const salesVat = (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        const purchVat = (purchData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        setResults([
-          { item: 'ضريبة المبيعات (مخرجات)',     amount: salesVat,           type: 'credit' },
-          { item: 'ضريبة المشتريات (مدخلات)',     amount: purchVat,           type: 'debit'  },
-          { item: 'صافي الضريبة المستحقة للدفع', amount: salesVat - purchVat, type: 'net'    },
-        ])
-        setSummary({ 'ضريبة المبيعات': salesVat, 'ضريبة المشتريات': purchVat, 'الصافي المستحق': salesVat - purchVat })
-      } else {
-        setResults(salesData || [])
-        setSummary({
-          'الوعاء الضريبي': (salesData || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-          'الضريبة 15%': (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
-          'الإجمالي': (salesData || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
-        })
+        if (selected === 'tax_net') {
+          setResults([
+            { item: 'ضريبة المخرجات من الفواتير الصادرة', amount: vat.outputVat, type: 'credit' },
+            { item: 'مطروحًا: الإشعارات الدائنة المعتمدة', amount: -vat.creditNoteVat, type: 'credit' },
+            { item: 'ضريبة المدخلات من فواتير الموردين المعتمدة (قيد التحقق)', amount: vat.purchaseVat, type: 'debit' },
+            { item: 'مطروحًا: مرتجعات المشتريات والإشعارات المدينة', amount: -vat.purchaseAdjustmentsVat, type: 'debit' },
+            { item: 'صافي الضريبة الأولي — ليس إقرارًا', amount: vat.netVat, type: 'net' },
+          ])
+          setSummary({
+            'ضريبة المخرجات بعد الإشعارات': vat.netOutputVat,
+            'ضريبة المدخلات الأولية بعد التسويات': vat.netInputVat,
+            'الصافي الأولي (غير معتمد للإقرار)': vat.netVat,
+          })
+        } else {
+          const rows = selected === 'tax_purchases' ? purchases : sales
+          setResults(rows)
+          setSummary({
+            'الوعاء الضريبي الأولي': rows.reduce((sum, row) => sum + Number(row.subtotal || 0), 0),
+            'الضريبة الأولية قبل التسويات': rows.reduce((sum, row) => sum + Number(row.vat_amount || 0), 0),
+            'الإجمالي': rows.reduce((sum, row) => sum + Number(row.total_amount || 0), 0),
+          })
+        }
+      } catch (error: unknown) {
+        toast.error(error instanceof Error ? error.message : 'تعذر احتساب ضريبة القيمة المضافة')
+        setResults([])
+        setSummary(null)
       }
 
     // ══════════════════════════════════════════

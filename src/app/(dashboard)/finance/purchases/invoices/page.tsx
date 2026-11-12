@@ -329,7 +329,7 @@ function VendorInvoiceModal({ invoice, convertFromPO, vendors, projects, warehou
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div><label style={lbl}>ضريبة القيمة المضافة</label>
                 <select value={form.vat_rate} onChange={e => set('vat_rate', Number(e.target.value))} className="select" style={{ width: 'auto' }}>
-                  <option value={15}>15%</option><option value={0}>0% — معفي</option>
+                  <option value={15}>15%</option><option value={0}>0% — يتطلب تصنيف التوريد</option>
                 </select>
               </div>
               <div><label style={lbl}>ملاحظات</label><textarea value={form.notes} onChange={e => set('notes', e.target.value)} onMouseDown={e => e.stopPropagation()} className="input" style={{ minHeight: '60px', resize: 'none' }} /></div>

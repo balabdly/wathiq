@@ -148,7 +148,7 @@ function ExpenseModal({ expense, defaultType, accounts, costCenters, projects, v
     category:        expense?.category        || (CATEGORIES[initialType]?.[0] || CATEGORIES['مشاريع'][0]),
     description:     expense?.description     || '',
     amount:          expense?.amount          ? String(expense.amount) : '',
-    vat_rate:        expense?.vat_rate        ? String(expense.vat_rate) : '15',
+    vat_rate:        expense?.vat_rate != null ? String(expense.vat_rate) : '15',
     payment_method:  expense?.payment_method  || 'تحويل بنكي',
     cash_account_id: expense?.cash_account_id ? String(expense.cash_account_id) : '',
     account_id:      expense?.account_id      ? String(expense.account_id) : '',
@@ -166,7 +166,9 @@ function ExpenseModal({ expense, defaultType, accounts, costCenters, projects, v
   const isProject = form.expense_type === 'مشاريع'
 
   const netAmount   = Number(form.amount) || 0
-  const vatAmount   = form.payment_method !== 'آجل' ? Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100 : 0
+  // VAT depends on taxable supply, not on whether payment is cash or credit.
+  // Input VAT deduction additionally requires a valid eligible tax invoice.
+  const vatAmount   = Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100
   const totalAmount = netAmount + vatAmount
 
   // فلترة الحسابات المحاسبية — فروع فقط (is_parent = false)
