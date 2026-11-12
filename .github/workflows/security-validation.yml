@@ -36,6 +36,8 @@ jobs:
         run: npm run test:zatca
       - name: ZATCA EGS ledger schema and state tests
         run: npm run test:zatca:egs
+      - name: ZATCA cryptographic primitives tests
+        run: npm run test:zatca:crypto
       - name: Saudi HR compliance calculation tests
         run: npm run test:hr
       - name: ESLint
