@@ -294,6 +294,12 @@ function LeaveCompensationTab({ tenant, hrEmployees }: { tenant: any; hrEmployee
   async function handleSave() {
     if (!form.employee_id) { toast.error('اختر الموظف'); return }
     if (!form.leave_days || Number(form.leave_days) <= 0) { toast.error('أدخل عدد الأيام'); return }
+    // Labor Law art. 109 prohibits replacing annual leave with cash during service.
+    // Cash-out of unused days is normally due when employment ends (art. 111).
+    const { data: termRows, error: terminationError } = await supabase.from('hr_terminations')
+      .select('id').eq('tenant_id', tenant.id).eq('hr_employee_id', Number(form.employee_id)).limit(1)
+    if (terminationError) { toast.error('تعذر التحقق من انتهاء الخدمة: ' + terminationError.message); return }
+    if (!termRows?.length) { toast.error('لا يجوز صرف بدل نقدي عن الإجازة السنوية أثناء الخدمة؛ سجّل إنهاء الخدمة والتسوية أولاً'); return }
     setSaving(true)
     const { error } = await supabase.from('hr_leave_compensations').insert({
       tenant_id: tenant.id, employee_id: Number(form.employee_id),
@@ -751,7 +757,10 @@ export default function PayrollPage() {
   }
 
   async function handleEditSave(data: any) {
-    await supabase.from('hr_payroll').update({ ...data, tenant_id: tenant?.id }).eq('id', data.id)
+    if (!tenant) return
+    const { error } = await supabase.from('hr_payroll')
+      .update({ ...data, tenant_id: tenant.id }).eq('id', data.id).eq('tenant_id', tenant.id)
+    if (error) { toast.error('تعذر تعديل الراتب: ' + error.message); return }
     await load(); setEditPayroll(null); toast.success('تم التعديل ✅')
   }
 
@@ -760,10 +769,15 @@ export default function PayrollPage() {
     if (!isHRHead) { toast.error('⛔ اعتماد مسير الرواتب صلاحية حصرية لرئيس الموارد البشرية'); return }
     if (!confirm(`اعتماد مسير ${ARABIC_MONTHS[month-1]} ${year}؟\nبعد الاعتماد لا يمكن تعديله.`)) return
     const recs = payrolls.filter(p => p.month === month && p.year === year)
-    await Promise.all(recs.map(p => supabase.from('hr_payroll').update({ status: 'معتمد' }).eq('id', p.id)))
-    await supabase.from('hr_payroll_runs').update({
+    for (const payroll of recs) {
+      const { error } = await supabase.from('hr_payroll')
+        .update({ status: 'معتمد' }).eq('id', payroll.id).eq('tenant_id', tenant!.id)
+      if (error) { toast.error('فشل اعتماد أحد الموظفين؛ تحقق من حالة المسير قبل المحاولة مجددًا: ' + error.message); return }
+    }
+    const { error: runError } = await supabase.from('hr_payroll_runs').update({
       status: 'معتمد', approved_by: currentUser?.id || null, approved_at: new Date().toISOString(),
     }).eq('tenant_id', tenant!.id).eq('month', month).eq('year', year)
+    if (runError) { toast.error('تعذر اعتماد رأس المسير رغم اعتماد الأسطر؛ راجع الحالة: ' + runError.message); return }
     await load()
     toast.success(`✅ تم اعتماد مسير ${ARABIC_MONTHS[month-1]} بواسطة ${currentUser?.name || 'رئيس الموارد البشرية'}`)
   }
@@ -911,7 +925,7 @@ export default function PayrollPage() {
           : mode === 'create' ? (
             <div className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: '0.8rem', color: '#1e40af', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span>💡</span><span>أزل علامة الاختيار عن الموظفين في إجازة أو لا يستحقون راتب هذا الشهر</span>
+                <span>💡</span><span>الإجازة المدفوعة لا تلغي استحقاق الراتب. راجع استثناء الموظفين بعناية</span>
               </div>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -994,6 +1008,13 @@ export default function PayrollPage() {
                                               updateRow(idx, 'other_deduct', Math.max(0, row.other_deduct - deductAmt))
                                             } else {
                                               next.add(did)
+                                              const selectedDays = pendingDeducts
+                                                .filter(d => d.employee_id === row.employee_id && next.has(d.id))
+                                                .reduce((sum, d) => sum + Number(d.salary_deduct_days || 0), 0)
+                                              if (selectedDays > 5) {
+                                                toast.error('لا يجوز اقتطاع غرامات تتجاوز أجر خمسة أيام للموظف في الشهر')
+                                                return
+                                              }
                                               updateRow(idx, 'other_deduct', row.other_deduct + deductAmt)
                                             }
                                             setApprovedDeducts(next)

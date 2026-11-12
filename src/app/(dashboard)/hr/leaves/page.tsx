@@ -554,7 +554,8 @@ export default function LeavesPage() {
         payload.status = 'بانتظار الموافقة'
       }
 
-      await supabase.from('hr_leaves').insert(payload)
+      const { error } = await supabase.from('hr_leaves').insert(payload)
+      if (error) { toast.error('تعذر إنشاء الإجازة: ' + error.message); return }
     } else {
       const existing = editLeave || leaves.find(l => l.id === data.id)
       if (!existing) { toast.error('الطلب غير موجود'); return }
@@ -564,11 +565,14 @@ export default function LeavesPage() {
           toast.error('لا يمكن تعديل هذا الطلب بعد بدء الموافقة أو اعتماده')
           return
         }
-        await supabase.from('hr_leaves').update(payload).eq('id', data.id)
+        const { error } = await supabase.from('hr_leaves').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
+        if (error) { toast.error('تعذر تعديل الإجازة: ' + error.message); return }
       } else if (isAdmin && data.status && data.status !== existing.status) {
-        await supabase.from('hr_leaves').update({ ...payload, status: data.status }).eq('id', data.id)
+        const { error } = await supabase.from('hr_leaves').update({ ...payload, status: data.status }).eq('id', data.id).eq('tenant_id', tenant.id)
+        if (error) { toast.error('تعذر تعديل حالة الإجازة: ' + error.message); return }
       } else {
-        await supabase.from('hr_leaves').update(payload).eq('id', data.id)
+        const { error } = await supabase.from('hr_leaves').update(payload).eq('id', data.id).eq('tenant_id', tenant.id)
+        if (error) { toast.error('تعذر تعديل الإجازة: ' + error.message); return }
       }
     }
 
@@ -580,14 +584,25 @@ export default function LeavesPage() {
         : data.id ? 'تم حفظ التعديل ✅' : 'تم تقديم الطلب ✅'
     toast.success(statusMsg)
     fetchLeaves(true)
-    supabase.from('hr_leaves').select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
-      .eq('tenant_id', tenant.id).eq('status', 'موافق')
-      .then(({ data: d }) => setAllLeaves(d || []))
+    void (async () => {
+      const updated: Leave[] = []
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await supabase.from('hr_leaves')
+          .select('id, employee_id, leave_type, days, status, start_date, end_date, reason, sick_pay_info')
+          .eq('tenant_id', tenant.id).eq('status', 'موافق')
+          .order('id', { ascending: true }).range(offset, offset + 499)
+        if (error) { toast.error('تعذر تحديث أرصدة الإجازات كاملة'); return }
+        updated.push(...((data || []) as Leave[]))
+        if ((data || []).length < 500) break
+      }
+      setAllLeaves(updated)
+    })()
   }
 
   async function handleDelete(id: number) {
     if (!confirm('حذف هذا الطلب؟')) return
-    await supabase.from('hr_leaves').delete().eq('id', id)
+    const { error } = await supabase.from('hr_leaves').delete().eq('id', id).eq('tenant_id', tenant!.id)
+    if (error) { toast.error('تعذر حذف الإجازة: ' + error.message); return }
     setLeaves(l => l.filter(x => x.id !== id))
     toast.success('تم الحذف')
   }
@@ -599,14 +614,16 @@ export default function LeavesPage() {
     const newStatus = sameManager ? 'موافق' : (l.dept_manager_id ? 'قيد موافقة مدير الإدارة' : 'موافق')
     const patch: any = { direct_manager_status: 'موافق', direct_manager_at: new Date().toISOString(), status: newStatus }
     if (sameManager || !l.dept_manager_id) patch.dept_manager_status = 'موافق'
-    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    const { error } = await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    if (error) { toast.error('تعذر تحديث موافقة الإجازة: ' + error.message); return }
     setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
     toast.success(newStatus === 'موافق' ? '✅ تمت الموافقة النهائية على الإجازة' : '✅ تمت موافقتك — الطلب الآن لدى مدير الإدارة')
   }
 
   async function handleRejectDirect(l: Leave, note?: string) {
     const patch = { direct_manager_status: 'مرفوض', direct_manager_at: new Date().toISOString(), direct_manager_note: note || null, status: 'مرفوض' }
-    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    const { error } = await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    if (error) { toast.error('تعذر تحديث رفض الإجازة: ' + error.message); return }
     setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
     toast.error('❌ تم رفض الإجازة')
   }
@@ -614,14 +631,16 @@ export default function LeavesPage() {
   // ══ اعتماد/رفض مدير الإدارة (المرحلة النهائية) ══
   async function handleApproveDept(l: Leave) {
     const patch = { dept_manager_status: 'موافق', dept_manager_at: new Date().toISOString(), status: 'موافق' }
-    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    const { error } = await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    if (error) { toast.error('تعذر تحديث موافقة الإدارة: ' + error.message); return }
     setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
     toast.success('✅ تمت الموافقة النهائية على الإجازة')
   }
 
   async function handleRejectDept(l: Leave, note?: string) {
     const patch = { dept_manager_status: 'مرفوض', dept_manager_at: new Date().toISOString(), dept_manager_note: note || null, status: 'مرفوض' }
-    await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    const { error } = await supabase.from('hr_leaves').update(patch).eq('id', l.id)
+    if (error) { toast.error('تعذر تحديث رفض الإدارة: ' + error.message); return }
     setLeaves(prev => prev.map(x => x.id === l.id ? { ...x, ...patch } : x))
     toast.error('❌ تم رفض الإجازة')
   }
@@ -629,13 +648,15 @@ export default function LeavesPage() {
   // ══ اعتماد/رفض عام (النمط القديم — للحالات بلا مسار هرمي معروف، ويبقى متاحاً للأدمن كتجاوز) ══
 
   async function handleApprove(id: number) {
-    await supabase.from('hr_leaves').update({ status: 'موافق' }).eq('id', id)
+    const { error } = await supabase.from('hr_leaves').update({ status: 'موافق' }).eq('id', id)
+    if (error) { toast.error('تعذر اعتماد الإجازة: ' + error.message); return }
     setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'موافق' } : x))
     toast.success('✅ تم قبول الإجازة')
   }
 
   async function handleReject(id: number) {
-    await supabase.from('hr_leaves').update({ status: 'مرفوض' }).eq('id', id)
+    const { error } = await supabase.from('hr_leaves').update({ status: 'مرفوض' }).eq('id', id)
+    if (error) { toast.error('تعذر رفض الإجازة: ' + error.message); return }
     setLeaves(l => l.map(x => x.id === id ? { ...x, status: 'مرفوض' } : x))
     toast.error('❌ تم رفض الإجازة')
   }
