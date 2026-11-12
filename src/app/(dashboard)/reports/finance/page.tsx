@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { DollarSign, Search, X, Download, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ACC } from '@/lib/account-codes'
+import { calculateVatReconciliation, type VatDoc } from '@/lib/vat-reconciliation'
 
 // ═══════════════════════════════════════════════════
 // قواعد المحاسبة حسب IFRS
@@ -717,31 +718,76 @@ export default function ReportsFinancePage() {
     // الضريبة
     // ══════════════════════════════════════════
     } else if (selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_net') {
-      const isPurch = selected === 'tax_purchases'
-      const table   = isPurch ? 'finance_purchase_orders' : 'finance_invoices'
-      const dateCol = isPurch ? 'po_date' : 'invoice_date'
-      const { data: salesData } = await supabase.from(table).select('*')
-        .eq('tenant_id', tenant.id).gte(dateCol, fDateFrom).lte(dateCol, fDateTo).gt('vat_amount', 0).order(dateCol)
-
-      if (selected === 'tax_net') {
-        // صافي الضريبة
-        const { data: purchData } = await supabase.from('finance_purchase_orders').select('vat_amount, subtotal, total_amount')
-          .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo).gt('vat_amount', 0)
-        const salesVat = (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        const purchVat = (purchData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        setResults([
-          { item: 'ضريبة المبيعات (مخرجات)',     amount: salesVat,           type: 'credit' },
-          { item: 'ضريبة المشتريات (مدخلات)',     amount: purchVat,           type: 'debit'  },
-          { item: 'صافي الضريبة المستحقة للدفع', amount: salesVat - purchVat, type: 'net'    },
+      // Management preview, NOT an official VAT return. In particular, purchase
+      // orders are NEVER the basis of deductible input VAT.
+      async function getAllVatDocs(
+        table: string, dateColumn: string, statuses?: string[],
+      ): Promise<VatDoc[]> {
+        const combined: VatDoc[] = []
+        for (let from = 0; ; from += 500) {
+          let query = supabase.from(table)
+            .select('*')
+            .eq('tenant_id', tenant!.id)
+            .gte(dateColumn, fDateFrom)
+            .lte(dateColumn, fDateTo)
+            .order(dateColumn, { ascending: true })
+            .range(from, from + 499)
+          if (statuses) query = query.in('status', statuses)
+          const { data, error } = await query
+          if (error) throw new Error(`تعذر قراءة ${table} لحساب الضريبة: ${error.message}`)
+          combined.push(...(data || []))
+          if ((data || []).length < 500) break
+        }
+        return combined
+      }
+      try {
+        const [sales, vendorInvoices, creditNotes, purchaseReturns, supplierDebitNotes, expenses] = await Promise.all([
+          getAllVatDocs('finance_invoices', 'invoice_date', ['مرسلة', 'مدفوعة', 'متأخرة']),
+          getAllVatDocs('finance_vendor_invoices', 'invoice_date', ['معتمدة', 'مدفوعة', 'مرتجعة']),
+          getAllVatDocs('finance_credit_notes', 'note_date', ['معتمد']),
+          getAllVatDocs('finance_purchase_returns', 'return_date', ['معتمد']),
+          getAllVatDocs('finance_debit_notes', 'note_date', ['معتمد']),
+          getAllVatDocs('finance_expenses', 'expense_date'),
         ])
-        setSummary({ 'ضريبة المبيعات': salesVat, 'ضريبة المشتريات': purchVat, 'الصافي المستحق': salesVat - purchVat })
-      } else {
-        setResults(salesData || [])
-        setSummary({
-          'الوعاء الضريبي': (salesData || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-          'الضريبة 15%': (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
-          'الإجمالي': (salesData || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
+        const vat = calculateVatReconciliation({
+          sales, vendorInvoices, creditNotes, purchaseReturns, supplierDebitNotes, expenses,
         })
+        if (selected === 'tax_net') {
+          setResults([
+            { item: 'ضريبة المخرجات — فواتير مبيعات صادرة', amount: vat.salesVat, type: 'credit' },
+            { item: 'تخفيض ضريبة المخرجات — إشعارات دائنة معتمدة', amount: -vat.creditVat, type: 'debit' },
+            { item: 'ضريبة مدخلات فواتير موردين (تتطلب التحقق من قابلية الخصم)', amount: -vat.purchaseVat, type: 'debit' },
+            { item: 'عكس ضريبة المدخلات — مرتجعات وإشعارات موردين', amount: vat.reverseVat, type: 'credit' },
+            { item: 'صافي تقديري قبل تسويات المصروفات وغيرها', amount: vat.estimatedNetVat, type: 'net' },
+            { item: 'ضريبة مصروفات تحتاج فحص المستندات والأهلية (غير مخصومة أعلاه)', amount: vat.expenseVatForReview, type: 'review' },
+          ])
+          setSummary({
+            'مخرجات بعد الإشعارات': vat.outputVat,
+            'مدخلات محتملة بعد المرتجعات': vat.inputVatCandidate,
+            'صافي تقديري — ليس إقرارًا ضريبيًا': vat.estimatedNetVat,
+            'ضريبة مصروفات تحت المراجعة': vat.expenseVatForReview,
+          })
+        } else if (selected === 'tax_sales') {
+          setResults(sales)
+          setSummary({
+            'ضريبة فواتير المبيعات': vat.salesVat,
+            'تخفيض بإشعارات دائنة': vat.creditVat,
+            'صافي ضريبة المخرجات التقديري': vat.outputVat,
+          })
+        } else {
+          setResults(vendorInvoices)
+          setSummary({
+            'ضريبة فواتير الموردين': vat.purchaseVat,
+            'عكس المدخلات بسبب مرتجعات أو إشعارات': vat.reverseVat,
+            'مدخلات محتملة تتطلب فحص الأهلية': vat.inputVatCandidate,
+            'ضريبة مصروفات للفحص (غير مضافة)': vat.expenseVatForReview,
+          })
+        }
+        toast('⚠️ هذه مطابقة أولية، وليست إقرارًا ضريبيًا جاهزًا للتقديم. تحقق من أهلية المدخلات والفترات والتسويات.', { duration: 8500 })
+      } catch (error: unknown) {
+        setResults([])
+        setSummary(null)
+        toast.error(error instanceof Error ? error.message : 'فشل احتساب ضريبة القيمة المضافة')
       }
 
     // ══════════════════════════════════════════
