@@ -7,6 +7,7 @@ import { Plus, X, Save, Search, Eye, Printer, RotateCcw, Trash2 } from 'lucide-r
 import toast from 'react-hot-toast'
 import { createJournalEntry, nextDocNumber, reverseJournalByReference } from '@/lib/journal'
 import { ACC } from '@/lib/account-codes'
+import { createZatcaPhase1Qr } from '@/lib/zatca-phase1-qr'
 import { useStore } from '@/hooks/useStore'
 import { useSales } from '../SalesContext'
 import type { Invoice, InvoiceItem, Client, Company, CreditNote } from '@/lib/sales-types'
@@ -67,20 +68,22 @@ function TotalsBox({ subtotal, vatRate, vatAmount, total }: { subtotal: number; 
   )
 }
 
-function generateZATCAQR(company: Company, doc: { invoice_date?: string; total_amount?: number; vat_amount?: number }): string {
-  const encode = (tag: number, value: string): string => {
-    const bytes = new TextEncoder().encode(value)
-    let result = String.fromCharCode(tag) + String.fromCharCode(bytes.length)
-    for (let i = 0; i < bytes.length; i++) result += String.fromCharCode(bytes[i])
-    return result
-  }
-  const tlv = encode(1, company.name || '') + encode(2, company.vat_number || '') + encode(3, doc.invoice_date || new Date().toISOString()) + encode(4, String(doc.total_amount || 0)) + encode(5, String(doc.vat_amount || 0))
-  return btoa(unescape(encodeURIComponent(tlv)))
+function generateZATCAQR(
+  company: Company,
+  doc: { created_at?: string; invoice_date?: string; total_amount?: number; vat_amount?: number },
+): string {
+  return createZatcaPhase1Qr({
+    sellerName: company.name || '',
+    vatNumber: company.vat_number || '',
+    issuedAt: doc.created_at || '',
+    totalAmount: Number(doc.total_amount || 0),
+    vatAmount: Number(doc.vat_amount || 0),
+  })
 }
 
 function printCreditNote(doc: any, items: any[], company: Company, client?: Client | null) {
   const color = '#c81e1e'
-  const qr = generateZATCAQR(company, { invoice_date: doc.note_date, total_amount: doc.total_amount, vat_amount: doc.vat_amount })
+  const qr = generateZATCAQR(company, { created_at: doc.created_at, invoice_date: doc.note_date, total_amount: doc.total_amount, vat_amount: doc.vat_amount })
   const clientAddr = client ? [client.street, client.district, client.city].filter(Boolean).join('، ') : ''
   const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>إشعار دائن — ${doc.note_number}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Tahoma,Arial,sans-serif;background:#f1f5f9;padding:20px;color:#1e293b}.page{background:white;max-width:800px;margin:0 auto;padding:32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.08)}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:3px solid ${color}}.company-name{font-size:20px;font-weight:800;color:${color};margin-bottom:4px}.company-info{font-size:11px;color:#64748b;line-height:1.6}.inv-badge{background:${color};color:white;padding:10px 20px;border-radius:10px;text-align:center}.inv-badge .num{font-size:18px;font-weight:800}.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}.info-item{background:#f8fafc;border-radius:6px;padding:8px 12px}.info-label{font-size:10px;color:#94a3b8;margin-bottom:2px}.info-value{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse;margin-bottom:16px}thead tr{background:${color};color:white}th{padding:10px 12px;text-align:right;font-size:12px;font-weight:700}tbody tr{border-bottom:1px solid #f1f5f9}tbody tr:nth-child(even){background:#f8fafc}td{padding:10px 12px;font-size:13px}.totals{display:flex;justify-content:flex-end;margin-bottom:20px}.totals-box{width:280px;background:#f8fafc;border-radius:10px;padding:14px}.total-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px}.total-final{border-top:2px solid ${color};margin-top:8px;padding-top:10px;display:flex;justify-content:space-between;font-weight:800;font-size:16px;color:${color}}.note-box{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e;margin-bottom:14px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body>

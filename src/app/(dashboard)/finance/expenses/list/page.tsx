@@ -166,7 +166,9 @@ function ExpenseModal({ expense, defaultType, accounts, costCenters, projects, v
   const isProject = form.expense_type === 'مشاريع'
 
   const netAmount   = Number(form.amount) || 0
-  const vatAmount   = form.payment_method !== 'آجل' ? Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100 : 0
+  // Whether an invoice is paid or on credit does NOT determine if VAT exists.
+  // Tax-input deductibility must still be verified against valid documentation.
+  const vatAmount   = Math.round(netAmount * (Number(form.vat_rate) / 100) * 100) / 100
   const totalAmount = netAmount + vatAmount
 
   // فلترة الحسابات المحاسبية — فروع فقط (is_parent = false)

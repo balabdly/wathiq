@@ -32,6 +32,10 @@ jobs:
         run: npm run test:financial
       - name: Saudi HR compliance calculation tests
         run: npm run test:hr
+      - name: VAT reconciliation regression tests
+        run: npm run test:vat
+      - name: ZATCA Phase 1 QR encoding tests
+        run: npm run test:zatca-qr
       - name: ESLint
         id: lint
         continue-on-error: true
