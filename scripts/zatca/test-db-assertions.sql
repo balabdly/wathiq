@@ -200,4 +200,84 @@ BEGIN
     RAISE EXCEPTION 'Failed attempts inserted extra documents'; END IF;
   RAISE NOTICE 'PASS: failed attempts do not advance the ICV';
 END $$;
+
+-- The finalization RPC is exercised only after a mocked, trusted signature
+-- verification workflow. The DB cannot independently verify Storage existence.
+SET ROLE service_role;
+DO $$
+DECLARE
+  v_document uuid;
+  v_egs uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  v_hash text := repeat('B',43) || '=';
+  v_failed boolean := false;
+BEGIN
+  SELECT id INTO v_document FROM public.zatca_documents
+  WHERE egs_unit_id = v_egs AND source_id = 101;
+  BEGIN
+    PERFORM public.zatca_finalize_signed_invoice(
+      v_egs, v_document, 'incorrect',
+      'zatca/11111111-1111-4111-8111-111111111111/' || v_egs::text
+      || '/' || v_document::text || '/invoice.xml');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%32-byte SHA-256%' THEN RAISE; END IF;
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'Malformed signed hash accepted'; END IF;
+  v_failed := false;
+  BEGIN
+    PERFORM public.zatca_finalize_signed_invoice(
+      v_egs, v_document, v_hash, 'zatca/another-tenant/forged.xml');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%private path%' THEN RAISE; END IF;
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'Cross-tenant XML storage path accepted'; END IF;
+  PERFORM public.zatca_finalize_signed_invoice(
+    v_egs, v_document, v_hash,
+    'zatca/11111111-1111-4111-8111-111111111111/' || v_egs::text
+    || '/' || v_document::text || '/signed.xml');
+  IF NOT EXISTS (SELECT 1 FROM public.zatca_egs_state
+       WHERE egs_unit_id=v_egs AND pending_document_id IS NULL
+       AND last_icv=1 AND last_signed_invoice_hash=v_hash) THEN
+    RAISE EXCEPTION 'Signing did not atomically close the pending reservation';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.zatca_documents
+       WHERE id=v_document AND status='signed' AND invoice_hash=v_hash) THEN
+    RAISE EXCEPTION 'Signed document was not persisted'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.zatca_document_events
+      WHERE document_id=v_document AND event_type='signed') THEN
+    RAISE EXCEPTION 'Signing event was not recorded'; END IF;
+  v_failed := false;
+  BEGIN
+    PERFORM public.zatca_finalize_signed_invoice(
+      v_egs, v_document, v_hash,
+      'zatca/11111111-1111-4111-8111-111111111111/' || v_egs::text
+      || '/' || v_document::text || '/signed.xml');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%not the pending%' THEN RAISE; END IF;
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'Duplicate finalization was accepted'; END IF;
+  RAISE NOTICE 'PASS: finalization closes pending state, logs, and cannot be replayed';
+END $$;
+
+SELECT * FROM public.zatca_reserve_sales_invoice(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 102,
+  '88888888-aaaa-4888-8888-aaaaaaaaaaaa'
+);
+RESET ROLE;
+
+DO $$
+BEGIN
+  IF NOT EXISTS(
+    SELECT 1 FROM public.zatca_documents
+    WHERE egs_unit_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      AND source_id=102 AND icv=2 AND previous_invoice_hash = repeat('B',43) || '='
+  ) THEN RAISE EXCEPTION 'Second invoice did not inherit preceding signed hash'; END IF;
+  IF (SELECT count(*) FROM public.zatca_documents
+    WHERE egs_unit_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') <> 2 THEN
+    RAISE EXCEPTION 'Second document was not properly reserved'; END IF;
+  RAISE NOTICE 'PASS: next invoice gets ICV=2 and predecessor signed PIH';
+END $$;
+
 \echo [ZATCA DB] All integration assertions passed

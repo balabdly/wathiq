@@ -83,3 +83,11 @@ test('ZATCA genesis PIH is explicit and bound to first ICV',()=>{
   assert.match(sql,/icv = 1 AND previous_invoice_hash/)
   assert.ok(sql.includes(genesis))
 })
+
+test('signed document finalization must be server-only and atomic',()=>{
+  assert.match(sql,/CREATE OR REPLACE FUNCTION public\.zatca_finalize_signed_invoice/)
+  assert.match(sql,/SELECT pending_document_id INTO v_pending/)
+  assert.match(sql,/last_signed_invoice_hash = p_invoice_hash/)
+  assert.match(sql,/pending_document_id = NULL/)
+  assert.match(sql,/FROM PUBLIC, anon, authenticated/)
+})

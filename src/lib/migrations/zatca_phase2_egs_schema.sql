@@ -285,6 +285,72 @@ BEGIN
 END;
 $$;
 
+-- STAGING ONLY: the caller MUST persist a verified, signed XML artifact in
+-- a private bucket and pass its official SDK-confirmed invoice hash.
+-- This RPC does not itself sign XML or attest the file exists in Storage.
+-- Locking the EGS state closes the previous reservation atomically so that
+-- the next invoice can inherit precisely the predecessor's signed hash.
+CREATE OR REPLACE FUNCTION public.zatca_finalize_signed_invoice(
+  p_egs_unit_id uuid, p_document_id uuid,
+  p_invoice_hash text, p_signed_storage_path text
+)
+RETURNS uuid
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, public AS $$
+DECLARE
+  v_tenant_id uuid;
+  v_environment text;
+  v_pending uuid;
+  v_document_status text;
+BEGIN
+  SELECT tenant_id, environment INTO v_tenant_id, v_environment
+  FROM public.zatca_egs_units WHERE id = p_egs_unit_id;
+  IF v_tenant_id IS NULL OR v_environment = 'production' THEN
+    RAISE EXCEPTION 'EGS missing or production signing disabled';
+  END IF;
+  IF p_invoice_hash IS NULL OR p_invoice_hash !~ '^[A-Za-z0-9+/]{43}=$' THEN
+    RAISE EXCEPTION 'A 32-byte SHA-256 invoice hash in Base64 is required';
+  END IF;
+  IF p_signed_storage_path IS NULL
+     OR p_signed_storage_path NOT LIKE (
+       'zatca/' || v_tenant_id::text || '/' || p_egs_unit_id::text || '/'
+       || p_document_id::text || '/%')
+     OR position('..' in p_signed_storage_path) > 0
+  THEN
+    RAISE EXCEPTION 'Signed XML must be in a tenant/EGS/document private path';
+  END IF;
+
+  SELECT pending_document_id INTO v_pending
+  FROM public.zatca_egs_state
+  WHERE egs_unit_id = p_egs_unit_id AND tenant_id = v_tenant_id
+  FOR UPDATE;
+  IF NOT FOUND OR v_pending IS DISTINCT FROM p_document_id THEN
+    RAISE EXCEPTION 'Document is not the pending EGS reservation';
+  END IF;
+
+  SELECT status INTO v_document_status
+  FROM public.zatca_documents
+  WHERE id = p_document_id AND tenant_id = v_tenant_id
+    AND egs_unit_id = p_egs_unit_id FOR UPDATE;
+  IF v_document_status IS DISTINCT FROM 'reserved' THEN
+    RAISE EXCEPTION 'Only a reserved document can be signed';
+  END IF;
+
+  UPDATE public.zatca_documents
+  SET status = 'signed', invoice_hash = p_invoice_hash,
+      signed_xml_storage_path = p_signed_storage_path, signed_at = now()
+  WHERE id = p_document_id AND tenant_id = v_tenant_id
+    AND egs_unit_id = p_egs_unit_id;
+  UPDATE public.zatca_egs_state
+  SET last_signed_invoice_hash = p_invoice_hash,
+      pending_document_id = NULL
+  WHERE egs_unit_id = p_egs_unit_id AND tenant_id = v_tenant_id;
+  INSERT INTO public.zatca_document_events
+    (tenant_id, document_id, event_type, result_code)
+  VALUES (v_tenant_id, p_document_id, 'signed', 'local_only');
+  RETURN p_document_id;
+END;
+$$;
+
 -- No direct browser access, even for signed-in users from the same tenant.
 ALTER TABLE public.zatca_egs_units ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.zatca_egs_state ENABLE ROW LEVEL SECURITY;
@@ -311,6 +377,10 @@ REVOKE ALL ON FUNCTION public.zatca_protect_egs_counter() FROM PUBLIC, anon, aut
 REVOKE ALL ON FUNCTION public.zatca_reserve_sales_invoice(uuid, bigint, uuid)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.zatca_reserve_sales_invoice(uuid, bigint, uuid)
+  TO service_role;
+REVOKE ALL ON FUNCTION public.zatca_finalize_signed_invoice(uuid, uuid, text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.zatca_finalize_signed_invoice(uuid, uuid, text, text)
   TO service_role;
 
 -- WARNING: No production EGS is enabled and no genesis hash is initialized.
