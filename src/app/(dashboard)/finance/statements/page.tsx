@@ -3,6 +3,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useStore } from '@/hooks/useStore'
 import { supabase } from '@/lib/supabase'
 import { FileText, TrendingUp, Scale, ChevronDown, ChevronUp, Download, RefreshCw, Calendar } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { buildIncomeStatement, buildBalanceSheet, summarizeJournalLines } from '@/lib/financial-statement-calculations'
+import type { DatedJournalLine } from '@/lib/financial-statement-calculations'
 
 // ════════════════════════════════════
 // Types
@@ -10,10 +13,40 @@ import { FileText, TrendingUp, Scale, ChevronDown, ChevronUp, Download, RefreshC
 type Account = {
   id: number; code: string; name: string
   account_type: string; is_parent: boolean; parent_id?: number
-  debit: number; credit: number; balance: number
+  debit: number; credit: number; balance: number; balanceAsOf: number
 }
 
 type Period = { from: string; to: string }
+
+// Fetch every approved journal line; Supabase may cap responses to 1000 rows.
+async function fetchAllJournalLines(tenantId: string, through: string): Promise<DatedJournalLine[]> {
+  const pageSize = 500
+  const all: DatedJournalLine[] = []
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from('finance_journal_lines')
+      .select('id, account_id, debit, credit, finance_journal_entries!inner(tenant_id, entry_date, status, reference_type)')
+      .eq('finance_journal_entries.tenant_id', tenantId)
+      .eq('finance_journal_entries.status', 'معتمد')
+      .lte('finance_journal_entries.entry_date', through)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    if (error) throw error
+    for (const raw of data || []) {
+      const line = raw as unknown as {
+        account_id: number; debit: number | string | null; credit: number | string | null
+        finance_journal_entries: { entry_date: string; reference_type: string | null } | null
+      }
+      if (!line.finance_journal_entries) continue
+      all.push({
+        account_id: line.account_id, debit: line.debit, credit: line.credit,
+        entry_date: line.finance_journal_entries.entry_date,
+        reference_type: line.finance_journal_entries.reference_type,
+      })
+    }
+    if ((data || []).length < pageSize) break
+  }
+  return all
+}
 
 const ACCOUNT_TYPE_ORDER = ['أصول', 'خصوم', 'حقوق ملكية', 'إيرادات', 'تكلفة', 'مصروفات']
 
@@ -76,7 +109,8 @@ function AccountRow({ account, indent = 0, showDebitCredit = false }: {
 // ميزان المراجعة
 // ════════════════════════════════════
 function TrialBalance({ accounts, period }: { accounts: Account[]; period: Period }) {
-  const leafAccounts = accounts.filter(a => !a.is_parent && (a.debit > 0 || a.credit > 0))
+  const leafAccounts = accounts.filter(a => !a.is_parent && Math.abs(a.balanceAsOf) > 0.009)
+    .map(a => ({ ...a, debit: Math.max(a.balanceAsOf, 0), credit: Math.max(-a.balanceAsOf, 0), balance: a.balanceAsOf }))
   const totalDebit   = leafAccounts.reduce((s, a) => s + a.debit,  0)
   const totalCredit  = leafAccounts.reduce((s, a) => s + a.credit, 0)
   const isBalanced   = Math.abs(totalDebit - totalCredit) < 0.01
@@ -178,20 +212,10 @@ function TrialBalance({ accounts, period }: { accounts: Account[]; period: Perio
 // قائمة الدخل
 // ════════════════════════════════════
 function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Period }) {
-  const revenues     = accounts.filter(a => a.account_type === 'إيرادات'  && !a.is_parent)
-  const costAccounts = accounts.filter(a => a.account_type === 'تكلفة'   && !a.is_parent)
-  const expenses     = accounts.filter(a => a.account_type === 'مصروفات'  && !a.is_parent)
-
-  const opexAccounts  = expenses.filter(a => a.code.startsWith('52') || a.code.startsWith('53') || a.code.startsWith('54') || a.code.startsWith('55'))
-  const otherExpenses = expenses.filter(a => a.code.startsWith('58'))
-
-  const totalRevenue  = revenues.reduce((s, a)  => s + Math.abs(a.balance), 0)
-  const totalCost     = costAccounts.reduce((s, a) => s + a.balance, 0)
-  const totalOpex     = opexAccounts.reduce((s, a) => s + a.balance, 0)
-  const totalOther    = otherExpenses.reduce((s, a) => s + a.balance, 0)
-  const grossProfit   = totalRevenue - totalCost
-  const operatingProfit = grossProfit - totalOpex
-  const netProfit     = operatingProfit - totalOther
+  const {
+    revenues, costAccounts, opexAccounts, otherExpenses,
+    totalRevenue, totalCost, totalOpex, grossProfit, operatingProfit, netProfit,
+  } = buildIncomeStatement(accounts)
 
   const fmt = (n: number) => n.toLocaleString('ar-SA', { minimumFractionDigits: 2 })
 
@@ -204,7 +228,7 @@ function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Pe
           {label}
         </td>
         <td style={{ padding: `${isTotal ? 10 : 8}px 14px`, textAlign: 'left', fontFamily: 'monospace', fontSize: isTotal ? '0.875rem' : '0.82rem', fontWeight: isTotal ? 700 : 400, direction: 'ltr', color: amount >= 0 ? (isTotal ? '#0ea77b' : '#1a1a2e') : '#c81e1e' }}>
-          {amount !== 0 ? (isNeg ? '-' : '') + fmt(Math.abs(amount)) : '—'}
+          {amount !== 0 ? (isNeg ? (amount < 0 ? '+' : '-') : amount < 0 ? '-' : '') + fmt(Math.abs(amount)) : '—'}
         </td>
       </tr>
     )
@@ -224,8 +248,8 @@ function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Pe
           <tr style={{ background: '#ecfdf5' }}>
             <td colSpan={2} style={{ padding: '10px 14px', fontWeight: 700, color: '#0ea77b' }}>الإيرادات</td>
           </tr>
-          {revenues.filter(a => Math.abs(a.balance) > 0).map(a => (
-            <SectionRow key={a.id} label={`${a.code} — ${a.name}`} amount={Math.abs(a.balance)} indent />
+          {revenues.filter(a => a.balance !== 0).map(a => (
+            <SectionRow key={a.id} label={`${a.code} — ${a.name}`} amount={-a.balance} indent />
           ))}
           <SectionRow label="إجمالي الإيرادات" amount={totalRevenue} isTotal />
 
@@ -300,34 +324,11 @@ function IncomeStatement({ accounts, period }: { accounts: Account[]; period: Pe
 // الميزانية العمومية
 // ════════════════════════════════════
 function BalanceSheet({ accounts, period }: { accounts: Account[]; period: Period }) {
-  const assets      = accounts.filter(a => a.account_type === 'أصول'         && !a.is_parent && a.balance !== 0)
-  const liabilities = accounts.filter(a => a.account_type === 'خصوم'         && !a.is_parent && a.balance !== 0)
-  const equity      = accounts.filter(a => a.account_type === 'حقوق ملكية'   && !a.is_parent && a.balance !== 0)
-
-  // الأصول الجارية وغير الجارية
-  const currentAssets    = assets.filter(a => a.code.startsWith('11'))
-  const nonCurrentAssets = assets.filter(a => a.code.startsWith('12'))
-
-  // الخصوم الجارية وغير الجارية
-  const currentLiab    = liabilities.filter(a => a.code.startsWith('21'))
-  const nonCurrentLiab = liabilities.filter(a => a.code.startsWith('22'))
-
-  // حساب صافي الربح
-  const revenues = accounts.filter(a => a.account_type === 'إيرادات' && !a.is_parent)
-  const expenses = accounts.filter(a => a.account_type === 'مصروفات' && !a.is_parent)
-  const netProfit = revenues.reduce((s, a) => s + Math.abs(a.balance), 0) - expenses.reduce((s, a) => s + a.balance, 0)
-
-  const totalCurrentAssets    = currentAssets.reduce((s, a) => s + Math.abs(a.balance), 0)
-  const totalNonCurrentAssets = nonCurrentAssets.reduce((s, a) => s + Math.abs(a.balance), 0)
-  const totalAssets            = totalCurrentAssets + totalNonCurrentAssets
-
-  const totalCurrentLiab    = currentLiab.reduce((s, a) => s + Math.abs(a.balance), 0)
-  const totalNonCurrentLiab = nonCurrentLiab.reduce((s, a) => s + Math.abs(a.balance), 0)
-  const totalLiab            = totalCurrentLiab + totalNonCurrentLiab
-
-  const totalEquity  = equity.reduce((s, a) => s + Math.abs(a.balance), 0) + netProfit
-  const totalLiabEq  = totalLiab + totalEquity
-  const isBalanced   = Math.abs(totalAssets - totalLiabEq) < 1
+  const {
+    currentAssets, nonCurrentAssets, currentLiab, nonCurrentLiab, equity,
+    netProfit, totalCurrentAssets, totalNonCurrentAssets, totalAssets,
+    totalCurrentLiab, totalNonCurrentLiab, totalLiab, totalEquity, totalLiabEq, isBalanced,
+  } = buildBalanceSheet(accounts)
 
   const fmt = (n: number) => n.toLocaleString('ar-SA', { minimumFractionDigits: 2 })
 
@@ -346,7 +347,7 @@ function BalanceSheet({ accounts, period }: { accounts: Account[]; period: Perio
               {a.name}
             </td>
             <td style={{ padding: '8px 14px', textAlign: 'left', fontFamily: 'monospace', fontSize: '0.82rem', direction: 'ltr' }}>
-              {fmt(Math.abs(a.balance))}
+              {fmt(a.account_type === 'أصول' ? a.balanceAsOf : -a.balanceAsOf)}
             </td>
           </tr>
         ))}
@@ -425,7 +426,7 @@ function BalanceSheet({ accounts, period }: { accounts: Account[]; period: Perio
                     {a.name}
                   </td>
                   <td style={{ padding: '8px 14px', textAlign: 'left', fontFamily: 'monospace', fontSize: '0.82rem', direction: 'ltr' }}>
-                    {fmt(Math.abs(a.balance))}
+                    {fmt(-a.balanceAsOf)}
                   </td>
                 </tr>
               ))}
@@ -472,47 +473,37 @@ export default function FinancialStatementsPage() {
   const yearStart = today.substring(0, 4) + '-01-01'
   const [period, setPeriod] = useState<Period>({ from: yearStart, to: today })
 
-  useEffect(() => { loadAccounts() }, [tenant?.id, period])
-
   const loadAccounts = useCallback(async () => {
     if (!tenant) return
     setLoading(true)
+    try {
+      if (period.from > period.to) throw new Error('تاريخ البداية يجب ألا يتجاوز تاريخ النهاية')
+      const { data: accs, error: accError } = await supabase
+        .from('finance_accounts').select('*').eq('tenant_id', tenant.id).order('code')
+      if (accError) throw accError
+      // Balance sheet is cumulative through "to"; income uses only the selected range.
+      const lines = await fetchAllJournalLines(tenant.id, period.to)
+      const { period: periodMap, asOf } = summarizeJournalLines(lines, period.from, period.to)
+      const result: Account[] = (accs || []).map((a: Account) => {
+        const movement = periodMap.get(a.id) || { debit: 0, credit: 0 }
+        const cumulative = asOf.get(a.id) || { debit: 0, credit: 0 }
+        return {
+          ...a, debit: movement.debit, credit: movement.credit,
+          balance: movement.debit - movement.credit,
+          balanceAsOf: cumulative.debit - cumulative.credit,
+        }
+      })
+      setAccounts(result)
+    } catch (error: unknown) {
+      console.error('[finance/statements] Failed to load accounts', error)
+      setAccounts([])
+      toast.error(error instanceof Error ? error.message : 'تعذر تحميل القوائم المالية')
+    } finally {
+      setLoading(false)
+    }
+  }, [tenant, period])
 
-    const { data: accs } = await supabase
-      .from('finance_accounts')
-      .select('*')
-      .eq('tenant_id', tenant.id)
-      .order('code')
-
-    // جلب أسطر القيود مع فلتر الفترة
-    const { data: lines } = await supabase
-      .from('finance_journal_lines')
-      .select('account_id, debit, credit, finance_journal_entries!inner(tenant_id, entry_date)')
-      .eq('finance_journal_entries.tenant_id', tenant.id)
-      .gte('finance_journal_entries.entry_date', period.from)
-      .lte('finance_journal_entries.entry_date', period.to)
-
-    // بناء map للأرصدة
-    const balMap: Record<number, { debit: number; credit: number }> = {}
-    ;(lines || []).forEach((l: any) => {
-      if (!balMap[l.account_id]) balMap[l.account_id] = { debit: 0, credit: 0 }
-      balMap[l.account_id].debit  += Number(l.debit  || 0)
-      balMap[l.account_id].credit += Number(l.credit || 0)
-    })
-
-    const result: Account[] = (accs || []).map((a: any) => {
-      const b = balMap[a.id] || { debit: 0, credit: 0 }
-      return {
-        ...a,
-        debit:   b.debit,
-        credit:  b.credit,
-        balance: b.debit - b.credit,
-      }
-    })
-
-    setAccounts(result)
-    setLoading(false)
-  }, [tenant?.id, period])
+  useEffect(() => { void loadAccounts() }, [loadAccounts])
 
   const TABS = [
     { id: 'trial',   label: '⚖️ ميزان المراجعة',    color: '#1a56db' },

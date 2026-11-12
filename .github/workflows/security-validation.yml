@@ -28,6 +28,8 @@ jobs:
         run: npm ci
       - name: TypeScript check
         run: npx tsc --noEmit
+      - name: Financial calculation functional tests
+        run: npm run test:financial
       - name: ESLint
         id: lint
         continue-on-error: true
