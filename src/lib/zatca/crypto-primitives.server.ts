@@ -13,7 +13,7 @@ import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 
 function asNonEmptyBytes(bytes: Uint8Array, label: string): Buffer {
-  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0) {
+  if (!ArrayBuffer.isView(bytes) || bytes.BYTES_PER_ELEMENT !== 1 || bytes.byteLength === 0) {
     throw new Error(label + ' must be non-empty bytes')
   }
   return Buffer.from(bytes)
