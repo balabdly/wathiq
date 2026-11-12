@@ -326,41 +326,74 @@ function AccountLedgerPanel({ account, tenantId, onClose }: {
 
   async function loadLines() {
     setLoading(true)
-    const { data } = await supabase
-      .from('finance_journal_lines')
-      .select(`
-        id, debit, credit, description,
-        finance_journal_entries!inner(
-          id, entry_number, entry_date, description, reference_type, reference_id, entry_source, tenant_id
-        )
-      `)
-      .eq('account_id', account.id)
-      .eq('finance_journal_entries.tenant_id', tenantId)
-      .order('finance_journal_entries(entry_date)', { ascending: true })
-
-    if (data) {
+    type LedgerRecord = {
+      id: number
+      debit: number | string | null
+      credit: number | string | null
+      description: string | null
+      finance_journal_entries: {
+        id: number
+        entry_number: string
+        entry_date: string
+        description: string
+        reference_type: string | null
+        reference_id: number | null
+        entry_source: string | null
+      } | null
+    }
+    try {
+      const records: LedgerRecord[] = []
+      const pageSize = 500
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from('finance_journal_lines')
+          .select(`
+            id, debit, credit, description,
+            finance_journal_entries!inner(
+              id, entry_number, entry_date, description, reference_type, reference_id,
+              entry_source, tenant_id, status
+            )
+          `)
+          .eq('account_id', account.id)
+          .eq('finance_journal_entries.tenant_id', tenantId)
+          .eq('finance_journal_entries.status', 'معتمد')
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (error) throw error
+        records.push(...(data || []) as unknown as LedgerRecord[])
+        if ((data || []).length < pageSize) break
+      }
+      // Chronological running balances are calculated only after all rows load.
+      records.sort((a, b) => {
+        const first = a.finance_journal_entries
+        const second = b.finance_journal_entries
+        const byDate = (first?.entry_date || '').localeCompare(second?.entry_date || '')
+        return byDate || (first?.id || 0) - (second?.id || 0) || a.id - b.id
+      })
       let balance = 0
-      const mapped: AccountLedgerLine[] = (data as any[]).map((l: any) => {
-        const entry  = l.finance_journal_entries
-        const debit  = Number(l.debit  || 0)
+      const mapped: AccountLedgerLine[] = []
+      for (const l of records) {
+        const entry = l.finance_journal_entries
+        if (!entry) continue
+        const debit = Number(l.debit || 0)
         const credit = Number(l.credit || 0)
         balance += debit - credit
-        return {
-          id:              l.id,
-          entry_id:        entry.id,
-          entry_number:    entry.entry_number,
-          entry_date:      entry.entry_date,
-          description:     l.description || entry.description,
-          debit, credit,
-          entry_source:    entry.entry_source || 'آلي',
-          reference_type:  entry.reference_type,
-          reference_id:    entry.reference_id,
+        mapped.push({
+          id: l.id, entry_id: entry.id, entry_number: entry.entry_number,
+          entry_date: entry.entry_date, description: l.description || entry.description,
+          debit, credit, entry_source: entry.entry_source || 'آلي',
+          reference_type: entry.reference_type || undefined,
+          reference_id: entry.reference_id || undefined,
           running_balance: balance,
-        }
-      })
+        })
+      }
       setLines(mapped)
+    } catch (error: unknown) {
+      console.error('[accountLedger] failed to load', error)
+      setLines([])
+      toast.error('تعذر تحميل كشف الحساب كاملاً؛ لم يتم عرض أرصدة ناقصة')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const totalDebit  = lines.reduce((s, l) => s + l.debit, 0)
@@ -597,37 +630,56 @@ function ChartOfAccounts({ tenantId }: { tenantId: string }) {
 
   async function loadAll() {
     setLoading(true)
-    const [accRes, linesRes] = await Promise.all([
-      supabase.from('finance_accounts').select('*').eq('tenant_id', tenantId).order('code'),
-      // فلترة القيود بـ tenant_id عبر الانضمام لجدول القيود
-      supabase
-        .from('finance_journal_lines')
-        .select('account_id, debit, credit, finance_journal_entries!inner(tenant_id)')
-        .eq('finance_journal_entries.tenant_id', tenantId),
-    ])
-    const accs = accRes.data || []
+    try {
+      const { data: accs, error: accError } = await supabase.from('finance_accounts')
+        .select('*').eq('tenant_id', tenantId).order('code')
+      if (accError) throw accError
+      const accounts = (accs || []) as Account[]
 
-    const raw: Record<number, { debit: number; credit: number }> = {}
-    ;(linesRes.data || []).forEach((l: any) => {
-      if (!raw[l.account_id]) raw[l.account_id] = { debit: 0, credit: 0 }
-      raw[l.account_id].debit  += Number(l.debit  || 0)
-      raw[l.account_id].credit += Number(l.credit || 0)
-    })
-    const bal: Record<number, number> = {}
-    accs.forEach((a: Account) => {
-      const r = raw[a.id] || { debit: 0, credit: 0 }
-      bal[a.id] = r.debit - r.credit
-    })
-    function sumBalance(id: number): number {
-      const children = accs.filter((a: Account) => a.parent_id === id)
-      if (children.length === 0) return bal[id] || 0
-      return children.reduce((s: number, c: Account) => s + sumBalance(c.id), 0)
+      const raw: Record<number, { debit: number; credit: number }> = {}
+      const pageSize = 500
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from('finance_journal_lines')
+          .select('id, account_id, debit, credit, finance_journal_entries!inner(tenant_id, status)')
+          .eq('finance_journal_entries.tenant_id', tenantId)
+          .eq('finance_journal_entries.status', 'معتمد')
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+        if (error) throw error
+        for (const l of data || []) {
+          if (!raw[l.account_id]) raw[l.account_id] = { debit: 0, credit: 0 }
+          raw[l.account_id].debit += Number(l.debit || 0)
+          raw[l.account_id].credit += Number(l.credit || 0)
+        }
+        if ((data || []).length < pageSize) break
+      }
+      const bal: Record<number, number> = {}
+      accounts.forEach(a => {
+        const row = raw[a.id] || { debit: 0, credit: 0 }
+        bal[a.id] = row.debit - row.credit
+      })
+      function sumBalance(id: number, visiting = new Set<number>()): number {
+        if (visiting.has(id)) {
+          console.error('[accounting/chart] cycle detected in account hierarchy', id)
+          return 0
+        }
+        const next = new Set(visiting)
+        next.add(id)
+        const children = accounts.filter(a => a.parent_id === id)
+        if (!children.length) return bal[id] || 0
+        return children.reduce((total, child) => total + sumBalance(child.id, next), 0)
+      }
+      accounts.forEach(a => { bal[a.id] = sumBalance(a.id) })
+      setAccounts(accounts)
+      setBalances(bal)
+    } catch (error: unknown) {
+      console.error('[accounting/chart] incomplete account data', error)
+      setAccounts([])
+      setBalances({})
+      toast.error('تعذر تحميل شجرة الحسابات والأرصدة كاملة')
+    } finally {
+      setLoading(false)
     }
-    accs.forEach((a: Account) => { bal[a.id] = sumBalance(a.id) })
-
-    setAccounts(accs)
-    setBalances(bal)
-    setLoading(false)
   }
 
   const currentParentId = path.length > 0 ? path[path.length - 1].id : null
