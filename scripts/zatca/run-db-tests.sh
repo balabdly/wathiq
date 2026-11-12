@@ -23,7 +23,7 @@ psql -X -v ON_ERROR_STOP=1 -c "
   BEGIN;
   SELECT * FROM public.zatca_reserve_sales_invoice(
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    102,
+    104,
     '66666666-cccc-4666-8666-cccccccccccc');
   SELECT pg_sleep(4);
   COMMIT;
@@ -36,7 +36,7 @@ psql -X -v ON_ERROR_STOP=1 -c "
   SET ROLE service_role;
   SELECT * FROM public.zatca_reserve_sales_invoice(
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    104,
+    105,
     '77777777-cccc-4777-8777-cccccccccccc');
 " > "$second_log" 2>&1
 second_result="$?"

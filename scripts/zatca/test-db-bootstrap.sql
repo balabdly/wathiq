@@ -28,7 +28,8 @@ INSERT INTO public.finance_invoices (id, tenant_id, invoice_number, status) VALU
   (102, '11111111-1111-4111-8111-111111111111','TEST-A-102','مرسلة'),
   (201, '22222222-2222-4222-8222-222222222222','TEST-B-201','مرسلة'),
   (103, '11111111-1111-4111-8111-111111111111','TEST-A-103','مسودة'),
-  (104, '11111111-1111-4111-8111-111111111111','TEST-A-104','مرسلة');
+  (104, '11111111-1111-4111-8111-111111111111','TEST-A-104','مرسلة'),
+  (105, '11111111-1111-4111-8111-111111111111','TEST-A-105','مرسلة');
 
 INSERT INTO public.zatca_egs_units(id, tenant_id, unit_code, environment, status) VALUES
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111','TEST-EGS-A1','simulation','testing'),
