@@ -10,7 +10,7 @@
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -84,5 +84,64 @@ export async function validateSignedXmlUsingOfficialSdk(
     })
   } finally {
     await rm(temporaryDirectory, {recursive: true, force: true})
+  }
+}
+
+/**
+ * OFFLINE signing experiment using official ZATCA CLI. Only works after the
+ * operator installs the official SDK with a TEST/SIMULATION certificate/key
+ * in its own isolated working directory. No CSIDs or keys are read by Wathiq.
+ *
+ * CLI performs canonicalization, XAdES construction, hash and QR; Wathiq does
+ * NOT hand-roll its own XAdES. Any output must pass SDK validation again.
+ *
+ * Default is DISABLED. Do not call with production identities/credentials,
+ * and do not expose this function through a public API route.
+ */
+export async function signAndValidateTestXmlUsingOfficialSdk(
+  unsignedXml: string,
+): Promise<{signedXml: string; evidence: OfflineValidationEvidence}> {
+  if (process.env.ZATCA_SDK_SIGNING_ENABLED !== 'true') {
+    throw new Error('Offline test signing is disabled')
+  }
+  const executable = process.env.ZATCA_SDK_FATOORA_BIN
+  if (!executable) throw new Error('Official ZATCA SDK is not configured')
+  const workdir = process.env.ZATCA_SDK_WORKDIR
+  if (!workdir) throw new Error('SDK isolated test workdir must be specified')
+  if (typeof unsignedXml !== 'string' || !unsignedXml.includes('<Invoice')) {
+    throw new Error('An unsigned UBL invoice XML document is required')
+  }
+  const data = Buffer.from(unsignedXml, 'utf8')
+  if (data.length > MAX_XML_BYTES) throw new Error('XML size limit exceeded')
+  if (/<(?:[A-Za-z_][\w.-]*:)?Signature\b/.test(unsignedXml)) {
+    throw new Error('Refusing to re-sign an already signed invoice')
+  }
+  const tmp = await mkdtemp(join(tmpdir(), 'wathiq-zatca-sign-'))
+  const input = join(tmp, 'unsigned.xml')
+  const output = join(tmp, 'signed.xml')
+  try {
+    await writeFile(input, data, {flag:'wx',mode:0o600})
+    try {
+      await execFileAsync(executable,
+        ['-sign','-invoice',input,'-signedInvoice',output],{
+          cwd:workdir,shell:false,timeout:45000,maxBuffer:MAX_SDK_OUTPUT,
+          encoding:'utf8',
+        })
+    } catch {
+      throw new Error('Official ZATCA SDK signing did not complete')
+    }
+    const xmlBytes = await readFile(output)
+    if (xmlBytes.byteLength > MAX_XML_BYTES) {
+      throw new Error('Signed XML exceeded safe size')
+    }
+    const signedXml = xmlBytes.toString('utf8')
+    if (!/<(?:[A-Za-z_][\w.-]*:)?Signature\b/.test(signedXml)) {
+      throw new Error('SDK output does not contain an XML signature')
+    }
+    // A signing CLI success alone is not validation of the signed document.
+    const evidence = await validateSignedXmlUsingOfficialSdk(signedXml)
+    return {signedXml,evidence}
+  } finally {
+    await rm(tmp,{force:true,recursive:true})
   }
 }

@@ -119,3 +119,14 @@ test('a mock simulation POST uses V2 and does not log credentials',async()=>{
     }
   }
 })
+
+test('official SDK signing cannot run without explicit server-side enablement',async()=>{
+  const old=process.env.ZATCA_SDK_SIGNING_ENABLED
+  delete process.env.ZATCA_SDK_SIGNING_ENABLED
+  try {
+    await assert.rejects(sdk.signAndValidateTestXmlUsingOfficialSdk('<Invoice/>'),/disabled/)
+  } finally {
+    if(old===undefined)delete process.env.ZATCA_SDK_SIGNING_ENABLED
+    else process.env.ZATCA_SDK_SIGNING_ENABLED=old
+  }
+})
