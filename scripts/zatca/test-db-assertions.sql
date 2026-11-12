@@ -145,7 +145,7 @@ BEGIN
   BEGIN
     UPDATE public.zatca_document_events SET event_type='fake';
   EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM NOT LIKE '%append-only%' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE '%append-only%' AND SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
     v_failed := true;
   END;
   IF NOT v_failed THEN RAISE EXCEPTION 'Audit trail was mutable'; END IF;
@@ -168,7 +168,29 @@ BEGIN
 END $$;
 RESET ROLE;
 
-DO $$
+-- Even a database owner must pass through the immutable event trigger.
+DO $
+DECLARE v_failed boolean := false;
+BEGIN
+  BEGIN
+    UPDATE public.zatca_document_events SET event_type = 'tampered';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%append-only%' THEN RAISE; END IF;
+    v_failed := true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'Audit modification allowed to table owner'; END IF;
+  RAISE NOTICE 'PASS: database owner cannot bypass append-only trigger';
+END $;
+
+DO $
+BEGIN
+  IF has_table_privilege('service_role','public.zatca_document_events','UPDATE') THEN
+    RAISE EXCEPTION 'Service role must not have UPDATE on audit events';
+  END IF;
+  RAISE NOTICE 'PASS: service_role has no audit UPDATE privilege';
+END $;
+
+DO $
 BEGIN
   IF (SELECT last_icv FROM public.zatca_egs_state
      WHERE egs_unit_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa') <> 1 THEN
