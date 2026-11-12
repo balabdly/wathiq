@@ -5,6 +5,29 @@ import { supabase } from '@/lib/supabase'
 import { DollarSign, Search, X, Download, Printer } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ACC } from '@/lib/account-codes'
+import { summarizeVatDocuments, type VatDocument } from '@/lib/vat-reconciliation'
+
+/**
+ * ZATCA-related document retrieval must not silently stop after Supabase's
+ * default row limit. Any query failure invalidates the entire tax estimate.
+ */
+async function fetchVatDocs(
+  tenantId: string, table: string, dateField: string, from: string, to: string,
+): Promise<VatDocument[]> {
+  const rows: VatDocument[] = []
+  const size = 500
+  for (let offset = 0; ; offset += size) {
+    const { data, error } = await supabase.from(table).select('*')
+      .eq('tenant_id', tenantId)
+      .gte(dateField, from).lte(dateField, to)
+      .order('id', { ascending: true })
+      .range(offset, offset + size - 1)
+    if (error) throw new Error(`تعذر تحميل ${table}: ${error.message}`)
+    rows.push(...(data || []))
+    if (!data || data.length < size) break
+  }
+  return rows
+}
 
 // ═══════════════════════════════════════════════════
 // قواعد المحاسبة حسب IFRS
@@ -139,8 +162,8 @@ const REPORT_GROUPS = [
     id: 'tax', label: 'الضريبة', color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe',
     reports: [
       { id: 'tax_sales',     title: 'تقرير ضريبة المبيعات',          icon: '🧾', desc: 'الوعاء الضريبي وضريبة المبيعات' },
-      { id: 'tax_purchases', title: 'تقرير ضريبة المشتريات',         icon: '📋', desc: 'ضريبة المدخلات القابلة للاسترداد' },
-      { id: 'tax_net',       title: 'صافي الضريبة المستحقة',         icon: '⚖️', desc: 'ضريبة المبيعات - ضريبة المشتريات' },
+      { id: 'tax_purchases', title: 'تقرير ضريبة المشتريات',         icon: '📋', desc: 'فواتير الموردين المؤهلة مبدئيًا مع التعديلات (تحتاج تحققًا)' },
+      { id: 'tax_net',       title: 'صافي الضريبة المستحقة',         icon: '⚖️', desc: 'مطابقة تقديرية وليست إقرارًا نهائيًا' },
     ]
   },
   {
@@ -717,31 +740,48 @@ export default function ReportsFinancePage() {
     // الضريبة
     // ══════════════════════════════════════════
     } else if (selected === 'tax_sales' || selected === 'tax_purchases' || selected === 'tax_net') {
-      const isPurch = selected === 'tax_purchases'
-      const table   = isPurch ? 'finance_purchase_orders' : 'finance_invoices'
-      const dateCol = isPurch ? 'po_date' : 'invoice_date'
-      const { data: salesData } = await supabase.from(table).select('*')
-        .eq('tenant_id', tenant.id).gte(dateCol, fDateFrom).lte(dateCol, fDateTo).gt('vat_amount', 0).order(dateCol)
-
-      if (selected === 'tax_net') {
-        // صافي الضريبة
-        const { data: purchData } = await supabase.from('finance_purchase_orders').select('vat_amount, subtotal, total_amount')
-          .eq('tenant_id', tenant.id).gte('po_date', fDateFrom).lte('po_date', fDateTo).gt('vat_amount', 0)
-        const salesVat = (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        const purchVat = (purchData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0)
-        setResults([
-          { item: 'ضريبة المبيعات (مخرجات)',     amount: salesVat,           type: 'credit' },
-          { item: 'ضريبة المشتريات (مدخلات)',     amount: purchVat,           type: 'debit'  },
-          { item: 'صافي الضريبة المستحقة للدفع', amount: salesVat - purchVat, type: 'net'    },
+      try {
+        const [invoices, creditNotes, vendorInvoices, debitNotes, purchaseReturns, expenses] = await Promise.all([
+          fetchVatDocs(tenant.id, 'finance_invoices', 'invoice_date', fDateFrom, fDateTo),
+          fetchVatDocs(tenant.id, 'finance_credit_notes', 'note_date', fDateFrom, fDateTo),
+          fetchVatDocs(tenant.id, 'finance_vendor_invoices', 'invoice_date', fDateFrom, fDateTo),
+          fetchVatDocs(tenant.id, 'finance_debit_notes', 'note_date', fDateFrom, fDateTo),
+          fetchVatDocs(tenant.id, 'finance_purchase_returns', 'return_date', fDateFrom, fDateTo),
+          fetchVatDocs(tenant.id, 'finance_expenses', 'expense_date', fDateFrom, fDateTo),
         ])
-        setSummary({ 'ضريبة المبيعات': salesVat, 'ضريبة المشتريات': purchVat, 'الصافي المستحق': salesVat - purchVat })
-      } else {
-        setResults(salesData || [])
-        setSummary({
-          'الوعاء الضريبي': (salesData || []).reduce((s: number, r: any) => s + Number(r.subtotal || 0), 0),
-          'الضريبة 15%': (salesData || []).reduce((s: number, r: any) => s + Number(r.vat_amount || 0), 0),
-          'الإجمالي': (salesData || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0),
+        const vat = summarizeVatDocuments({
+          invoices, creditNotes, vendorInvoices, debitNotes, purchaseReturns, expenses,
         })
+        if (selected === 'tax_net') {
+          setResults([
+            { item: 'مخرجات الفواتير الصادرة (بدون المسودات)', amount: vat.salesVat, type: 'credit' },
+            { item: 'تعديل المخرجات بالإشعارات الدائنة المعتمدة', amount: vat.salesCreditVat, type: 'credit' },
+            { item: 'إجمالي ضريبة المخرجات بعد التعديلات', amount: vat.outputVat, type: 'credit' },
+            { item: 'مدخلات فواتير الموردين المعتمدة — مرشحة للخصم', amount: vat.vendorVat, type: 'debit' },
+            { item: 'تعديل المدخلات بإشعارات الموردين والمرتجعات', amount: vat.purchaseAdjustmentVat, type: 'debit' },
+            { item: 'صافي ضريبة القيمة المضافة التقديري (ليس إقرارًا)', amount: vat.netVatEstimate, type: 'net' },
+            { item: 'ضريبة مصروفات لم تُراجع أهليتها (غير مخصومة)', amount: vat.expenseVatPendingReview, type: 'pending' },
+          ])
+          setSummary({
+            'المخرجات بعد الإشعارات': vat.outputVat,
+            'المدخلات المرشحة قبل التحقق من المستندات': vat.inputVatCandidate,
+            'الصافي التقديري — لا يستخدم للإقرار': vat.netVatEstimate,
+            'ضريبة مصروفات معلقة للمراجعة': vat.expenseVatPendingReview,
+          })
+        } else {
+          const rows = selected === 'tax_sales' ? vat.salesRows : vat.purchaseRows
+          setResults(rows)
+          setSummary({
+            'الوعاء الضريبي بعد التعديلات': Math.round(rows.reduce((total, row) => total + row.subtotal, 0) * 100) / 100,
+            'الضريبة بعد التعديلات': Math.round(rows.reduce((total, row) => total + row.vat_amount, 0) * 100) / 100,
+            'الإجمالي بعد التعديلات': Math.round(rows.reduce((total, row) => total + row.total_amount, 0) * 100) / 100,
+          })
+        }
+      } catch (error) {
+        console.error('[finance/vat-report] failed', error)
+        toast.error('تعذر تحميل بعض المستندات؛ لا يمكن الاعتماد على تقرير ضريبي ناقص')
+        setResults([])
+        setSummary(null)
       }
 
     // ══════════════════════════════════════════
@@ -1459,7 +1499,7 @@ export default function ReportsFinancePage() {
                 <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
                   <div style={{ border: '1px solid #c7d2fe', borderRadius: '12px', overflow: 'hidden' }}>
                     <div style={{ padding: '12px 16px', background: '#6366f1', color: 'white', textAlign: 'center', fontWeight: 700 }}>
-                      صافي الضريبة المستحقة — من {fDateFrom} إلى {fDateTo}
+                      مطابقة ضريبية مبدئية (غير صالحة للتقديم دون مراجعة) — من {fDateFrom} إلى {fDateTo}
                     </div>
                     {results.map((r: any, i) => (
                       <div key={i} style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f3f4f6', background: r.type === 'net' ? '#eef2ff' : 'white', fontWeight: r.type === 'net' ? 800 : 400 }}>
@@ -1467,6 +1507,11 @@ export default function ReportsFinancePage() {
                         <span style={{ fontFamily: 'monospace', color: r.type === 'net' ? (r.amount >= 0 ? '#c81e1e' : '#0ea77b') : '#374151', fontWeight: 700 }}>{fmt(r.amount)} ر.س</span>
                       </div>
                     ))}
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '0.73rem', color: '#92400e', lineHeight: 1.6 }}>
+                    لا يتم احتساب أوامر الشراء كفواتير ضريبية. يجب التحقق من صلاحية فاتورة المورد
+                    وأهلية خصم ضريبة المدخلات، وتصنيف التوريدات، والدفعات المقدمة والتعديلات
+                    قبل إعداد الإقرار الرسمي لدى هيئة الزكاة والضريبة والجمارك.
                   </div>
                 </div>
               )}
@@ -1641,7 +1686,7 @@ export default function ReportsFinancePage() {
                         <td style={{ padding: '9px 14px', color: '#6b7280' }}>{r.invoice_date || r.po_date}</td>
                         <td style={{ padding: '9px 14px', fontWeight: 600 }}>{r.client_name || r.vendor_name || '—'}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace' }}>{fmt(r.subtotal)}</td>
-                        <td style={{ padding: '9px 14px', textAlign: 'center' }}>{r.vat_rate || 15}%</td>
+                        <td style={{ padding: '9px 14px', textAlign: 'center' }}>{r.vat_rate ?? 0}%</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700, color: '#6366f1' }}>{fmt(r.vat_amount)}</td>
                         <td style={{ padding: '9px 14px', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(r.total_amount)}</td>
                       </tr>
