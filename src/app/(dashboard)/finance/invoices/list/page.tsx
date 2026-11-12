@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { usePagination } from '@/hooks/usePagination'
 import { createJournalEntry, nextDocNumber } from '@/lib/journal'
 import { ACC } from '@/lib/account-codes'
+import { createZatcaPhase1Qr } from '@/lib/zatca-phase1-qr'
 import { useStore } from '@/hooks/useStore'
 import AttachmentUploader from '@/components/finance/AttachmentUploader'
 import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/attachments'
@@ -19,19 +20,13 @@ import { INV_STATUS_COLOR } from '@/lib/sales-types'
 // QR Code ZATCA المرحلة الأولى
 // ════════════════════════════════════════
 function generateZATCAQR(company: Company, invoice: Partial<Invoice>): string {
-  const encode = (tag: number, value: string): string => {
-    const bytes = new TextEncoder().encode(value)
-    let result = String.fromCharCode(tag) + String.fromCharCode(bytes.length)
-    for (let i = 0; i < bytes.length; i++) result += String.fromCharCode(bytes[i])
-    return result
-  }
-  const tlv =
-    encode(1, company.name || '') +
-    encode(2, company.vat_number || '') +
-    encode(3, invoice.invoice_date || new Date().toISOString()) +
-    encode(4, String(invoice.total_amount || 0)) +
-    encode(5, String(invoice.vat_amount || 0))
-  return btoa(unescape(encodeURIComponent(tlv)))
+  return createZatcaPhase1Qr({
+    sellerName: company.name || '',
+    vatNumber: company.vat_number || '',
+    issuedAt: (invoice as Invoice & { created_at?: string }).created_at || '',
+    totalAmount: Number(invoice.total_amount || 0),
+    vatAmount: Number(invoice.vat_amount || 0),
+  })
 }
 
 // ════════════════════════════════════════
@@ -428,10 +423,14 @@ function InvoiceModal({ invoice, clients, projects, company, tenantId, catalogIt
         // Idempotent retry: an earlier journal may have succeeded while
         // the invoice status transition failed. Never post it twice.
         const { data: existing, error: lookupError } = await supabase.from('finance_journal_entries')
-          .select('id').eq('tenant_id', tenantId)
+          .select('id, total_debit').eq('tenant_id', tenantId)
           .eq('reference_type', 'فاتورة مبيعات')
           .eq('reference_id', invoiceId).eq('status', 'معتمد').limit(1)
         if (lookupError) throw new Error('تعذر التأكد من قيد الفاتورة: ' + lookupError.message)
+        if (existing?.length &&
+            Math.abs(Number(existing[0].total_debit) - payload.total_amount) > 0.01) {
+          throw new Error('يوجد قيد محاسبي سابق مختلف لهذه الفاتورة؛ لا يمكن إعادة إصدارها دون تسوية')
+        }
         if (!existing?.length) {
           const journalResult = await createJournalEntry({
             tenantId, date: payload.invoice_date,

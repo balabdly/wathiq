@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "test:financial": "node --test scripts/test-financial-statements.mjs",
     "test:hr": "node --test scripts/test-hr-saudi-compliance.mjs",
-    "test:vat": "node --test scripts/test-vat-reconciliation.mjs"
+    "test:vat": "node --test scripts/test-vat-reconciliation.mjs",
+    "test:zatca-qr": "node --test scripts/test-zatca-qr.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
