@@ -1,0 +1,51 @@
+name: ZATCA EGS isolated database integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/lib/migrations/zatca_phase2_egs_schema.sql'
+      - 'src/lib/zatca/**'
+      - 'scripts/zatca/**'
+      - '.github/workflows/zatca-db-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wathiq_zatca_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d wathiq_zatca_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: wathiq_zatca_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client if necessary
+        shell: bash
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+      - name: Apply ZATCA schema and test authorization, ICV and concurrency
+        shell: bash
+        run: bash scripts/zatca/run-db-tests.sh
