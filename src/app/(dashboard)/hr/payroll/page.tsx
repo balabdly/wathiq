@@ -27,13 +27,13 @@ type Payroll = {
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
   other_deduct: number; gross_salary: number; net_salary: number
-  present_days: number; absent_days: number; notes?: string; status: string; emp_name?: string
+  present_days: number; absent_days: number; overtime_hours?: number; notes?: string; status: string; emp_name?: string
 }
 type PayrollRow = {
   employee_id: number; name: string; role: string; included: boolean
   basic_salary: number; housing_allow: number; transport_allow: number; other_allow: number
   overtime_pay: number; bonuses: number; gosi_deduction: number; gosi_employer_amount: number; absence_deduct: number
-  other_deduct: number; present_days: number; notes: string; gross: number; net: number; existingId?: number
+  other_deduct: number; present_days: number; absent_days: number; overtime_hours: number; notes: string; gross: number; net: number; existingId?: number
   _pendingDeductIds?: number[]
 }
 type Termination = {
@@ -472,7 +472,7 @@ function ArchiveTab({ payrolls, isAdmin, onEdit, onEditPayroll, exportCSV }: { p
                   <div style={{ borderTop: '2px solid var(--primary)', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                       <thead><tr style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)' }}>
-                        {['الموظف','الأساسي','البدلات','الإجمالي','الخصومات','الصافي','حضور','الحالة'].map(h => (
+                        {['الموظف','الأساسي','البدلات','الإجمالي','الخصومات','الصافي','حضور مسجل','الحالة'].map(h => (
                           <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, fontSize: '0.72rem', background: h==='الصافي'?'#ecfdf5':'transparent', color: h==='الصافي'?'#0ea77b':h==='الخصومات'?'#c81e1e':h==='الإجمالي'?'var(--primary)':'var(--text3)' }}>{h}</th>
                         ))}
                       </tr></thead>
@@ -661,6 +661,8 @@ export default function PayrollPage() {
         absence_deduct: absenceDeduct,
         other_deduct: ex?.other_deduct ?? 0,
         present_days: presentDays,
+        absent_days: ex?.absent_days ?? attStats.absent_days,
+        overtime_hours: ex?.overtime_hours ?? attStats.overtime_hours,
         notes: attStats.has_records
           ? (ex?.notes || `حضور: ${attStats.present_days} | غياب: ${attStats.absent_days} | إضافي: ${attStats.overtime_hours}س`)
           : (ex?.notes ?? ''),
@@ -698,8 +700,8 @@ export default function PayrollPage() {
           overtime_pay: row.overtime_pay, bonuses: row.bonuses,
           gosi_deduction: row.gosi_deduction, gosi_employer_amount: row.gosi_employer_amount,
           absence_deduct: row.absence_deduct, other_deduct: row.other_deduct,
-          present_days: row.present_days, absent_days: Math.max(0, workingDays - row.present_days),
-          overtime_hours: 0,
+          present_days: row.present_days, absent_days: row.absent_days,
+          overtime_hours: row.overtime_hours,
           gross_salary: row.gross, net_salary: row.net,
           notes: row.notes || null, status: 'مسودة', working_days: workingDays,
         }

@@ -112,3 +112,21 @@ test('GOSI contributory wage is capped', () => {
   const g = calcGOSI('سعودي', 50000, 20000, 0, 'existing', '2026-11-12')
   assert.equal(g.employeeDeduction, 4387.5)
 })
+
+test('missing attendance records remain unknown, not fictitiously present', () => {
+  const r = calcAttendanceStats([], { basic: 4000, housing: 1500, transport: 500, other: 0 }, 26)
+  assert.equal(r.present_days, 0)
+  assert.equal(r.absent_days, 0)
+  assert.equal(r.has_records, false)
+  assert.equal(r.absence_deduct, 0)
+})
+
+test('one recorded workday cannot create 25 fictitious absences', () => {
+  const r = calcAttendanceStats([
+    { employee_id: 1, status: 'حضور', overtime_hours: 2 },
+  ], { basic: 4000, housing: 1500, transport: 500, other: 0 }, 26)
+  assert.equal(r.present_days, 1)
+  assert.equal(r.absent_days, 0)
+  assert.equal(r.overtime_hours, 2)
+  assert.equal(r.absence_deduct, 0)
+})

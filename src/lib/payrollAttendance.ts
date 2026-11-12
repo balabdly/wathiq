@@ -56,7 +56,8 @@ export function calcAttendanceStats(
 ): AttendancePayrollStats {
   if (!records.length) {
     return {
-      present_days: workingDays,
+      // No attendance rows means UNKNOWN attendance, never assume 26 present.
+      present_days: 0,
       absent_days: 0,
       leave_days: 0,
       overtime_hours: 0,
