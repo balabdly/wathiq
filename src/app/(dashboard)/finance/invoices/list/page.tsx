@@ -14,6 +14,7 @@ import { loadAttachments, saveAttachments, type FinanceAttachment } from '@/lib/
 import { useSales } from '../SalesContext'
 import type { Invoice, InvoiceItem, Client, Project, Company, CatalogItem, CashAccount } from '@/lib/sales-types'
 import { INV_STATUS_COLOR } from '@/lib/sales-types'
+import { assessInvoiceForPhase2 } from '@/lib/zatca/phase2-preflight'
 
 // ════════════════════════════════════════
 // QR Code ZATCA المرحلة الأولى
@@ -491,6 +492,25 @@ function InvoiceViewModal({ invoice, items, company, client, onClose, onPrint }:
   onClose: () => void; onPrint: () => void
 }) {
   const qr = generateZATCAQR(company, invoice)
+  const phase2 = assessInvoiceForPhase2({
+    invoiceNumber: invoice.invoice_number, invoiceDate: invoice.invoice_date,
+    vatRate: Number(invoice.vat_rate), subtotal: Number(invoice.subtotal),
+    vatAmount: Number(invoice.vat_amount), totalAmount: Number(invoice.total_amount),
+    seller: {
+      name: company.name, vatNumber: company.vat_number,
+      street: company.street, district: company.district,
+      city: company.city, postalCode: company.postal_code,
+    },
+    buyer: {
+      name: invoice.client_name, vatNumber: invoice.client_vat,
+      street: client?.street, district: client?.district,
+      city: client?.city, postalCode: client?.postal_code,
+    },
+    items: items.map(item => ({
+      description: item.description, quantity: Number(item.quantity),
+      unitPrice: Number(item.unit_price), total: Number(item.total),
+    })),
+  })
   return (
     <div className="modal-overlay" onMouseDown={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ maxWidth: '720px', maxHeight: '90vh' }} onMouseDown={e => e.stopPropagation()}>
@@ -502,6 +522,22 @@ function InvoiceViewModal({ invoice, items, company, client, onClose, onPrint }:
           </div>
         </div>
         <div className="modal-body">
+          <div style={{ padding: '12px 14px', borderRadius: '10px', background: '#fffbeb', border: '1px solid #fde68a', marginBottom: '12px', fontSize: '0.8rem' }}>
+            <div style={{ fontWeight: 700, color: '#92400e', marginBottom: '6px' }}>
+              فحص جاهزية المرحلة الثانية (بيانات فقط) — {phase2.dataComplete ? 'الحقول الأساسية مكتملة' : `${phase2.issues.length} ملاحظات`}
+            </div>
+            {!phase2.dataComplete && (
+              <ul style={{ margin: '0 14px 8px', padding: 0, color: '#92400e', listStyle: 'disc' }}>
+                {phase2.issues.slice(0, 6).map((issue, index) => (
+                  <li key={issue.field + index}>{issue.message}</li>
+                ))}
+                {phase2.issues.length > 6 && <li>و{phase2.issues.length - 6} ملاحظات أخرى</li>}
+              </ul>
+            )}
+            <div style={{ color: '#854d0e' }}>
+              هذا الفحص لا يعني اعتماد الفاتورة. لم يُفعَّل بعد XML الموقع، UUID، عداد ICV، بصمة PIH، شهادة الربط أو اتصال منصة فاتورة.
+            </div>
+          </div>
           <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', paddingBottom: '16px', borderBottom: '2px solid #1a56db' }}>
               <div>
