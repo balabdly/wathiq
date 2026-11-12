@@ -12,7 +12,8 @@
     "test:vat": "node --test scripts/test-vat-reconciliation.mjs",
     "test:zatca": "node --test scripts/test-zatca-phase2-foundation.mjs",
     "test:zatca:egs": "node --test scripts/test-zatca-egs-schema.mjs",
-    "test:zatca:crypto": "node --test scripts/test-zatca-crypto-primitives.mjs"
+    "test:zatca:crypto": "node --test scripts/test-zatca-crypto-primitives.mjs",
+    "test:zatca:simulation": "node --test scripts/test-zatca-sdk-simulation.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",
