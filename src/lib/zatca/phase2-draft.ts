@@ -92,8 +92,14 @@ export function validateUnsignedStandardInvoice(invoice: UnsignedStandardInvoice
   if (!Number.isSafeInteger(invoice.icv) || invoice.icv < 1) {
     issues.push({field:'icv',message:'يجب تخصيص عداد متسلسل موجب بواسطة قاعدة البيانات'})
   }
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(invoice.previousInvoiceHash || '')) {
-    issues.push({field:'previousInvoiceHash',message:'بصمة الفاتورة السابقة Base64/32 bytes مطلوبة من سجل التوقيع'})
+  // First PIH is Base64(ASCII hex SHA256("0")); subsequent PIH values
+  // use Base64 of the raw 32-byte SHA-256 digest.
+  const genesisPih = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ=='
+  const validPih = invoice.icv === 1
+    ? invoice.previousInvoiceHash === genesisPih
+    : /^[A-Za-z0-9+/]{43}=$/.test(invoice.previousInvoiceHash || '')
+  if (!validPih) {
+    issues.push({field:'previousInvoiceHash',message:'بصمة PIH غير صحيحة لهذا الرقم التسلسلي وفق مواصفات الهيئة'})
   }
   checkParty('seller',invoice.seller)
   checkParty('buyer',invoice.buyer)

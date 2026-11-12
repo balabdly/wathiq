@@ -25,11 +25,11 @@ export function sha256Base64(bytes: Uint8Array): string {
 }
 
 /**
- * Verify a detached ECDSA P-256/SHA-256 signature in IEEE-P1363 (r||s) form.
+ * Verify a detached ECDSA secp256k1/SHA-256 signature in IEEE-P1363 (r||s) form.
  * Caller is responsible for supplying the exact canonical bytes signed.
  * Public key only; this function deliberately cannot issue signatures.
  */
-export function verifyP256Signature(
+export function verifySecp256k1Signature(
   canonicalBytes: Uint8Array,
   signature: Uint8Array,
   publicKeyPem: string,
@@ -37,11 +37,11 @@ export function verifyP256Signature(
   const document = asNonEmptyBytes(canonicalBytes, 'signed content')
   const sig = asNonEmptyBytes(signature, 'signature')
   const key = createPublicKey(publicKeyPem)
-  if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'prime256v1') {
-    throw new Error('Only the P-256 elliptic curve is allowed by this verification helper')
+  if (key.asymmetricKeyType !== 'ec' || key.asymmetricKeyDetails?.namedCurve !== 'secp256k1') {
+    throw new Error('Only the secp256k1 elliptic curve is allowed by this verification helper')
   }
   if (sig.byteLength !== 64) {
-    throw new Error('P-256 IEEE-P1363 signatures must be 64 bytes')
+    throw new Error('secp256k1 IEEE-P1363 signatures must be 64 bytes')
   }
   return verify('sha256', document, {key, dsaEncoding: 'ieee-p1363'}, sig)
 }

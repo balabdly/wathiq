@@ -12,7 +12,7 @@ const code=ts.transpileModule(source,{compilerOptions:{
 }}).outputText
 const exports={}
 runInNewContext(code,{exports,module:{exports},require:createRequire(import.meta.url),Buffer})
-const {sha256Base64,verifyP256Signature,encodeQrTlvBase64}=exports
+const {sha256Base64,verifySecp256k1Signature,encodeQrTlvBase64}=exports
 
 test('SHA-256 digest over exact bytes matches standard known vector',()=>{
   assert.equal(sha256Base64(Buffer.from('abc')),'ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=')
@@ -20,22 +20,22 @@ test('SHA-256 digest over exact bytes matches standard known vector',()=>{
 test('empty content cannot be signed or hashed',()=>{
   assert.throws(()=>sha256Base64(new Uint8Array()),/non-empty/)
 })
-test('detached P-256 signature verification accepts the correct document',()=>{
-  const {privateKey,publicKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'})
+test('detached secp256k1 signature verification accepts the correct document',()=>{
+  const {privateKey,publicKey}=generateKeyPairSync('ec',{namedCurve:'secp256k1'})
   const data=Buffer.from('<Invoice>test &amp; demo</Invoice>')
   const signature=sign('sha256',data,{key:privateKey,dsaEncoding:'ieee-p1363'})
-  assert.equal(verifyP256Signature(data,signature,publicKey.export({type:'spki',format:'pem'})),true)
-  assert.equal(verifyP256Signature(Buffer.from('<Invoice>different</Invoice>'),signature,
+  assert.equal(verifySecp256k1Signature(data,signature,publicKey.export({type:'spki',format:'pem'})),true)
+  assert.equal(verifySecp256k1Signature(Buffer.from('<Invoice>different</Invoice>'),signature,
     publicKey.export({type:'spki',format:'pem'})),false)
 })
-test('P-256 verifier rejects keys from a different curve',()=>{
-  const {publicKey}=generateKeyPairSync('ec',{namedCurve:'secp256k1'})
-  assert.throws(()=>verifyP256Signature(Buffer.from('x'),Buffer.alloc(64),
-    publicKey.export({type:'spki',format:'pem'})),/Only the P-256/)
-})
-test('P-256 verifier rejects truncated ECDSA signatures',()=>{
+test('secp256k1 verifier rejects keys from a different curve',()=>{
   const {publicKey}=generateKeyPairSync('ec',{namedCurve:'prime256v1'})
-  assert.throws(()=>verifyP256Signature(Buffer.from('x'),Buffer.from([1]),
+  assert.throws(()=>verifySecp256k1Signature(Buffer.from('x'),Buffer.alloc(64),
+    publicKey.export({type:'spki',format:'pem'})),/Only the secp256k1/)
+})
+test('secp256k1 verifier rejects truncated ECDSA signatures',()=>{
+  const {publicKey}=generateKeyPairSync('ec',{namedCurve:'secp256k1'})
+  assert.throws(()=>verifySecp256k1Signature(Buffer.from('x'),Buffer.from([1]),
     publicKey.export({type:'spki',format:'pem'})),/64 bytes/)
 })
 test('TLV uses UTF-8 byte count for Arabic company names, not character count',()=>{

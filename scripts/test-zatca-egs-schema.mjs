@@ -76,3 +76,10 @@ test('a retry preserves the signed stage, without reverting to draft', () => {
   assert.equal(canTransitionZatcaDocument('retryable_error','clearance_pending','standard_invoice'),true)
   assert.equal(canTransitionZatcaDocument('retryable_error','reserved','standard_invoice'),false)
 })
+
+test('ZATCA genesis PIH is explicit and bound to first ICV',()=>{
+  const genesis='NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ=='
+  assert.match(sql,/v_counter = 0 AND v_previous_hash/)
+  assert.match(sql,/icv = 1 AND previous_invoice_hash/)
+  assert.ok(sql.includes(genesis))
+})

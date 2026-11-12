@@ -26,7 +26,7 @@ function fixture() {
   return {
     invoiceNumber:'INV-TEST-001',uuid:'123e4567-e89b-42d3-a456-426614174000',
     issueDate:'2026-11-13',issueTime:'14:31:01',currency:'SAR',
-    icv:1,previousInvoiceHash:'A'.repeat(43)+'=',
+    icv:1,previousInvoiceHash:'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==',
     seller,buyer,
     lines:[{description:'صيانة',quantity:2,unitCode:'EA',unitPrice:100,lineNetAmount:200,vatRate:15}],
     netAmount:200,vatAmount:30,totalAmount:230,
@@ -115,4 +115,19 @@ test('even a complete input audit is NOT production readiness',()=>{
   })
   assert.equal(report.dataComplete,true)
   assert.equal(report.productionReady,false)
+})
+
+test('first-invoice PIH requires the official ZATCA genesis value',()=>{
+  const f=fixture()
+  f.previousInvoiceHash='A'.repeat(43)+'='
+  assert.ok(validateUnsignedStandardInvoice(f).some(x=>x.field==='previousInvoiceHash'))
+  f.previousInvoiceHash='NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ=='
+  assert.equal(validateUnsignedStandardInvoice(f).length,0)
+})
+test('subsequent PIH requires a 32-byte SHA-256 base64 digest',()=>{
+  const f=fixture()
+  f.icv=2
+  assert.ok(validateUnsignedStandardInvoice(f).some(x=>x.field==='previousInvoiceHash'))
+  f.previousInvoiceHash='A'.repeat(43)+'='
+  assert.equal(validateUnsignedStandardInvoice(f).length,0)
 })

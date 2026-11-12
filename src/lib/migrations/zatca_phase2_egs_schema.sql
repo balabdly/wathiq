@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS public.zatca_egs_state (
   FOREIGN KEY (tenant_id, egs_unit_id)
     REFERENCES public.zatca_egs_units (tenant_id, id) ON DELETE RESTRICT,
   CHECK (last_signed_invoice_hash IS NULL OR
-    last_signed_invoice_hash ~ '^[A-Za-z0-9+/]{43}=$')
+    (last_signed_invoice_hash ~ '^[A-Za-z0-9+/]{43}=$'
+      OR last_signed_invoice_hash = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ=='))
 );
 
 CREATE TABLE IF NOT EXISTS public.zatca_documents (
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS public.zatca_documents (
   document_uuid uuid NOT NULL UNIQUE,
   icv bigint NOT NULL CHECK (icv > 0),
   previous_invoice_hash text NOT NULL
-    CHECK (previous_invoice_hash ~ '^[A-Za-z0-9+/]{43}=$'),
+    CHECK ((icv = 1 AND previous_invoice_hash = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==')
+      OR (icv > 1 AND previous_invoice_hash ~ '^[A-Za-z0-9+/]{43}=$')),
   invoice_hash text
     CHECK (invoice_hash IS NULL OR invoice_hash ~ '^[A-Za-z0-9+/]{43}=$'),
   unsigned_xml_storage_path text,
@@ -256,6 +258,10 @@ BEGIN
   END IF;
   IF v_pending IS NOT NULL THEN
     RAISE EXCEPTION 'The previous document must be signed and finalized first';
+  END IF;
+  IF (v_counter = 0 AND v_previous_hash <> 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==')
+     OR (v_counter > 0 AND v_previous_hash = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==') THEN
+    RAISE EXCEPTION 'Invalid previous invoice hash for current ICV';
   END IF;
 
   -- Unique source constraint rejects duplicate emission attempts.

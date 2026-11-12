@@ -38,5 +38,5 @@ INSERT INTO public.zatca_egs_units(id, tenant_id, unit_code, environment, status
 
 -- Test-only genesis data. Never used for real signed documents.
 UPDATE public.zatca_egs_state
-SET last_signed_invoice_hash = repeat('A',43) || '=';
+SET last_signed_invoice_hash = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==';
 \echo [ZATCA DB] Schema loaded and test organizations provisioned
